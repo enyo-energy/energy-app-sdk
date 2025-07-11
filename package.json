@@ -1,0 +1,44 @@
+{
+  "name": "connect-ems-api",
+  "version": "1.0.0",
+  "description": "Connect EMS TypeScript API client",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "duel",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevin-kirch/connect-ems-api.git"
+  },
+  "keywords": [
+    "Connect EMS"
+  ],
+  "author": "Kevin Kirch",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kevin-kirch/connect-ems-api/issues"
+  },
+  "homepage": "https://github.com/kevin-kirch/connect-ems-api#readme",
+  "devDependencies": {
+    "@knighted/duel": "^2.1.4",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.13",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "volta": {
+    "node": "22.17.0"
+  }
+}
