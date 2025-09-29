@@ -1,5 +1,6 @@
 import {MockConnectEmsApi} from "./mockConnectEmsApi.js";
 import {ConnectEmsApi} from "./connect-ems-api.js";
+import {ConnectHttpApi} from "./packages/connect-http-api.js";
 
 export class ConnectEmsPackageClient implements ConnectEmsApi {
     private readonly connectEmsApi: ConnectEmsApi;
@@ -33,5 +34,9 @@ export class ConnectEmsPackageClient implements ConnectEmsApi {
         process.on('exit', async (code) => {
             await callback();
         });
+    }
+
+    public useHttp(): ConnectHttpApi {
+        return this.connectEmsApi.useHttp();
     }
 }
