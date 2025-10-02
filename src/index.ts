@@ -1,6 +1,9 @@
-import {MockConnectEmsApi} from "./mockConnectEmsApi.js";
 import {ConnectEmsApi} from "./connect-ems-api.js";
-import {ConnectHttpApi} from "./packages/connect-http-api.js";
+import {ConnectInterval} from "./packages/connect-interval.js";
+import {ConnectModbus} from "./packages/connect-modbus.js";
+import {ConnectNetworkDevices} from "./packages/connect-network-devices.js";
+
+export * from './connect-package-definition.js';
 
 export class ConnectEmsPackageClient implements ConnectEmsApi {
     private readonly connectEmsApi: ConnectEmsApi;
@@ -9,9 +12,8 @@ export class ConnectEmsPackageClient implements ConnectEmsApi {
         // in our runtime, there is a instance of connectEmsApi available which needs to be used here
         // if the connectEmsApi is not available, instantiate a mocked version for local development
         // @ts-ignore
-        if (typeof connectEmsApi === 'undefined') {
-            console.warn('Connect EMS API is not available, using mock implementation.');
-            this.connectEmsApi = new MockConnectEmsApi();
+        if (connectEmsApi === undefined || connectEmsApi === null) {
+            throw new Error('Missing connectEmsApi');
         } else {
             // @ts-ignore
             this.connectEmsApi = connectEmsApi;
@@ -27,7 +29,7 @@ export class ConnectEmsPackageClient implements ConnectEmsApi {
         this.connectEmsApi.register(callback);
     }
 
-    public shutdown(callback: () => Promise<void>) {
+    public onShutdown(callback: () => Promise<void>) {
         process.on('beforeExit', async (code) => {
             await callback();
         });
@@ -36,7 +38,19 @@ export class ConnectEmsPackageClient implements ConnectEmsApi {
         });
     }
 
-    public useHttp(): ConnectHttpApi {
-        return this.connectEmsApi.useHttp();
+    public useFetch(): typeof fetch {
+        return this.connectEmsApi.useFetch();
+    }
+
+    public useInterval(): ConnectInterval {
+        return this.connectEmsApi.useInterval();
+    }
+
+    public useModbus(): ConnectModbus {
+        return this.connectEmsApi.useModbus();
+    }
+
+    public useNetworkDevices(): ConnectNetworkDevices {
+        return this.connectEmsApi.useNetworkDevices();
     }
 }

@@ -1,0 +1,1 @@
+export type ConnectEmsPermissionType = 'RestrictedInternetAccess' | 'NetworkDeviceDiscovery' | 'NetworkDeviceSearch';

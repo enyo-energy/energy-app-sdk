@@ -1,0 +1,1 @@
+- We are building a library used by other developers. Please provide a documentation for every function and class you create.
