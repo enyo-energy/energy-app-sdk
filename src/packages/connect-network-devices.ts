@@ -1,10 +1,8 @@
 export interface NetworkDevice {
     id: string;
-    name?: string;
+    hostname: string;
     ipAddress: string;
     macAddress?: string;
-    deviceType?: string;
-    manufacturer?: string;
     isOnline: boolean;
     lastSeen: Date;
     ports?: NetworkPort[];
@@ -12,8 +10,6 @@ export interface NetworkDevice {
 
 export interface NetworkPort {
     port: number;
-    protocol: 'tcp' | 'udp';
-    isOpen: boolean;
     service?: string;
 }
 
