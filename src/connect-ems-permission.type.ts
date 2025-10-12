@@ -1,1 +1,1 @@
-export type ConnectEmsPermissionType = 'RestrictedInternetAccess' | 'NetworkDeviceDiscovery' | 'NetworkDeviceSearch';
+export type ConnectEmsPermissionType = 'RestrictedInternetAccess' | 'NetworkDeviceDiscovery' | 'NetworkDeviceSearch' | 'Modbus';

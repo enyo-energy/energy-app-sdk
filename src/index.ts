@@ -2,6 +2,8 @@ import {ConnectEmsApi} from "./connect-ems-api.js";
 import {ConnectInterval} from "./packages/connect-interval.js";
 import {ConnectModbus} from "./packages/connect-modbus.js";
 import {ConnectNetworkDevices} from "./packages/connect-network-devices.js";
+import {ConnectStorage} from "./packages/connect-storage.js";
+import {ConnectAppliances} from "./packages/connect-appliance.js";
 
 export * from './connect-package-definition.js';
 
@@ -52,5 +54,13 @@ export class ConnectEmsPackageClient implements ConnectEmsApi {
 
     public useNetworkDevices(): ConnectNetworkDevices {
         return this.connectEmsApi.useNetworkDevices();
+    }
+
+    public useStorage(): ConnectStorage {
+        return this.connectEmsApi.useStorage();
+    }
+
+    public useAppliances(): ConnectAppliances {
+        return this.connectEmsApi.useAppliances();
     }
 }
