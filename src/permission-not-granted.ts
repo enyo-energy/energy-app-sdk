@@ -1,7 +1,7 @@
 /**
  * Error thrown when a required permission is not granted in the package configuration
  */
-export class PermissionNotGrantedError extends Error {
+export class EnergyAppPermissionNotGrantedError extends Error {
     constructor(
         public readonly requiredPermission: string,
         public readonly availablePermissions: string[]

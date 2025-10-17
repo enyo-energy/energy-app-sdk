@@ -1,7 +1,7 @@
 {
-  "name": "connect-ems-api",
-  "version": "1.0.0",
-  "description": "Connect EMS TypeScript API client",
+  "name": "@hems-one/energy-app-sdk",
+  "version": "0.0.1",
+  "description": "HEMS one Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,17 +18,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kevin-kirch/connect-ems-api.git"
+    "url": "git+https://github.com/HEMS-one/energy-app-sdk.git"
   },
   "keywords": [
-    "Connect EMS"
+    "HEMS one"
   ],
-  "author": "Kevin Kirch",
+  "author": "HEMS one",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/kevin-kirch/connect-ems-api/issues"
+    "url": "https://github.com/HEMS-one/energy-app-sdk/issues"
   },
-  "homepage": "https://github.com/kevin-kirch/connect-ems-api#readme",
+  "homepage": "https://github.com/HEMS-one/energy-app-sdk",
   "devDependencies": {
     "@knighted/duel": "^2.1.4",
     "@types/express": "^5.0.3",

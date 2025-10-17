@@ -33,11 +33,11 @@ export interface ModbusCoilData {
 }
 
 /**
- * Interface for Modbus TCP/IP communication in Connect EMS packages.
+ * Interface for Modbus TCP/IP communication in HEMS one packages.
  * Provides comprehensive Modbus client functionality for reading and writing
  * coils, discrete inputs, holding registers, and input registers.
  */
-export interface ConnectModbus {
+export interface EnergyAppModbus {
     /** Establish connection to a Modbus server */
     connect: (options: ModbusOptions) => Promise<void>;
     /** Close the Modbus connection */

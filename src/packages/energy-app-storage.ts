@@ -1,9 +1,9 @@
 
 /**
- * Interface for persistent storage operations in Connect EMS packages.
+ * Interface for persistent storage operations in HEMS one packages.
  * Provides key-value storage capabilities for package data persistence.
  */
-export interface ConnectStorage {
+export interface EnergyAppStorage {
     /** Save an object to storage with the specified key */
     save: (key: string, value: object) => Promise<void>;
     /** Load an object from storage by key, returns null if not found */

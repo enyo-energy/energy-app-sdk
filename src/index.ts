@@ -1,34 +1,34 @@
-import {ConnectEmsApi} from "./connect-ems-api.js";
-import {ConnectInterval} from "./packages/connect-interval.js";
-import {ConnectModbus} from "./packages/connect-modbus.js";
-import {ConnectNetworkDevices} from "./packages/connect-network-devices.js";
-import {ConnectStorage} from "./packages/connect-storage.js";
-import {ConnectAppliances} from "./packages/connect-appliance.js";
+import {HemsOneEnergyAppSdk} from "./hems-one-energy-app-sdk.js";
+import {EnergyAppInterval} from "./packages/energy-app-interval.js";
+import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
+import {HemsOneNetworkDevice} from "./packages/hems-one-network-device.js";
+import {EnergyAppStorage} from "./packages/energy-app-storage.js";
+import {HemsOneAppliances} from "./packages/connect-appliance.js";
 
-export * from './connect-package-definition.js';
+export * from './energy-app-package-definition.js';
 
-export class ConnectEmsPackageClient implements ConnectEmsApi {
-    private readonly connectEmsApi: ConnectEmsApi;
+export class EnergyApp implements HemsOneEnergyAppSdk {
+    private readonly energyAppSdk: HemsOneEnergyAppSdk;
 
     constructor() {
-        // in our runtime, there is a instance of connectEmsApi available which needs to be used here
-        // if the connectEmsApi is not available, instantiate a mocked version for local development
+        // in our runtime, there is an instance of energyAppSdk available which needs to be used here
+        // if the energyAppSdk is not available, instantiate a mocked version for local development
         // @ts-ignore
-        if (connectEmsApi === undefined || connectEmsApi === null) {
-            throw new Error('Missing connectEmsApi');
+        if (energyAppSdkInstance === undefined || energyAppSdkInstance === null) {
+            throw new Error('Missing energyAppSdk instance');
         } else {
             // @ts-ignore
-            this.connectEmsApi = connectEmsApi;
+            this.energyAppSdk = energyAppSdkInstance;
         }
     }
 
     public isOnline(): boolean {
-        return this.connectEmsApi.isOnline();
+        return this.energyAppSdk.isOnline();
     }
 
     public register(callback: (packageName: string, version: number) => void) {
-        // This registers the package with the Connect EMS system
-        this.connectEmsApi.register(callback);
+        // This registers the package with the HEMS one system
+        this.energyAppSdk.register(callback);
     }
 
     public onShutdown(callback: () => Promise<void>) {
@@ -41,26 +41,26 @@ export class ConnectEmsPackageClient implements ConnectEmsApi {
     }
 
     public useFetch(): typeof fetch {
-        return this.connectEmsApi.useFetch();
+        return this.energyAppSdk.useFetch();
     }
 
-    public useInterval(): ConnectInterval {
-        return this.connectEmsApi.useInterval();
+    public useInterval(): EnergyAppInterval {
+        return this.energyAppSdk.useInterval();
     }
 
-    public useModbus(): ConnectModbus {
-        return this.connectEmsApi.useModbus();
+    public useModbus(): EnergyAppModbus {
+        return this.energyAppSdk.useModbus();
     }
 
-    public useNetworkDevices(): ConnectNetworkDevices {
-        return this.connectEmsApi.useNetworkDevices();
+    public useNetworkDevices(): HemsOneNetworkDevice {
+        return this.energyAppSdk.useNetworkDevices();
     }
 
-    public useStorage(): ConnectStorage {
-        return this.connectEmsApi.useStorage();
+    public useStorage(): EnergyAppStorage {
+        return this.energyAppSdk.useStorage();
     }
 
-    public useAppliances(): ConnectAppliances {
-        return this.connectEmsApi.useAppliances();
+    public useAppliances(): HemsOneAppliances {
+        return this.energyAppSdk.useAppliances();
     }
 }

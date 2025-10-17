@@ -1,4 +1,4 @@
-export enum ConnectApplianceTypeEnum {
+export enum EnergyAppApplianceTypeEnum {
     Inverter = 'Inverter',
     Charger = 'Charger',
     Storage = 'Storage',
