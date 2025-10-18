@@ -16,7 +16,11 @@ export interface HemsOneNetworkDevice {
     lastSeen: Date;
     /** List of open network ports on the device */
     ports?: HemsOneNetworkPort[];
+    /** Access status for the device */
+    accessStatus: HemsOneNetworkDeviceAccessStatus;
 }
+
+export type HemsOneNetworkDeviceAccessStatus = 'granted' | 'denied' | 'pending';
 
 /**
  * Represents an open network port on a device.

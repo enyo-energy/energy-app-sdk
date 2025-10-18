@@ -1,1 +1,1 @@
-export type EnergyAppPermissionType = 'RestrictedInternetAccess' | 'NetworkDeviceDiscovery' | 'NetworkDeviceSearch' | 'Modbus';
+export type EnergyAppPermissionType = 'RestrictedInternetAccess' | 'NetworkDeviceDiscovery' | 'NetworkDeviceSearch' | 'NetworkDeviceAccess' | 'Modbus';

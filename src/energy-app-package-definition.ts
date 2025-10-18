@@ -1,4 +1,4 @@
-import { EnergyAppPermissionType } from './energy-app-permission-type.js';
+import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -6,7 +6,10 @@ export enum EnergyAppPackageCategory {
     Inverter = 'inverter',
     Wallbox = 'wallbox',
     Meter = 'meter',
-    SmartControl = 'smart-control',
+    EnergyManagement = 'energy-management',
+    HeatPump = 'heat-pump',
+    BatteryStorage = 'battery-storage',
+    ClimateControl = 'climate-control',
 }
 
 /**
