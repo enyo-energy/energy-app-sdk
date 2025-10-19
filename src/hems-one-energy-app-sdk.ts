@@ -1,8 +1,8 @@
 import {EnergyAppInterval} from "./packages/energy-app-interval.js";
 import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
-import {HemsOneNetworkDevice} from "./packages/hems-one-network-device.js";
+import {HemsOneNetworkDevice} from "./types/hems-one-network-device.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
-import {HemsOneAppliances} from "./packages/connect-appliance.js";
+import {HemsOneAppliances} from "./types/hems-one-appliance.js";
 
 /**
  * Main API interface for HEMS One Energy App packages.
