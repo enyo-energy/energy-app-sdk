@@ -39,6 +39,7 @@ export interface ModbusCoilData {
  */
 export interface EnergyAppModbus {
     /** Establish connection to a Modbus server */
+    // FIXME: return instance of modbus connection!!
     connect: (options: ModbusOptions) => Promise<void>;
     /** Close the Modbus connection */
     disconnect: () => Promise<void>;

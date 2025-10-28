@@ -1,9 +1,9 @@
 import {HemsOneEnergyAppSdk} from "./hems-one-energy-app-sdk.js";
 import {EnergyAppInterval} from "./packages/energy-app-interval.js";
 import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
-import {HemsOneNetworkDevice} from "./types/hems-one-network-device.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
-import {HemsOneAppliances} from "./types/hems-one-appliance.js";
+import {EnergyAppAppliance} from "./packages/energy-app-appliance.js";
+import {EnergyAppNetworkDevice} from "./packages/energy-app-network-device.js";
 
 export * from './energy-app-package-definition.js';
 
@@ -52,7 +52,7 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
         return this.energyAppSdk.useModbus();
     }
 
-    public useNetworkDevices(): HemsOneNetworkDevice {
+    public useNetworkDevices(): EnergyAppNetworkDevice {
         return this.energyAppSdk.useNetworkDevices();
     }
 
@@ -60,7 +60,7 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
         return this.energyAppSdk.useStorage();
     }
 
-    public useAppliances(): HemsOneAppliances {
+    public useAppliances(): EnergyAppAppliance {
         return this.energyAppSdk.useAppliances();
     }
 }

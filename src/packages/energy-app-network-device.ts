@@ -11,8 +11,10 @@ export interface EnergyAppNetworkDevice {
     getDevice: (deviceId: string) => Promise<HemsOneNetworkDevice | null>;
     /** Trigger an asynchronous search for new devices on the network */
     searchDevices: () => Promise<HemsOneNetworkDevice[]>;
-    /** Trigger an async request to the user to accept or reject a network device access request */
-    requestDeviceAccess: (deviceId: string, ports: number[]) => Promise<void>;
-    /** listen for device access changes */
-    listenForDeviceAccessChange: (listener: (deviceId: string, status: HemsOneNetworkDeviceAccessStatus) => void) => void;
+    /** Trigger an async request to the user to accept or reject a network device access request. Ports are optional */
+    requestDeviceAccess: (deviceId: string, ports?: number[]) => Promise<{ status: HemsOneNetworkDeviceAccessStatus }>;
+    /** listen for device access changes. Returns a listener id */
+    listenForDeviceAccessChange: (listener: (deviceId: string, status: HemsOneNetworkDeviceAccessStatus) => void) => string;
+    /** Removes the listener */
+    removeDeviceAccessChangeListener: (listenerId: string) => void;
 }

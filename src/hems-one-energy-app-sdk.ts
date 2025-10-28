@@ -1,8 +1,8 @@
 import {EnergyAppInterval} from "./packages/energy-app-interval.js";
 import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
-import {HemsOneNetworkDevice} from "./types/hems-one-network-device.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
-import {HemsOneAppliances} from "./types/hems-one-appliance.js";
+import {EnergyAppAppliance} from "./packages/energy-app-appliance.js";
+import {EnergyAppNetworkDevice} from "./packages/energy-app-network-device.js";
 
 /**
  * Main API interface for HEMS One Energy App packages.
@@ -23,9 +23,9 @@ export interface HemsOneEnergyAppSdk {
     /** Get the Modbus communication API */
     useModbus: () => EnergyAppModbus;
     /** Get the network device discovery API */
-    useNetworkDevices: () => HemsOneNetworkDevice;
+    useNetworkDevices: () => EnergyAppNetworkDevice;
     /** Get the persistent storage API */
     useStorage: () => EnergyAppStorage;
     /** Get the Appliance API */
-    useAppliances: () => HemsOneAppliances;
+    useAppliances: () => EnergyAppAppliance;
 }
