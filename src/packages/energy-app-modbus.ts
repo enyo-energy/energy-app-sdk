@@ -13,26 +13,6 @@ export interface ModbusOptions {
 }
 
 /**
- * Data structure for Modbus register operations.
- */
-export interface ModbusRegisterData {
-    /** Register address */
-    address: number;
-    /** Register value(s) - single number or array for multiple registers */
-    value: number | number[];
-}
-
-/**
- * Data structure for Modbus coil operations.
- */
-export interface ModbusCoilData {
-    /** Coil address */
-    address: number;
-    /** Coil value(s) - single boolean or array for multiple coils */
-    value: boolean | boolean[];
-}
-
-/**
  * Interface for Modbus TCP/IP communication in HEMS one packages.
  * Provides comprehensive Modbus client functionality for reading and writing
  * coils, discrete inputs, holding registers, and input registers.
@@ -65,4 +45,10 @@ export interface EnergyAppModbusInstance {
     writeMultipleCoils: (address: number, values: boolean[]) => Promise<void>;
     /** Write multiple register values starting from the specified address */
     writeMultipleRegisters: (address: number, values: number[]) => Promise<void>;
+    /** Read holding register string value */
+    readRegisterStringValue: (address: number, quantity: number) => Promise<string>;
+    /** Read holding register int value */
+    readRegisterIntValue: (address: number, quantity: number) => Promise<number>;
+    /** Read holding register float value */
+    readRegisterFloatValue: (address: number, quantity: number) => Promise<number>;
 }

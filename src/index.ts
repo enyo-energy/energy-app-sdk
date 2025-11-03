@@ -4,6 +4,7 @@ import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
 import {EnergyAppAppliance} from "./packages/energy-app-appliance.js";
 import {EnergyAppNetworkDevice} from "./packages/energy-app-network-device.js";
+import {EnergyAppDataBus} from "./packages/energy-app-data-bus.js";
 
 export * from './energy-app-package-definition.js';
 
@@ -62,5 +63,9 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
 
     public useAppliances(): EnergyAppAppliance {
         return this.energyAppSdk.useAppliances();
+    }
+
+    public useDataBus(): EnergyAppDataBus {
+        return this.energyAppSdk.useDataBus();
     }
 }

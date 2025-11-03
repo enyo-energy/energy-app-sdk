@@ -1,6 +1,6 @@
 {
   "name": "@hems-one/energy-app-sdk",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "HEMS one Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
@@ -14,7 +14,7 @@
     "README.md"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "restricted"
   },
   "repository": {
     "type": "git",

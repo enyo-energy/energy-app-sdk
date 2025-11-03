@@ -3,6 +3,7 @@ import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
 import {EnergyAppAppliance} from "./packages/energy-app-appliance.js";
 import {EnergyAppNetworkDevice} from "./packages/energy-app-network-device.js";
+import {EnergyAppDataBus} from "./packages/energy-app-data-bus.js";
 
 /**
  * Main API interface for HEMS One Energy App packages.
@@ -28,4 +29,6 @@ export interface HemsOneEnergyAppSdk {
     useStorage: () => EnergyAppStorage;
     /** Get the Appliance API */
     useAppliances: () => EnergyAppAppliance;
+    /** Get the Data Bus API */
+    useDataBus: () => EnergyAppDataBus;
 }
