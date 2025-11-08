@@ -33,9 +33,9 @@ export interface EnergyAppModbusInstance {
     /** Read discrete input values from the specified address range */
     readDiscreteInputs: (address: number, quantity: number) => Promise<boolean[]>;
     /** Read holding register values from the specified address range */
-    readHoldingRegisters: (address: number, quantity: number) => Promise<number[]>;
+    readHoldingRegisters: (address: number, quantity: number) => Promise<Buffer>;
     /** Read input register values from the specified address range */
-    readInputRegisters: (address: number, quantity: number) => Promise<number[]>;
+    readInputRegisters: (address: number, quantity: number) => Promise<Buffer>;
 
     /** Write a single coil value to the specified address */
     writeSingleCoil: (address: number, value: boolean) => Promise<void>;
@@ -47,8 +47,4 @@ export interface EnergyAppModbusInstance {
     writeMultipleRegisters: (address: number, values: number[]) => Promise<void>;
     /** Read holding register string value */
     readRegisterStringValue: (address: number, quantity: number) => Promise<string>;
-    /** Read holding register int value */
-    readRegisterIntValue: (address: number, quantity: number) => Promise<number>;
-    /** Read holding register float value */
-    readRegisterFloatValue: (address: number, quantity: number) => Promise<number>;
 }
