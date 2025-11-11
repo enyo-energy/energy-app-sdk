@@ -6,4 +6,21 @@ export type EnergyAppPermissionType =
     | 'Modbus'
     | 'Storage'
     | 'Appliance'
-    | 'AllAppliances';
+    | 'AllAppliances'
+    | 'SendDataBusValues'
+    | 'SubscribeDataBus'
+    | 'SendDataBusCommands';
+
+export enum EnergyAppPermissionTypeEnum {
+    RestrictedInternetAccess = 'RestrictedInternetAccess',
+    NetworkDeviceDiscovery = 'NetworkDeviceDiscovery',
+    NetworkDeviceSearch = 'NetworkDeviceSearch',
+    NetworkDeviceAccess = 'NetworkDeviceAccess',
+    Modbus = 'Modbus',
+    Storage = 'Storage',
+    Appliance = 'Appliance',
+    AllAppliances = 'AllAppliances',
+    SendDataBusValues = 'SendDataBusValues',
+    SubscribeDataBus = 'SubscribeDataBus',
+    SendDataBusCommands = 'SendDataBusCommands',
+}

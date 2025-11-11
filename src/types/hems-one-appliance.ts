@@ -12,6 +12,12 @@ export interface HemsOneApplianceName {
     name: string;
 }
 
+export interface HemsOneApplianceMetadata {
+    modelName?: string;
+    serialNumber?: string;
+    firmwareVersion?: string;
+}
+
 /**
  * Represents an appliance managed by the HEMS one system.
  */
@@ -24,4 +30,6 @@ export interface HemsOneAppliance {
     type: HemsOneApplianceTypeEnum;
     /** network device IDs associated with the appliance */
     networkDeviceIds: string[];
+    /** Optional Metadata of the Appliance */
+    metadata?: HemsOneApplianceMetadata;
 }
