@@ -7,8 +7,28 @@ export enum HemsOneDataBusValueTypeEnum {
 
 export interface HemsOneDataBusValue {
     id: string;
+    timestampIso: string;
     type: HemsOneDataBusValueTypeEnum;
-    values: object;
+    applianceId?: string;
+    values: {
+        gridPowerW?: number;
+        gridFeedInWh?: number;
+        gridConsumptionWh?: number;
+        selfConsumptionW?: number;
+        selfConsumptionWh?: number;
+        batteryPowerW?: number;
+        batterySoC?: number;
+        pvPowerW?: number;
+        currentA?: number;
+        voltageL1?: number;
+        voltageL2?: number;
+        voltageL3?: number;
+        pvProductionWh?: number;
+        flexibility?: {
+            kWh?: number;
+            availableUntilIsoTimestamp?: string;
+        }
+    };
     resolution: '1s' | '10s' | '30s' | '1m' | '15m' | '1h' | '1d';
     persist: boolean;
 }
@@ -61,7 +81,7 @@ export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusValue {
         /** voltage of Phase L2 to N*/
         voltageL2?: number;
         /** voltage of Phase L3 to N*/
-        voltageL3: number;
+        voltageL3?: number;
         /** Total pv production in Wh to measure the produced electricity in Wh*/
         pvProductionWh: number;
     }
