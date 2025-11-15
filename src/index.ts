@@ -1,4 +1,4 @@
-import {HemsOneEnergyAppSdk} from "./hems-one-energy-app-sdk.js";
+import {EnergyAppStateEnum, HemsOneEnergyAppSdk} from "./hems-one-energy-app-sdk.js";
 import {EnergyAppInterval} from "./packages/energy-app-interval.js";
 import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
@@ -23,8 +23,12 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
         }
     }
 
-    public isOnline(): boolean {
-        return this.energyAppSdk.isOnline();
+    public isSystemOnline(): boolean {
+        return this.energyAppSdk.isSystemOnline();
+    }
+
+    public updateEnergyAppState(state: EnergyAppStateEnum) {
+        this.energyAppSdk.updateEnergyAppState(state)
     }
 
     public register(callback: (packageName: string, version: number) => void) {
