@@ -22,11 +22,47 @@ export interface EnergyAppPackageRestrictedInternetAccessOption {
 }
 
 /**
+ * Optional device detection configuration
+ */
+export interface EnergyAppPackageOptionsDeviceDetection {
+    modbus?: {
+        /** Register address, for example 30001 */
+        registerAddress: number;
+        /** Register size, for example 2 for 30001 - 30002 */
+        registerSize: number;
+        /** the data type of the register, numbers will be mapped to strings to compare with matching values */
+        type: 'string' | 'UInt32BE' | 'UInt16BE' | 'UInt32LE' | 'UInt16LE';
+        /** matching values, for example the vendor names or model names */
+        matchingValues: string[];
+    }[];
+    http?: {
+        /** port of http call */
+        port: number;
+        /** path of http call */
+        path: string;
+        /** for rest APIs with json response, define the field for example device.vendor*/
+        field: string;
+        /** matching values, for example the vendor names or model names */
+        matchingValues: string[];
+    }[];
+    ocpp?: {
+        /** ocpp message name, for example BootNotification */
+        message: string;
+        /** field name in the boot notification */
+        field: string;
+        /** matching values, for example the vendor names or model names */
+        matchingValues: string[];
+    }[];
+}
+
+/**
  * Optional configuration settings for an Energy App package.
  */
 export interface EnergyAppPackageOptions {
     /** Configuration for restricting internet access to specific domains */
     restrictedInternetAccess?: EnergyAppPackageRestrictedInternetAccessOption;
+    /** device detection configuration to auto-suggest this energy app on onboarding */
+    deviceDetection?: EnergyAppPackageOptionsDeviceDetection;
 }
 
 /**

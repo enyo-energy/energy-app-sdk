@@ -12,10 +12,17 @@ export interface HemsOneApplianceName {
     name: string;
 }
 
+export enum HemsOneApplianceStateEnum {
+    Connected = 'connected',
+    ConnectionPending = 'connection-pending',
+    Offline = 'offline',
+}
+
 export interface HemsOneApplianceMetadata {
     modelName?: string;
     serialNumber?: string;
     firmwareVersion?: string;
+    state?: HemsOneApplianceStateEnum;
 }
 
 /**

@@ -15,9 +15,13 @@ export interface EnergyAppDataBus {
 
     answerReceivedCommand: (commandId: string, answer: HemsOneDataBusCommandAnswer) => void;
 
-    listenForValues: (types: HemsOneDataBusValueTypeEnum[], listener: (entries: HemsOneDataBusValue[]) => void) => void;
+    /** Returns the listener id to unsubscribe*/
+    listenForValues: (types: HemsOneDataBusValueTypeEnum[], listener: (entries: HemsOneDataBusValue[]) => void) => string;
 
-    listenForCommands: (types: HemsOneDataBusCommandTypeEnum[], listener: (entries: HemsOneDataBusCommand[]) => void) => void;
+    /** Returns the listener id to unsubscribe*/
+    listenForCommands: (types: HemsOneDataBusCommandTypeEnum[], listener: (entries: HemsOneDataBusCommand[]) => void) => string;
+
+    unsubscribe: (listenerId: string) => void;
 }
 
 export interface EnergyAppDataBusSendDataOptions {
