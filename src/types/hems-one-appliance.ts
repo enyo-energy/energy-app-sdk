@@ -25,6 +25,13 @@ export interface HemsOneApplianceMetadata {
     state?: HemsOneApplianceStateEnum;
 }
 
+export interface HemsOneApplianceTopology {
+    /** IF the type is Meter, details if it's a primary meter or a submeter */
+    primaryMeter?: boolean;
+    /** Information, behind which meter this appliance is located, for example if the wallbox is behind the primary meter or a submeter */
+    behindMeterApplianceId?: string;
+}
+
 /**
  * Represents an appliance managed by the HEMS one system.
  */
@@ -39,4 +46,6 @@ export interface HemsOneAppliance {
     networkDeviceIds: string[];
     /** Optional Metadata of the Appliance */
     metadata?: HemsOneApplianceMetadata;
+    /** Topology Information of the appliance */
+    topology?: HemsOneApplianceTopology;
 }
