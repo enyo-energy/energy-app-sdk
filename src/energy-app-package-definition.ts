@@ -1,4 +1,5 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
+import {EnergyAppPackageConfiguration} from "./energy-app-package-configuration.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -21,38 +22,44 @@ export interface EnergyAppPackageRestrictedInternetAccessOption {
     origins: string[];
 }
 
+export interface EnergyAppPackageOptionsDeviceDetectionModbus {
+    /** Register address, for example 30001 */
+    registerAddress: number;
+    /** Register size, for example 2 for 30001 - 30002 */
+    registerSize: number;
+    /** the data type of the register, numbers will be mapped to strings to compare with matching values */
+    type: 'string' | 'UInt32BE' | 'UInt16BE' | 'UInt32LE' | 'UInt16LE';
+    /** matching values, for example the vendor names or model names */
+    matchingValues: string[];
+}
+
+export interface EnergyAppPackageOptionsDeviceDetectionHttp {
+    /** port of http call */
+    port: number;
+    /** path of http call */
+    path: string;
+    /** for rest APIs with json response, define the field for example device.vendor*/
+    field: string;
+    /** matching values, for example the vendor names or model names */
+    matchingValues: string[];
+}
+
+export interface EnergyAppPackageOptionsDeviceDetectionOcpp {
+    /** ocpp message name, for example BootNotification */
+    message: string;
+    /** field name in the boot notification */
+    field: string;
+    /** matching values, for example the vendor names or model names */
+    matchingValues: string[];
+}
+
 /**
  * Optional device detection configuration
  */
 export interface EnergyAppPackageOptionsDeviceDetection {
-    modbus?: {
-        /** Register address, for example 30001 */
-        registerAddress: number;
-        /** Register size, for example 2 for 30001 - 30002 */
-        registerSize: number;
-        /** the data type of the register, numbers will be mapped to strings to compare with matching values */
-        type: 'string' | 'UInt32BE' | 'UInt16BE' | 'UInt32LE' | 'UInt16LE';
-        /** matching values, for example the vendor names or model names */
-        matchingValues: string[];
-    }[];
-    http?: {
-        /** port of http call */
-        port: number;
-        /** path of http call */
-        path: string;
-        /** for rest APIs with json response, define the field for example device.vendor*/
-        field: string;
-        /** matching values, for example the vendor names or model names */
-        matchingValues: string[];
-    }[];
-    ocpp?: {
-        /** ocpp message name, for example BootNotification */
-        message: string;
-        /** field name in the boot notification */
-        field: string;
-        /** matching values, for example the vendor names or model names */
-        matchingValues: string[];
-    }[];
+    modbus?: EnergyAppPackageOptionsDeviceDetectionModbus[];
+    http?: EnergyAppPackageOptionsDeviceDetectionHttp[];
+    ocpp?: EnergyAppPackageOptionsDeviceDetectionOcpp[];
 }
 
 /**
@@ -98,6 +105,8 @@ export interface EnergyAppPackageDefinition {
     permissions: EnergyAppPermissionType[];
     /** Optional configuration settings */
     options?: EnergyAppPackageOptions;
+    /** defines the configuration of this energy app, for example a required api key or to select an optimization strategy */
+    configuration?: EnergyAppPackageConfiguration;
 }
 
 export function defineEnergyAppPackage(definition: EnergyAppPackageDefinition) {

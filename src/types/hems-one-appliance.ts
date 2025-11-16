@@ -5,6 +5,7 @@ export enum HemsOneApplianceTypeEnum {
     Charger = 'Charger',
     Storage = 'Storage',
     Meter = 'Meter',
+    Heatpump = 'Heatpump',
 }
 
 export interface HemsOneApplianceName {
@@ -25,10 +26,16 @@ export interface HemsOneApplianceMetadata {
     state?: HemsOneApplianceStateEnum;
 }
 
+export enum HemsOneApplianceTopologyFeatureEnum {
+    /** If the type is Meter, details if it's a primary meter or a submeter */
+    PrimaryMeter = 'PrimaryMeter',
+    /** If the inverter does a direct grid feed in without self consumption */
+    InverterFulLGridFeedIn = 'InverterFulLGridFeedIn',
+}
+
 export interface HemsOneApplianceTopology {
-    /** IF the type is Meter, details if it's a primary meter or a submeter */
-    primaryMeter?: boolean;
-    /** Information, behind which meter this appliance is located, for example if the wallbox is behind the primary meter or a submeter */
+    features: HemsOneApplianceTopologyFeatureEnum[];
+    /** Information, behind which meter this appliance is located, for example if the wallbox is behind the primary meter or a submeter. Put the appliance ID of the meter */
     behindMeterApplianceId?: string;
 }
 
