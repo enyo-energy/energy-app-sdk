@@ -1,6 +1,6 @@
 {
   "name": "@hems-one/energy-app-sdk",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "HEMS one Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
