@@ -23,6 +23,7 @@ export interface EnergyAppPackageRestrictedInternetAccessOption {
 }
 
 export interface EnergyAppPackageOptionsDeviceDetectionModbus {
+    unitIds: number[];
     /** Register address, for example 30001 */
     registerAddress: number;
     /** Register size, for example 2 for 30001 - 30002 */
