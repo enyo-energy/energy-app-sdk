@@ -43,14 +43,11 @@ export enum HemsOneChargerApplianceAvailableFeaturesEnum {
 
 export interface HemsOneChargerApplianceMetadata {
     availableFeatures: HemsOneChargerApplianceAvailableFeaturesEnum[];
+    status: HemsOneChargerApplianceStatusEnum;
     /** ISO Timestamp of the last heartbeat */
     lastHeartbeatAtIso?: string;
     ocpp?: HemsOneChargerApplianceOcppMetadata;
     authorizationMode: HemsOneChargerApplianceAuthorizationModeEnum;
     /** If cableType is Socket, the cable can be locked for theft protection */
     cableLocked?: boolean;
-    // TODO store settings here and other related details. Check from engea ocpp!
 }
-
-// TODO: define the same for inverter, meter, storage and heatpump (heatpump should get dhw available, heating circuits, heating curves etc)
-// TODO: add a new table in db for temperature_metrics timeseries + extra DataBus Events!
