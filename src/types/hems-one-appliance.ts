@@ -1,4 +1,6 @@
 import {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
+import {HemsOneChargerApplianceMetadata} from "./hems-one-charger-appliance.js";
+import {HemsOneHeatpumpApplianceMetadata} from "./hems-one-heatpump-appliance.js";
 
 export enum HemsOneApplianceTypeEnum {
     Inverter = 'Inverter',
@@ -19,18 +21,25 @@ export enum HemsOneApplianceStateEnum {
     Offline = 'offline',
 }
 
+export interface HemsOneApplianceNetworkMetadata {
+    /** If the appliance is connected via cellular network, you can put the imsi here*/
+    imsi?: string;
+}
+
 export interface HemsOneApplianceMetadata {
     modelName?: string;
+    vendorName?: string;
     serialNumber?: string;
     firmwareVersion?: string;
     state?: HemsOneApplianceStateEnum;
+    network?: HemsOneApplianceNetworkMetadata;
 }
 
 export enum HemsOneApplianceTopologyFeatureEnum {
     /** If the type is Meter, details if it's a primary meter or a submeter */
     PrimaryMeter = 'PrimaryMeter',
     /** If the inverter does a direct grid feed in without self consumption */
-    InverterFulLGridFeedIn = 'InverterFulLGridFeedIn',
+    InverterFullGridFeedIn = 'InverterFullGridFeedIn',
 }
 
 export interface HemsOneApplianceTopology {
@@ -55,4 +64,8 @@ export interface HemsOneAppliance {
     metadata?: HemsOneApplianceMetadata;
     /** Topology Information of the appliance */
     topology?: HemsOneApplianceTopology;
+    /** Optional Metadata of the Appliance if of type Charger */
+    charger?: HemsOneChargerApplianceMetadata;
+    /** Optional Metadata of the Appliance if of type Heatpump */
+    heatpump?: HemsOneHeatpumpApplianceMetadata;
 }

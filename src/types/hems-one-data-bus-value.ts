@@ -3,6 +3,8 @@ export enum HemsOneDataBusValueTypeEnum {
     MeterValuesV1 = 'MeterValuesV1',
     BatteryValuesV1 = 'BatteryValuesV1',
     ApplianceFlexibilityAnnouncementV1 = 'ApplianceFlexibilityAnnouncementV1',
+    HeatpumpConsumptionValuesV1 = 'HeatpumpConsumptionValuesV1',
+    HeatpumpTemperatureValuesV1 = 'HeatpumpTemperatureValuesV1',
 }
 
 export interface HemsOneDataBusValue {
@@ -24,9 +26,28 @@ export interface HemsOneDataBusValue {
         voltageL2?: number;
         voltageL3?: number;
         pvProductionWh?: number;
+        powerConsumptionHeatingWh?: number;
+        powerConsumptionDomesticHotWaterWh?: number;
+        heatGenerationHeatingWh?: number;
+        heatGenerationDomesticHotWaterWh?: number;
         flexibility?: {
             kWh?: number;
             availableUntilIsoTimestamp?: string;
+        },
+        outdoorTemperatureC?: number;
+        heatpumpFlowTemperatureC?: number;
+        domesticHotWater?: {
+            index: number;
+            targetTemperatureC: number;
+            temperatureC: number;
+        }[],
+        heatingCircuits?: {
+            index: number;
+            targetTemperatureC: number;
+            temperatureC: number;
+        }[],
+        bufferTank?: {
+            temperatureC: number;
         }
     };
     resolution: '1s' | '10s' | '30s' | '1m' | '15m' | '1h' | '1d';
@@ -48,6 +69,47 @@ export interface HemsOneDataBusMeterValuesV1 extends HemsOneDataBusValue {
         selfConsumptionW?: number;
         /** Self consumed energy (in Watt hours) */
         selfConsumptionWh?: number;
+    }
+}
+
+export interface HemsOneDataBusHeatpumpConsumptionValuesV1 extends HemsOneDataBusValue {
+    type: HemsOneDataBusValueTypeEnum.HeatpumpConsumptionValuesV1;
+    /** ID of the appliance that delivered these values */
+    applianceId: string;
+    values: {
+        /** Power consumption for heating in Wh (meter value)*/
+        powerConsumptionHeatingWh?: number;
+        /** Power consumption for domestic hot water in Wh (meter value)*/
+        powerConsumptionDomesticHotWaterWh?: number;
+        /** Power generation for heating in Wh (meter value)*/
+        heatGenerationHeatingWh?: number;
+        /** Power generation for domestic hot water in Wh (meter value)*/
+        heatGenerationDomesticHotWaterWh?: number;
+    }
+}
+
+export interface HemsOneDataBusHeatpumpTemperatureValuesV1 extends HemsOneDataBusValue {
+    type: HemsOneDataBusValueTypeEnum.HeatpumpTemperatureValuesV1;
+    /** ID of the appliance that delivered these values */
+    applianceId: string;
+    values: {
+        outdoorTemperatureC?: number;
+        /** The current temperature of the domestic hot water tank */
+        domesticHotWater?: {
+            index: number;
+            targetTemperatureC: number;
+            temperatureC: number;
+        }[],
+        /** The current flow temperature of the heatpump */
+        heatpumpFlowTemperatureC?: number;
+        heatingCircuits?: {
+            index: number;
+            targetTemperatureC: number;
+            temperatureC: number;
+        }[];
+        bufferTank?: {
+            temperatureC: number;
+        }
     }
 }
 
