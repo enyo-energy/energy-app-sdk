@@ -5,6 +5,7 @@ import {EnergyAppStorage} from "./packages/energy-app-storage.js";
 import {EnergyAppAppliance} from "./packages/energy-app-appliance.js";
 import {EnergyAppNetworkDevice} from "./packages/energy-app-network-device.js";
 import {EnergyAppDataBus} from "./packages/energy-app-data-bus.js";
+import {EnergyAppOcpp} from "./packages/energy-app-ocpp.js";
 
 export * from './energy-app-package-definition.js';
 
@@ -71,5 +72,9 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
 
     public useDataBus(): EnergyAppDataBus {
         return this.energyAppSdk.useDataBus();
+    }
+
+    public useOcpp(): EnergyAppOcpp {
+        return this.energyAppSdk.useOcpp();
     }
 }

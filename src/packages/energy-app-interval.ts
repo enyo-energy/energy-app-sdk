@@ -2,7 +2,7 @@
  * Supported interval durations for scheduled tasks.
  * Provides predefined time intervals from 1 second to 1 hour.
  */
-export type IntervalDuration = '1s' | '10s' | '30s' | '1m' | '5m' | '1hr';
+export type IntervalDuration = '10s' | '30s' | '1m' | '5m' | '1hr';
 
 /**
  * Interface for managing scheduled intervals in HEMS one packages.
@@ -10,7 +10,7 @@ export type IntervalDuration = '1s' | '10s' | '30s' | '1m' | '5m' | '1hr';
  */
 export interface EnergyAppInterval {
     /** Create a new interval that executes the callback at the specified duration */
-    createInterval: (duration: IntervalDuration, callback: () => void) => string;
+    createInterval: (duration: IntervalDuration, callback: (clockId: string) => void) => string;
     /** Stop an existing interval by its ID */
     stopInterval: (intervalId: string) => void;
 }
