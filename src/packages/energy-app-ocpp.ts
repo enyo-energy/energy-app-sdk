@@ -1,5 +1,3 @@
-import {HemsOneWebsocketConnection} from "../types/hems-one-websocket-connection.js";
-
 export interface HemsOneOcppAvailableConnectionDetail {
     url: string;
 }
@@ -11,27 +9,15 @@ export interface HemsOneOcppAvailableConnectionDetails {
 
 export type HemsOneOCPPVersion = '1.6' | '2.0.1';
 
-export interface HemsOneOcppConnectionInfo {
-    chargePointId: string;
-    protocol: string;
-    remoteAddress?: string;
-    headers?: Record<string, string>;
-}
-
 export interface HemsOneOcppChargePointConnection {
-    id: string;
-    connection: HemsOneWebsocketConnection;
-    version: HemsOneOCPPVersion;
-    lastSeen: Date;
-    isConnected: boolean;
-    info: HemsOneOcppConnectionInfo;
-    accessToken?: string;
+    chargePointId: string;
+    remoteAddress?: string;
+    protocolVersion: HemsOneOCPPVersion;
 }
 
 export interface EnergyAppOcppMessageContext {
     chargePointId: string;
     messageId: string;
-    connection: HemsOneWebsocketConnection;
     version: HemsOneOCPPVersion;
     timestamp: Date;
 }
@@ -46,9 +32,9 @@ export interface EnergyAppOcppMessageHandler<TRequest = any, TResponse = any> {
 export interface EnergyAppOcpp {
     getAvailableConnectionDetails: () => Promise<HemsOneOcppAvailableConnectionDetails>;
 
-    listenForChargePointConnected: (connection: HemsOneOcppChargePointConnection) => void;
+    listenForChargePointConnected: (listener: (connection: HemsOneOcppChargePointConnection) => void) => void;
 
-    listenForChargePointDisconnected: (chargePointId: string) => void;
+    listenForChargePointDisconnected: (listener: (chargePointId: string) => void) => void;
 
     registerHandler: <TRequest, TResponse>(
         action: string,
@@ -56,30 +42,16 @@ export interface EnergyAppOcpp {
         version?: HemsOneOCPPVersion
     ) => void;
 
-    sendCall: <TRequest>(
+    sendCall: <TRequest, TResponse>(
         chargePointId: string,
-        action: string,
+        message: string,
         payload: TRequest,
         messageId?: string
-    ) => void;
-
-    sendCallResult: (
-        chargePointId: string,
-        messageId: string,
-        payload: any
-    ) => void;
-
-    sendCallError: (
-        chargePointId: string,
-        messageId: string,
-        errorCode: string,
-        errorDescription: string,
-        errorDetails?: any
-    ) => void;
+    ) => Promise<TResponse>;
 
     getConnectedChargePoints: () => HemsOneOcppChargePointConnection[];
 
     getChargePoint: (chargePointId: string) => HemsOneOcppChargePointConnection | undefined;
 
-    disconnectChargePoint: (chargePointId: string, reason?: string) => Promise<void>;
+    disconnectChargePoint: (chargePointId: string, reason?: string) => void;
 }
