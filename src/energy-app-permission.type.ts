@@ -9,7 +9,8 @@ export type EnergyAppPermissionType =
     | 'AllAppliances'
     | 'SendDataBusValues'
     | 'SubscribeDataBus'
-    | 'SendDataBusCommands';
+    | 'SendDataBusCommands'
+    | 'OcppServer';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -23,4 +24,5 @@ export enum EnergyAppPermissionTypeEnum {
     SendDataBusValues = 'SendDataBusValues',
     SubscribeDataBus = 'SubscribeDataBus',
     SendDataBusCommands = 'SendDataBusCommands',
+    OcppServer = 'OcppServer',
 }

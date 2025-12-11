@@ -46,24 +46,28 @@ export interface EnergyAppOcppMessageHandler<TRequest = any, TResponse = any> {
 export interface EnergyAppOcpp {
     getAvailableConnectionDetails: () => Promise<HemsOneOcppAvailableConnectionDetails>;
 
+    listenForChargePointConnected: (connection: HemsOneOcppChargePointConnection) => void;
+
+    listenForChargePointDisconnected: (chargePointId: string) => void;
+
     registerHandler: <TRequest, TResponse>(
         action: string,
         handler: EnergyAppOcppMessageHandler<TRequest, TResponse>,
         version?: HemsOneOCPPVersion
     ) => void;
 
-    sendCall: <TRequest, TResponse>(
+    sendCall: <TRequest>(
         chargePointId: string,
         action: string,
         payload: TRequest,
         messageId?: string
-    ) => Promise<TResponse>;
+    ) => void;
 
     sendCallResult: (
         chargePointId: string,
         messageId: string,
         payload: any
-    ) => Promise<void>;
+    ) => void;
 
     sendCallError: (
         chargePointId: string,
@@ -71,11 +75,11 @@ export interface EnergyAppOcpp {
         errorCode: string,
         errorDescription: string,
         errorDetails?: any
-    ) => Promise<void>;
+    ) => void;
 
     getConnectedChargePoints: () => HemsOneOcppChargePointConnection[];
 
-    getChargePoint: (chargePointId: string) =>  HemsOneOcppChargePointConnection | undefined;
+    getChargePoint: (chargePointId: string) => HemsOneOcppChargePointConnection | undefined;
 
     disconnectChargePoint: (chargePointId: string, reason?: string) => Promise<void>;
 }

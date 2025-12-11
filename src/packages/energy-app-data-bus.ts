@@ -1,5 +1,5 @@
 import {
-    HemsOneDataBusMessage, HemsOneDataBusMessageEnum,
+    HemsOneDataBusMessage, HemsOneDataBusMessageAnswer, HemsOneDataBusMessageEnum,
 } from "../types/hems-one-data-bus-value.js";
 
 /**
@@ -7,7 +7,7 @@ import {
  */
 export interface EnergyAppDataBus {
     sendMessage: (messages: HemsOneDataBusMessage[], options?: EnergyAppDataBusSendDataOptions) => void;
-    sendAnswer: (answer: HemsOneDataBusMessage, options?: EnergyAppDataBusSendDataOptions) => void;
+    sendAnswer: (answer: HemsOneDataBusMessageAnswer, options?: EnergyAppDataBusSendDataOptions) => void;
     listenForMessages: (types: HemsOneDataBusMessageEnum[], listener: (entry: HemsOneDataBusMessage) => void) => string;
     unsubscribe: (listenerId: string) => void;
 }
