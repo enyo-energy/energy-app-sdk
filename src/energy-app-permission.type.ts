@@ -25,4 +25,7 @@ export enum EnergyAppPermissionTypeEnum {
     SubscribeDataBus = 'SubscribeDataBus',
     SendDataBusCommands = 'SendDataBusCommands',
     OcppServer = 'OcppServer',
+    ChargingCard = 'ChargingCard',
+    Vehicle = 'Vehicle',
+    Charge = 'Charge',
 }

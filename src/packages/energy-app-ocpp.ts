@@ -22,6 +22,19 @@ export interface EnergyAppOcppMessageContext {
     timestamp: Date;
 }
 
+export enum HemsOneOcppErrorCode {
+    NotImplemented = 'NotImplemented',
+    NotSupported = 'NotSupported',
+    InternalError = 'InternalError',
+    ProtocolError = 'ProtocolError',
+    SecurityError = 'SecurityError',
+    FormationViolation = 'FormationViolation',
+    PropertyConstraintViolation = 'PropertyConstraintViolation',
+    OccurenceConstraintViolation = 'OccurenceConstraintViolation',
+    TypeConstraintViolation = 'TypeConstraintViolation',
+    GenericError = 'GenericError',
+}
+
 export interface EnergyAppOcppMessageHandler<TRequest = any, TResponse = any> {
     (request: TRequest, context: EnergyAppOcppMessageContext): Promise<TResponse>;
 }
@@ -32,15 +45,15 @@ export interface EnergyAppOcppMessageHandler<TRequest = any, TResponse = any> {
 export interface EnergyAppOcpp {
     getAvailableConnectionDetails: () => Promise<HemsOneOcppAvailableConnectionDetails>;
 
-    listenForChargePointConnected: (listener: (connection: HemsOneOcppChargePointConnection) => void) => void;
+    listenForChargePointConnected: (listener: (connection: HemsOneOcppChargePointConnection) => void) => string;
 
-    listenForChargePointDisconnected: (listener: (chargePointId: string) => void) => void;
+    listenForChargePointDisconnected: (listener: (chargePointId: string) => void) => string;
 
     registerHandler: <TRequest, TResponse>(
         action: string,
         handler: EnergyAppOcppMessageHandler<TRequest, TResponse>,
         version?: HemsOneOCPPVersion
-    ) => void;
+    ) => string;
 
     sendCall: <TRequest, TResponse>(
         chargePointId: string,
@@ -54,4 +67,6 @@ export interface EnergyAppOcpp {
     getChargePoint: (chargePointId: string) => HemsOneOcppChargePointConnection | undefined;
 
     disconnectChargePoint: (chargePointId: string, reason?: string) => void;
+
+    unsubscribe: (id: string) => void;
 }

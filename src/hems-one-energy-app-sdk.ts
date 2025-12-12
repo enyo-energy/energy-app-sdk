@@ -5,6 +5,9 @@ import {EnergyAppAppliance} from "./packages/energy-app-appliance.js";
 import {EnergyAppNetworkDevice} from "./packages/energy-app-network-device.js";
 import {EnergyAppDataBus} from "./packages/energy-app-data-bus.js";
 import {EnergyAppOcpp} from "./packages/energy-app-ocpp.js";
+import {EnergyAppCharge} from "./packages/energy-app-charge.js";
+import {EnergyAppVehicle} from "./packages/energy-app-vehicle.js";
+import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -45,4 +48,10 @@ export interface HemsOneEnergyAppSdk {
     useDataBus: () => EnergyAppDataBus;
     /** Get the OCPP API */
     useOcpp: () => EnergyAppOcpp;
+    /** Get the Charge API*/
+    useCharge: () => EnergyAppCharge;
+    /** Get the Vehicle API*/
+    useVehicle: () => EnergyAppVehicle;
+    /** Get the Charging Card API*/
+    useChargingCard: () => EnergyAppChargingCard;
 }
