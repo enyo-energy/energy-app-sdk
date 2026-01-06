@@ -1,5 +1,6 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 import {EnergyAppPackageConfiguration} from "./energy-app-package-configuration.js";
+import {getSdkVersion} from "./version.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -108,8 +109,21 @@ export interface EnergyAppPackageDefinition {
     options?: EnergyAppPackageOptions;
     /** defines the configuration of this energy app, for example a required api key or to select an optimization strategy */
     configuration?: EnergyAppPackageConfiguration;
+    /** The version of the HEMS one SDK used to build this package (automatically injected) */
+    sdkVersion: string;
 }
 
-export function defineEnergyAppPackage(definition: EnergyAppPackageDefinition) {
-    return definition;
+/**
+ * Defines an Energy App package with automatic SDK version injection.
+ * This function automatically adds the current SDK version to the package definition
+ * for debugging and compatibility tracking purposes.
+ *
+ * @param definition The Energy App package definition
+ * @returns The enhanced package definition with SDK version included
+ */
+export function defineEnergyAppPackage(definition: Omit<EnergyAppPackageDefinition, 'sdkVersion'>): EnergyAppPackageDefinition {
+    return {
+        ...definition,
+        sdkVersion: getSdkVersion()
+    };
 }

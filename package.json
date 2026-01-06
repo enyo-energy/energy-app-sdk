@@ -6,8 +6,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "duel",
-    "prepublishOnly": "npm run build"
+    "extract-version": "node scripts/extract-version.js",
+    "build": "npm run extract-version && duel",
+    "prepublishOnly": "npm run extract-version && npm run build"
   },
   "files": [
     "dist",

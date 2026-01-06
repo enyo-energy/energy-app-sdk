@@ -9,11 +9,13 @@ import {EnergyAppOcpp} from "./packages/energy-app-ocpp.js";
 import {EnergyAppVehicle} from "./packages/energy-app-vehicle.js";
 import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppCharge} from "./packages/energy-app-charge.js";
+import {getSdkVersion} from "./version.js";
 
 export * from './energy-app-package-definition.js';
 export * from './implementations/modbus/EnergyAppModbusBattery.js';
 export * from './implementations/modbus/EnergyAppModbusMeter.js';
 export * from './implementations/modbus/EnergyAppModbusInverter.js';
+export * from './version.js';
 
 export class EnergyApp implements HemsOneEnergyAppSdk {
     private readonly energyAppSdk: HemsOneEnergyAppSdk;
@@ -94,5 +96,13 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
 
     public useCharge(): EnergyAppCharge {
         return this.energyAppSdk.useCharge();
+    }
+
+    /**
+     * Gets the current SDK version.
+     * @returns The semantic version string of the SDK
+     */
+    public getSdkVersion(): string {
+        return getSdkVersion();
     }
 }
