@@ -99,6 +99,8 @@ export interface EnergyAppPackageDefinition {
     version: '1';
     /** Unique identifier for the package */
     packageName: string;
+    /** Optional path to the logo */
+    logo?: string;
     /** Categories that this package belongs to */
     categories: EnergyAppPackageCategory[];
     /** Localized store information for different languages */
