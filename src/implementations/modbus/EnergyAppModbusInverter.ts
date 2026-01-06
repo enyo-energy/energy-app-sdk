@@ -1,10 +1,7 @@
 import {randomUUID} from "node:crypto";
 import type {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
 import type {HemsOneAppliance} from "../../types/hems-one-appliance.js";
-import {
-    HemsOneApplianceStateEnum,
-    HemsOneApplianceTypeEnum
-} from "../../types/hems-one-appliance.js";
+import {HemsOneApplianceStateEnum, HemsOneApplianceTypeEnum} from "../../types/hems-one-appliance.js";
 import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
 import {
     HemsOneDataBusInverterValuesV1,
@@ -14,31 +11,26 @@ import {
 import {HemsOneSourceEnum} from "../../types/hems-one-source.enum.js";
 
 import {
-    type IConnectionHealth,
-    type EnergyAppModbusDevice,
-    type IRegisterMapper,
     EnergyAppModbusConfigurationError,
     EnergyAppModbusConnectionError,
-    type ModbusDependencies,
-    type EnergyAppModbusInverterConfig
+    type EnergyAppModbusDevice,
+    type EnergyAppModbusInverterConfig,
+    type IConnectionHealth,
+    type IRegisterMapper
 } from './interfaces.js';
 import {EnergyAppModbusRegisterMapper} from './EnergyAppModbusRegisterMapper.js';
 import {EnergyAppModbusConnectionHealth} from './EnergyAppModbusConnectionHealth.js';
 import {EnergyAppModbusFaultTolerantReader} from './EnergyAppModbusFaultTolerantReader.js';
+import {EnergyApp} from "../../index.js";
 
 export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
-    public readonly config: EnergyAppModbusInverterConfig;
-    public readonly networkDevice: HemsOneNetworkDevice;
-    private readonly _dependencies: ModbusDependencies;
     private readonly _registerMapper: IRegisterMapper;
     private readonly _connectionHealth: IConnectionHealth;
 
     private _modbusInstance?: EnergyAppModbusInstance;
     private _appliance?: HemsOneAppliance;
 
-    constructor(dependencies: ModbusDependencies, config: EnergyAppModbusInverterConfig, networkDevice: HemsOneNetworkDevice) {
-        this.config = config;
-        this._dependencies = dependencies;
+    constructor(readonly client: EnergyApp, readonly config: EnergyAppModbusInverterConfig, readonly networkDevice: HemsOneNetworkDevice) {
         this._registerMapper = new EnergyAppModbusRegisterMapper();
         this._connectionHealth = new EnergyAppModbusConnectionHealth();
 
@@ -47,7 +39,8 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
         if (!validation.valid) {
             throw new EnergyAppModbusConfigurationError(`Invalid inverter configuration: ${validation.errors.join(', ')}`);
         }
-
+        this.client = client;
+        this.config = config;
         this.networkDevice = networkDevice;
     }
 
@@ -63,7 +56,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
             console.log(`Connecting to inverter at ${this.networkDevice.hostname}...`);
 
             // Create modbus connection
-            this._modbusInstance = await this._dependencies.client.useModbus().connect({
+            this._modbusInstance = await this.client.useModbus().connect({
                 host: this.networkDevice.hostname,
                 unitId: this.config.options?.unitId || 1,
                 port: this.config.options?.port || 502,
@@ -119,7 +112,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
         const message: HemsOneDataBusInverterValuesV1 = {
             type: 'message',
             source: HemsOneSourceEnum.Device,
-            id: this._dependencies.randomUUID(),
+            id: randomUUID(),
             timestampIso: new Date().toISOString(),
             message: HemsOneDataBusMessageEnum.InverterValuesUpdateV1,
             applianceId: this._appliance.id,
@@ -174,7 +167,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
     }
 
     private async _initializeAppliance(): Promise<void> {
-        const appliances = await this._dependencies.client.useAppliances().list();
+        const appliances = await this.client.useAppliances().list();
         let existingAppliance = appliances.find(a =>
             a.networkDeviceIds.includes(this.networkDevice.id) &&
             a.type === HemsOneApplianceTypeEnum.Inverter
@@ -192,7 +185,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 }
             };
-            await this._dependencies.client.useAppliances().save(existingAppliance, undefined);
+            await this.client.useAppliances().save(existingAppliance, undefined);
             console.log(`Created new inverter appliance: ${this.config.name[0]?.name}`);
         } else {
             // Update existing appliance
@@ -205,7 +198,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 }
             };
-            await this._dependencies.client.useAppliances().save(existingAppliance, existingAppliance.id);
+            await this.client.useAppliances().save(existingAppliance, existingAppliance.id);
             console.log(`Updated existing inverter appliance: ${this.config.name[0]?.name}`);
         }
 

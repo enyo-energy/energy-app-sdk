@@ -126,6 +126,7 @@ export interface IConnectionHealth {
 
 // Main Modbus Device Interfaces
 export interface EnergyAppModbusDevice {
+    readonly client: EnergyApp;
     readonly config: EnergyAppModbusDeviceConfig;
     readonly appliance: HemsOneAppliance;
     readonly networkDevice: HemsOneNetworkDevice;
@@ -169,12 +170,6 @@ export interface IEnergyAppModbusMeter extends EnergyAppModbusDevice {
     getGridFeedInEnergy(): Promise<number | null>;
 
     getGridConsumptionEnergy(): Promise<number | null>;
-}
-
-// Dependencies interface
-export interface ModbusDependencies {
-    client: EnergyApp;
-    randomUUID: () => string;
 }
 
 // Error types

@@ -16,24 +16,22 @@ import {
     type IRegisterMapper,
     type EnergyAppModbusBatteryConfig,
     EnergyAppModbusConfigurationError,
-    type ModbusDependencies,
     type IEnergyAppModbusInverter
 } from './interfaces.js';
 import {EnergyAppModbusRegisterMapper} from './EnergyAppModbusRegisterMapper.js';
 import {EnergyAppModbusFaultTolerantReader} from './EnergyAppModbusFaultTolerantReader.js';
+import {EnergyApp} from "../../index.js";
 
 export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
-    public readonly config: EnergyAppModbusBatteryConfig;
     public readonly inverter?: IEnergyAppModbusInverter;
-    private readonly _dependencies: ModbusDependencies;
     private readonly _registerMapper: IRegisterMapper;
 
     private _appliance?: HemsOneAppliance;
 
-    constructor(dependencies: ModbusDependencies, config: EnergyAppModbusBatteryConfig) {
+    constructor(readonly client: EnergyApp, readonly config: EnergyAppModbusBatteryConfig) {
         this.config = config;
+        this.client = client;
         this.inverter = config.inverter;
-        this._dependencies = dependencies;
         this._registerMapper = new EnergyAppModbusRegisterMapper();
 
         // Validate configuration
@@ -116,7 +114,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         const message: HemsOneDataBusBatteryValuesUpdateV1 = {
             type: 'message',
             source: HemsOneSourceEnum.Device,
-            id: this._dependencies.randomUUID(),
+            id: randomUUID(),
             timestampIso: new Date().toISOString(),
             message: HemsOneDataBusMessageEnum.BatteryValuesUpdateV1,
             applianceId: this._appliance.id,
@@ -223,7 +221,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
             throw new Error('Battery requires an inverter reference');
         }
 
-        const appliances = await this._dependencies.client.useAppliances().list();
+        const appliances = await this.client.useAppliances().list();
         let existingAppliance = appliances.find(a =>
             a.networkDeviceIds.includes(this.inverter!.networkDevice.id) &&
             a.type === HemsOneApplianceTypeEnum.Storage
@@ -241,7 +239,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 }
             };
-            await this._dependencies.client.useAppliances().save(existingAppliance, undefined);
+            await this.client.useAppliances().save(existingAppliance, undefined);
             console.log(`Created new battery appliance: ${this.config.name[0]?.name}`);
         } else {
             // Update existing appliance
@@ -254,7 +252,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 }
             };
-            await this._dependencies.client.useAppliances().save(existingAppliance, existingAppliance.id);
+            await this.client.useAppliances().save(existingAppliance, existingAppliance.id);
             console.log(`Updated existing battery appliance: ${this.config.name[0]?.name}`);
         }
 
