@@ -6,7 +6,7 @@ import {HemsOneAppliance} from "../types/hems-one-appliance.js";
  */
 export interface EnergyAppAppliance {
     /** Save or update an appliance in the system */
-    save: (appliance: Omit<HemsOneAppliance, 'id'>, applianceId: string | undefined) => Promise<void>;
+    save: (appliance: Omit<HemsOneAppliance, 'id'>, applianceId: string | undefined) => Promise<string>;
     /** Get a list of all registered appliances of your package */
     list: () => Promise<HemsOneAppliance[]>;
     /** Get a list of all appliances. Needs a specific permission */

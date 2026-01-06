@@ -11,6 +11,9 @@ import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 
 export * from './energy-app-package-definition.js';
+export * from './implementations/modbus/EnergyAppModbusBattery.js';
+export * from './implementations/modbus/EnergyAppModbusMeter.js';
+export * from './implementations/modbus/EnergyAppModbusInverter.js';
 
 export class EnergyApp implements HemsOneEnergyAppSdk {
     private readonly energyAppSdk: HemsOneEnergyAppSdk;

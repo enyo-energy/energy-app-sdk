@@ -120,7 +120,7 @@ export interface HemsOneDataBusMeterValuesUpdateV1 extends HemsOneDataBusMessage
     applianceId: string;
     data: {
         /** Power from Grid (in Watt), negative: grid feed in, positive: grid consumption*/
-        gridPowerW: number;
+        gridPowerW?: number;
         /** Grid Feed in (in Watt hours) */
         gridFeedInWh: number;
         /** Grid Feed in (in Watt hours) */
