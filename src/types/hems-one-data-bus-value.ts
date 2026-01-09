@@ -1,6 +1,27 @@
 import {HemsOneApplianceTypeEnum, HemsOneApplianceStateEnum} from "./hems-one-appliance.js";
 import {HemsOneSourceEnum} from "./hems-one-source.enum.js";
 
+export enum HemsOneBatteryStateEnum {
+    Off = 'off',
+    Empty = 'empty',
+    Discharging = 'discharging',
+    Charging = 'charging',
+    Full = 'full',
+    Holding = 'holding',
+    Testing = 'testing'
+}
+
+export enum HemsOneInverterStateEnum {
+    Off = 'off',
+    Sleeping = 'sleeping',
+    Starting = 'starting',
+    Mppt = 'mppt',
+    Throttled = 'throttled',
+    ShuttingDown = 'shutting-down',
+    Fault = 'fault',
+    Standby = 'standby'
+}
+
 /**
  * Charging meter value context defining when the measurement was taken
  */
@@ -176,15 +197,18 @@ export interface HemsOneDataBusBatteryValuesUpdateV1 extends HemsOneDataBusMessa
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
+        state?: HemsOneBatteryStateEnum;
         /** Current Battery Power (in Watt). Positive = Consumption from the Battery, Negative = Feed in / charging of the battery. */
         batteryPowerW: number;
         /** Battery State of Charge. Value between 0 and 100 */
         batterySoC: number;
-        /** Grid consumption Watt hours of battery */
-        gridConsumptionWh?: number;
-        /** Grid feed in Watt hours of battery */
-        gridFeedInWh?: number;
     }
+}
+
+export interface HemsOneDataBusInverterValuesV1String {
+    index: number;
+    voltage?: number;
+    powerW?: number;
 }
 
 export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusMessage {
@@ -193,10 +217,11 @@ export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusMessage {
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
+        state?: HemsOneInverterStateEnum;
         /** Current PV Production (in Watt) */
         pvPowerW: number;
         /** Current in Ampere */
-        currentA: number;
+        currentA?: number;
         /** voltage of Phase L1 to N*/
         voltageL1: number;
         /** voltage of Phase L2 to N*/
@@ -205,6 +230,8 @@ export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusMessage {
         voltageL3?: number;
         /** Total pv production in Wh to measure the produced electricity in Wh*/
         pvProductionWh: number;
+        activePowerLimitationW?: number;
+        strings?: HemsOneDataBusInverterValuesV1String[];
     }
 }
 

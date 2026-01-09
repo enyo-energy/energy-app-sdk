@@ -6,15 +6,18 @@ import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js"
 import {
     HemsOneDataBusInverterValuesV1,
     HemsOneDataBusMessage,
-    HemsOneDataBusMessageEnum
+    HemsOneDataBusMessageEnum,
+    HemsOneInverterStateEnum
 } from "../../types/hems-one-data-bus-value.js";
 import {HemsOneSourceEnum} from "../../types/hems-one-source.enum.js";
+import type {HemsOneInverterApplianceMetadata} from "../../types/hems-one-inverter-appliance.js";
 
 import {
     EnergyAppModbusConfigurationError,
     EnergyAppModbusConnectionError,
     type EnergyAppModbusDevice,
     type EnergyAppModbusInverterConfig,
+    type EnergyAppInverterStateValueMapping,
     type IConnectionHealth,
     type IRegisterMapper
 } from './interfaces.js';
@@ -29,6 +32,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
 
     private _modbusInstance?: EnergyAppModbusInstance;
     private _appliance?: HemsOneAppliance;
+    private _inverterMetadata?: HemsOneInverterApplianceMetadata;
 
     constructor(readonly client: EnergyApp, readonly config: EnergyAppModbusInverterConfig, readonly networkDevice: HemsOneNetworkDevice) {
         this._registerMapper = new EnergyAppModbusRegisterMapper();
@@ -62,6 +66,9 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                 port: this.config.options?.port || 502,
                 timeout: this.config.options?.timeout || 5000
             });
+
+            // Discover inverter metadata during connection
+            this._inverterMetadata = await this._discoverInverterMetadata();
 
             // Initialize appliance
             await this._initializeAppliance();
@@ -101,13 +108,29 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
         const registerData = await this._registerMapper.readMultipleRegisters(reader, this.config.registers);
 
         // Extract known values with fallbacks
-        const pvPowerW = registerData.power || undefined;
+        const pvPowerW = registerData.power || 0; // Required field, default to 0 if not available
         const currentA = registerData.current || undefined;
-        const voltageL1 = registerData.voltageL1 || undefined;
+        const voltageL1 = registerData.voltageL1 || 0; // Required field, default to 0 if not available
         const voltageL2 = registerData.voltageL2 || undefined;
         const voltageL3 = registerData.voltageL3 || undefined;
-        const totalEnergyWh = registerData.totalEnergy || undefined;
+        const totalEnergyWh = registerData.totalEnergy || 0; // Required field for pvProductionWh
         const dailyEnergyWh = registerData.dailyEnergy || undefined;
+
+        // Read current inverter state if available
+        let inverterState: HemsOneInverterStateEnum | undefined;
+        try {
+            inverterState = await this.getInverterState() || undefined;
+        } catch (error) {
+            console.warn(`Failed to read inverter state: ${(error as Error).message}`);
+        }
+
+        // Read active power limitation if available
+        let activePowerLimitationW: number | undefined;
+        try {
+            activePowerLimitationW = await this.getActivePowerLimitation() || undefined;
+        } catch (error) {
+            console.warn(`Failed to read active power limitation: ${(error as Error).message}`);
+        }
 
         const message: HemsOneDataBusInverterValuesV1 = {
             type: 'message',
@@ -117,17 +140,20 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
             message: HemsOneDataBusMessageEnum.InverterValuesUpdateV1,
             applianceId: this._appliance.id,
             data: {
+                state: inverterState,
                 pvPowerW,
                 currentA,
                 voltageL1,
                 voltageL2,
                 voltageL3,
-                pvProductionWh: totalEnergyWh
+                pvProductionWh: totalEnergyWh,
+                activePowerLimitationW
+                // strings: optional, for string-level monitoring if needed in the future
             },
             resolution: '10s'
         };
 
-        console.log(`Inverter Data (${this.config.name[0]?.name}): Power=${pvPowerW}W, Current=${currentA}A, Voltage=${voltageL1}V, Energy=${totalEnergyWh}Wh`);
+        console.log(`Inverter Data (${this.config.name[0]?.name}): State=${inverterState || 'N/A'}, Power=${pvPowerW}W, Current=${currentA}A, Voltage=${voltageL1}V, Energy=${totalEnergyWh}Wh, PowerLimit=${activePowerLimitationW || 'N/A'}W`);
 
         return [message];
     }
@@ -166,6 +192,86 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
         return result.success ? result.value! : null;
     }
 
+    /**
+     * Reads the current inverter state from modbus registers.
+     * Maps the register value to HemsOneInverterStateEnum using the configured value mapping.
+     */
+    async getInverterState(): Promise<HemsOneInverterStateEnum | null> {
+        if (!this._modbusInstance || !this.config.registers.state) {
+            return null;
+        }
+
+        try {
+            const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
+            const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.state);
+
+            if (!result.success || result.value === undefined) {
+                return null;
+            }
+
+            // Use configured value mapping if available
+            if (this.config.registers.state.valueMapping) {
+                const mapping = (this.config.registers.state.valueMapping as EnergyAppInverterStateValueMapping[])
+                    .find(m => m.value === result.value);
+                if (mapping) {
+                    return mapping.mappedState as HemsOneInverterStateEnum;
+                } else {
+                    console.warn(`No mapping found for inverter state value: ${result.value}. Available mappings: ${this.config.registers.state.valueMapping.map(m => m.value).join(', ')}`);
+                    return null;
+                }
+            } else {
+                console.warn('Inverter state register configured without value mapping. Please configure valueMapping in register config.');
+                return null;
+            }
+        } catch (error) {
+            console.warn(`Failed to read inverter state: ${(error as Error).message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Reads the current active power limitation from modbus registers.
+     */
+    async getActivePowerLimitation(): Promise<number | null> {
+        if (!this._modbusInstance || !this.config.registers.activePowerLimitationW) {
+            return null;
+        }
+
+        const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
+        const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.activePowerLimitationW);
+
+        return result.success ? result.value! : null;
+    }
+
+    /**
+     * Discovers and caches inverter metadata from modbus registers during connection.
+     * This method reads static metadata like max PV production once
+     * and stores them for later use in appliance creation.
+     */
+    private async _discoverInverterMetadata(): Promise<HemsOneInverterApplianceMetadata> {
+        if (!this._modbusInstance) {
+            throw new Error('Modbus instance not available');
+        }
+
+        const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
+        const metadata: HemsOneInverterApplianceMetadata = {};
+
+        try {
+            // Read max PV production if configured
+            if (this.config.registers.maxPvProductionW) {
+                const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.maxPvProductionW);
+                if (result.success && result.value !== undefined) {
+                    metadata.maxPvProductionW = result.value;
+                    console.log(`Discovered inverter max PV production: ${result.value} W`);
+                }
+            }
+        } catch (error) {
+            console.warn(`Warning: Failed to discover some inverter metadata: ${(error as Error).message}`);
+        }
+
+        return metadata;
+    }
+
     private async _initializeAppliance(): Promise<void> {
         const appliances = await this.client.useAppliances().list();
         let existingAppliance = appliances.find(a =>
@@ -183,7 +289,8 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                 metadata: {
                     state: HemsOneApplianceStateEnum.Connected,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
-                }
+                },
+                inverter: this._inverterMetadata
             };
             await this.client.useAppliances().save(existingAppliance, undefined);
             console.log(`Created new inverter appliance: ${this.config.name[0]?.name}`);
@@ -196,7 +303,8 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                     ...existingAppliance.metadata,
                     state: HemsOneApplianceStateEnum.Connected,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
-                }
+                },
+                inverter: this._inverterMetadata
             };
             await this.client.useAppliances().save(existingAppliance, existingAppliance.id);
             console.log(`Updated existing inverter appliance: ${this.config.name[0]?.name}`);

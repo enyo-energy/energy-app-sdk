@@ -1,10 +1,22 @@
 import type {EnergyApp} from "../../index.js";
 import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
 import type {HemsOneAppliance, HemsOneApplianceName, HemsOneApplianceTopology} from "../../types/hems-one-appliance.js";
-import type {HemsOneDataBusMessage} from "../../types/hems-one-data-bus-value.js";
+import {HemsOneBatteryStateEnum, HemsOneDataBusMessage, HemsOneInverterStateEnum} from "../../types/hems-one-data-bus-value.js";
 
 // Data Types for Modbus Register Configuration
 export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 'float32';
+
+// Value mapping for battery state registers
+export interface EnergyAppBatteryStateValueMapping {
+    value: number;
+    mappedState: HemsOneBatteryStateEnum;
+}
+
+// Value mapping for inverter state registers
+export interface EnergyAppInverterStateValueMapping {
+    value: number;
+    mappedState: HemsOneInverterStateEnum;
+}
 
 // Register Configuration Interface
 export interface EnergyAppModbusRegisterConfig {
@@ -13,6 +25,7 @@ export interface EnergyAppModbusRegisterConfig {
     scale?: number; // For FIX2, FIX3 scaling (divide by 10^scale)
     quantity?: number; // Number of registers to read (auto-calculated from dataType if not provided)
     required?: boolean; // Whether this register is required for device operation
+    valueMapping?: EnergyAppBatteryStateValueMapping[] | EnergyAppInverterStateValueMapping[]; // For mapping numeric values to enum states
 }
 
 // Generic Register Map for any device type
@@ -50,6 +63,9 @@ export interface EnergyAppModbusInverterConfig extends EnergyAppModbusDeviceConf
         frequency?: EnergyAppModbusRegisterConfig;
         totalEnergy?: EnergyAppModbusRegisterConfig;
         dailyEnergy?: EnergyAppModbusRegisterConfig;
+        maxPvProductionW?: EnergyAppModbusRegisterConfig; // Maximum PV production in W
+        state?: EnergyAppModbusRegisterConfig; // Inverter state (off, sleeping, mppt, etc.)
+        activePowerLimitationW?: EnergyAppModbusRegisterConfig; // Active power limitation in W
         [key: string]: EnergyAppModbusRegisterConfig | undefined;
     };
 }
@@ -62,6 +78,10 @@ export interface EnergyAppModbusBatteryConfig extends EnergyAppModbusDeviceConfi
         soc?: EnergyAppModbusRegisterConfig; // State of Charge
         power?: EnergyAppModbusRegisterConfig;
         temperature?: EnergyAppModbusRegisterConfig;
+        state?: EnergyAppModbusRegisterConfig; // Battery state (charging, discharging, etc.)
+        maxCapacityWh?: EnergyAppModbusRegisterConfig; // Maximum battery capacity in Wh
+        maxDischargePowerW?: EnergyAppModbusRegisterConfig; // Maximum discharge power in W
+        maxChargingPowerW?: EnergyAppModbusRegisterConfig; // Maximum charging power in W
         [key: string]: EnergyAppModbusRegisterConfig | undefined;
     };
 }
