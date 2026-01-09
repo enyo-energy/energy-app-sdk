@@ -1,10 +1,20 @@
 import type {EnergyApp} from "../../index.js";
 import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
 import type {HemsOneAppliance, HemsOneApplianceName, HemsOneApplianceTopology} from "../../types/hems-one-appliance.js";
-import {HemsOneBatteryStateEnum, HemsOneDataBusMessage, HemsOneInverterStateEnum} from "../../types/hems-one-data-bus-value.js";
+import {
+    HemsOneBatteryStateEnum,
+    HemsOneDataBusMessage,
+    HemsOneInverterStateEnum
+} from "../../types/hems-one-data-bus-value.js";
 
-// Data Types for Modbus Register Configuration
-export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 'float32';
+/**
+ * Data Types for Modbus Register Configuration
+ *
+ * @description Supported data types for reading Modbus registers
+ * - Numeric types: uint16, int16, uint32, int32, float32
+ * - String type: string (requires length property in register config)
+ */
+export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 'float32' | 'string';
 
 // Value mapping for battery state registers
 export interface EnergyAppBatteryStateValueMapping {
@@ -18,14 +28,26 @@ export interface EnergyAppInverterStateValueMapping {
     mappedState: HemsOneInverterStateEnum;
 }
 
-// Register Configuration Interface
+/**
+ * Register Configuration Interface
+ *
+ * @description Configuration for reading a Modbus register
+ */
 export interface EnergyAppModbusRegisterConfig {
+    /** Modbus register address */
     address: number;
+    /** Data type of the register value */
     dataType: EnergyAppModbusDataType;
-    scale?: number; // For FIX2, FIX3 scaling (divide by 10^scale)
-    quantity?: number; // Number of registers to read (auto-calculated from dataType if not provided)
-    required?: boolean; // Whether this register is required for device operation
-    valueMapping?: EnergyAppBatteryStateValueMapping[] | EnergyAppInverterStateValueMapping[]; // For mapping numeric values to enum states
+    /** For FIX2, FIX3 scaling (divide by 10^scale) - only applies to numeric types */
+    scale?: number;
+    /** Number of registers to read (auto-calculated from dataType if not provided) */
+    quantity?: number;
+    /** String length in characters (required for dataType: 'string', ignored for numeric types) */
+    length?: number;
+    /** Whether this register is required for device operation */
+    required?: boolean;
+    /** For mapping numeric values to enum states (only applies to numeric types) */
+    valueMapping?: EnergyAppBatteryStateValueMapping[] | EnergyAppInverterStateValueMapping[];
 }
 
 // Generic Register Map for any device type
@@ -59,13 +81,17 @@ export interface EnergyAppModbusInverterConfig extends EnergyAppModbusDeviceConf
         voltageL1?: EnergyAppModbusRegisterConfig;
         voltageL2?: EnergyAppModbusRegisterConfig;
         voltageL3?: EnergyAppModbusRegisterConfig;
-        current?: EnergyAppModbusRegisterConfig;
-        frequency?: EnergyAppModbusRegisterConfig;
-        totalEnergy?: EnergyAppModbusRegisterConfig;
-        dailyEnergy?: EnergyAppModbusRegisterConfig;
         maxPvProductionW?: EnergyAppModbusRegisterConfig; // Maximum PV production in W
         state?: EnergyAppModbusRegisterConfig; // Inverter state (off, sleeping, mppt, etc.)
         activePowerLimitationW?: EnergyAppModbusRegisterConfig; // Active power limitation in W
+        string1Power?: EnergyAppModbusRegisterConfig;
+        string1Voltage?: EnergyAppModbusRegisterConfig;
+        string2Power?: EnergyAppModbusRegisterConfig;
+        string2Voltage?: EnergyAppModbusRegisterConfig;
+        string3Power?: EnergyAppModbusRegisterConfig;
+        string3Voltage?: EnergyAppModbusRegisterConfig;
+        string4Power?: EnergyAppModbusRegisterConfig;
+        string4Voltage?: EnergyAppModbusRegisterConfig;
         [key: string]: EnergyAppModbusRegisterConfig | undefined;
     };
 }
@@ -122,13 +148,37 @@ export interface IRegisterMapper {
     validateRegisterMap(registerMap: EnergyAppRegisterMap): { valid: boolean; errors: string[] };
 }
 
-// Data Type Converter Interface
+/**
+ * Data Type Converter Interface
+ *
+ * @description Interface for converting raw Modbus buffer data into appropriate JavaScript types
+ */
 export interface IDataTypeConverter {
-    convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number): any;
+    /**
+     * Converts raw buffer data from Modbus registers into appropriate JavaScript types
+     *
+     * @param buffer - Raw buffer data from Modbus registers
+     * @param dataType - The expected data type for conversion
+     * @param scale - Optional scaling factor for numeric types (divide by 10^scale)
+     * @param length - Required for string types, specifies the string length in characters
+     */
+    convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, length?: number): any;
 
+    /**
+     * Validates if a value is valid for the given data type
+     *
+     * @param value - The value to validate
+     * @param dataType - The expected data type
+     */
     isValidValue(value: any, dataType: EnergyAppModbusDataType): boolean;
 
-    getRegisterQuantity(dataType: EnergyAppModbusDataType): number;
+    /**
+     * Calculates the number of Modbus registers required for a given data type
+     *
+     * @param dataType - The data type to calculate register quantity for
+     * @param length - Required for string types, specifies the string length in characters
+     */
+    getRegisterQuantity(dataType: EnergyAppModbusDataType, length?: number): number;
 }
 
 // Connection Health Management

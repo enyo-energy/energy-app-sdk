@@ -19,7 +19,7 @@ export class EnergyAppModbusRegisterMapper implements IRegisterMapper {
     async readRegister<T>(reader: IRegisterReader, config: EnergyAppModbusRegisterConfig): Promise<RegisterReadResult<T>> {
         try {
             // Calculate quantity if not provided
-            const quantity = config.quantity || this.dataTypeConverter.getRegisterQuantity(config.dataType);
+            const quantity = config.quantity || this.dataTypeConverter.getRegisterQuantity(config.dataType, config.length);
 
             const result = await reader.readHoldingRegisters(config.address, quantity);
 
@@ -36,7 +36,8 @@ export class EnergyAppModbusRegisterMapper implements IRegisterMapper {
             const convertedValue = this.dataTypeConverter.convertFromBuffer(
                 result.value,
                 config.dataType,
-                config.scale
+                config.scale,
+                config.length
             );
 
             // Validate the converted value

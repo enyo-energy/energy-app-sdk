@@ -220,16 +220,12 @@ export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusMessage {
         state?: HemsOneInverterStateEnum;
         /** Current PV Production (in Watt) */
         pvPowerW: number;
-        /** Current in Ampere */
-        currentA?: number;
         /** voltage of Phase L1 to N*/
         voltageL1: number;
         /** voltage of Phase L2 to N*/
         voltageL2?: number;
         /** voltage of Phase L3 to N*/
         voltageL3?: number;
-        /** Total pv production in Wh to measure the produced electricity in Wh*/
-        pvProductionWh: number;
         activePowerLimitationW?: number;
         strings?: HemsOneDataBusInverterValuesV1String[];
     }

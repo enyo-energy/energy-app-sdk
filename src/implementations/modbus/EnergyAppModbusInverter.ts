@@ -109,12 +109,9 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
 
         // Extract known values with fallbacks
         const pvPowerW = registerData.power || 0; // Required field, default to 0 if not available
-        const currentA = registerData.current || undefined;
         const voltageL1 = registerData.voltageL1 || 0; // Required field, default to 0 if not available
         const voltageL2 = registerData.voltageL2 || undefined;
         const voltageL3 = registerData.voltageL3 || undefined;
-        const totalEnergyWh = registerData.totalEnergy || 0; // Required field for pvProductionWh
-        const dailyEnergyWh = registerData.dailyEnergy || undefined;
 
         // Read current inverter state if available
         let inverterState: HemsOneInverterStateEnum | undefined;
@@ -132,6 +129,45 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
             console.warn(`Failed to read active power limitation: ${(error as Error).message}`);
         }
 
+        // Read string data if available
+        const strings: Array<{ index: number; voltage?: number; powerW?: number }> = [];
+        for (let stringIndex = 1; stringIndex <= 4; stringIndex++) {
+            let stringPower: number | undefined;
+            let stringVoltage: number | undefined;
+            let hasData = false;
+
+            // Try to read string power
+            try {
+                const power = await this.getStringPower(stringIndex);
+                if (power !== null) {
+                    stringPower = power;
+                    hasData = true;
+                }
+            } catch (error) {
+                console.warn(`Failed to read string${stringIndex} power: ${(error as Error).message}`);
+            }
+
+            // Try to read string voltage
+            try {
+                const voltage = await this.getStringVoltage(stringIndex);
+                if (voltage !== null) {
+                    stringVoltage = voltage;
+                    hasData = true;
+                }
+            } catch (error) {
+                console.warn(`Failed to read string${stringIndex} voltage: ${(error as Error).message}`);
+            }
+
+            // Only add string to array if we have at least one value
+            if (hasData) {
+                strings.push({
+                    index: stringIndex,
+                    ...(stringVoltage !== undefined && { voltage: stringVoltage }),
+                    ...(stringPower !== undefined && { powerW: stringPower })
+                });
+            }
+        }
+
         const message: HemsOneDataBusInverterValuesV1 = {
             type: 'message',
             source: HemsOneSourceEnum.Device,
@@ -142,18 +178,21 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
             data: {
                 state: inverterState,
                 pvPowerW,
-                currentA,
                 voltageL1,
                 voltageL2,
                 voltageL3,
-                pvProductionWh: totalEnergyWh,
-                activePowerLimitationW
-                // strings: optional, for string-level monitoring if needed in the future
+                activePowerLimitationW,
+                ...(strings.length > 0 && { strings })
             },
             resolution: '10s'
         };
 
-        console.log(`Inverter Data (${this.config.name[0]?.name}): State=${inverterState || 'N/A'}, Power=${pvPowerW}W, Current=${currentA}A, Voltage=${voltageL1}V, Energy=${totalEnergyWh}Wh, PowerLimit=${activePowerLimitationW || 'N/A'}W`);
+        // Create logging info with string data if available
+        const stringInfo = strings.length > 0
+            ? `, Strings=[${strings.map(s => `${s.index}:${s.powerW || 'N/A'}W/${s.voltage || 'N/A'}V`).join(',')}]`
+            : '';
+
+        console.log(`Inverter Data (${this.config.name[0]?.name}): State=${inverterState || 'N/A'}, Power=${pvPowerW}W, Voltage=${voltageL1}V, PowerLimit=${activePowerLimitationW || 'N/A'}W${stringInfo}`);
 
         return [message];
     }
@@ -165,9 +204,9 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
         }
 
         const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
-        const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.serialNumber);
+        const result = await this._registerMapper.readRegister<string>(reader, this.config.registers.serialNumber);
 
-        return result.success ? result.value!.toString() : null;
+        return result.success ? result.value! : null;
     }
 
     async getCurrentPower(): Promise<number | null> {
@@ -239,6 +278,54 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
 
         const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
         const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.activePowerLimitationW);
+
+        return result.success ? result.value! : null;
+    }
+
+    /**
+     * Reads the power value for a specific string from modbus registers.
+     *
+     * @param stringIndex - The string index (1-4)
+     * @returns Promise resolving to power value in Watts or null if not available
+     */
+    async getStringPower(stringIndex: number): Promise<number | null> {
+        if (!this._modbusInstance || stringIndex < 1 || stringIndex > 4) {
+            return null;
+        }
+
+        const registerKey = `string${stringIndex}Power` as keyof typeof this.config.registers;
+        const registerConfig = this.config.registers[registerKey];
+
+        if (!registerConfig) {
+            return null;
+        }
+
+        const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
+        const result = await this._registerMapper.readRegister<number>(reader, registerConfig);
+
+        return result.success ? result.value! : null;
+    }
+
+    /**
+     * Reads the voltage value for a specific string from modbus registers.
+     *
+     * @param stringIndex - The string index (1-4)
+     * @returns Promise resolving to voltage value in Volts or null if not available
+     */
+    async getStringVoltage(stringIndex: number): Promise<number | null> {
+        if (!this._modbusInstance || stringIndex < 1 || stringIndex > 4) {
+            return null;
+        }
+
+        const registerKey = `string${stringIndex}Voltage` as keyof typeof this.config.registers;
+        const registerConfig = this.config.registers[registerKey];
+
+        if (!registerConfig) {
+            return null;
+        }
+
+        const reader = new EnergyAppModbusFaultTolerantReader(this._modbusInstance, this._connectionHealth);
+        const result = await this._registerMapper.readRegister<number>(reader, registerConfig);
 
         return result.success ? result.value! : null;
     }
