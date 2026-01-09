@@ -23,6 +23,14 @@ export interface EnergyAppPackageRestrictedInternetAccessOption {
     origins: string[];
 }
 
+/**
+ * Optional device detection configuration for hostname detection. The check is always lower case string
+ */
+export interface EnergyAppPackageOptionsDeviceDetectionHostname {
+    operation: 'eq' | 'startsWith';
+    matchingValue: string;
+}
+
 export interface EnergyAppPackageOptionsDeviceDetectionModbus {
     unitIds: number[];
     /** Register address, for example 30001 */
@@ -59,6 +67,7 @@ export interface EnergyAppPackageOptionsDeviceDetectionOcpp {
  * Optional device detection configuration
  */
 export interface EnergyAppPackageOptionsDeviceDetection {
+    hostName?: EnergyAppPackageOptionsDeviceDetectionHostname[];
     modbus?: EnergyAppPackageOptionsDeviceDetectionModbus[];
     http?: EnergyAppPackageOptionsDeviceDetectionHttp[];
     ocpp?: EnergyAppPackageOptionsDeviceDetectionOcpp[];

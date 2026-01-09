@@ -15,6 +15,8 @@ export interface EnergyAppNetworkDevice {
     requestDeviceAccess: (deviceId: string, ports?: number[]) => Promise<{ status: HemsOneNetworkDeviceAccessStatus }>;
     /** listen for device access changes. Returns a listener id */
     listenForDeviceAccessChange: (listener: (deviceId: string, status: HemsOneNetworkDeviceAccessStatus) => void) => string;
+    /** listen for detected devices, based on the device definition in the energy app package definition */
+    listenForDetectedDevice: (listener: (detectedDevices: HemsOneNetworkDevice[]) => void) => string;
     /** Removes the listener */
-    removeDeviceAccessChangeListener: (listenerId: string) => void;
+    removeListener: (listenerId: string) => void;
 }
