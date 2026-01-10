@@ -144,7 +144,7 @@ export interface HemsOneDataBusMeterValuesUpdateV1 extends HemsOneDataBusMessage
         gridPowerW?: number;
         /** Grid Feed in (in Watt hours) */
         gridFeedInWh: number;
-        /** Grid Feed in (in Watt hours) */
+        /** Grid Consumption in (in Watt hours) */
         gridConsumptionWh: number;
         /** current self consumption (in Watt) */
         selfConsumptionW?: number;

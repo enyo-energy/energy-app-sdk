@@ -3,6 +3,7 @@ import {HemsOneChargerApplianceMetadata} from "./hems-one-charger-appliance.js";
 import {HemsOneHeatpumpApplianceMetadata} from "./hems-one-heatpump-appliance.js";
 import {HemsOneBatteryApplianceMetadata} from "./hems-one-battery-appliance.js";
 import {HemsOneInverterApplianceMetadata} from "./hems-one-inverter-appliance.js";
+import {HemsOneMeterAppliance} from "./hems-one-meter-appliance.js";
 
 export enum HemsOneApplianceTypeEnum {
     Inverter = 'Inverter',
@@ -66,6 +67,8 @@ export interface HemsOneAppliance {
     metadata?: HemsOneApplianceMetadata;
     /** Topology Information of the appliance */
     topology?: HemsOneApplianceTopology;
+    /** Optional Metadata of the Appliance if of type Meter */
+    meter?: HemsOneMeterAppliance;
     /** Optional Metadata of the Appliance if of type Inverter */
     inverter?: HemsOneInverterApplianceMetadata;
     /** Optional Metadata of the Appliance if of type Charger */
