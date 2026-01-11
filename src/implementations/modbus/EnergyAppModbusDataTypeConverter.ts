@@ -44,7 +44,7 @@ export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
                     }
                     // Convert buffer to string, handling null termination and trimming whitespace
                     return buffer.toString('ascii', 0, Math.min(buffer.length, quantity * 2))
-                        .replace(/\0/g, '') // Remove null terminators
+                        .replace(/\u0000/gmi, '') // Remove null terminators
                         .trim(); // Remove leading/trailing whitespace
                 }
                 default:
