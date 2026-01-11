@@ -1,7 +1,11 @@
 import {randomUUID} from "node:crypto";
 import type {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
-import type {HemsOneAppliance} from "../../types/hems-one-appliance.js";
-import {HemsOneApplianceStateEnum, HemsOneApplianceTypeEnum} from "../../types/hems-one-appliance.js";
+import {
+    HemsOneAppliance,
+    HemsOneApplianceStateEnum,
+    HemsOneApplianceTopologyFeatureEnum,
+    HemsOneApplianceTypeEnum
+} from "../../types/hems-one-appliance.js";
 import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
 import {
     type HemsOneDataBusMessage,
@@ -22,6 +26,9 @@ import {EnergyAppModbusRegisterMapper} from './EnergyAppModbusRegisterMapper.js'
 import {EnergyAppModbusConnectionHealth} from './EnergyAppModbusConnectionHealth.js';
 import {EnergyAppModbusFaultTolerantReader} from './EnergyAppModbusFaultTolerantReader.js';
 import {EnergyApp} from "../../index.js";
+import {
+    HemsOneMeterApplianceAvailableFeaturesEnum,
+} from "../../types/hems-one-meter-appliance.js";
 
 export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
     private readonly _registerMapper: IRegisterMapper;
@@ -108,7 +115,7 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
         const gridConsumptionWh = registerData.gridConsumptionEnergy || 0;
 
         // Calculate net grid power (positive = consumption, negative = feed-in)
-        const gridPowerW = registerData.gridPower || (gridConsumptionPowerW - gridFeedInPowerW);
+        const gridPowerW = this.config.registers.gridPower !== undefined ? registerData.gridPower : (gridConsumptionPowerW - gridFeedInPowerW);
 
         const message: HemsOneDataBusMeterValuesUpdateV1 = {
             type: 'message',
@@ -198,6 +205,12 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
                 metadata: {
                     state: HemsOneApplianceStateEnum.Connected,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
+                },
+                topology: {
+                    features: [HemsOneApplianceTopologyFeatureEnum.IntermediateOfPrimaryMeter]
+                },
+                meter: {
+                    availableFeatures: [HemsOneMeterApplianceAvailableFeaturesEnum.LivePowerConsumption, HemsOneMeterApplianceAvailableFeaturesEnum.MeterValues]
                 }
             };
             await this.client.useAppliances().save(existingAppliance, undefined);
@@ -211,6 +224,12 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
                     ...existingAppliance.metadata,
                     state: HemsOneApplianceStateEnum.Connected,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
+                },
+                topology: {
+                    features: [HemsOneApplianceTopologyFeatureEnum.IntermediateOfPrimaryMeter]
+                },
+                meter: {
+                    availableFeatures: [HemsOneMeterApplianceAvailableFeaturesEnum.LivePowerConsumption, HemsOneMeterApplianceAvailableFeaturesEnum.MeterValues]
                 }
             };
             await this.client.useAppliances().save(existingAppliance, existingAppliance.id);

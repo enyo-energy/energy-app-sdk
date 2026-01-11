@@ -1,5 +1,3 @@
-import {HemsOneChargerApplianceAvailableFeaturesEnum} from "./hems-one-charger-appliance.js";
-
 export enum HemsOneMeterApplianceAvailableFeaturesEnum {
     /** If the meter can get the live power consumption in Watt */
     LivePowerConsumption = 'LivePowerConsumption',

@@ -39,8 +39,12 @@ export interface HemsOneApplianceMetadata {
 }
 
 export enum HemsOneApplianceTopologyFeatureEnum {
-    /** If the type is Meter, details if it's a primary meter or a submeter */
+    /** If the meter is the real Primary Meter collecting feed in and consumption in Wh */
     PrimaryMeter = 'PrimaryMeter',
+    /** If the meter is an Intermediate Meter (like the meter of an Inverter) directly behind the Primary Meter */
+    IntermediateOfPrimaryMeter = 'IntermediateOfPrimaryMeter',
+    /** If the meter is an Intermediate Meter for a single appliance */
+    IntermediateMeter = 'PrimaryMeter',
     /** If the inverter does a direct grid feed in without self consumption */
     InverterFullGridFeedIn = 'InverterFullGridFeedIn',
 }
