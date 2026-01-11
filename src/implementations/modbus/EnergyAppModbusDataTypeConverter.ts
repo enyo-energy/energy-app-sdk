@@ -16,38 +16,43 @@ export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
      * @returns Converted value (number for numeric types, string for string type)
      */
     convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, quantity?: number): any {
-        switch (dataType) {
-            case 'uint16': {
-                const value = buffer.readUInt16BE(0);
-                return this.applyScale(value, scale);
-            }
-            case 'int16': {
-                const value = buffer.readInt16BE(0);
-                return this.applyScale(value, scale);
-            }
-            case 'uint32': {
-                const value = buffer.readUInt32BE(0);
-                return this.applyScale(value, scale);
-            }
-            case 'int32': {
-                const value = buffer.readInt32BE(0);
-                return this.applyScale(value, scale);
-            }
-            case 'float32': {
-                const value = buffer.readFloatBE(0);
-                return this.applyScale(value, scale);
-            }
-            case 'string': {
-                if (!quantity || quantity <= 0) {
-                    throw new Error('String data type requires a valid quantity parameter');
+        try {
+            switch (dataType) {
+                case 'uint16': {
+                    const value = buffer.readUInt16BE(0);
+                    return this.applyScale(value, scale);
                 }
-                // Convert buffer to string, handling null termination and trimming whitespace
-                return buffer.toString('ascii', 0, Math.min(buffer.length, quantity * 2))
-                    .replace(/\0/g, '') // Remove null terminators
-                    .trim(); // Remove leading/trailing whitespace
+                case 'int16': {
+                    const value = buffer.readInt16BE(0);
+                    return this.applyScale(value, scale);
+                }
+                case 'uint32': {
+                    const value = buffer.readUInt32BE(0);
+                    return this.applyScale(value, scale);
+                }
+                case 'int32': {
+                    const value = buffer.readInt32BE(0);
+                    return this.applyScale(value, scale);
+                }
+                case 'float32': {
+                    const value = buffer.readFloatBE(0);
+                    return this.applyScale(value, scale);
+                }
+                case 'string': {
+                    if (!quantity || quantity <= 0) {
+                        throw new Error('String data type requires a valid quantity parameter');
+                    }
+                    // Convert buffer to string, handling null termination and trimming whitespace
+                    return buffer.toString('ascii', 0, Math.min(buffer.length, quantity * 2))
+                        .replace(/\0/g, '') // Remove null terminators
+                        .trim(); // Remove leading/trailing whitespace
+                }
+                default:
+                    throw new Error(`Unsupported data type: ${dataType}`);
             }
-            default:
-                throw new Error(`Unsupported data type: ${dataType}`);
+        } catch (error) {
+            console.error(`Failed to convert Buffer (length ${buffer.length}) to ${dataType}: ${error}`, error)
+            throw error
         }
     }
 
