@@ -42,8 +42,6 @@ export interface EnergyAppModbusRegisterConfig {
     scale?: number;
     /** Number of registers to read (auto-calculated from dataType if not provided) */
     quantity?: number;
-    /** String length in characters (required for dataType: 'string', ignored for numeric types) */
-    length?: number;
     /** Whether this register is required for device operation */
     required?: boolean;
     /** For mapping numeric values to enum states (only applies to numeric types) */
@@ -160,9 +158,9 @@ export interface IDataTypeConverter {
      * @param buffer - Raw buffer data from Modbus registers
      * @param dataType - The expected data type for conversion
      * @param scale - Optional scaling factor for numeric types (divide by 10^scale)
-     * @param length - Required for string types, specifies the string length in characters
+     * @param quantity - Required for string types, specifies the string length in characters
      */
-    convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, length?: number): any;
+    convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, quantity?: number): any;
 
     /**
      * Validates if a value is valid for the given data type

@@ -12,10 +12,10 @@ export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
      * @param buffer - Raw buffer data from Modbus registers
      * @param dataType - The expected data type for conversion
      * @param scale - Optional scaling factor for numeric types (divide by 10^scale)
-     * @param length - Required for string types, specifies the string length in characters
+     * @param quantity - Required for string types, specifies the string length in characters
      * @returns Converted value (number for numeric types, string for string type)
      */
-    convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, length?: number): any {
+    convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, quantity?: number): any {
         switch (dataType) {
             case 'uint16': {
                 const value = buffer.readUInt16BE(0);
@@ -38,11 +38,11 @@ export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
                 return this.applyScale(value, scale);
             }
             case 'string': {
-                if (!length || length <= 0) {
-                    throw new Error('String data type requires a valid length parameter');
+                if (!quantity || quantity <= 0) {
+                    throw new Error('String data type requires a valid quantity parameter');
                 }
                 // Convert buffer to string, handling null termination and trimming whitespace
-                return buffer.toString('ascii', 0, Math.min(buffer.length, length * 2))
+                return buffer.toString('ascii', 0, Math.min(buffer.length, quantity * 2))
                     .replace(/\0/g, '') // Remove null terminators
                     .trim(); // Remove leading/trailing whitespace
             }
@@ -111,10 +111,9 @@ export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
      * Calculates the number of Modbus registers required for a given data type
      *
      * @param dataType - The data type to calculate register quantity for
-     * @param length - Required for string types, specifies the string length in characters
      * @returns Number of 16-bit registers required
      */
-    getRegisterQuantity(dataType: EnergyAppModbusDataType, length?: number): number {
+    getRegisterQuantity(dataType: EnergyAppModbusDataType): number {
         switch (dataType) {
             case 'uint16':
             case 'int16':
@@ -123,13 +122,6 @@ export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
             case 'int32':
             case 'float32':
                 return 2;
-            case 'string': {
-                if (!length || length <= 0) {
-                    throw new Error('String data type requires a valid length parameter');
-                }
-                // Each register holds 2 bytes, so we need ceil(length / 2) registers
-                return Math.ceil(length / 2);
-            }
             default:
                 throw new Error(`Unsupported data type: ${dataType}`);
         }
