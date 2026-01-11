@@ -199,7 +199,7 @@ export interface HemsOneDataBusBatteryValuesUpdateV1 extends HemsOneDataBusMessa
     data: {
         state?: HemsOneBatteryStateEnum;
         /** Current Battery Power (in Watt). Positive = Consumption from the Battery, Negative = Feed in / charging of the battery. */
-        batteryPowerW: number;
+        batteryPowerW?: number;
         /** Battery State of Charge. Value between 0 and 100 */
         batterySoC: number;
     }

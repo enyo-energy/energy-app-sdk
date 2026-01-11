@@ -255,7 +255,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                 if (mapping) {
                     return mapping.mappedState as HemsOneInverterStateEnum;
                 } else {
-                    console.warn(`No mapping found for inverter state value: ${result.value}. Available mappings: ${this.config.registers.state.valueMapping.map(m => m.value).join(', ')}`);
+                    console.warn(`No mapping found for inverter state value: ${result.value} (Address ${this.config.registers.state.address}, ${this.config.registers.state.dataType}). Available mappings: ${this.config.registers.state.valueMapping.map(m => m.value).join(', ')}`);
                     return null;
                 }
             } else {
@@ -398,5 +398,9 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
         }
 
         this._appliance = existingAppliance;
+    }
+
+    modbusClient() {
+        return this._modbusInstance
     }
 }

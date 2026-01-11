@@ -117,7 +117,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         const batteryCurrent = registerData.current || undefined;
         const batteryVoltage = registerData.voltage || undefined;
         const batterySoC = registerData.soc || undefined;
-        const batteryPowerW = registerData.power || (batteryCurrent * batteryVoltage);
+        const batteryPowerW = await this.getPower();
 
         // Read current battery state if available
         let batteryState: HemsOneBatteryStateEnum | undefined;
@@ -136,7 +136,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
             applianceId: this._appliance.id,
             data: {
                 state: batteryState,
-                batteryPowerW,
+                batteryPowerW: batteryPowerW ?? undefined,
                 batterySoC
             },
             resolution: '10s'
@@ -189,8 +189,8 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
             return null;
         }
 
+        // Priority 1: Direct power register
         if (this.config.registers.power) {
-            // Direct power register
             const modbusInstance = (this.inverter as any)._modbusInstance;
             const connectionHealth = (this.inverter as any)._connectionHealth;
 
@@ -201,15 +201,29 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
             const reader = new EnergyAppModbusFaultTolerantReader(modbusInstance, connectionHealth);
             const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.power);
 
-            return result.success ? result.value! : null;
-        } else {
-            // Calculate from current and voltage
-            const current = await this.getCurrent();
-            const voltage = await this.getVoltage();
-
-            if (current !== null && voltage !== null) {
-                return current * voltage;
+            if (result.success && result.value !== undefined) {
+                return result.value;
             }
+        }
+
+        // Priority 2: Calculate from percentage registers
+        if (this.config.registers.drainPercentage || this.config.registers.loadPercentage) {
+            const drainPercentage = await this.getDrainPercentage();
+            const loadPercentage = await this.getLoadPercentage();
+            const maxCapacityWh = this._batteryMetadata?.maxCapacityWh || null;
+
+            const percentagePower = this._calculatePowerFromPercentages(drainPercentage, loadPercentage, maxCapacityWh);
+            if (percentagePower !== null) {
+                return percentagePower;
+            }
+        }
+
+        // Priority 3: Calculate from current and voltage
+        const current = await this.getCurrent();
+        const voltage = await this.getVoltage();
+
+        if (current !== null && voltage !== null) {
+            return current * voltage;
         }
 
         return null;
@@ -229,6 +243,54 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
 
         const reader = new EnergyAppModbusFaultTolerantReader(modbusInstance, connectionHealth);
         const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.voltage);
+
+        return result.success ? result.value! : null;
+    }
+
+    /**
+     * Reads the drain percentage from modbus register.
+     * Drain percentage represents the percentage of maximum capacity being discharged.
+     *
+     * @returns Drain percentage (0-100), or null if not available
+     */
+    async getDrainPercentage(): Promise<number | null> {
+        if (!this.inverter || !this.config.registers.drainPercentage) {
+            return null;
+        }
+
+        const modbusInstance = (this.inverter as any)._modbusInstance;
+        const connectionHealth = (this.inverter as any)._connectionHealth;
+
+        if (!modbusInstance) {
+            return null;
+        }
+
+        const reader = new EnergyAppModbusFaultTolerantReader(modbusInstance, connectionHealth);
+        const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.drainPercentage);
+
+        return result.success ? result.value! : null;
+    }
+
+    /**
+     * Reads the load percentage from modbus register.
+     * Load percentage represents the percentage of maximum capacity being charged.
+     *
+     * @returns Load percentage (0-100), or null if not available
+     */
+    async getLoadPercentage(): Promise<number | null> {
+        if (!this.inverter || !this.config.registers.loadPercentage) {
+            return null;
+        }
+
+        const modbusInstance = (this.inverter as any)._modbusInstance;
+        const connectionHealth = (this.inverter as any)._connectionHealth;
+
+        if (!modbusInstance) {
+            return null;
+        }
+
+        const reader = new EnergyAppModbusFaultTolerantReader(modbusInstance, connectionHealth);
+        const result = await this._registerMapper.readRegister<number>(reader, this.config.registers.loadPercentage);
 
         return result.success ? result.value! : null;
     }
@@ -274,6 +336,37 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
             console.warn(`Failed to read battery state: ${(error as Error).message}`);
             return null;
         }
+    }
+
+    /**
+     * Calculates battery power from drain and load percentages.
+     *
+     * @param drainPercentage - Percentage of max capacity being drained (discharging, positive power)
+     * @param loadPercentage - Percentage of max capacity being loaded (charging, negative power)
+     * @param maxCapacityWh - Maximum battery capacity in Wh
+     * @returns Power in watts (positive for discharging, negative for charging), or null if calculation not possible
+     */
+    private _calculatePowerFromPercentages(
+        drainPercentage: number | null,
+        loadPercentage: number | null,
+        maxCapacityWh: number | null
+    ): number | null {
+        if (!maxCapacityWh) {
+            return null;
+        }
+
+        // Priority: drain percentage takes precedence over load percentage
+        if (drainPercentage !== null && drainPercentage !== undefined) {
+            // Discharging: positive power value
+            return (drainPercentage / 100) * maxCapacityWh;
+        }
+
+        if (loadPercentage !== null && loadPercentage !== undefined) {
+            // Charging: negative power value
+            return -(loadPercentage / 100) * maxCapacityWh;
+        }
+
+        return null;
     }
 
     /**
@@ -379,5 +472,9 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         }
 
         this._appliance = existingAppliance;
+    }
+
+    modbusClient() {
+        return this.inverter?.modbusClient()
     }
 }

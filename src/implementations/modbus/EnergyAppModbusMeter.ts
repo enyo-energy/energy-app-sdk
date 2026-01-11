@@ -238,4 +238,8 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
 
         this._appliance = existingAppliance;
     }
+
+    modbusClient() {
+        return this._modbusInstance
+    }
 }

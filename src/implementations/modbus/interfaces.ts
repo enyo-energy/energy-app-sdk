@@ -6,6 +6,7 @@ import {
     HemsOneDataBusMessage,
     HemsOneInverterStateEnum
 } from "../../types/hems-one-data-bus-value.js";
+import {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
 
 /**
  * Data Types for Modbus Register Configuration
@@ -106,6 +107,8 @@ export interface EnergyAppModbusBatteryConfig extends EnergyAppModbusDeviceConfi
         maxCapacityWh?: EnergyAppModbusRegisterConfig; // Maximum battery capacity in Wh
         maxDischargePowerW?: EnergyAppModbusRegisterConfig; // Maximum discharge power in W
         maxChargingPowerW?: EnergyAppModbusRegisterConfig; // Maximum charging power in W
+        drainPercentage?: EnergyAppModbusRegisterConfig; // Drain percentage of max capacity (discharging)
+        loadPercentage?: EnergyAppModbusRegisterConfig; // Load percentage of max capacity (charging)
         [key: string]: EnergyAppModbusRegisterConfig | undefined;
     };
 }
@@ -174,9 +177,8 @@ export interface IDataTypeConverter {
      * Calculates the number of Modbus registers required for a given data type
      *
      * @param dataType - The data type to calculate register quantity for
-     * @param length - Required for string types, specifies the string length in characters
      */
-    getRegisterQuantity(dataType: EnergyAppModbusDataType, length?: number): number;
+    getRegisterQuantity(dataType: EnergyAppModbusDataType): number;
 }
 
 // Connection Health Management
@@ -206,6 +208,8 @@ export interface EnergyAppModbusDevice {
     isConnected(): boolean;
 
     updateData(): Promise<HemsOneDataBusMessage[]>;
+
+    modbusClient(): EnergyAppModbusInstance | undefined;
 }
 
 // Forward declarations for device classes
