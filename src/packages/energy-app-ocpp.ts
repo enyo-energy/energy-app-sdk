@@ -1,5 +1,9 @@
 export interface HemsOneOcppAvailableConnectionDetail {
     url: string;
+    path: string;
+    host: string;
+    secure: boolean;
+    port: number;
 }
 
 export interface HemsOneOcppAvailableConnectionDetails {

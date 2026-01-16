@@ -1,4 +1,4 @@
-import {EnergyAppPackageConfigurationTranslatedValue} from "../energy-app-package-configuration.js";
+import {EnergyAppPackageConfigurationTranslatedValue} from "./energy-app-settings.js";
 
 export type HemsOneAuthenticationType = 'apiKey' | 'oauth' | 'usernamePassword';
 

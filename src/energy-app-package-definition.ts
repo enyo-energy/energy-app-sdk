@@ -1,5 +1,5 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
-import {EnergyAppPackageConfiguration} from "./energy-app-package-configuration.js";
+import {EnergyAppPackageConfiguration} from "./types/energy-app-settings.js";
 import {getSdkVersion} from "./version.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
