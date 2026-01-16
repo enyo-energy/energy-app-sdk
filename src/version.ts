@@ -6,7 +6,7 @@
 /**
  * Current version of the HEMS one Energy App SDK.
  */
-export const SDK_VERSION = '0.0.25';
+export const SDK_VERSION = '0.0.26';
 
 /**
  * Gets the current SDK version.
