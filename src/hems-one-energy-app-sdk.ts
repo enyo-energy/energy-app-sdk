@@ -8,6 +8,7 @@ import {EnergyAppOcpp} from "./packages/energy-app-ocpp.js";
 import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 import {EnergyAppVehicle} from "./packages/energy-app-vehicle.js";
 import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
+import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -54,4 +55,6 @@ export interface HemsOneEnergyAppSdk {
     useVehicle: () => EnergyAppVehicle;
     /** Get the Charging Card API*/
     useChargingCard: () => EnergyAppChargingCard;
+    /** Get the Authentication API */
+    useAuthentication: () => EnergyAppAuthentication;
 }

@@ -10,6 +10,7 @@ import {EnergyAppVehicle} from "./packages/energy-app-vehicle.js";
 import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 import {getSdkVersion} from "./version.js";
+import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 
 export * from './energy-app-package-definition.js';
 export * from './implementations/modbus/EnergyAppModbusBattery.js';
@@ -19,6 +20,7 @@ export * from './version.js';
 export * from './implementations/ocpp/ocpp16.js';
 export * from './implementations/ocpp/ocpp201.js';
 export * from './implementations/ocpp/ocpp-common.js';
+export * from './types/hems-one-authentication.js'
 
 export class EnergyApp implements HemsOneEnergyAppSdk {
     private readonly energyAppSdk: HemsOneEnergyAppSdk;
@@ -99,6 +101,10 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
 
     public useCharge(): EnergyAppCharge {
         return this.energyAppSdk.useCharge();
+    }
+
+    public useAuthentication(): EnergyAppAuthentication {
+        return this.energyAppSdk.useAuthentication();
     }
 
     /**
