@@ -51,7 +51,7 @@ export interface HemsOneOauthAuthenticationResponse {
 }
 
 export interface HemsOneAuthenticationResponse {
-    sessionId: string;
+    requestId: string;
     authenticationType: HemsOneAuthenticationType;
     apiKey?: HemsOneApiKeyAuthenticationResponse;
     usernamePassword?: HemsOneUsernamePasswordAuthenticationResponse;
