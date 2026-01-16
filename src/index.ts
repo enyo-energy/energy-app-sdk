@@ -16,6 +16,9 @@ export * from './implementations/modbus/EnergyAppModbusBattery.js';
 export * from './implementations/modbus/EnergyAppModbusMeter.js';
 export * from './implementations/modbus/EnergyAppModbusInverter.js';
 export * from './version.js';
+export * from './implementations/ocpp/ocpp16.js';
+export * from './implementations/ocpp/ocpp201.js';
+export * from './implementations/ocpp/ocpp-common.js';
 
 export class EnergyApp implements HemsOneEnergyAppSdk {
     private readonly energyAppSdk: HemsOneEnergyAppSdk;

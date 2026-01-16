@@ -48,10 +48,14 @@ export interface EnergyAppPackageOptionsDeviceDetectionHttp {
     port: number;
     /** path of http call */
     path: string;
-    /** for rest APIs with json response, define the field for example device.vendor*/
-    field: string;
-    /** matching values, for example the vendor names or model names */
-    matchingValues: string[];
+    /** matching options */
+    matching: {
+        operation: 'body_json_field_eq' | 'header_eq' | 'header_startsWith',
+        /** for rest APIs with json response, define the field for example device.vendor*/
+        field?: string;
+        headerName?: string;
+        value: string;
+    }[]
 }
 
 export interface EnergyAppPackageOptionsDeviceDetectionOcpp {
