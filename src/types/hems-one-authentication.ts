@@ -34,6 +34,8 @@ export interface HemsOneAuthentication {
     oauth?: HemsOneOauthAuthentication;
     /** the username password configuration */
     usernamePassword?: HemsOneUsernamePasswordAuthentication;
+    /** If the authentication is one time or not. If not a one time authentication, the user can sign out*/
+    oneTimeAuthentication: boolean;
 }
 
 export interface HemsOneApiKeyAuthenticationResponse {
@@ -59,8 +61,9 @@ export interface HemsOneAuthenticationResponse {
 }
 
 export enum HemsOneAuthenticationStateEnum {
-    Success = 'Success',
-    Failed = 'Failed'
+    Authenticated = 'Authenticated',
+    AuthenticationFailed = 'AuthenticationFailed',
+    Unauthenticated = 'Unauthenticated'
 }
 
 export interface HemsOneAuthenticateState {
