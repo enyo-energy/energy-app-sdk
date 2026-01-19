@@ -1,7 +1,7 @@
 import {
     HemsOneAuthenticateState,
     HemsOneAuthentication,
-    HemsOneAuthenticationResponse
+    HemsOneAuthenticationResponse, HemsOneOauthAuthenticationParameters, HemsOneOauthAuthenticationRedirectUrlResponse
 } from "../types/hems-one-authentication.js";
 
 /**
@@ -17,6 +17,10 @@ export interface EnergyAppAuthentication {
      * @returns Promise that resolves to the request ID for tracking the authentication process
      */
     requestAuthentication(authentication: HemsOneAuthentication): Promise<string>;
+    /**
+     * If you use oauth with clientIdName and clientSecretName, you need to listen to this and respond with the redirect url
+     */
+    listenForOauthParameters(listener: (response: HemsOneOauthAuthenticationParameters) => Promise<HemsOneOauthAuthenticationRedirectUrlResponse>): string;
 
     /**
      * Adds a listener for authentication responses.

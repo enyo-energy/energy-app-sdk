@@ -22,6 +22,16 @@ export interface HemsOneOauthAuthentication {
     /** If the client id and client secret need to be provided by the user*/
     clientIdName?: EnergyAppPackageConfigurationTranslatedValue[];
     clientSecretName?: EnergyAppPackageConfigurationTranslatedValue[];
+    redirectUrl?: string;
+}
+
+export interface HemsOneOauthAuthenticationParameters {
+    clientId?: string;
+    clientSecret?: string;
+}
+
+export interface HemsOneOauthAuthenticationRedirectUrlResponse {
+    redirectUrl: string;
 }
 
 export interface HemsOneAuthentication {
