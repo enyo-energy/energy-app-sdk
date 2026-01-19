@@ -36,6 +36,8 @@ export interface HemsOneAuthentication {
     usernamePassword?: HemsOneUsernamePasswordAuthentication;
     /** If the authentication is one time or not. If not a one time authentication, the user can sign out*/
     oneTimeAuthentication: boolean;
+    /** Optional appliance ID. If provided, authentication is for specific appliance. If omitted, authentication is for the whole package */
+    applianceId?: string;
 }
 
 export interface HemsOneApiKeyAuthenticationResponse {

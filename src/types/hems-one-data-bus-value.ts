@@ -1,5 +1,6 @@
 import {HemsOneApplianceTypeEnum, HemsOneApplianceStateEnum} from "./hems-one-appliance.js";
 import {HemsOneSourceEnum} from "./hems-one-source.enum.js";
+import {EnergyTariffInfo} from "./hems-one-energy-tariff.js";
 
 export enum HemsOneBatteryStateEnum {
     Off = 'off',
@@ -111,7 +112,8 @@ export enum HemsOneDataBusMessageEnum {
     PauseChargingV1 = 'PauseChargingV1',
     ResumeChargingV1 = 'ResumeChargingV1',
     ChangeChargingPowerV1 = 'ChangeChargingPowerV1',
-    AggregatedStateUpdateV1 = 'AggregatedStateUpdateV1'
+    AggregatedStateUpdateV1 = 'AggregatedStateUpdateV1',
+    EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1'
 }
 
 export interface HemsOneDataBusMessage {
@@ -382,5 +384,20 @@ export interface HemsOneDataBusChangeChargingPowerV1 extends HemsOneDataBusMessa
     data: {
         applianceId: string;
         maxChargingPowerKw: number;
+    };
+}
+
+/**
+ * Energy tariff update message for communicating electricity pricing information.
+ * Can be sent for specific appliances or system-wide tariff updates.
+ */
+export interface HemsOneDataBusEnergyTariffUpdateV1 extends HemsOneDataBusMessage {
+    type: 'message';
+    message: HemsOneDataBusMessageEnum.EnergyTariffUpdateV1;
+    /** Optional ID of the appliance this tariff applies to. If omitted, applies system-wide */
+    applianceId?: string;
+    data: {
+        /** Complete energy tariff information including pricing structure and validity */
+        tariffInfo: EnergyTariffInfo;
     };
 }

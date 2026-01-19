@@ -12,6 +12,7 @@ import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 import {getSdkVersion} from "./version.js";
 import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
+import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
 
 export * from './energy-app-package-definition.js';
 export * from './implementations/modbus/EnergyAppModbusBattery.js';
@@ -23,6 +24,8 @@ export * from './implementations/ocpp/ocpp201.js';
 export * from './implementations/ocpp/ocpp-common.js';
 export * from './types/hems-one-authentication.js'
 export * from './types/energy-app-settings.js'
+export * from './types/hems-one-energy-tariff.js'
+export * from './types/hems-one-electricity-prices.js'
 
 export class EnergyApp implements HemsOneEnergyAppSdk {
     private readonly energyAppSdk: HemsOneEnergyAppSdk;
@@ -111,6 +114,10 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
 
     public useSettings(): EnergyAppSettings {
         return this.energyAppSdk.useSettings();
+    }
+
+    public useElectricityPrices(): EnergyAppElectricityPrices {
+        return this.energyAppSdk.useElectricityPrices();
     }
 
     /**

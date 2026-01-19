@@ -23,7 +23,7 @@ export interface EnergyAppPackageConfigurationSettingSelectOption {
  * Represents a single configuration setting for an Energy App package.
  */
 export interface EnergyAppPackageConfigurationSetting {
-    /** internal name of the setting */
+    /** internal name of the setting - must be unique */
     name: string;
     /** the type of the setting */
     type: 'text' | 'select';
@@ -33,8 +33,10 @@ export interface EnergyAppPackageConfigurationSetting {
     fieldName: EnergyAppPackageConfigurationTranslatedValue[];
     /** An optional description for the user*/
     fieldDescription?: EnergyAppPackageConfigurationTranslatedValue[];
-    /** The optional default value or default selection value*/
-    defaultValue?: string;
+    /** The current value of the setting (optional) */
+    currentValue?: string;
+    /** Optional appliance ID. If provided, setting is for specific appliance. If omitted, setting is for the whole package */
+    applianceId?: string;
     selectOptions?: EnergyAppPackageConfigurationSettingSelectOption[];
 }
 
