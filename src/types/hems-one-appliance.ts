@@ -29,6 +29,11 @@ export interface HemsOneApplianceNetworkMetadata {
     imsi?: string;
 }
 
+export enum HemsOneApplianceConnectionType {
+    Connector = 'Connector',
+    Cloud = 'Cloud'
+}
+
 export interface HemsOneApplianceMetadata {
     modelName?: string;
     vendorName?: string;
@@ -36,6 +41,7 @@ export interface HemsOneApplianceMetadata {
     firmwareVersion?: string;
     state?: HemsOneApplianceStateEnum;
     network?: HemsOneApplianceNetworkMetadata;
+    connectionType: HemsOneApplianceConnectionType;
 }
 
 export enum HemsOneApplianceTopologyFeatureEnum {

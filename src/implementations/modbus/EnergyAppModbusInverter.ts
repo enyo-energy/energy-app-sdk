@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import type {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
-import type {HemsOneAppliance} from "../../types/hems-one-appliance.js";
+import {HemsOneAppliance, HemsOneApplianceConnectionType} from "../../types/hems-one-appliance.js";
 import {HemsOneApplianceStateEnum, HemsOneApplianceTypeEnum} from "../../types/hems-one-appliance.js";
 import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
 import {
@@ -375,6 +375,7 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                 name: this.config.name,
                 metadata: {
                     state: HemsOneApplianceStateEnum.Connected,
+                    connectionType: HemsOneApplianceConnectionType.Connector,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 inverter: this._inverterMetadata
@@ -388,12 +389,13 @@ export class EnergyAppModbusInverter implements EnergyAppModbusDevice {
                 name: this.config.name,
                 metadata: {
                     ...existingAppliance.metadata,
+                    connectionType: HemsOneApplianceConnectionType.Connector,
                     state: HemsOneApplianceStateEnum.Connected,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 inverter: this._inverterMetadata
             };
-            await this.client.useAppliances().save(existingAppliance, existingAppliance.id);
+            await this.client.useAppliances().save(existingAppliance!, existingAppliance?.id);
             console.log(`Updated existing inverter appliance: ${this.config.name[0]?.name}`);
         }
 

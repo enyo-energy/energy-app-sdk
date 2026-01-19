@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import type {HemsOneAppliance} from "../../types/hems-one-appliance.js";
+import {HemsOneAppliance, HemsOneApplianceConnectionType} from "../../types/hems-one-appliance.js";
 import {
     HemsOneApplianceStateEnum,
     HemsOneApplianceTypeEnum
@@ -449,6 +449,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
                 name: this.config.name,
                 metadata: {
                     state: HemsOneApplianceStateEnum.Connected,
+                    connectionType: HemsOneApplianceConnectionType.Connector,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 battery: this._batteryMetadata
@@ -463,6 +464,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
                 metadata: {
                     ...existingAppliance.metadata,
                     state: HemsOneApplianceStateEnum.Connected,
+                    connectionType: HemsOneApplianceConnectionType.Connector,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 battery: this._batteryMetadata
