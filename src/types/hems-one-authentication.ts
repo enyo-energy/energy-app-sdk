@@ -19,10 +19,9 @@ export interface HemsOneUsernamePasswordAuthentication {
 
 export interface HemsOneOauthAuthentication {
     description?: EnergyAppPackageConfigurationTranslatedValue[];
-    /** details to request the redirect url. Hems one will set the forward url after a successful login */
-    authorizeUrl: string;
-    clientId: string;
-    scope: string;
+    /** If the client id and client secret need to be provided by the user*/
+    clientIdName?: EnergyAppPackageConfigurationTranslatedValue[];
+    clientSecretName?: EnergyAppPackageConfigurationTranslatedValue[];
 }
 
 export interface HemsOneAuthentication {

@@ -12,6 +12,7 @@ export enum EnergyAppPackageCategory {
     HeatPump = 'heat-pump',
     BatteryStorage = 'battery-storage',
     ClimateControl = 'climate-control',
+    ElectricityTariff = 'electricity-tariff'
 }
 
 /**
