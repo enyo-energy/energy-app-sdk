@@ -23,11 +23,11 @@ export enum EnergyAppStateEnum {
 }
 
 /**
- * Main API interface for HEMS One Energy App packages.
+ * Main API interface for enyo Energy App packages.
  * Provides access to all system capabilities including lifecycle management,
  * network operations, storage, and device communication.
  */
-export interface HemsOneEnergyAppSdk {
+export interface EnyoEnergyAppSdk {
     /** Register a callback that gets called when the package is initialized */
     register: (callback: (packageName: string, version: number) => void) => void;
     /** Register a callback that gets called when the system is shutting down */

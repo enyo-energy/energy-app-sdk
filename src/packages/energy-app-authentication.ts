@@ -1,8 +1,8 @@
 import {
-    HemsOneAuthenticateState,
-    HemsOneAuthentication,
-    HemsOneAuthenticationResponse, HemsOneOauthAuthenticationParameters, HemsOneOauthAuthenticationRedirectUrlResponse
-} from "../types/hems-one-authentication.js";
+    EnyoAuthenticateState,
+    EnyoAuthentication,
+    EnyoAuthenticationResponse, EnyoOauthAuthenticationParameters, EnyoOauthAuthenticationRedirectUrlResponse
+} from "../types/enyo-authentication.js";
 
 /**
  * Interface for requesting user authentication for appliances or the entire package.
@@ -16,11 +16,11 @@ export interface EnergyAppAuthentication {
      * @param authentication - The authentication configuration containing type, credentials setup, and optional appliance ID
      * @returns Promise that resolves to the request ID for tracking the authentication process
      */
-    requestAuthentication(authentication: HemsOneAuthentication): Promise<string>;
+    requestAuthentication(authentication: EnyoAuthentication): Promise<string>;
     /**
      * If you use oauth with clientIdName and clientSecretName, you need to listen to this and respond with the redirect url
      */
-    listenForOauthParameters(listener: (response: HemsOneOauthAuthenticationParameters) => Promise<HemsOneOauthAuthenticationRedirectUrlResponse>): string;
+    listenForOauthParameters(listener: (response: EnyoOauthAuthenticationParameters) => Promise<EnyoOauthAuthenticationRedirectUrlResponse>): string;
 
     /**
      * Adds a listener for authentication responses.
@@ -29,7 +29,7 @@ export interface EnergyAppAuthentication {
      * @param listener - Callback function that receives the authentication response and should return the authentication state
      * @returns The listener ID for removing the listener later
      */
-    listenForAuthenticationResponse(listener: (response: HemsOneAuthenticationResponse) => Promise<HemsOneAuthenticateState>): string;
+    listenForAuthenticationResponse(listener: (response: EnyoAuthenticationResponse) => Promise<EnyoAuthenticateState>): string;
 
     /**
      * Removes a previously registered authentication response listener.
@@ -52,7 +52,7 @@ export interface EnergyAppAuthentication {
      *
      * @returns Promise that resolves to the current authentication state
      */
-    getAuthenticationState(): Promise<HemsOneAuthenticateState>;
+    getAuthenticationState(): Promise<EnyoAuthenticateState>;
 
     /**
      * Signs the user out and updates the authentication state.

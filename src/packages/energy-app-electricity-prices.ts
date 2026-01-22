@@ -2,8 +2,8 @@ import {
     ElectricityPriceRequest,
     ElectricityPriceResponse,
     ElectricityPriceUpdate
-} from "../types/hems-one-electricity-prices.js";
-import {EnergyTariffInfo} from "../types/hems-one-energy-tariff.js";
+} from "../types/enyo-electricity-prices.js";
+import {EnergyTariffInfo} from "../types/enyo-energy-tariff.js";
 
 /**
  * Interface for retrieving electricity price information.

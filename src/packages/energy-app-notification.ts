@@ -1,9 +1,9 @@
 import {
-    HemsOneNotification,
-    HemsOneNotificationOptions,
-    HemsOneNotificationTranslation,
-    HemsOneNotificationType
-} from "../types/hems-one-notification.js";
+    EnyoNotification,
+    EnyoNotificationOptions,
+    EnyoNotificationTranslation,
+    EnyoNotificationType
+} from "../types/enyo-notification.js";
 
 /**
  * Interface for managing user notifications within Energy App packages.
@@ -31,9 +31,9 @@ export interface EnergyAppNotification {
      * ```
      */
     showNotification(
-        type: HemsOneNotificationType,
-        options: HemsOneNotificationOptions,
-        translations: HemsOneNotificationTranslation[]
+        type: EnyoNotificationType,
+        options: EnyoNotificationOptions,
+        translations: EnyoNotificationTranslation[]
     ): string;
 
     /**
@@ -43,7 +43,7 @@ export interface EnergyAppNotification {
      * @param applianceId - Optional appliance ID to filter notifications for a specific appliance
      * @returns Array of all current notifications with complete metadata
      */
-    getNotifications(applianceId?: string): HemsOneNotification[];
+    getNotifications(applianceId?: string): EnyoNotification[];
 
     /**
      * Removes a specific notification from the active notification list.

@@ -1,12 +1,12 @@
-# HEMS one Energy App SDK
+# enyo Energy App SDK
 
-This is the official TypeScript Energy App SDK for HEMS one. If you want to build your own Energy App to publish it on the HEMS one Hub, this is the package you need!
+This is the official TypeScript Energy App SDK for enyo. If you want to build your own Energy App to publish it on the enyo Hub, this is the package you need!
 
 ## Installation
 
 You can install the package using npm:
 ```bash
-npm install @hems-one/energy-app-sdk
+npm install @enyo/energy-app-sdk
 ```
 
 Take a look on our CLI to init a project and publish a new Energy App easily.
@@ -16,7 +16,7 @@ Take a look on our CLI to init a project and publish a new Energy App easily.
 Here's a basic example of how to use the client:
 
 ```typescript
-import { EnergyApp } from '@hems-one/energy-app-sdk';
+import { EnergyApp } from '@enyo/energy-app-sdk';
 
 const energyAppInstance = new EnergyApp();
 
@@ -44,12 +44,12 @@ The SDK includes a powerful, vendor-agnostic Modbus implementation for energy ma
 #### Basic Modbus Setup
 
 ```typescript
-import { EnergyApp } from '@hems-one/energy-app-sdk';
+import { EnergyApp } from '@enyo/energy-app-sdk';
 import {
     EnergyAppModbusInverter,
     EnergyAppModbusBattery,
     EnergyAppModbusMeter
-} from '@hems-one/energy-app-sdk';
+} from '@enyo/energy-app-sdk';
 
 const energyApp = new EnergyApp();
 const dependencies = { client: energyApp, randomUUID: () => crypto.randomUUID() };
@@ -170,13 +170,13 @@ interface EnergyAppModbusRegisterConfig {
 
 ### 🔄 DataBus Integration
 
-The Modbus implementation seamlessly integrates with the HEMS one DataBus using typed messages:
+The Modbus implementation seamlessly integrates with the enyo DataBus using typed messages:
 
-- `HemsOneDataBusInverterValuesV1` - Inverter data messages
-- `HemsOneDataBusBatteryValuesUpdateV1` - Battery data messages
-- `HemsOneDataBusMeterValuesUpdateV1` - Meter data messages
+- `EnyoDataBusInverterValuesV1` - Inverter data messages
+- `EnyoDataBusBatteryValuesUpdateV1` - Battery data messages
+- `EnyoDataBusMeterValuesUpdateV1` - Meter data messages
 
-All messages include proper timestamps and message types for seamless integration with the HEMS one platform.
+All messages include proper timestamps and message types for seamless integration with the enyo platform.
 
 ### 🛠️ Error Handling
 

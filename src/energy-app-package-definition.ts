@@ -1,5 +1,4 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
-import {EnergyAppPackageConfiguration} from "./types/energy-app-settings.js";
 import {getSdkVersion} from "./version.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
@@ -103,9 +102,9 @@ export interface EnergyAppPackageStoreEntry {
 }
 
 /**
- * Complete definition for a HEMS one Energy App package.
+ * Complete definition for a enyo Energy App package.
  * This interface defines all the metadata, permissions, and configuration
- * required to register a package with the HEMS one Hub.
+ * required to register a package with the enyo Hub.
  */
 export interface EnergyAppPackageDefinition {
     /** Schema version for the package definition format */
@@ -122,9 +121,7 @@ export interface EnergyAppPackageDefinition {
     permissions: EnergyAppPermissionType[];
     /** Optional configuration settings */
     options?: EnergyAppPackageOptions;
-    /** defines the configuration of this energy app, for example a required api key or to select an optimization strategy */
-    configuration?: EnergyAppPackageConfiguration;
-    /** The version of the HEMS one SDK used to build this package (automatically injected) */
+    /** The version of the enyo SDK used to build this package (automatically injected) */
     sdkVersion: string;
 }
 

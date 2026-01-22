@@ -1,6 +1,6 @@
 
 /**
- * Interface for persistent storage operations in HEMS one packages.
+ * Interface for persistent storage operations in enyo packages.
  * Provides key-value storage capabilities for package data persistence.
  */
 export interface EnergyAppStorage {

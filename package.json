@@ -1,7 +1,7 @@
 {
   "name": "@hems-one/energy-app-sdk",
   "version": "0.0.33",
-  "description": "HEMS one Energy App SDK",
+  "description": "enyo Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,17 +19,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HEMS-one/energy-app-sdk.git"
+    "url": "git+https://github.com/enyo/energy-app-sdk.git"
   },
   "keywords": [
-    "HEMS one"
+    "enyo"
   ],
-  "author": "HEMS one",
+  "author": "enyo",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/HEMS-one/energy-app-sdk/issues"
+    "url": "https://github.com/enyo/energy-app-sdk/issues"
   },
-  "homepage": "https://github.com/HEMS-one/energy-app-sdk",
+  "homepage": "https://github.com/enyo/energy-app-sdk",
   "devDependencies": {
     "@knighted/duel": "^2.1.4",
     "@types/express": "^5.0.3",

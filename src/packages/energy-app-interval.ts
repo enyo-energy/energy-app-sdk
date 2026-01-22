@@ -5,7 +5,7 @@
 export type IntervalDuration = '10s' | '30s' | '1m' | '5m' | '1hr';
 
 /**
- * Interface for managing scheduled intervals in HEMS one packages.
+ * Interface for managing scheduled intervals in enyo packages.
  * Provides functionality to create and manage recurring tasks.
  */
 export interface EnergyAppInterval {

@@ -1,4 +1,4 @@
-export interface HemsOneWebsocketConnection {
+export interface EnyoWebsocketConnection {
     send(data: string): void;
     close(code?: number, reason?: string): void;
     on(event: 'message', listener: (data: Buffer) => void): this;

@@ -13,7 +13,7 @@ export interface ModbusOptions {
 }
 
 /**
- * Interface for Modbus TCP/IP communication in HEMS one packages.
+ * Interface for Modbus TCP/IP communication in enyo packages.
  * Provides comprehensive Modbus client functionality for reading and writing
  * coils, discrete inputs, holding registers, and input registers.
  */

@@ -1,8 +1,8 @@
 /**
- * Represents a vehicle in the HEMS one system.
+ * Represents a vehicle in the enyo system.
  * Contains all relevant information about an electric vehicle.
  */
-export interface HemsOneVehicle {
+export interface EnyoVehicle {
     /** Unique identifier for the vehicle */
     id: string;
     name: string;

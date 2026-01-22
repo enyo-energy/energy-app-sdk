@@ -34,7 +34,7 @@ try {
  */
 
 /**
- * Current version of the HEMS one Energy App SDK.
+ * Current version of the enyo Energy App SDK.
  */
 export const SDK_VERSION = '${version}';
 

@@ -3,23 +3,23 @@ import {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
 /**
  * Types of notifications that can be displayed to users
  */
-export type HemsOneNotificationType = 'info' | 'warning' | 'error' | 'success';
+export type EnyoNotificationType = 'info' | 'warning' | 'error' | 'success';
 
 /**
  * Priority levels for notifications affecting display order and importance
  */
-export type HemsOneNotificationPriority = 'low' | 'normal' | 'high';
+export type EnyoNotificationPriority = 'low' | 'normal' | 'high';
 
 /**
  * Configuration options for notification display and behavior
  */
-export interface HemsOneNotificationOptions {
+export interface EnyoNotificationOptions {
     /** Whether the notification persists until manually dismissed by the user */
     permanent?: boolean;
     /** Optional expiration time in ISO format for auto-dismissal */
     expiresAtIso?: string;
     /** Priority level affecting display order and visual emphasis */
-    priority?: HemsOneNotificationPriority;
+    priority?: EnyoNotificationPriority;
     /** Optional appliance ID if notification is specific to an appliance */
     applianceId?: string;
 }
@@ -27,7 +27,7 @@ export interface HemsOneNotificationOptions {
 /**
  * Translated notification content for multi-language support
  */
-export interface HemsOneNotificationTranslation {
+export interface EnyoNotificationTranslation {
     /** Language code for this translation */
     language: EnergyAppPackageLanguage;
     /** Notification message content in the specified language */
@@ -37,15 +37,15 @@ export interface HemsOneNotificationTranslation {
 /**
  * Complete notification object containing all notification data
  */
-export interface HemsOneNotification {
+export interface EnyoNotification {
     /** Unique identifier for this notification */
     id: string;
     /** Type of notification determining visual style and urgency */
-    type: HemsOneNotificationType;
+    type: EnyoNotificationType;
     /** Configuration options for display and behavior */
-    options: HemsOneNotificationOptions;
+    options: EnyoNotificationOptions;
     /** Array of translated notification messages for different languages */
-    translations: HemsOneNotificationTranslation[];
+    translations: EnyoNotificationTranslation[];
     /** ISO timestamp when the notification was created */
     createdAtIso: string;
     /** Optional ISO timestamp when the notification was last updated */

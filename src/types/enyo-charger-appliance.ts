@@ -1,4 +1,4 @@
-export enum HemsOneChargerApplianceStatusEnum {
+export enum EnyoChargerApplianceStatusEnum {
     Available = 'Available',
     Occupied = 'Occupied',
     Suspended = 'Suspended',
@@ -8,17 +8,17 @@ export enum HemsOneChargerApplianceStatusEnum {
     Faulted = 'Faulted',
 }
 
-export enum HemsOneChargerApplianceAuthorizationModeEnum {
+export enum EnyoChargerApplianceAuthorizationModeEnum {
     AuthorizationRequired = 'AuthorizationRequired',
     NoAuthorization = 'NoAuthorization',
 }
 
-export interface HemsOneChargerApplianceOcppMetadata {
+export interface EnyoChargerApplianceOcppMetadata {
     chargePointId: string;
     ocppVersion: '1.6' | '2.0.1';
 }
 
-export enum HemsOneChargerApplianceAvailableFeaturesEnum {
+export enum EnyoChargerApplianceAvailableFeaturesEnum {
     /** If the charger can limit the power in Ampere or Watt*/
     PowerLimitation = 'PowerLimitation',
     /** If the charger is capable of smart charging to adjust the charging power in a pre-defined schedule */
@@ -41,13 +41,13 @@ export enum HemsOneChargerApplianceAvailableFeaturesEnum {
     RfidAuthorization = 'RfidAuthorization',
 }
 
-export interface HemsOneChargerApplianceMetadata {
-    availableFeatures: HemsOneChargerApplianceAvailableFeaturesEnum[];
-    status: HemsOneChargerApplianceStatusEnum;
+export interface EnyoChargerApplianceMetadata {
+    availableFeatures: EnyoChargerApplianceAvailableFeaturesEnum[];
+    status: EnyoChargerApplianceStatusEnum;
     /** ISO Timestamp of the last heartbeat */
     lastHeartbeatAtIso?: string;
-    ocpp?: HemsOneChargerApplianceOcppMetadata;
-    authorizationMode: HemsOneChargerApplianceAuthorizationModeEnum;
+    ocpp?: EnyoChargerApplianceOcppMetadata;
+    authorizationMode: EnyoChargerApplianceAuthorizationModeEnum;
     /** If cableType is Socket, the cable can be locked for theft protection */
     cableLocked?: boolean;
 }

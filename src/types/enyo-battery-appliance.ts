@@ -1,4 +1,4 @@
-export interface HemsOneBatteryApplianceMetadata {
+export interface EnyoBatteryApplianceMetadata {
     connectedToApplianceId?: string;
     maxDischargePowerW?: number;
     maxChargingPowerW?: number;

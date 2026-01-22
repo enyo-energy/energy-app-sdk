@@ -1,4 +1,4 @@
-export enum HemsOneSourceEnum {
+export enum EnyoSourceEnum {
     Device = 'device',
     Cloud = 'cloud',
 }

@@ -1,8 +1,8 @@
 import {
-    EnergyAppPackageConfigurationSetting,
-    EnergyAppSettingsChangeListener,
-    EnergyAppSettingConfigWithValue
-} from "../types/energy-app-settings.js";
+    EnyoPackageConfigurationSetting,
+    EnyoSettingsChangeListener,
+    EnyoSettingConfigWithValue
+} from "../types/enyo-settings.js";
 
 /**
  * Interface for managing Energy App settings configuration for appliances or the entire package.
@@ -17,7 +17,7 @@ export interface EnergyAppSettings {
      * @param config - The setting configuration to add, including optional appliance ID and current value
      * @returns Promise that resolves when the setting is successfully added
      */
-    addSettingConfig(config: EnergyAppPackageConfigurationSetting): Promise<void>;
+    addSettingConfig(config: EnyoPackageConfigurationSetting): Promise<void>;
 
     /**
      * Removes a setting configuration from the Energy App.
@@ -44,7 +44,7 @@ export interface EnergyAppSettings {
      *
      * @param listener - The callback function to be called on setting changes
      */
-    listenForSettingsChanges(listener: EnergyAppSettingsChangeListener): void;
+    listenForSettingsChanges(listener: EnyoSettingsChangeListener): void;
 
     /**
      * Retrieves all currently configured settings with their unique identifiers and current values.
@@ -52,5 +52,5 @@ export interface EnergyAppSettings {
      *
      * @returns Promise that resolves to an array of all settings with their IDs and current values
      */
-    getSettingsConfig(): Promise<EnergyAppSettingConfigWithValue[]>;
+    getSettingsConfig(): Promise<EnyoSettingConfigWithValue[]>;
 }

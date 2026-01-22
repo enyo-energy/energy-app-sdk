@@ -1,4 +1,4 @@
-export interface HemsOneOcppAvailableConnectionDetail {
+export interface EnyoOcppAvailableConnectionDetail {
     url: string;
     path: string;
     host: string;
@@ -6,27 +6,27 @@ export interface HemsOneOcppAvailableConnectionDetail {
     port: number;
 }
 
-export interface HemsOneOcppAvailableConnectionDetails {
-    cloud?: HemsOneOcppAvailableConnectionDetail;
-    local?: HemsOneOcppAvailableConnectionDetail;
+export interface EnyoOcppAvailableConnectionDetails {
+    cloud?: EnyoOcppAvailableConnectionDetail;
+    local?: EnyoOcppAvailableConnectionDetail;
 }
 
-export type HemsOneOCPPVersion = '1.6' | '2.0.1';
+export type EnyoOCPPVersion = '1.6' | '2.0.1';
 
-export interface HemsOneOcppChargePointConnection {
+export interface EnyoOcppChargePointConnection {
     chargePointId: string;
     remoteAddress?: string;
-    protocolVersion: HemsOneOCPPVersion;
+    protocolVersion: EnyoOCPPVersion;
 }
 
 export interface EnergyAppOcppMessageContext {
     chargePointId: string;
     messageId: string;
-    version: HemsOneOCPPVersion;
+    version: EnyoOCPPVersion;
     timestamp: Date;
 }
 
-export enum HemsOneOcppErrorCode {
+export enum EnyoOcppErrorCode {
     NotImplemented = 'NotImplemented',
     NotSupported = 'NotSupported',
     InternalError = 'InternalError',
@@ -44,19 +44,19 @@ export interface EnergyAppOcppMessageHandler<TRequest = any, TResponse = any> {
 }
 
 /**
- * Interface for OCPP functionality in HEMS one packages.
+ * Interface for OCPP functionality in enyo packages.
  */
 export interface EnergyAppOcpp {
-    getAvailableConnectionDetails: () => Promise<HemsOneOcppAvailableConnectionDetails>;
+    getAvailableConnectionDetails: () => Promise<EnyoOcppAvailableConnectionDetails>;
 
-    listenForChargePointConnected: (listener: (connection: HemsOneOcppChargePointConnection) => void) => string;
+    listenForChargePointConnected: (listener: (connection: EnyoOcppChargePointConnection) => void) => string;
 
     listenForChargePointDisconnected: (listener: (chargePointId: string) => void) => string;
 
     registerHandler: <TRequest, TResponse>(
         action: string,
         handler: EnergyAppOcppMessageHandler<TRequest, TResponse>,
-        version?: HemsOneOCPPVersion
+        version?: EnyoOCPPVersion
     ) => string;
 
     sendCall: <TRequest, TResponse>(
@@ -66,9 +66,9 @@ export interface EnergyAppOcpp {
         messageId?: string
     ) => Promise<TResponse>;
 
-    getConnectedChargePoints: () => HemsOneOcppChargePointConnection[];
+    getConnectedChargePoints: () => EnyoOcppChargePointConnection[];
 
-    getChargePoint: (chargePointId: string) => HemsOneOcppChargePointConnection | undefined;
+    getChargePoint: (chargePointId: string) => EnyoOcppChargePointConnection | undefined;
 
     disconnectChargePoint: (chargePointId: string, reason?: string) => void;
 

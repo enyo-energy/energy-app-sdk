@@ -1,4 +1,4 @@
-import {EnergyAppStateEnum, HemsOneEnergyAppSdk} from "./hems-one-energy-app-sdk.js";
+import {EnergyAppStateEnum, EnyoEnergyAppSdk} from "./enyo-energy-app-sdk.js";
 import {EnergyAppInterval} from "./packages/energy-app-interval.js";
 import {EnergyAppModbus} from "./packages/energy-app-modbus.js";
 import {EnergyAppStorage} from "./packages/energy-app-storage.js";
@@ -23,14 +23,14 @@ export * from './version.js';
 export * from './implementations/ocpp/ocpp16.js';
 export * from './implementations/ocpp/ocpp201.js';
 export * from './implementations/ocpp/ocpp-common.js';
-export * from './types/hems-one-authentication.js'
-export * from './types/energy-app-settings.js'
-export * from './types/hems-one-energy-tariff.js'
-export * from './types/hems-one-electricity-prices.js'
-export * from './types/hems-one-notification.js'
+export * from './types/enyo-authentication.js'
+export * from './types/enyo-settings.js'
+export * from './types/enyo-energy-tariff.js'
+export * from './types/enyo-electricity-prices.js'
+export * from './types/enyo-notification.js'
 
-export class EnergyApp implements HemsOneEnergyAppSdk {
-    private readonly energyAppSdk: HemsOneEnergyAppSdk;
+export class EnergyApp implements EnyoEnergyAppSdk {
+    private readonly energyAppSdk: EnyoEnergyAppSdk;
 
     constructor() {
         // in our runtime, there is an instance of energyAppSdk available which needs to be used here
@@ -53,7 +53,7 @@ export class EnergyApp implements HemsOneEnergyAppSdk {
     }
 
     public register(callback: (packageName: string, version: number) => void) {
-        // This registers the package with the HEMS one system
+        // This registers the package with the enyo system
         this.energyAppSdk.register(callback);
     }
 

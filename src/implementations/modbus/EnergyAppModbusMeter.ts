@@ -1,19 +1,19 @@
 import {randomUUID} from "node:crypto";
 import type {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
 import {
-    HemsOneAppliance,
-    HemsOneApplianceConnectionType,
-    HemsOneApplianceStateEnum,
-    HemsOneApplianceTopologyFeatureEnum,
-    HemsOneApplianceTypeEnum
-} from "../../types/hems-one-appliance.js";
-import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
+    EnyoAppliance,
+    EnyoApplianceConnectionType,
+    EnyoApplianceStateEnum,
+    EnyoApplianceTopologyFeatureEnum,
+    EnyoApplianceTypeEnum
+} from "../../types/enyo-appliance.js";
+import type {EnyoNetworkDevice} from "../../types/enyo-network-device.js";
 import {
-    type HemsOneDataBusMessage,
-    HemsOneDataBusMessageEnum,
-    type HemsOneDataBusMeterValuesUpdateV1
-} from "../../types/hems-one-data-bus-value.js";
-import {HemsOneSourceEnum} from "../../types/hems-one-source.enum.js";
+    type EnyoDataBusMessage,
+    EnyoDataBusMessageEnum,
+    type EnyoDataBusMeterValuesUpdateV1
+} from "../../types/enyo-data-bus-value.js";
+import {EnyoSourceEnum} from "../../types/enyo-source.enum.js";
 
 import {
     EnergyAppModbusConfigurationError,
@@ -27,16 +27,16 @@ import {EnergyAppModbusRegisterMapper} from './EnergyAppModbusRegisterMapper.js'
 import {EnergyAppModbusConnectionHealth} from './EnergyAppModbusConnectionHealth.js';
 import {EnergyAppModbusFaultTolerantReader} from './EnergyAppModbusFaultTolerantReader.js';
 import {EnergyApp} from "../../index.js";
-import {HemsOneMeterApplianceAvailableFeaturesEnum,} from "../../types/hems-one-meter-appliance.js";
+import {EnyoMeterApplianceAvailableFeaturesEnum,} from "../../types/enyo-meter-appliance.js";
 
 export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
     private readonly _registerMapper: IRegisterMapper;
     private readonly _connectionHealth: IConnectionHealth;
 
     private _modbusInstance?: EnergyAppModbusInstance;
-    private _appliance?: HemsOneAppliance;
+    private _appliance?: EnyoAppliance;
 
-    constructor(readonly client: EnergyApp, readonly config: EnergyAppModbusMeterConfig, readonly networkDevice: HemsOneNetworkDevice) {
+    constructor(readonly client: EnergyApp, readonly config: EnergyAppModbusMeterConfig, readonly networkDevice: EnyoNetworkDevice) {
         this.config = config;
         this.client = client;
         this.networkDevice = networkDevice;
@@ -51,7 +51,7 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
 
     }
 
-    get appliance(): HemsOneAppliance {
+    get appliance(): EnyoAppliance {
         if (!this._appliance) {
             throw new Error('Meter appliance not initialized. Call connect() first.');
         }
@@ -99,7 +99,7 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
         return this._modbusInstance !== undefined && this._connectionHealth.isHealthy();
     }
 
-    async updateData(): Promise<HemsOneDataBusMessage[]> {
+    async updateData(): Promise<EnyoDataBusMessage[]> {
         if (!this._modbusInstance || !this._appliance) {
             throw new Error('Meter not connected. Call connect() first.');
         }
@@ -116,12 +116,12 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
         // Calculate net grid power (positive = consumption, negative = feed-in)
         const gridPowerW = this.config.registers.gridPower !== undefined ? registerData.gridPower : (gridConsumptionPowerW - gridFeedInPowerW);
 
-        const message: HemsOneDataBusMeterValuesUpdateV1 = {
+        const message: EnyoDataBusMeterValuesUpdateV1 = {
             type: 'message',
-            source: HemsOneSourceEnum.Device,
+            source: EnyoSourceEnum.Device,
             id: randomUUID(),
             timestampIso: new Date().toISOString(),
-            message: HemsOneDataBusMessageEnum.MeterValuesUpdateV1,
+            message: EnyoDataBusMessageEnum.MeterValuesUpdateV1,
             applianceId: this._appliance.id,
             data: {
                 gridPowerW,
@@ -191,26 +191,26 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
         const appliances = await this.client.useAppliances().list();
         let existingAppliance = appliances.find(a =>
             a.networkDeviceIds.includes(this.networkDevice.id) &&
-            a.type === HemsOneApplianceTypeEnum.Meter
+            a.type === EnyoApplianceTypeEnum.Meter
         );
 
         if (!existingAppliance) {
             // Create new appliance
             existingAppliance = {
                 id: randomUUID(),
-                type: HemsOneApplianceTypeEnum.Meter,
+                type: EnyoApplianceTypeEnum.Meter,
                 networkDeviceIds: [this.networkDevice.id],
                 name: this.config.name,
                 metadata: {
-                    state: HemsOneApplianceStateEnum.Connected,
-                    connectionType: HemsOneApplianceConnectionType.Connector,
+                    state: EnyoApplianceStateEnum.Connected,
+                    connectionType: EnyoApplianceConnectionType.Connector,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 topology: {
-                    features: [HemsOneApplianceTopologyFeatureEnum.IntermediateOfPrimaryMeter]
+                    features: [EnyoApplianceTopologyFeatureEnum.IntermediateOfPrimaryMeter]
                 },
                 meter: {
-                    availableFeatures: [HemsOneMeterApplianceAvailableFeaturesEnum.LivePowerConsumption, HemsOneMeterApplianceAvailableFeaturesEnum.MeterValues]
+                    availableFeatures: [EnyoMeterApplianceAvailableFeaturesEnum.LivePowerConsumption, EnyoMeterApplianceAvailableFeaturesEnum.MeterValues]
                 }
             };
             await this.client.useAppliances().save(existingAppliance!, undefined);
@@ -222,15 +222,15 @@ export class EnergyAppModbusMeter implements EnergyAppModbusDevice {
                 name: this.config.name,
                 metadata: {
                     ...existingAppliance.metadata,
-                    connectionType: HemsOneApplianceConnectionType.Connector,
-                    state: HemsOneApplianceStateEnum.Connected,
+                    connectionType: EnyoApplianceConnectionType.Connector,
+                    state: EnyoApplianceStateEnum.Connected,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 topology: {
-                    features: [HemsOneApplianceTopologyFeatureEnum.IntermediateOfPrimaryMeter]
+                    features: [EnyoApplianceTopologyFeatureEnum.IntermediateOfPrimaryMeter]
                 },
                 meter: {
-                    availableFeatures: [HemsOneMeterApplianceAvailableFeaturesEnum.LivePowerConsumption, HemsOneMeterApplianceAvailableFeaturesEnum.MeterValues]
+                    availableFeatures: [EnyoMeterApplianceAvailableFeaturesEnum.LivePowerConsumption, EnyoMeterApplianceAvailableFeaturesEnum.MeterValues]
                 }
             };
             await this.client.useAppliances().save(existingAppliance!, existingAppliance?.id);

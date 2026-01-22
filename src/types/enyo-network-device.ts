@@ -1,7 +1,7 @@
 /**
  * Represents a detected network device with its connectivity information.
  */
-export interface HemsOneNetworkDevice {
+export interface EnyoNetworkDevice {
     /** Unique identifier for the device */
     id: string;
     /** Network hostname of the device */
@@ -15,17 +15,17 @@ export interface HemsOneNetworkDevice {
     /** Timestamp when the device was last seen */
     lastSeen: Date;
     /** List of open network ports on the device */
-    ports?: HemsOneNetworkPort[];
+    ports?: EnyoNetworkPort[];
     /** Access status for the device */
-    accessStatus: HemsOneNetworkDeviceAccessStatus | undefined;
+    accessStatus: EnyoNetworkDeviceAccessStatus | undefined;
 }
 
-export type HemsOneNetworkDeviceAccessStatus = 'granted' | 'denied' | 'pending';
+export type EnyoNetworkDeviceAccessStatus = 'granted' | 'denied' | 'pending';
 
 /**
  * Represents an open network port on a device.
  */
-export interface HemsOneNetworkPort {
+export interface EnyoNetworkPort {
     /** Port number */
     port: number;
     /** Service name running on the port (if detected) */

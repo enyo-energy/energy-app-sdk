@@ -1,8 +1,8 @@
-import {HemsOneApplianceTypeEnum, HemsOneApplianceStateEnum} from "./hems-one-appliance.js";
-import {HemsOneSourceEnum} from "./hems-one-source.enum.js";
-import {EnergyTariffInfo} from "./hems-one-energy-tariff.js";
+import {EnyoApplianceStateEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js";
+import {EnyoSourceEnum} from "./enyo-source.enum.js";
+import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 
-export enum HemsOneBatteryStateEnum {
+export enum EnyoBatteryStateEnum {
     Off = 'off',
     Empty = 'empty',
     Discharging = 'discharging',
@@ -12,7 +12,7 @@ export enum HemsOneBatteryStateEnum {
     Testing = 'testing'
 }
 
-export enum HemsOneInverterStateEnum {
+export enum EnyoInverterStateEnum {
     Off = 'off',
     Sleeping = 'sleeping',
     Starting = 'starting',
@@ -26,7 +26,7 @@ export enum HemsOneInverterStateEnum {
 /**
  * Charging meter value context defining when the measurement was taken
  */
-export enum HemsOneChargingMeterValueContext {
+export enum EnyoChargingMeterValueContext {
     /** Meter value at the start of a transaction */
     TransactionBegin = 'Transaction.Begin',
     /** Meter value at the end of a transaction */
@@ -46,7 +46,7 @@ export enum HemsOneChargingMeterValueContext {
 /**
  * Reason why a charging session was stopped
  */
-export enum HemsOneChargingStopReason {
+export enum EnyoChargingStopReason {
     /** Session stopped by remote command */
     Remote = 'Remote',
     /** Session stopped due to power loss */
@@ -61,7 +61,7 @@ export enum HemsOneChargingStopReason {
     Other = 'Other',
 }
 
-export interface HemsOneAggregatedStateApplianceValues {
+export interface EnyoAggregatedStateApplianceValues {
     gridPowerW?: number;
     gridFeedInWh?: number;
     gridConsumptionWh?: number;
@@ -100,7 +100,7 @@ export interface HemsOneAggregatedStateApplianceValues {
     }
 }
 
-export enum HemsOneDataBusMessageEnum {
+export enum EnyoDataBusMessageEnum {
     InverterValuesUpdateV1 = 'InverterValuesUpdateV1',
     MeterValuesUpdateV1 = 'MeterValuesUpdateV1',
     BatteryValuesUpdateV1 = 'BatteryValuesUpdateV1',
@@ -116,11 +116,11 @@ export enum HemsOneDataBusMessageEnum {
     EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1'
 }
 
-export interface HemsOneDataBusMessage {
+export interface EnyoDataBusMessage {
     id: string;
-    message: HemsOneDataBusMessageEnum;
+    message: EnyoDataBusMessageEnum;
     type: 'message' | 'answer';
-    source: HemsOneSourceEnum;
+    source: EnyoSourceEnum;
     applianceId?: string;
     clockId?: string;
     timestampIso: string;
@@ -129,16 +129,16 @@ export interface HemsOneDataBusMessage {
     data: object;
 }
 
-export interface HemsOneDataBusMessageAnswer extends HemsOneDataBusMessage {
+export interface EnyoDataBusMessageAnswer extends EnyoDataBusMessage {
     type: 'answer';
     data: {
         status: 'accepted' | 'rejected' | 'not-applicable';
     }
 }
 
-export interface HemsOneDataBusMeterValuesUpdateV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusMeterValuesUpdateV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.MeterValuesUpdateV1;
+    message: EnyoDataBusMessageEnum.MeterValuesUpdateV1;
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
@@ -155,9 +155,9 @@ export interface HemsOneDataBusMeterValuesUpdateV1 extends HemsOneDataBusMessage
     }
 }
 
-export interface HemsOneDataBusHeatpumpValuesV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.HeatpumpValuesUpdateV1;
+    message: EnyoDataBusMessageEnum.HeatpumpValuesUpdateV1;
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
@@ -193,13 +193,13 @@ export interface HemsOneDataBusHeatpumpValuesV1 extends HemsOneDataBusMessage {
     }
 }
 
-export interface HemsOneDataBusBatteryValuesUpdateV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusBatteryValuesUpdateV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.BatteryValuesUpdateV1;
+    message: EnyoDataBusMessageEnum.BatteryValuesUpdateV1;
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
-        state?: HemsOneBatteryStateEnum;
+        state?: EnyoBatteryStateEnum;
         /** Current Battery Power (in Watt). Positive = Consumption from the Battery, Negative = Feed in / charging of the battery. */
         batteryPowerW?: number;
         /** Battery State of Charge. Value between 0 and 100 */
@@ -207,19 +207,19 @@ export interface HemsOneDataBusBatteryValuesUpdateV1 extends HemsOneDataBusMessa
     }
 }
 
-export interface HemsOneDataBusInverterValuesV1String {
+export interface EnyoDataBusInverterValuesV1String {
     index: number;
     voltage?: number;
     powerW?: number;
 }
 
-export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.InverterValuesUpdateV1;
+    message: EnyoDataBusMessageEnum.InverterValuesUpdateV1;
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
-        state?: HemsOneInverterStateEnum;
+        state?: EnyoInverterStateEnum;
         /** Current PV Production (in Watt) */
         pvPowerW: number;
         /** voltage of Phase L1 to N*/
@@ -229,14 +229,14 @@ export interface HemsOneDataBusInverterValuesV1 extends HemsOneDataBusMessage {
         /** voltage of Phase L3 to N*/
         voltageL3?: number;
         activePowerLimitationW?: number;
-        strings?: HemsOneDataBusInverterValuesV1String[];
+        strings?: EnyoDataBusInverterValuesV1String[];
     }
 }
 
 
-export interface HemsOneDataBusApplianceFlexibilityAnnouncementV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.ApplianceFlexibilityAnnouncementV1;
+    message: EnyoDataBusMessageEnum.ApplianceFlexibilityAnnouncementV1;
     /** ID of the appliance */
     applianceId: string;
     data: {
@@ -248,9 +248,9 @@ export interface HemsOneDataBusApplianceFlexibilityAnnouncementV1 extends HemsOn
     }
 }
 
-export interface HemsOneDataBusChargingStartedV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusChargingStartedV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.ChargingStartedV1;
+    message: EnyoDataBusMessageEnum.ChargingStartedV1;
     /** ID of the appliance (charger) that started the session */
     applianceId: string;
     data: {
@@ -267,9 +267,9 @@ export interface HemsOneDataBusChargingStartedV1 extends HemsOneDataBusMessage {
     };
 }
 
-export interface HemsOneDataBusChargingMeterValuesV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusChargingMeterValuesV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.ChargingMeterValuesUpdateV1;
+    message: EnyoDataBusMessageEnum.ChargingMeterValuesUpdateV1;
     /** ID of the appliance (charger) providing the meter values */
     applianceId: string;
     data: {
@@ -292,13 +292,13 @@ export interface HemsOneDataBusChargingMeterValuesV1 extends HemsOneDataBusMessa
         /** Total energy delivered since session start in Watt hours */
         energyDeliveredWh: number;
         /** Context indicating when this meter value was taken */
-        context: HemsOneChargingMeterValueContext;
+        context: EnyoChargingMeterValueContext;
     };
 }
 
-export interface HemsOneDataBusChargingStoppedV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusChargingStoppedV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.ChargingStoppedV1;
+    message: EnyoDataBusMessageEnum.ChargingStoppedV1;
     /** ID of the appliance (charger) that handled the session */
     applianceId: string;
     data: {
@@ -311,13 +311,13 @@ export interface HemsOneDataBusChargingStoppedV1 extends HemsOneDataBusMessage {
         /** Total energy delivered during the session in Watt hours */
         energyDeliveredWh: number;
         /** Reason why the charging session was stopped */
-        stopReason: HemsOneChargingStopReason;
+        stopReason: EnyoChargingStopReason;
     };
 }
 
-export interface HemsOneDataBusAggregatedStateValuesV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.AggregatedStateUpdateV1;
+    message: EnyoDataBusMessageEnum.AggregatedStateUpdateV1;
     clockId: string;
     data: {
         /** Total grid power from all appliances (in Watt). Negative: grid feed in, positive: grid consumption */
@@ -350,37 +350,37 @@ export interface HemsOneDataBusAggregatedStateValuesV1 extends HemsOneDataBusMes
             /** ID of the appliance */
             applianceId: string;
             /** Type of the appliance */
-            type: HemsOneApplianceTypeEnum;
+            type: EnyoApplianceTypeEnum;
             /** Current connection state of the appliance */
-            state: HemsOneApplianceStateEnum;
+            state: EnyoApplianceStateEnum;
             /** ISO timestamp of the last update from this appliance */
             lastUpdateIso?: string;
             /** the current state values of the appliance */
-            values: HemsOneAggregatedStateApplianceValues;
+            values: EnyoAggregatedStateApplianceValues;
         }>;
     };
 }
 
-export interface HemsOneDataBusPauseChargingV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusPauseChargingV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.PauseChargingV1;
+    message: EnyoDataBusMessageEnum.PauseChargingV1;
     data: {
         applianceId: string;
     };
 }
 
-export interface HemsOneDataBusResumeChargingV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusResumeChargingV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.ResumeChargingV1;
+    message: EnyoDataBusMessageEnum.ResumeChargingV1;
     data: {
         applianceId: string;
         maxChargingPowerKw: number;
     };
 }
 
-export interface HemsOneDataBusChangeChargingPowerV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.ChangeChargingPowerV1;
+    message: EnyoDataBusMessageEnum.ChangeChargingPowerV1;
     data: {
         applianceId: string;
         maxChargingPowerKw: number;
@@ -391,9 +391,9 @@ export interface HemsOneDataBusChangeChargingPowerV1 extends HemsOneDataBusMessa
  * Energy tariff update message for communicating electricity pricing information.
  * Can be sent for specific appliances or system-wide tariff updates.
  */
-export interface HemsOneDataBusEnergyTariffUpdateV1 extends HemsOneDataBusMessage {
+export interface EnyoDataBusEnergyTariffUpdateV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: HemsOneDataBusMessageEnum.EnergyTariffUpdateV1;
+    message: EnyoDataBusMessageEnum.EnergyTariffUpdateV1;
     /** Optional ID of the appliance this tariff applies to. If omitted, applies system-wide */
     applianceId?: string;
     data: {

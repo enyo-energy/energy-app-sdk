@@ -1,11 +1,11 @@
 import type {EnergyApp} from "../../index.js";
-import type {HemsOneNetworkDevice} from "../../types/hems-one-network-device.js";
-import type {HemsOneAppliance, HemsOneApplianceName, HemsOneApplianceTopology} from "../../types/hems-one-appliance.js";
+import type {EnyoNetworkDevice} from "../../types/enyo-network-device.js";
+import type {EnyoAppliance, EnyoApplianceName, EnyoApplianceTopology} from "../../types/enyo-appliance.js";
 import {
-    HemsOneBatteryStateEnum,
-    HemsOneDataBusMessage,
-    HemsOneInverterStateEnum
-} from "../../types/hems-one-data-bus-value.js";
+    EnyoBatteryStateEnum,
+    EnyoDataBusMessage,
+    EnyoInverterStateEnum
+} from "../../types/enyo-data-bus-value.js";
 import {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
 
 /**
@@ -20,13 +20,13 @@ export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 
 // Value mapping for battery state registers
 export interface EnergyAppBatteryStateValueMapping {
     value: number;
-    mappedState: HemsOneBatteryStateEnum;
+    mappedState: EnyoBatteryStateEnum;
 }
 
 // Value mapping for inverter state registers
 export interface EnergyAppInverterStateValueMapping {
     value: number;
-    mappedState: HemsOneInverterStateEnum;
+    mappedState: EnyoInverterStateEnum;
 }
 
 /**
@@ -65,10 +65,10 @@ export interface EnergyAppModbusConnectionOptions {
 
 // Base Configuration for all Modbus devices
 export interface EnergyAppModbusDeviceConfig {
-    name: HemsOneApplianceName[];
+    name: EnyoApplianceName[];
     registers: EnergyAppRegisterMap;
     options?: EnergyAppModbusConnectionOptions & {
-        topology?: HemsOneApplianceTopology;
+        topology?: EnyoApplianceTopology;
     };
 }
 
@@ -198,8 +198,8 @@ export interface IConnectionHealth {
 export interface EnergyAppModbusDevice {
     readonly client: EnergyApp;
     readonly config: EnergyAppModbusDeviceConfig;
-    readonly appliance: HemsOneAppliance;
-    readonly networkDevice: HemsOneNetworkDevice;
+    readonly appliance: EnyoAppliance;
+    readonly networkDevice: EnyoNetworkDevice;
 
     connect(): Promise<void>;
 
@@ -207,7 +207,7 @@ export interface EnergyAppModbusDevice {
 
     isConnected(): boolean;
 
-    updateData(): Promise<HemsOneDataBusMessage[]>;
+    updateData(): Promise<EnyoDataBusMessage[]>;
 
     modbusClient(): EnergyAppModbusInstance | undefined;
 }

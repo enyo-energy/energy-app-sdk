@@ -1,7 +1,7 @@
 /**
  * Status of a charging session
  */
-export enum HemsOneChargeStatus {
+export enum EnyoChargeStatus {
     /** Charging session is active */
     Charging = 'Charging',
     /** Charging session completed successfully */
@@ -31,10 +31,10 @@ export interface ChargeMeterValue {
 }
 
 /**
- * Represents a charging session in the HEMS one system.
+ * Represents a charging session in the enyo system.
  * Contains all relevant information about an EV charging transaction.
  */
-export interface HemsOneCharge {
+export interface EnyoCharge {
     /** Unique identifier for the charging session */
     id: string;
     /** Transaction ID for the charging session */
@@ -48,7 +48,7 @@ export interface HemsOneCharge {
     /** ID of the vehicle being charged */
     vehicleId?: string;
     /** Current status of the charging session */
-    status: HemsOneChargeStatus;
+    status: EnyoChargeStatus;
     /** Meter reading at session start in Watt hours */
     meterStartValueWh?: number;
     /** Meter reading at session end in Watt hours */
@@ -67,7 +67,7 @@ export interface HemsOneCharge {
     numberOfPhases: number;
 }
 
-export interface HemsOneChargeFilter {
+export interface EnyoChargeFilter {
     /** Filter by specific appliance ID */
     applianceId?: string;
     /** Filter by specific charge point ID */
@@ -77,7 +77,7 @@ export interface HemsOneChargeFilter {
     /** Filter sessions ending before this ISO timestamp */
     endDate?: string;
     /** Filter by charging session status */
-    status?: HemsOneChargeStatus;
+    status?: EnyoChargeStatus;
     /** Filter by chargingCard */
     chargingCardId?: string;
     /** Filter by vehicle */

@@ -1,4 +1,4 @@
-import {EnergyTariffInfo} from "./hems-one-energy-tariff.js";
+import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 
 /**
  * Request parameters for retrieving electricity prices

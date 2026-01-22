@@ -1,19 +1,19 @@
 import {randomUUID} from "node:crypto";
-import {HemsOneAppliance, HemsOneApplianceConnectionType} from "../../types/hems-one-appliance.js";
+import {EnyoAppliance, EnyoApplianceConnectionType} from "../../types/enyo-appliance.js";
 import {
-    HemsOneApplianceStateEnum,
-    HemsOneApplianceTypeEnum
-} from "../../types/hems-one-appliance.js";
+    EnyoApplianceStateEnum,
+    EnyoApplianceTypeEnum
+} from "../../types/enyo-appliance.js";
 import {
-    HemsOneBatteryStateEnum,
-    type HemsOneDataBusBatteryValuesUpdateV1,
-    type HemsOneDataBusMessage,
-    HemsOneDataBusMessageEnum
-} from "../../types/hems-one-data-bus-value.js";
-import {HemsOneSourceEnum} from "../../types/hems-one-source.enum.js";
+    EnyoBatteryStateEnum,
+    type EnyoDataBusBatteryValuesUpdateV1,
+    type EnyoDataBusMessage,
+    EnyoDataBusMessageEnum
+} from "../../types/enyo-data-bus-value.js";
+import {EnyoSourceEnum} from "../../types/enyo-source.enum.js";
 import {
-    type HemsOneBatteryApplianceMetadata,
-} from "../../types/hems-one-battery-appliance.js";
+    type EnyoBatteryApplianceMetadata,
+} from "../../types/enyo-battery-appliance.js";
 
 import {
     type EnergyAppModbusDevice,
@@ -30,8 +30,8 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
     public readonly inverter?: IEnergyAppModbusInverter;
     private readonly _registerMapper: IRegisterMapper;
 
-    private _appliance?: HemsOneAppliance;
-    private _batteryMetadata?: HemsOneBatteryApplianceMetadata;
+    private _appliance?: EnyoAppliance;
+    private _batteryMetadata?: EnyoBatteryApplianceMetadata;
 
     constructor(readonly client: EnergyApp, readonly config: EnergyAppModbusBatteryConfig) {
         this.config = config;
@@ -50,7 +50,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         }
     }
 
-    get appliance(): HemsOneAppliance {
+    get appliance(): EnyoAppliance {
         if (!this._appliance) {
             throw new Error('Battery appliance not initialized. Call connect() first.');
         }
@@ -97,7 +97,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         return this.inverter?.isConnected() || false;
     }
 
-    async updateData(): Promise<HemsOneDataBusMessage[]> {
+    async updateData(): Promise<EnyoDataBusMessage[]> {
         if (!this.inverter || !this.inverter.isConnected() || !this._appliance) {
             throw new Error('Battery not connected. Call connect() first.');
         }
@@ -120,19 +120,19 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         const batteryPowerW = await this.getPower();
 
         // Read current battery state if available
-        let batteryState: HemsOneBatteryStateEnum | undefined;
+        let batteryState: EnyoBatteryStateEnum | undefined;
         try {
             batteryState = await this.getBatteryState() || undefined;
         } catch (error) {
             console.warn(`Failed to read battery state: ${(error as Error).message}`);
         }
 
-        const message: HemsOneDataBusBatteryValuesUpdateV1 = {
+        const message: EnyoDataBusBatteryValuesUpdateV1 = {
             type: 'message',
-            source: HemsOneSourceEnum.Device,
+            source: EnyoSourceEnum.Device,
             id: randomUUID(),
             timestampIso: new Date().toISOString(),
-            message: HemsOneDataBusMessageEnum.BatteryValuesUpdateV1,
+            message: EnyoDataBusMessageEnum.BatteryValuesUpdateV1,
             applianceId: this._appliance.id,
             data: {
                 state: batteryState,
@@ -297,9 +297,9 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
 
     /**
      * Reads the current battery state from modbus registers.
-     * Maps the register value to HemsOneBatteryApplianceStateEnum using the configured value mapping.
+     * Maps the register value to EnyoBatteryApplianceStateEnum using the configured value mapping.
      */
-    async getBatteryState(): Promise<HemsOneBatteryStateEnum | null> {
+    async getBatteryState(): Promise<EnyoBatteryStateEnum | null> {
         if (!this.inverter || !this.config.registers.state) {
             return null;
         }
@@ -323,7 +323,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
             if (this.config.registers.state.valueMapping) {
                 const mapping = this.config.registers.state.valueMapping.find(m => m.value === result.value);
                 if (mapping) {
-                    return mapping.mappedState as HemsOneBatteryStateEnum;
+                    return mapping.mappedState as EnyoBatteryStateEnum;
                 } else {
                     console.warn(`No mapping found for battery state value: ${result.value}. Available mappings: ${this.config.registers.state.valueMapping.map(m => m.value).join(', ')}`);
                     return null;
@@ -374,7 +374,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
      * This method reads static metadata like max capacity and power limits once
      * and stores them for later use in appliance creation.
      */
-    private async _discoverBatteryMetadata(): Promise<HemsOneBatteryApplianceMetadata> {
+    private async _discoverBatteryMetadata(): Promise<EnyoBatteryApplianceMetadata> {
         if (!this.inverter || !this.inverter.isConnected()) {
             throw new Error('Inverter must be connected before discovering battery metadata');
         }
@@ -387,7 +387,7 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         }
 
         const reader = new EnergyAppModbusFaultTolerantReader(modbusInstance, connectionHealth);
-        const metadata: HemsOneBatteryApplianceMetadata = {};
+        const metadata: EnyoBatteryApplianceMetadata = {};
 
         try {
             // Read max capacity if configured
@@ -437,19 +437,19 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
         const appliances = await this.client.useAppliances().list();
         let existingAppliance = appliances.find(a =>
             a.networkDeviceIds.includes(this.inverter!.networkDevice.id) &&
-            a.type === HemsOneApplianceTypeEnum.Storage
+            a.type === EnyoApplianceTypeEnum.Storage
         );
 
         if (!existingAppliance) {
             // Create new appliance
             existingAppliance = {
                 id: randomUUID(),
-                type: HemsOneApplianceTypeEnum.Storage,
+                type: EnyoApplianceTypeEnum.Storage,
                 networkDeviceIds: [this.inverter.networkDevice.id],
                 name: this.config.name,
                 metadata: {
-                    state: HemsOneApplianceStateEnum.Connected,
-                    connectionType: HemsOneApplianceConnectionType.Connector,
+                    state: EnyoApplianceStateEnum.Connected,
+                    connectionType: EnyoApplianceConnectionType.Connector,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 battery: this._batteryMetadata
@@ -463,8 +463,8 @@ export class EnergyAppModbusBattery implements EnergyAppModbusDevice {
                 name: this.config.name,
                 metadata: {
                     ...existingAppliance.metadata,
-                    state: HemsOneApplianceStateEnum.Connected,
-                    connectionType: HemsOneApplianceConnectionType.Connector,
+                    state: EnyoApplianceStateEnum.Connected,
+                    connectionType: EnyoApplianceConnectionType.Connector,
                     ...this.config.options?.topology && {topology: this.config.options.topology}
                 },
                 battery: this._batteryMetadata
