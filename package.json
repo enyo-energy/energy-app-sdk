@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/enyo/energy-app-sdk.git"
+    "url": "git+https://github.com/enyo-energy/energy-app-sdk.git"
   },
   "keywords": [
     "enyo"
@@ -27,9 +27,9 @@
   "author": "enyo",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/enyo/energy-app-sdk/issues"
+    "url": "https://github.com/enyo-energy/energy-app-sdk/issues"
   },
-  "homepage": "https://github.com/enyo/energy-app-sdk",
+  "homepage": "https://github.com/enyo-energy/energy-app-sdk",
   "devDependencies": {
     "@knighted/duel": "^2.1.4",
     "@types/express": "^5.0.3",
