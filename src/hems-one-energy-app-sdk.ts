@@ -11,6 +11,7 @@ import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
 import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
+import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -63,4 +64,6 @@ export interface HemsOneEnergyAppSdk {
     useSettings: () => EnergyAppSettings;
     /** Get the Electricity Prices API */
     useElectricityPrices: () => EnergyAppElectricityPrices;
+    /** Get the Notification API */
+    useNotification: () => EnergyAppNotification;
 }
