@@ -1,7 +1,7 @@
 import {
     EnyoAuthenticateState,
     EnyoAuthentication,
-    EnyoAuthenticationResponse, EnyoOauthAuthenticationParameters, EnyoOauthAuthenticationRedirectUrlResponse
+    EnyoAuthenticationResponse, EnyoOauthAuthenticationStart, EnyoOauthAuthenticationRedirectUrlResponse
 } from "../types/enyo-authentication.js";
 
 /**
@@ -20,7 +20,7 @@ export interface EnergyAppAuthentication {
     /**
      * If you use oauth with clientIdName and clientSecretName, you need to listen to this and respond with the redirect url
      */
-    listenForOauthParameters(listener: (response: EnyoOauthAuthenticationParameters) => Promise<EnyoOauthAuthenticationRedirectUrlResponse>): string;
+    listenForOauthStart(listener: (response: EnyoOauthAuthenticationStart) => Promise<EnyoOauthAuthenticationRedirectUrlResponse>): string;
 
     /**
      * Adds a listener for authentication responses.

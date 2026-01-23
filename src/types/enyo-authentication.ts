@@ -22,10 +22,9 @@ export interface EnyoOauthAuthentication {
     /** If the client id and client secret need to be provided by the user*/
     clientIdName?: EnyoPackageConfigurationTranslatedValue[];
     clientSecretName?: EnyoPackageConfigurationTranslatedValue[];
-    redirectUrl?: string;
 }
 
-export interface EnyoOauthAuthenticationParameters {
+export interface EnyoOauthAuthenticationStart {
     clientId?: string;
     clientSecret?: string;
 }
