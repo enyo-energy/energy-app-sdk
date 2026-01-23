@@ -1,6 +1,6 @@
 {
   "name": "@enyo-energy/energy-app-sdk",
-  "version": "0.0.35",
+  "version": "0.0.36",
   "description": "enyo Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
     "README.md"
   ],
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   },
   "repository": {
     "type": "git",
