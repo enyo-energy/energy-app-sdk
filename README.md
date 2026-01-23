@@ -42,21 +42,7 @@ npm install @enyo-energy/energy-app-sdk
 Create a basic Energy App that responds to system events:
 
 ```typescript
-import { EnergyApp, defineEnergyAppPackage, EnergyAppPackageCategory } from '@enyo-energy/energy-app-sdk';
-
-// Define your package
-const packageDefinition = defineEnergyAppPackage({
-    version: '1',
-    packageName: 'my-energy-app',
-    categories: [EnergyAppPackageCategory.EnergyManagement],
-    storeEntry: [{
-        language: 'en',
-        title: 'My Energy App',
-        shortDescription: 'A simple energy management app',
-        description: 'This app demonstrates basic energy management capabilities'
-    }],
-    permissions: ['Storage', 'SendDataBusValues']
-});
+import { EnergyApp, defineEnergyAppPackage, EnergyAppPackageCategory, EnergyAppStateEnum } from '@enyo-energy/energy-app-sdk';
 
 // Initialize the Energy App
 const energyApp = new EnergyApp();
@@ -66,7 +52,7 @@ energyApp.register((packageName: string, version: number) => {
     console.log(`System is ${energyApp.isSystemOnline() ? 'online' : 'offline'}`);
 
     // Set app state to running
-    energyApp.updateEnergyAppState('running');
+    energyApp.updateEnergyAppState(EnergyAppStateEnum.Running);
 
     // Your app logic starts here
     startApp();
@@ -104,7 +90,7 @@ const energyApp = new EnergyApp();
 // Register startup callback
 energyApp.register((packageName, version) => {
     console.log(`${packageName} v${version} started`);
-    energyApp.updateEnergyAppState('running');
+    energyApp.updateEnergyAppState(EnergyAppStateEnum.Running);
 });
 
 // Register shutdown callback
