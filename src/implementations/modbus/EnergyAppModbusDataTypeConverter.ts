@@ -1,11 +1,11 @@
-import type {IDataTypeConverter, EnergyAppModbusDataType, EnergyAppModbusRegisterConfig} from './interfaces.js';
+import {EnergyAppModbusDataType} from "./interfaces.js";
 
 /**
  * Data Type Converter for Modbus Register Values
  *
  * @description Converts raw buffer data from Modbus registers into appropriate JavaScript types
  */
-export class EnergyAppModbusDataTypeConverter implements IDataTypeConverter {
+export class EnergyAppModbusDataTypeConverter {
     /**
      * Converts raw buffer data from Modbus registers into appropriate JavaScript types
      *

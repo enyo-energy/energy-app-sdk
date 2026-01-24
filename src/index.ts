@@ -16,9 +16,6 @@ import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-pric
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 
 export * from './energy-app-package-definition.js';
-export * from './implementations/modbus/EnergyAppModbusBattery.js';
-export * from './implementations/modbus/EnergyAppModbusMeter.js';
-export * from './implementations/modbus/EnergyAppModbusInverter.js';
 export * from './version.js';
 export * from './implementations/ocpp/ocpp16.js';
 export * from './implementations/ocpp/ocpp201.js';
@@ -28,6 +25,8 @@ export * from './types/enyo-settings.js'
 export * from './types/enyo-energy-tariff.js'
 export * from './types/enyo-electricity-prices.js'
 export * from './types/enyo-notification.js'
+export * from './implementations/appliances/appliance-manager.js'
+export * from './implementations/appliances/identifier-strategies.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;

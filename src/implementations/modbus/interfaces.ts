@@ -1,12 +1,4 @@
-import type {EnergyApp} from "../../index.js";
-import type {EnyoNetworkDevice} from "../../types/enyo-network-device.js";
-import type {EnyoAppliance, EnyoApplianceName, EnyoApplianceTopology} from "../../types/enyo-appliance.js";
-import {
-    EnyoBatteryStateEnum,
-    EnyoDataBusMessage,
-    EnyoInverterStateEnum
-} from "../../types/enyo-data-bus-value.js";
-import {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
+import type {EnyoApplianceName, EnyoApplianceTopology} from "../../types/enyo-appliance.js";
 
 /**
  * Data Types for Modbus Register Configuration
@@ -17,16 +9,9 @@ import {EnergyAppModbusInstance} from "../../packages/energy-app-modbus.js";
  */
 export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 'float32' | 'string';
 
-// Value mapping for battery state registers
-export interface EnergyAppBatteryStateValueMapping {
+export interface EnergyAppModbusStateValueMapping<T> {
     value: number;
-    mappedState: EnyoBatteryStateEnum;
-}
-
-// Value mapping for inverter state registers
-export interface EnergyAppInverterStateValueMapping {
-    value: number;
-    mappedState: EnyoInverterStateEnum;
+    mappedState: T;
 }
 
 /**
@@ -34,7 +19,7 @@ export interface EnergyAppInverterStateValueMapping {
  *
  * @description Configuration for reading a Modbus register
  */
-export interface EnergyAppModbusRegisterConfig {
+export interface EnergyAppModbusRegisterConfig<T> {
     /** Modbus register address */
     address: number;
     /** Data type of the register value */
@@ -46,12 +31,12 @@ export interface EnergyAppModbusRegisterConfig {
     /** Whether this register is required for device operation */
     required?: boolean;
     /** For mapping numeric values to enum states (only applies to numeric types) */
-    valueMapping?: EnergyAppBatteryStateValueMapping[] | EnergyAppInverterStateValueMapping[];
+    valueMapping?: EnergyAppModbusStateValueMapping<T>[];
 }
 
 // Generic Register Map for any device type
 export interface EnergyAppRegisterMap {
-    [key: string]: EnergyAppModbusRegisterConfig | undefined;
+    [key: string]: EnergyAppModbusRegisterConfig<any> | undefined;
 }
 
 // Connection Options
@@ -69,58 +54,6 @@ export interface EnergyAppModbusDeviceConfig {
     registers: EnergyAppRegisterMap;
     options?: EnergyAppModbusConnectionOptions & {
         topology?: EnyoApplianceTopology;
-    };
-}
-
-// Specific Configurations for each device type
-export interface EnergyAppModbusInverterConfig extends EnergyAppModbusDeviceConfig {
-    registers: {
-        serialNumber?: EnergyAppModbusRegisterConfig;
-        power?: EnergyAppModbusRegisterConfig;
-        voltageL1?: EnergyAppModbusRegisterConfig;
-        voltageL2?: EnergyAppModbusRegisterConfig;
-        voltageL3?: EnergyAppModbusRegisterConfig;
-        maxPvProductionW?: EnergyAppModbusRegisterConfig; // Maximum PV production in W
-        state?: EnergyAppModbusRegisterConfig; // Inverter state (off, sleeping, mppt, etc.)
-        activePowerLimitationW?: EnergyAppModbusRegisterConfig; // Active power limitation in W
-        string1Power?: EnergyAppModbusRegisterConfig;
-        string1Voltage?: EnergyAppModbusRegisterConfig;
-        string2Power?: EnergyAppModbusRegisterConfig;
-        string2Voltage?: EnergyAppModbusRegisterConfig;
-        string3Power?: EnergyAppModbusRegisterConfig;
-        string3Voltage?: EnergyAppModbusRegisterConfig;
-        string4Power?: EnergyAppModbusRegisterConfig;
-        string4Voltage?: EnergyAppModbusRegisterConfig;
-        [key: string]: EnergyAppModbusRegisterConfig | undefined;
-    };
-}
-
-export interface EnergyAppModbusBatteryConfig extends EnergyAppModbusDeviceConfig {
-    inverter?: IEnergyAppModbusInverter; // Reference to parent inverter
-    registers: {
-        current?: EnergyAppModbusRegisterConfig;
-        voltage?: EnergyAppModbusRegisterConfig;
-        soc?: EnergyAppModbusRegisterConfig; // State of Charge
-        power?: EnergyAppModbusRegisterConfig;
-        temperature?: EnergyAppModbusRegisterConfig;
-        state?: EnergyAppModbusRegisterConfig; // Battery state (charging, discharging, etc.)
-        maxCapacityWh?: EnergyAppModbusRegisterConfig; // Maximum battery capacity in Wh
-        maxDischargePowerW?: EnergyAppModbusRegisterConfig; // Maximum discharge power in W
-        maxChargingPowerW?: EnergyAppModbusRegisterConfig; // Maximum charging power in W
-        drainPercentage?: EnergyAppModbusRegisterConfig; // Drain percentage of max capacity (discharging)
-        loadPercentage?: EnergyAppModbusRegisterConfig; // Load percentage of max capacity (charging)
-        [key: string]: EnergyAppModbusRegisterConfig | undefined;
-    };
-}
-
-export interface EnergyAppModbusMeterConfig extends EnergyAppModbusDeviceConfig {
-    registers: {
-        gridPower?: EnergyAppModbusRegisterConfig;
-        gridFeedInPower?: EnergyAppModbusRegisterConfig;
-        gridConsumptionPower?: EnergyAppModbusRegisterConfig;
-        gridFeedInEnergy?: EnergyAppModbusRegisterConfig;
-        gridConsumptionEnergy?: EnergyAppModbusRegisterConfig;
-        [key: string]: EnergyAppModbusRegisterConfig | undefined;
     };
 }
 
@@ -142,7 +75,7 @@ export interface IRegisterReader {
 
 // Register Mapper Interface
 export interface IRegisterMapper {
-    readRegister<T>(reader: IRegisterReader, config: EnergyAppModbusRegisterConfig): Promise<RegisterReadResult<T>>;
+    readRegister<T, E>(reader: IRegisterReader, config: EnergyAppModbusRegisterConfig<E>): Promise<RegisterReadResult<T>>;
 
     readMultipleRegisters(reader: IRegisterReader, registerMap: EnergyAppRegisterMap): Promise<{ [key: string]: any }>;
 
@@ -192,56 +125,6 @@ export interface IConnectionHealth {
     getConsecutiveFailures(): number;
 
     getLastError(): Error | undefined;
-}
-
-// Main Modbus Device Interfaces
-export interface EnergyAppModbusDevice {
-    readonly client: EnergyApp;
-    readonly config: EnergyAppModbusDeviceConfig;
-    readonly appliance: EnyoAppliance;
-    readonly networkDevice: EnyoNetworkDevice;
-
-    connect(): Promise<void>;
-
-    disconnect(): Promise<void>;
-
-    isConnected(): boolean;
-
-    updateData(): Promise<EnyoDataBusMessage[]>;
-
-    modbusClient(): EnergyAppModbusInstance | undefined;
-}
-
-// Forward declarations for device classes
-export interface IEnergyAppModbusInverter extends EnergyAppModbusDevice {
-    readonly config: EnergyAppModbusInverterConfig;
-
-    getSerialNumber(): Promise<string | null>;
-
-    getCurrentPower(): Promise<number | null>;
-
-    getTotalEnergy(): Promise<number | null>;
-}
-
-export interface IEnergyAppModbusBattery extends EnergyAppModbusDevice {
-    readonly config: EnergyAppModbusBatteryConfig;
-    readonly inverter?: IEnergyAppModbusInverter;
-
-    getSoc(): Promise<number | null>;
-
-    getCurrent(): Promise<number | null>;
-
-    getPower(): Promise<number | null>;
-}
-
-export interface IEnergyAppModbusMeter extends EnergyAppModbusDevice {
-    readonly config: EnergyAppModbusMeterConfig;
-
-    getGridPower(): Promise<number | null>;
-
-    getGridFeedInEnergy(): Promise<number | null>;
-
-    getGridConsumptionEnergy(): Promise<number | null>;
 }
 
 // Error types

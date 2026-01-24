@@ -1,11 +1,11 @@
 import {
-    type IRegisterMapper,
-    type IRegisterReader,
-    type IDataTypeConverter,
+    EnergyAppModbusReadError,
     type EnergyAppModbusRegisterConfig,
     type EnergyAppRegisterMap,
-    type RegisterReadResult,
-    EnergyAppModbusReadError
+    type IDataTypeConverter,
+    type IRegisterMapper,
+    type IRegisterReader,
+    type RegisterReadResult
 } from './interfaces.js';
 import {EnergyAppModbusDataTypeConverter} from './EnergyAppModbusDataTypeConverter.js';
 
@@ -16,7 +16,7 @@ export class EnergyAppModbusRegisterMapper implements IRegisterMapper {
         this.dataTypeConverter = dataTypeConverter || new EnergyAppModbusDataTypeConverter();
     }
 
-    async readRegister<T>(reader: IRegisterReader, config: EnergyAppModbusRegisterConfig): Promise<RegisterReadResult<T>> {
+    async readRegister<T, E>(reader: IRegisterReader, config: EnergyAppModbusRegisterConfig<E>): Promise<RegisterReadResult<T>> {
         try {
             // Calculate quantity if not provided
             const quantity = config.quantity || this.dataTypeConverter.getRegisterQuantity(config.dataType);
