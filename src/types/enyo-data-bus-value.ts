@@ -116,6 +116,8 @@ export enum EnyoDataBusMessageEnum {
     EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1'
 }
 
+export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
+
 export interface EnyoDataBusMessage {
     id: string;
     message: EnyoDataBusMessageEnum;
@@ -125,7 +127,7 @@ export interface EnyoDataBusMessage {
     clockId?: string;
     timestampIso: string;
     /** If you just forward events that occur, use dynamic as resolution */
-    resolution?: '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
+    resolution?: EnyoDataBusMessageResolution;
     data: object;
 }
 

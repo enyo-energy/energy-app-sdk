@@ -152,7 +152,7 @@ export class ApplianceManager {
      * @param appliance The appliance to cache
      * @param networkDevice Optional network device for identifier extraction
      */
-    private updateCache(appliance: EnyoAppliance, networkDevice?: EnyoNetworkDevice): void {
+    protected updateCache(appliance: EnyoAppliance, networkDevice?: EnyoNetworkDevice): void {
         this.applianceCache.set(appliance.id, appliance);
 
         // Extract identifier
