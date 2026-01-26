@@ -100,7 +100,7 @@ export class ApplianceManager {
      * @param config Configuration options for the manager
      * @returns Promise that resolves to an initialized ApplianceManager instance
      */
-    private static async initialize(
+    static async initialize(
         energyApp: EnergyApp,
         config?: ApplianceManagerConfig
     ): Promise<ApplianceManager> {
