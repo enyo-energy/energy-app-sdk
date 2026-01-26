@@ -14,6 +14,7 @@ import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
 import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
+import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -25,6 +26,7 @@ export * from './types/enyo-settings.js'
 export * from './types/enyo-energy-tariff.js'
 export * from './types/enyo-electricity-prices.js'
 export * from './types/enyo-notification.js'
+export * from './types/enyo-secret-manager.js'
 export * from './implementations/appliances/appliance-manager.js'
 export * from './implementations/appliances/identifier-strategies.js'
 
@@ -123,6 +125,15 @@ export class EnergyApp implements EnyoEnergyAppSdk {
 
     public useNotification(): EnergyAppNotification {
         return this.energyAppSdk.useNotification();
+    }
+
+    /**
+     * Gets the Secret Manager API for retrieving secrets from the developer organization.
+     * Provides methods to fetch secrets that have been configured in the developer org's secret store.
+     * @returns The Secret Manager API instance
+     */
+    public useSecretManager(): EnergyAppSecretManager {
+        return this.energyAppSdk.useSecretManager();
     }
 
     /**

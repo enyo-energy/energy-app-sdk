@@ -7,7 +7,7 @@ import type {EnyoApplianceName, EnyoApplianceTopology} from "../../types/enyo-ap
  * - Numeric types: uint16, int16, uint32, int32, float32
  * - String type: string (requires length property in register config)
  */
-export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 'float32' | 'string';
+export type EnergyAppModbusDataType = 'uint16' | 'int16' | 'uint32' | 'int32' | 'float32' | 'string' | 'acc32' | 'acc16';
 
 export interface EnergyAppModbusStateValueMapping<T> {
     value: number;
@@ -69,6 +69,15 @@ export interface IRegisterReader {
     readHoldingRegisters(startAddress: number, quantity: number): Promise<RegisterReadResult<Buffer>>;
 
     readInputRegisters?(startAddress: number, quantity: number): Promise<RegisterReadResult<Buffer>>;
+
+    readHoldingRegisterWithType<T = any>(
+        address: number,
+        dataType: EnergyAppModbusDataType,
+        options?: {
+            scale?: number;
+            quantity?: number; // For strings: number of characters
+        }
+    ): Promise<RegisterReadResult<T>>;
 
     isHealthy(): boolean;
 }

@@ -221,16 +221,27 @@ export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
+        /** Operation State of the inverter */
         state?: EnyoInverterStateEnum;
         /** Current PV Production (in Watt) */
         pvPowerW: number;
-        /** voltage of Phase L1 to N*/
+        /** voltage of Phase L1 to N in V */
         voltageL1: number;
-        /** voltage of Phase L2 to N*/
+        /** voltage of Phase L2 to N in V */
         voltageL2?: number;
-        /** voltage of Phase L3 to N*/
+        /** voltage of Phase L3 to N in V */
         voltageL3?: number;
+        /** Current of Phase L1 to N in A */
+        currentL1?: number;
+        /** Current of Phase L2 to N in A */
+        currentL2?: number;
+        /** Current of Phase L3 to N in A */
+        currentL3?: number;
+        /** DC Power in W */
+        dcPowerW?: number;
+        /** Active power Limitation of the Inverter */
         activePowerLimitationW?: number;
+        /** DC String values. Please only provide active strings */
         strings?: EnyoDataBusInverterValuesV1String[];
     }
 }

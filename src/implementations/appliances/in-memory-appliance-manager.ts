@@ -9,6 +9,7 @@ import {
 } from "../../types/enyo-appliance.js";
 import {ApplianceConfig, ApplianceManager, ApplianceManagerConfig, FindResult} from "./appliance-manager.js";
 import {IdentifierStrategy} from "./identifier-strategies.js";
+import {randomUUID} from "node:crypto";
 
 /**
  * Demo implementation of ApplianceManager that stores all data in memory.
@@ -31,57 +32,69 @@ export class InMemoryApplianceManager extends ApplianceManager {
 
     /**
      * Creates or updates an appliance in memory.
-     * @param config The appliance configuration
-     * @param existingApplianceId Optional ID of an existing appliance to update
+     * @param appliance The appliance configuration
      * @returns The ID of the created or updated appliance
      */
-    async createOrUpdateAppliance(config: ApplianceConfig, existingApplianceId?: string): Promise<string> {
-        const applianceId = existingApplianceId || `appliance_${this.nextId++}`;
-
+    async createOrUpdateAppliance(appliance: ApplianceConfig): Promise<string> {
         // Build network device IDs list
-        const networkDeviceIds = config.networkDevices?.map(d => d.id) ?? [];
+        const networkDeviceIds = appliance.networkDevices?.map(d => d.id) ?? [];
 
-        // Get existing metadata if updating
-        const existingAppliance = existingApplianceId ? this.memoryStore.get(existingApplianceId) : null;
+        // Try to find existing appliance using identifier strategy
+        let existingAppliance: EnyoAppliance | undefined;
+
+        const identifier = this.config.identifierStrategy.extract(
+            appliance,
+        );
+
+        if (identifier) {
+            const existing = await this.findByIdentifier(identifier);
+            if (existing.length > 0) {
+                existingAppliance = existing[0];
+                if (this.config.enableLogging) {
+                    console.log(`Found existing appliance with ID ${existingAppliance.id} for identifier ${identifier}`);
+                }
+            }
+        }
 
         // Merge metadata with defaults and existing values
         const metadata: EnyoApplianceMetadata = {
-            connectionType: config.metadata?.connectionType ||
+            connectionType: appliance.metadata?.connectionType ||
                 existingAppliance?.metadata?.connectionType ||
                 EnyoApplianceConnectionType.Connector,
-            state: config.metadata?.state ||
+            state: appliance.metadata?.state ||
                 existingAppliance?.metadata?.state ||
                 EnyoApplianceStateEnum.Connected,
-            ...config.metadata
+            ...appliance.metadata
         };
 
         // Build appliance data
+        const applianceId = existingAppliance?.id || randomUUID();
         const applianceData: EnyoAppliance = {
             id: applianceId,
-            name: config.name,
-            type: config.type,
+            name: appliance.name,
+            type: appliance.type,
             networkDeviceIds,
             metadata,
-            ...(config.topology && {topology: config.topology})
+            ...(appliance.topology && {topology: appliance.topology}),
+            meter: appliance.meter,
+            heatpump: appliance.heatpump,
+            battery: appliance.battery,
+            charger: appliance.charger,
+            inverter: appliance.inverter,
         };
-
-        // Add type-specific metadata
-        if (config.typeMetadata) {
-            Object.assign(applianceData, config.typeMetadata);
-        }
 
         // Save to memory store
         this.memoryStore.set(applianceId, applianceData);
 
         // Store network devices if provided
-        if (config.networkDevices) {
-            this.networkDevicesStore.set(applianceId, config.networkDevices);
+        if (appliance.networkDevices) {
+            this.networkDevicesStore.set(applianceId, appliance.networkDevices);
         }
 
         // Update cache
-        this.updateCache(applianceData, config.networkDevices?.[0]);
+        this.updateCache(applianceData);
 
-        console.log(`[DEMO] ${existingApplianceId ? 'Updated' : 'Created'} appliance ${applianceId} of type ${config.type}`);
+        console.log(`[DEMO] ${existingAppliance ? 'Updated' : 'Created'} appliance ${applianceId} of type ${appliance.type}`);
 
         return applianceId;
     }
@@ -123,11 +136,11 @@ export class InMemoryApplianceManager extends ApplianceManager {
 
         for (const appliance of this.memoryStore.values()) {
             const networkDevices = await this.getNetworkDevicesForApplianceDemo(appliance);
-            const extractedId = strategy.extract(appliance, networkDevices[0]);
+            const extractedId = strategy.extract(appliance);
 
             if (extractedId === identifier) {
                 matches.push(appliance);
-                this.updateCache(appliance, networkDevices[0]);
+                this.updateCache(appliance);
             }
         }
 
@@ -147,7 +160,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         for (const strategy of strategies) {
             for (const appliance of this.memoryStore.values()) {
                 const networkDevices = await this.getNetworkDevicesForApplianceDemo(appliance);
-                const identifier = strategy.extract(appliance, networkDevices[0]);
+                const identifier = strategy.extract(appliance);
 
                 if (identifier === searchValue) {
                     return {
@@ -314,7 +327,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         this.clearCache();
         for (const appliance of this.memoryStore.values()) {
             const networkDevices = await this.getNetworkDevicesForApplianceDemo(appliance);
-            this.updateCache(appliance, networkDevices[0]);
+            this.updateCache(appliance);
         }
     }
 

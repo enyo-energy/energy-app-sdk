@@ -12,6 +12,7 @@ import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
 import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
+import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -66,4 +67,6 @@ export interface EnyoEnergyAppSdk {
     useElectricityPrices: () => EnergyAppElectricityPrices;
     /** Get the Notification API */
     useNotification: () => EnergyAppNotification;
+    /** Get the Secret Manager API */
+    useSecretManager: () => EnergyAppSecretManager;
 }

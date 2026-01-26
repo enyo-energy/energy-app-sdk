@@ -1,5 +1,5 @@
-import type { EnyoAppliance } from "../../types/enyo-appliance.js";
-import type { EnyoNetworkDevice } from "../../types/enyo-network-device.js";
+import type {EnyoAppliance} from "../../types/enyo-appliance.js";
+import {ApplianceConfig} from "./appliance-manager.js";
 
 /**
  * Strategy interface for extracting unique identifiers from appliances.
@@ -9,33 +9,14 @@ export interface IdentifierStrategy {
     /**
      * Extract the unique identifier from an appliance or its associated data.
      * @param appliance The appliance to extract the identifier from
-     * @param networkDevice Optional network device associated with the appliance
      * @returns The extracted identifier string, or undefined if not available
      */
-    extract(appliance: Partial<EnyoAppliance>, networkDevice?: EnyoNetworkDevice): string | undefined;
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined;
 
     /**
      * Name of the strategy for logging and debugging purposes.
      */
     name: string;
-}
-
-/**
- * Strategy that uses the network device ID as the identifier.
- * This is the default strategy for most appliances.
- */
-export class NetworkDeviceIdStrategy implements IdentifierStrategy {
-    name = 'networkDeviceId';
-
-    /**
-     * Extracts the network device ID.
-     * @param appliance The appliance (not used in this strategy)
-     * @param networkDevice The network device to get the ID from
-     * @returns The network device ID or undefined
-     */
-    extract(appliance: Partial<EnyoAppliance>, networkDevice?: EnyoNetworkDevice): string | undefined {
-        return networkDevice?.id;
-    }
 }
 
 /**
@@ -50,7 +31,7 @@ export class SerialNumberStrategy implements IdentifierStrategy {
      * @param appliance The appliance to extract the serial number from
      * @returns The serial number or undefined
      */
-    extract(appliance: Partial<EnyoAppliance>): string | undefined {
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
         return appliance.metadata?.serialNumber;
     }
 }
@@ -75,7 +56,7 @@ export class CustomMetadataStrategy implements IdentifierStrategy {
      * @param appliance The appliance to extract the field from
      * @returns The field value or undefined
      */
-    extract(appliance: Partial<EnyoAppliance>): string | undefined {
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
         const value = appliance.metadata?.[this.fieldName];
         return value !== undefined ? String(value) : undefined;
     }
@@ -103,14 +84,13 @@ export class CompositeIdentifierStrategy implements IdentifierStrategy {
     /**
      * Extracts and combines identifiers from multiple strategies.
      * @param appliance The appliance to extract identifiers from
-     * @param networkDevice The network device if available
      * @returns The combined identifier or undefined if any part is missing
      */
-    extract(appliance: Partial<EnyoAppliance>, networkDevice?: EnyoNetworkDevice): string | undefined {
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
         const parts: string[] = [];
 
         for (const strategy of this.strategies) {
-            const value = strategy.extract(appliance, networkDevice);
+            const value = strategy.extract(appliance);
             if (!value) {
                 return undefined; // All parts must be present
             }
@@ -139,12 +119,11 @@ export class FallbackIdentifierStrategy implements IdentifierStrategy {
     /**
      * Tries strategies in order and returns the first available identifier.
      * @param appliance The appliance to extract identifiers from
-     * @param networkDevice The network device if available
      * @returns The first available identifier or undefined
      */
-    extract(appliance: Partial<EnyoAppliance>, networkDevice?: EnyoNetworkDevice): string | undefined {
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
         for (const strategy of this.strategies) {
-            const value = strategy.extract(appliance, networkDevice);
+            const value = strategy.extract(appliance);
             if (value) {
                 return value;
             }
@@ -157,13 +136,6 @@ export class FallbackIdentifierStrategy implements IdentifierStrategy {
  * Factory class for creating common identifier strategies.
  */
 export class IdentifierStrategyFactory {
-    /**
-     * Creates the default network device ID strategy.
-     */
-    static networkDeviceId(): NetworkDeviceIdStrategy {
-        return new NetworkDeviceIdStrategy();
-    }
-
     /**
      * Creates a serial number strategy.
      */
@@ -194,15 +166,5 @@ export class IdentifierStrategyFactory {
      */
     static fallback(strategies: IdentifierStrategy[]): FallbackIdentifierStrategy {
         return new FallbackIdentifierStrategy(strategies);
-    }
-
-    /**
-     * Creates a strategy that prefers serial number but falls back to network device ID.
-     */
-    static serialNumberOrDeviceId(): FallbackIdentifierStrategy {
-        return new FallbackIdentifierStrategy([
-            new SerialNumberStrategy(),
-            new NetworkDeviceIdStrategy()
-        ]);
     }
 }

@@ -18,12 +18,20 @@ export class EnergyAppModbusDataTypeConverter {
     convertFromBuffer(buffer: Buffer, dataType: EnergyAppModbusDataType, scale?: number, quantity?: number): any {
         try {
             switch (dataType) {
+                case 'acc16': {
+                    const value = buffer.readUInt16BE(0);
+                    return this.applyScale(value, scale);
+                }
                 case 'uint16': {
                     const value = buffer.readUInt16BE(0);
                     return this.applyScale(value, scale);
                 }
                 case 'int16': {
                     const value = buffer.readInt16BE(0);
+                    return this.applyScale(value, scale);
+                }
+                case 'acc32': {
+                    const value = buffer.readUInt32BE(0);
                     return this.applyScale(value, scale);
                 }
                 case 'uint32': {

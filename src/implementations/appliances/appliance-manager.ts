@@ -1,4 +1,4 @@
-import type {EnergyApp} from "../../index.js";
+import {EnergyApp, SerialNumberStrategy} from "../../index.js";
 import type {EnyoNetworkDevice} from "../../types/enyo-network-device.js";
 import {
     EnyoAppliance,
@@ -14,7 +14,7 @@ import type {EnyoHeatpumpApplianceMetadata} from "../../types/enyo-heatpump-appl
 import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-appliance.js";
 import type {EnyoInverterApplianceMetadata} from "../../types/enyo-inverter-appliance.js";
 import type {EnyoMeterAppliance} from "../../types/enyo-meter-appliance.js";
-import {IdentifierStrategy, NetworkDeviceIdStrategy} from "./identifier-strategies.js";
+import {IdentifierStrategy} from "./identifier-strategies.js";
 
 /**
  * Configuration for creating or updating an appliance.
@@ -31,13 +31,11 @@ export interface ApplianceConfig {
     /** Topology information */
     topology?: EnyoApplianceTopology;
     /** Type-specific metadata based on appliance type */
-    typeMetadata?: {
-        meter?: EnyoMeterAppliance;
-        inverter?: EnyoInverterApplianceMetadata;
-        charger?: EnyoChargerApplianceMetadata;
-        heatpump?: EnyoHeatpumpApplianceMetadata;
-        battery?: EnyoBatteryApplianceMetadata;
-    };
+    meter?: EnyoMeterAppliance;
+    inverter?: EnyoInverterApplianceMetadata;
+    charger?: EnyoChargerApplianceMetadata;
+    heatpump?: EnyoHeatpumpApplianceMetadata;
+    battery?: EnyoBatteryApplianceMetadata;
 }
 
 /**
@@ -75,7 +73,7 @@ export interface FindResult {
 export class ApplianceManager {
     private applianceCache: Map<string, EnyoAppliance> = new Map();
     private identifierToApplianceId: Map<string, Set<string>> = new Map();
-    private config: Required<ApplianceManagerConfig>;
+    protected config: Required<ApplianceManagerConfig>;
 
     /**
      * Creates a new ApplianceManager instance.
@@ -87,29 +85,65 @@ export class ApplianceManager {
         config?: ApplianceManagerConfig
     ) {
         this.config = {
-            identifierStrategy: config?.identifierStrategy ?? new NetworkDeviceIdStrategy(),
+            identifierStrategy: config?.identifierStrategy ?? new SerialNumberStrategy(),
             autoUpdateMetadata: config?.autoUpdateMetadata ?? true,
             enableLogging: config?.enableLogging ?? true,
             defaultConnectionType: config?.defaultConnectionType ?? EnyoApplianceConnectionType.Connector,
-            defaultVendorName: config?.defaultVendorName ?? ''
+            defaultVendorName: config?.defaultVendorName ?? '',
         };
     }
 
     /**
+     * initializes a new ApplianceManager instance with async initialization.
+     * This factory method handles cache initialization if configured.
+     * @param energyApp The EnergyApp instance to use for API calls
+     * @param config Configuration options for the manager
+     * @returns Promise that resolves to an initialized ApplianceManager instance
+     */
+    private static async initialize(
+        energyApp: EnergyApp,
+        config?: ApplianceManagerConfig
+    ): Promise<ApplianceManager> {
+        const manager = new ApplianceManager(energyApp, config);
+        await manager.refreshCache();
+        return manager;
+    }
+
+    /**
      * Creates or updates an appliance with the given configuration.
-     * @param config The appliance configuration
-     * @param existingApplianceId Optional ID of an existing appliance to update
+     * Automatically detects if an appliance already exists based on the identifier strategy.
+     * @param appliance The appliance configuration
      * @returns The ID of the created or updated appliance
      */
-    async createOrUpdateAppliance(config: ApplianceConfig, existingApplianceId?: string): Promise<string> {
+    async createOrUpdateAppliance(appliance: ApplianceConfig): Promise<string> {
+        // Refresh cache to ensure we have latest appliances
+        await this.refreshCache();
+
+        // Try to find existing appliance using identifier strategy
+        let existingApplianceId: string | undefined;
+
+        const identifier = this.config.identifierStrategy.extract(
+            appliance,
+        );
+
+        if (identifier) {
+            const existing = await this.findByIdentifier(identifier);
+            if (existing.length > 0) {
+                existingApplianceId = existing[0].id;
+                if (this.config.enableLogging) {
+                    console.log(`Found existing appliance with ID ${existingApplianceId} for identifier ${identifier}`);
+                }
+            }
+        }
+
         // Build network device IDs list
-        const networkDeviceIds = config.networkDevices?.map(d => d.id) ?? [];
+        const networkDeviceIds = appliance.networkDevices?.map(d => d.id) ?? [];
 
         // Merge metadata with defaults
         const metadata: EnyoApplianceMetadata = {
             connectionType: this.config.defaultConnectionType,
             state: EnyoApplianceStateEnum.Connected,
-            ...config.metadata
+            ...appliance.metadata
         };
 
         if (this.config.defaultVendorName && !metadata.vendorName) {
@@ -118,17 +152,17 @@ export class ApplianceManager {
 
         // Build appliance data
         const applianceData: Omit<EnyoAppliance, 'id'> = {
-            name: config.name,
-            type: config.type,
+            name: appliance.name,
+            type: appliance.type,
             networkDeviceIds,
             metadata,
-            ...(config.topology && {topology: config.topology})
+            ...(appliance.topology && {topology: appliance.topology}),
+            meter: appliance.meter,
+            heatpump: appliance.heatpump,
+            battery: appliance.battery,
+            charger: appliance.charger,
+            inverter: appliance.inverter,
         };
-
-        // Add type-specific metadata
-        if (config.typeMetadata) {
-            Object.assign(applianceData, config.typeMetadata);
-        }
 
         // Save appliance
         const applianceId = await this.energyApp.useAppliances().save(
@@ -139,10 +173,12 @@ export class ApplianceManager {
         // Update cache
         const savedAppliance = await this.energyApp.useAppliances().getById(applianceId);
         if (savedAppliance) {
-            this.updateCache(savedAppliance, config.networkDevices?.[0]);
+            this.updateCache(savedAppliance);
         }
 
-        console.log(`${existingApplianceId ? 'Updated' : 'Created'} appliance ${applianceId} of type ${config.type}`);
+        if (this.config.enableLogging) {
+            console.log(`${existingApplianceId ? 'Updated' : 'Created'} appliance ${applianceId} of type ${appliance.type}`);
+        }
 
         return applianceId;
     }
@@ -150,13 +186,12 @@ export class ApplianceManager {
     /**
      * Updates the internal cache with an appliance.
      * @param appliance The appliance to cache
-     * @param networkDevice Optional network device for identifier extraction
      */
-    protected updateCache(appliance: EnyoAppliance, networkDevice?: EnyoNetworkDevice): void {
+    protected updateCache(appliance: EnyoAppliance): void {
         this.applianceCache.set(appliance.id, appliance);
 
         // Extract identifier
-        const identifier = this.config.identifierStrategy.extract(appliance, networkDevice);
+        const identifier = this.config.identifierStrategy.extract(appliance);
         if (identifier) {
             if (!this.identifierToApplianceId.has(identifier)) {
                 this.identifierToApplianceId.set(identifier, new Set());
@@ -183,7 +218,7 @@ export class ApplianceManager {
         for (const appliance of appliances) {
             // Try to get network devices if available
             const networkDevices = await this.getNetworkDevicesForAppliance(appliance);
-            this.updateCache(appliance, networkDevices[0]);
+            this.updateCache(appliance);
         }
     }
 
@@ -234,12 +269,11 @@ export class ApplianceManager {
             const networkDevices = await this.getNetworkDevicesForAppliance(appliance);
             const extractedId = this.config.identifierStrategy.extract(
                 appliance,
-                networkDevices[0]
             );
 
             if (extractedId === identifier) {
                 matches.push(appliance);
-                this.updateCache(appliance, networkDevices[0]);
+                this.updateCache(appliance);
             }
         }
 
@@ -261,7 +295,7 @@ export class ApplianceManager {
         for (const strategy of strategies) {
             for (const appliance of allAppliances) {
                 const networkDevices = await this.getNetworkDevicesForAppliance(appliance);
-                const identifier = strategy.extract(appliance, networkDevices[0]);
+                const identifier = strategy.extract(appliance);
 
                 if (identifier === searchValue) {
                     return {
