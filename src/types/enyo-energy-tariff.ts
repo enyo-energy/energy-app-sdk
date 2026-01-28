@@ -24,9 +24,7 @@ export interface EnergyTariffConstantPricing {
     /** Optional fixed price per kWh for grid feed-in */
     feedInPricePerKwh?: number;
     /** Start of validity period in ISO format */
-    validFromIso: string;
-    /** End of validity period in ISO format (optional for indefinite validity) */
-    validUntilIso?: string;
+    validFromIso?: string;
 }
 
 /**
@@ -37,10 +35,6 @@ export interface EnergyTariffIntervalPricing {
     interval: EnergyTariffInterval;
     /** Array of price points for the specified intervals */
     pricePoints: EnergyTariffPricePoint[];
-    /** Start date for which these intervals are valid in ISO format */
-    validFromIso: string;
-    /** End date for which these intervals are valid in ISO format */
-    validUntilIso: string;
 }
 
 /**

@@ -18,7 +18,7 @@ export interface EnergyAppSecretManager {
      * // Returns: { client_id: "...", client_secret: "..." }
      * ```
      */
-    getSecret(secretName: string, encryptionKey: string): Promise<SecretValue>;
+    getSecret<T>(secretName: string, encryptionKey: string): Promise<T>;
 
     /**
      * Retrieves and decrypts multiple secrets from the developer organization's secret store in a single request.

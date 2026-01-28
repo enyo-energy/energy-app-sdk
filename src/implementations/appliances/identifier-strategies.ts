@@ -37,6 +37,23 @@ export class SerialNumberStrategy implements IdentifierStrategy {
 }
 
 /**
+ * Strategy that uses the appliance's serial number as the identifier.
+ * Useful when appliances can move between network devices.
+ */
+export class TypeStrategy implements IdentifierStrategy {
+    name = 'type';
+
+    /**
+     * Extracts the serial number from the appliance metadata.
+     * @param appliance The appliance to extract the serial number from
+     * @returns The serial number or undefined
+     */
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
+        return appliance.type;
+    }
+}
+
+/**
  * Strategy that uses a custom metadata field as the identifier.
  * Allows using any field from the appliance metadata.
  */
@@ -141,6 +158,13 @@ export class IdentifierStrategyFactory {
      */
     static serialNumber(): SerialNumberStrategy {
         return new SerialNumberStrategy();
+    }
+
+    /**
+     * Creates a serial number strategy.
+     */
+    static type(): SerialNumberStrategy {
+        return new TypeStrategy();
     }
 
     /**
