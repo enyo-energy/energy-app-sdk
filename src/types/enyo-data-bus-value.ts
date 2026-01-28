@@ -23,6 +23,18 @@ export enum EnyoInverterStateEnum {
     Standby = 'standby'
 }
 
+export enum EnyoStringStateEnum {
+    Off = 'off',
+    Sleeping = 'sleeping',
+    Starting = 'starting',
+    Mppt = 'mppt',
+    Throttled = 'throttled',
+    ShuttingDown = 'shutting-down',
+    Fault = 'fault',
+    Standby = 'standby',
+    Test = ' Test'
+}
+
 /**
  * Charging meter value context defining when the measurement was taken
  */
@@ -211,8 +223,11 @@ export interface EnyoDataBusBatteryValuesUpdateV1 extends EnyoDataBusMessage {
 
 export interface EnyoDataBusInverterValuesV1String {
     index: number;
+    name?: string;
     voltage?: number;
     powerW?: number;
+    current?: number;
+    state?: EnyoStringStateEnum;
 }
 
 export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
