@@ -352,33 +352,29 @@ export class ApplianceManager {
     /**
      * Updates metadata for an appliance.
      * @param applianceId The ID of the appliance
-     * @param metadata The metadata to update
+     * @param attributes The attributes to update
      */
-    async updateApplianceMetadata(
+    async updateAppliance(
         applianceId: string,
-        metadata: Partial<EnyoApplianceMetadata> & { connectionType: EnyoApplianceConnectionType }
+        attributes: Partial<EnyoAppliance>
     ): Promise<void> {
         try {
             const appliance = await this.energyApp.useAppliances().getById(applianceId);
             if (appliance) {
                 const updatedAppliance: Omit<EnyoAppliance, 'id'> = {
                     ...appliance,
-                    metadata: {
-                        ...appliance.metadata,
-                        ...metadata
-                    }
+                    ...attributes
                 };
 
                 await this.energyApp.useAppliances().save(updatedAppliance, applianceId);
 
                 // Update cache
-                appliance.metadata = {...appliance.metadata, ...metadata};
-                this.applianceCache.set(applianceId, appliance);
+                this.applianceCache.set(applianceId, {id: applianceId, ...updatedAppliance});
 
-                console.log(`Updated metadata for appliance ${applianceId}`);
+                console.log(`Updated appliance ${applianceId}`);
             }
         } catch (error) {
-            console.error(`Failed to update metadata for appliance ${applianceId}: ${error}`);
+            console.error(`Failed to update appliance ${applianceId}: ${error}`);
             throw error;
         }
     }

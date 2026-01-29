@@ -83,5 +83,5 @@ export interface EnergyAppSecretManager {
      * });
      * ```
      */
-    saveSecret<T extends Record<string, string>>(secretName: string, encryptionKey: string, secret: T): Promise<void>;
+    saveSecret<T>(secretName: string, encryptionKey: string, secret: T): Promise<void>;
 }
