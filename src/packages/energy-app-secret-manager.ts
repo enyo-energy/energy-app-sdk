@@ -61,4 +61,27 @@ export interface EnergyAppSecretManager {
      * ```
      */
     listAvailableSecrets(): Promise<string[]>;
+
+    /**
+     * Saves a new secret to the secret store.
+     * The secret will be encrypted using the provided encryption key.
+     *
+     * @param secretName - The name for the new secret
+     * @param encryptionKey - The encryption key to use for encrypting the secret
+     * @param secret - The secret data to save as key-value pairs
+     * @returns Promise that resolves when the secret is successfully saved
+     * @throws {SecretNameConflictException} If a secret with this name already exists and is not an installed package secret
+     * @throws {SecretRetrievalError} If there's an error saving the secret
+     *
+     * @example
+     * ```typescript
+     * const secretManager = energyApp.useSecretManager();
+     * const encryptionKey = process.env.SECRET_ENCRYPTION_KEY;
+     * await secretManager.saveSecret("new_api_keys", encryptionKey, {
+     *     api_key: "abc123",
+     *     api_secret: "xyz789"
+     * });
+     * ```
+     */
+    saveSecret<T extends Record<string, string>>(secretName: string, encryptionKey: string, secret: T): Promise<void>;
 }

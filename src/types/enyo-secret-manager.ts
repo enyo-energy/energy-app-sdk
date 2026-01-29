@@ -35,3 +35,13 @@ export class SecretNotFoundError extends Error {
  */
 export class SecretRetrievalError extends Error {
 }
+
+/**
+ * Error that occurs when attempting to save a secret with a name that already exists.
+ */
+export class SecretNameConflictException extends Error {
+    constructor(secretName: string) {
+        super(`Secret with name "${secretName}" already exists and is not an installed package secret`);
+        this.name = 'SecretNameConflictException';
+    }
+}

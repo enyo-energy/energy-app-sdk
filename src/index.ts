@@ -15,6 +15,7 @@ import {EnergyAppSettings} from "./packages/energy-app-settings.js";
 import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
+import {EnergyAppLocation} from "./packages/energy-app-location.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -27,6 +28,7 @@ export * from './types/enyo-energy-tariff.js'
 export * from './types/enyo-electricity-prices.js'
 export * from './types/enyo-notification.js'
 export * from './types/enyo-secret-manager.js'
+export * from './types/enyo-location.js'
 export * from './implementations/appliances/appliance-manager.js'
 export * from './implementations/appliances/identifier-strategies.js'
 
@@ -134,6 +136,15 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useSecretManager(): EnergyAppSecretManager {
         return this.energyAppSdk.useSecretManager();
+    }
+
+    /**
+     * Gets the Location API for retrieving device location information.
+     * Provides methods to fetch location with varying levels of detail based on permissions.
+     * @returns The Location API instance
+     */
+    public useLocation(): EnergyAppLocation {
+        return this.energyAppSdk.useLocation();
     }
 
     /**

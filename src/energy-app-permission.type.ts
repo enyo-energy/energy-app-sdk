@@ -14,7 +14,9 @@ export type EnergyAppPermissionType =
     | 'ChargingCard'
     | 'Vehicle'
     | 'Charge'
-    | 'SecretManager';
+    | 'SecretManager'
+    | 'LocationZipCode'
+    | 'LocationCoordinates';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -32,5 +34,7 @@ export enum EnergyAppPermissionTypeEnum {
     ChargingCard = 'ChargingCard',
     Vehicle = 'Vehicle',
     Charge = 'Charge',
-    SecretManager = 'SecretManager'
+    SecretManager = 'SecretManager',
+    LocationZipCode = 'LocationZipCode',
+    LocationCoordinates = 'LocationCoordinates'
 }
