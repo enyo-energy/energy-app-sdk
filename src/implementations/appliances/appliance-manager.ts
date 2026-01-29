@@ -281,6 +281,28 @@ export class ApplianceManager {
     }
 
     /**
+     * Gets an appliance by its unique ID.
+     * @param applianceId The ID of the appliance to retrieve
+     * @returns The appliance if found, null otherwise
+     */
+    async findApplianceById(applianceId: string): Promise<EnyoAppliance | null> {
+        try {
+            const appliance = await this.energyApp.useAppliances().getById(applianceId);
+            if (appliance) {
+                // Update cache with the fetched appliance
+                this.updateCache(appliance);
+                return appliance;
+            }
+        } catch (error) {
+            if (this.config.enableLogging) {
+                console.error(`Failed to get appliance ${applianceId}: ${error}`);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Finds an appliance using multiple strategies.
      * @param searchValue The value to search for
      * @param strategies Array of strategies to try
