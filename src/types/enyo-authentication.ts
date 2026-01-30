@@ -29,12 +29,15 @@ export interface EnyoOauthAuthentication {
  * Contains the required redirect URL and optional client credentials
  */
 export interface EnyoOauthAuthenticationStart {
+    requestId: string;
     /** The redirect URL where the OAuth provider should send the user after authentication */
     enyoRedirectUrl: string;
     /** Optional client ID if the user needs to provide their own OAuth app credentials */
     clientId?: string;
     /** Optional client secret if the user needs to provide their own OAuth app credentials */
     clientSecret?: string;
+    /** Optional appliance id if the request was created for a specific appliance */
+    applianceId?: string;
 }
 
 export interface EnyoOauthAuthenticationRedirectUrlResponse {
@@ -70,14 +73,14 @@ export interface EnyoUsernamePasswordAuthenticationResponse {
  * The code is optional to support different OAuth flows and providers
  */
 export interface EnyoOauthAuthenticationResponse {
-    /** OAuth authorization code - optional to support various OAuth flows */
-    code?: string;
-    /** Additional URL parameters that may be returned by the OAuth provider */
-    urlParams?: Record<string, string>;
+    /** URL parameters that may be returned by the OAuth provider */
+    urlParams: Record<string, string>;
 }
 
 export interface EnyoAuthenticationResponse {
     requestId: string;
+    /** Optional appliance ID. If provided, authentication is for specific appliance. If omitted, authentication is for the whole package */
+    applianceId?: string;
     authenticationType: EnyoAuthenticationType;
     apiKey?: EnyoApiKeyAuthenticationResponse;
     usernamePassword?: EnyoUsernamePasswordAuthenticationResponse;
