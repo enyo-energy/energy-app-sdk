@@ -24,8 +24,16 @@ export interface EnyoOauthAuthentication {
     clientSecretName?: EnyoPackageConfigurationTranslatedValue[];
 }
 
+/**
+ * OAuth authentication start configuration
+ * Contains the required redirect URL and optional client credentials
+ */
 export interface EnyoOauthAuthenticationStart {
+    /** The redirect URL where the OAuth provider should send the user after authentication */
+    enyoRedirectUrl: string;
+    /** Optional client ID if the user needs to provide their own OAuth app credentials */
     clientId?: string;
+    /** Optional client secret if the user needs to provide their own OAuth app credentials */
     clientSecret?: string;
 }
 
@@ -57,9 +65,15 @@ export interface EnyoUsernamePasswordAuthenticationResponse {
     password: string;
 }
 
+/**
+ * OAuth authentication response containing authorization code and/or additional parameters
+ * The code is optional to support different OAuth flows and providers
+ */
 export interface EnyoOauthAuthenticationResponse {
-    code: string;
-    challenge: string;
+    /** OAuth authorization code - optional to support various OAuth flows */
+    code?: string;
+    /** Additional URL parameters that may be returned by the OAuth provider */
+    urlParams?: Record<string, string>;
 }
 
 export interface EnyoAuthenticationResponse {
