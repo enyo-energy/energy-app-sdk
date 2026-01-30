@@ -95,4 +95,7 @@ export enum EnyoAuthenticationStateEnum {
 
 export interface EnyoAuthenticateState {
     state: EnyoAuthenticationStateEnum;
+    authenticatedByRequestId?: string;
+    /** The name of the account or user */
+    name?: string;
 }

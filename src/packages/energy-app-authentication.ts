@@ -58,5 +58,8 @@ export interface EnergyAppAuthentication {
      * Signs the user out and updates the authentication state.
      * This will trigger any registered sign-out listeners.
      */
-    signOut(): void
+    signOut(): void;
+
+    /** If you want to cancel the authentication request*/
+    removeAuthenticationRequest(): void;
 }
