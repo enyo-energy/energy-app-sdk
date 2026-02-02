@@ -16,6 +16,7 @@ import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-pric
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
+import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -129,6 +130,9 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         return this.energyAppSdk.useNotification();
     }
 
+    public useOnboarding(): EnergyAppOnboarding {
+        return this.energyAppSdk.useOnboarding();
+    }
     /**
      * Gets the Secret Manager API for retrieving secrets from the developer organization.
      * Provides methods to fetch secrets that have been configured in the developer org's secret store.

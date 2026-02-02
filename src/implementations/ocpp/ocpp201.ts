@@ -75,6 +75,7 @@ export enum ConnectorStatusEnumType {
   Available = 'Available',
   Occupied = 'Occupied',
   Reserved = 'Reserved',
+  Charging = 'Charging',
   Unavailable = 'Unavailable',
   Faulted = 'Faulted',
 }

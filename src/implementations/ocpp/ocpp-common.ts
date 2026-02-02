@@ -54,6 +54,7 @@ export enum ErrorCode {
 export enum GenericChargePointStatus {
     Available = 'Available',
     Occupied = 'Occupied',
+    Charging = 'Charging',
     Suspended = 'Suspended',
     Finishing = 'Finishing',
     Reserved = 'Reserved',
@@ -117,7 +118,10 @@ export function mapOCCP201StatusToGeneric(
         if (chargingState === 'SuspendedEV' || chargingState === 'SuspendedEVSE') {
             return GenericChargePointStatus.Suspended;
         }
-        if (chargingState === 'Charging' || chargingState === 'EVConnected') {
+        if (chargingState === 'Charging') {
+            return GenericChargePointStatus.Charging;
+        }
+        if (chargingState === 'EVConnected') {
             return GenericChargePointStatus.Occupied;
         }
         if (chargingState === 'Idle') {
@@ -133,6 +137,8 @@ export function mapGenericToOCCP16Status(status: GenericChargePointStatus): Char
         case GenericChargePointStatus.Available:
             return ChargePointStatus.Available;
         case GenericChargePointStatus.Occupied:
+            return ChargePointStatus.Preparing;
+        case GenericChargePointStatus.Charging:
             return ChargePointStatus.Charging;
         case GenericChargePointStatus.Suspended:
             return ChargePointStatus.SuspendedEVSE;
@@ -153,6 +159,8 @@ export function mapGenericToOCCP201Status(status: GenericChargePointStatus): Con
     switch (status) {
         case GenericChargePointStatus.Available:
             return ConnectorStatusEnumType.Available;
+        case GenericChargePointStatus.Charging:
+            return ConnectorStatusEnumType.Charging;
         case GenericChargePointStatus.Occupied:
         case GenericChargePointStatus.Suspended:
         case GenericChargePointStatus.Finishing:
@@ -370,7 +378,7 @@ export function mapOCPP201MeterValueToGeneric(sampledValues: OCPP201MeterValueSa
         sampledValues,
         'Power.Active.Import',
     );
-    const evSoC = getOCPP201MeterValueByMeasurand(sampledValues,'SoC');
+    const evSoC = getOCPP201MeterValueByMeasurand(sampledValues, 'SoC');
     const outletVoltage = getOCPP201OutletVoltage(sampledValues);
     const outletCurrent = getOCPP201OutletCurrent(sampledValues);
     return {

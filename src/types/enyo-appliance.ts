@@ -22,6 +22,7 @@ export enum EnyoApplianceStateEnum {
     Connected = 'connected',
     ConnectionPending = 'connection-pending',
     Offline = 'offline',
+    ConfigurationRequired = 'configuration-required',
 }
 
 export interface EnyoApplianceNetworkMetadata {

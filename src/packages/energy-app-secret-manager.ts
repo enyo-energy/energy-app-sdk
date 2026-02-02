@@ -84,4 +84,20 @@ export interface EnergyAppSecretManager {
      * ```
      */
     saveSecret<T>(secretName: string, encryptionKey: string, secret: T): Promise<void>;
+
+    /**
+     * Removes a secret from the developer organization's secret store.
+     *
+     * @param secretName - The name of the secret to remove
+     * @returns Promise that resolves when the secret is successfully removed
+     * @throws {SecretNotFoundError} If the secret does not exist
+     * @throws {SecretRetrievalError} If there's an error removing the secret
+     *
+     * @example
+     * ```typescript
+     * const secretManager = energyApp.useSecretManager();
+     * await secretManager.removeSecret("old_api_keys");
+     * ```
+     */
+    removeSecret(secretName: string): Promise<void>;
 }
