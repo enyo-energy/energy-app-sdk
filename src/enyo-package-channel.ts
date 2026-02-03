@@ -1,4 +1,5 @@
 export enum EnyoPackageChannel {
     Production = 'production',
-    Staging = 'staging'
+    Staging = 'staging',
+    Local = 'local'
 }
