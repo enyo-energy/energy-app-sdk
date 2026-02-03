@@ -17,6 +17,7 @@ import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
 import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
+import {EnyoPackageChannel} from "./enyo-package-channel.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -32,6 +33,7 @@ export * from './types/enyo-secret-manager.js'
 export * from './types/enyo-location.js'
 export * from './implementations/appliances/appliance-manager.js'
 export * from './implementations/appliances/identifier-strategies.js'
+export * from './enyo-package-channel.js';
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -56,7 +58,7 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         this.energyAppSdk.updateEnergyAppState(state)
     }
 
-    public register(callback: (packageName: string, version: number) => void) {
+    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel) => void) {
         // This registers the package with the enyo system
         this.energyAppSdk.register(callback);
     }
@@ -133,6 +135,7 @@ export class EnergyApp implements EnyoEnergyAppSdk {
     public useOnboarding(): EnergyAppOnboarding {
         return this.energyAppSdk.useOnboarding();
     }
+
     /**
      * Gets the Secret Manager API for retrieving secrets from the developer organization.
      * Provides methods to fetch secrets that have been configured in the developer org's secret store.

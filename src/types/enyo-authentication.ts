@@ -2,11 +2,26 @@ import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
 
 export type EnyoAuthenticationType = 'apiKey' | 'oauth' | 'usernamePassword';
 
+/**
+ * Represents an additional custom field for authentication forms.
+ * Allows developers to add extra input fields beyond the standard username/password or API key.
+ */
+export interface EnyoAuthenticationAdditionalField {
+    /** Internal field name used as the key when returning field values */
+    fieldName: string;
+    /** Translated title/label displayed to the user */
+    title: EnyoPackageConfigurationTranslatedValue[];
+    /** Optional translated description/help text for the field */
+    fieldDescription?: EnyoPackageConfigurationTranslatedValue[];
+}
+
 export interface EnyoApiKeyAuthentication {
     fieldName: EnyoPackageConfigurationTranslatedValue[];
     fieldDescription?: EnyoPackageConfigurationTranslatedValue[];
     /** A link to an external resource where to find more information how to get an api key */
     externalGuideUrl?: string;
+    /** Optional additional fields to display in the authentication form */
+    additionalFields?: EnyoAuthenticationAdditionalField[];
 }
 
 export interface EnyoUsernamePasswordAuthentication {
@@ -15,6 +30,8 @@ export interface EnyoUsernamePasswordAuthentication {
     passwordName: EnyoPackageConfigurationTranslatedValue[];
     /** A link to an external resource where to find more information how to get an api key */
     externalGuideUrl?: string;
+    /** Optional additional fields to display in the authentication form */
+    additionalFields?: EnyoAuthenticationAdditionalField[];
 }
 
 export interface EnyoOauthAuthentication {
@@ -61,11 +78,15 @@ export interface EnyoAuthentication {
 
 export interface EnyoApiKeyAuthenticationResponse {
     apiKey: string;
+    /** Values submitted for additional fields, keyed by fieldName */
+    additionalFields?: Record<string, string>;
 }
 
 export interface EnyoUsernamePasswordAuthenticationResponse {
     username: string;
     password: string;
+    /** Values submitted for additional fields, keyed by fieldName */
+    additionalFields?: Record<string, string>;
 }
 
 /**

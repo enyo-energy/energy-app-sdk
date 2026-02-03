@@ -1,3 +1,5 @@
+import {EnyoPackageChannel} from "../enyo-package-channel.js";
+
 /**
  * Represents a secret value object containing key-value pairs.
  * The secret is retrieved from the developer organization's secret store.
@@ -34,6 +36,10 @@ export class SecretNotFoundError extends Error {
  * Error that occurs when secret retrieval fails.
  */
 export class SecretRetrievalError extends Error {
+}
+
+export interface EnyoSecretManagerOptions {
+    channel?: EnyoPackageChannel;
 }
 
 /**

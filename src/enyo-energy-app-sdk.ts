@@ -15,6 +15,7 @@ import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
 import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
+import {EnyoPackageChannel} from "./enyo-package-channel.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -32,7 +33,7 @@ export enum EnergyAppStateEnum {
  */
 export interface EnyoEnergyAppSdk {
     /** Register a callback that gets called when the package is initialized */
-    register: (callback: (packageName: string, version: number) => void) => void;
+    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel) => void) => void;
     /** Register a callback that gets called when the system is shutting down */
     onShutdown: (callback: () => Promise<void>) => void;
     /** Update the state of the Energy App. Default state set is launching*/

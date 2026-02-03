@@ -1,4 +1,4 @@
-import {SecretValue} from "../types/enyo-secret-manager.js";
+import {EnyoSecretManagerOptions, SecretValue} from "../types/enyo-secret-manager.js";
 
 export interface EnergyAppSecretManager {
     /**
@@ -7,6 +7,7 @@ export interface EnergyAppSecretManager {
      *
      * @param secretName - The name of the secret to retrieve (e.g., "ostrom_oauth")
      * @param encryptionKey - The encryption key used to decrypt the secret
+     * @param options - additional options
      * @returns Promise that resolves to an object containing the decrypted secret's key-value pairs
      * @throws {SecretNotFoundError} If the secret does not exist
      * @throws {SecretRetrievalError} If there's an error retrieving or decrypting the secret
@@ -18,7 +19,7 @@ export interface EnergyAppSecretManager {
      * // Returns: { client_id: "...", client_secret: "..." }
      * ```
      */
-    getSecret<T>(secretName: string, encryptionKey: string): Promise<T>;
+    getSecret<T>(secretName: string, encryptionKey: string, options?: EnyoSecretManagerOptions): Promise<T>;
 
     /**
      * Retrieves and decrypts multiple secrets from the developer organization's secret store in a single request.
@@ -27,6 +28,7 @@ export interface EnergyAppSecretManager {
      *
      * @param secretNames - Array of secret names to retrieve
      * @param encryptionKey - The encryption key used to decrypt the secrets
+     * @param options
      * @returns Promise that resolves to a record mapping secret names to their decrypted values
      * @throws {SecretNotFoundError} If any of the secrets do not exist
      * @throws {SecretRetrievalError} If there's an error retrieving or decrypting the secrets
@@ -42,7 +44,7 @@ export interface EnergyAppSecretManager {
      * // }
      * ```
      */
-    getSecrets(secretNames: string[], encryptionKey: string): Promise<Record<string, SecretValue>>;
+    getSecrets(secretNames: string[], encryptionKey: string, options?: EnyoSecretManagerOptions): Promise<Record<string, SecretValue>>;
 
     /**
      * Lists all available secret names that can be retrieved from the developer organization.
@@ -60,7 +62,7 @@ export interface EnergyAppSecretManager {
      * // Returns: ["oauth", "api_keys", "database_config"]
      * ```
      */
-    listAvailableSecrets(): Promise<string[]>;
+    listAvailableSecrets(options?: EnyoSecretManagerOptions): Promise<string[]>;
 
     /**
      * Saves a new secret to the secret store.
@@ -69,6 +71,7 @@ export interface EnergyAppSecretManager {
      * @param secretName - The name for the new secret
      * @param encryptionKey - The encryption key to use for encrypting the secret
      * @param secret - The secret data to save as key-value pairs
+     * @param options
      * @returns Promise that resolves when the secret is successfully saved
      * @throws {SecretNameConflictException} If a secret with this name already exists and is not an installed package secret
      * @throws {SecretRetrievalError} If there's an error saving the secret
@@ -83,12 +86,13 @@ export interface EnergyAppSecretManager {
      * });
      * ```
      */
-    saveSecret<T>(secretName: string, encryptionKey: string, secret: T): Promise<void>;
+    saveSecret<T>(secretName: string, encryptionKey: string, secret: T, options?: EnyoSecretManagerOptions): Promise<void>;
 
     /**
      * Removes a secret from the developer organization's secret store.
      *
      * @param secretName - The name of the secret to remove
+     * @param options
      * @returns Promise that resolves when the secret is successfully removed
      * @throws {SecretNotFoundError} If the secret does not exist
      * @throws {SecretRetrievalError} If there's an error removing the secret
@@ -99,5 +103,5 @@ export interface EnergyAppSecretManager {
      * await secretManager.removeSecret("old_api_keys");
      * ```
      */
-    removeSecret(secretName: string): Promise<void>;
+    removeSecret(secretName: string, options?: EnyoSecretManagerOptions): Promise<void>;
 }
