@@ -48,7 +48,7 @@ export interface EnergyAppOnboarding {
      *                      If omitted, returns the current step of the package guide.
      * @returns The current step or null if no active onboarding
      */
-    getCurrentStep(applianceId?: string): EnyoOnboardingStep | null;
+    getCurrentStep(applianceId?: string): Promise<EnyoOnboardingStep | null>;
 
     /**
      * Registers a listener that will be called when a user submits an onboarding step.
