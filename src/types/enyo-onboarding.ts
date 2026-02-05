@@ -54,9 +54,9 @@ export interface EnyoOnboardingSection {
     /** The type of content this section displays */
     type: EnyoOnboardingSectionType;
     /** Translated heading for this section */
-    heading: EnyoOnboardingTranslatedContent[];
+    heading?: EnyoOnboardingTranslatedContent[];
     /** Translated content body for this section */
-    content: EnyoOnboardingTranslatedContent[];
+    content?: EnyoOnboardingTranslatedContent[];
     /** Optional translated text content, used when type is 'text' */
     text?: EnyoOnboardingTranslatedContent[];
     /** Optional password input configuration, used when type is 'password-input' */

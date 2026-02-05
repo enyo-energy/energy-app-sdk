@@ -53,6 +53,32 @@ export class TypeStrategy implements IdentifierStrategy {
     }
 }
 
+export class HostnameStrategy implements IdentifierStrategy {
+    name = 'hostname';
+
+    /**
+     * Extracts the serial number from the appliance metadata.
+     * @param appliance The appliance to extract the serial number from
+     * @returns The serial number or undefined
+     */
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
+        return appliance.metadata?.hostname;
+    }
+}
+
+export class ChargePointIdStrategy implements IdentifierStrategy {
+    name = 'chargePointId';
+
+    /**
+     * Extracts the serial number from the appliance metadata.
+     * @param appliance The appliance to extract the serial number from
+     * @returns The serial number or undefined
+     */
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
+        return appliance.charger?.ocpp?.chargePointId;
+    }
+}
+
 /**
  * Strategy that uses a custom metadata field as the identifier.
  * Allows using any field from the appliance metadata.
@@ -165,6 +191,14 @@ export class IdentifierStrategyFactory {
      */
     static type(): SerialNumberStrategy {
         return new TypeStrategy();
+    }
+
+    static hostname(): HostnameStrategy {
+        return new HostnameStrategy();
+    }
+
+    static chargePointId(): ChargePointIdStrategy {
+        return new ChargePointIdStrategy();
     }
 
     /**

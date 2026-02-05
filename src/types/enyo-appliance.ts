@@ -40,6 +40,7 @@ export interface EnyoApplianceMetadata {
     vendorName?: string;
     serialNumber?: string;
     firmwareVersion?: string;
+    hostname?: string;
     state?: EnyoApplianceStateEnum;
     network?: EnyoApplianceNetworkMetadata;
     connectionType: EnyoApplianceConnectionType;
