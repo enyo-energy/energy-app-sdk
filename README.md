@@ -27,7 +27,9 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [Data Bus Messaging](#data-bus-messaging)
   - [Settings Management](#settings-management)
 - [Troubleshooting](#troubleshooting)
+- [External Libraries](#external-libraries)
 - [CLI Tool](#cli-tool)
+- [Releasing Your App](#releasing-your-app)
 
 ## Installation
 
@@ -1256,11 +1258,66 @@ energyApp.updateEnergyAppState('configuration-required');
 energyApp.updateEnergyAppState('internet-connection-required');
 ```
 
+## External Libraries
+
+Some npm packages cannot be bundled by rsbuild due to native dependencies or dynamic require statements. Common examples include the `ws` WebSocket library. To use such libraries, configure rsbuild to copy them as external vendors:
+
+```javascript
+// rsbuild.config.js
+import { defineConfig } from '@rsbuild/core';
+
+export default defineConfig({
+    output: {
+        target: 'node',
+        externals: {
+            ws: './vendor/ws',
+        },
+        copy: [
+            {
+                from: 'node_modules/ws',
+                to: 'vendor/ws',
+            },
+        ],
+    },
+});
+```
+
+This configuration:
+1. Marks `ws` as an external dependency, preventing rsbuild from bundling it
+2. Copies the `ws` package from `node_modules` to a `vendor/ws` directory in the output
+3. Resolves imports of `ws` to the copied vendor location at runtime
+
+You can apply this pattern to any library that cannot be bundled by adding entries to both `externals` and `copy`.
+
 ## CLI Tool
 
 Use the enyo CLI to initialize projects and publish Energy Apps easily. The CLI provides scaffolding, testing, and deployment capabilities for rapid development.
 
 For CLI documentation and installation instructions, visit the [enyo CLI repository](https://github.com/enyo-energy/enyo-cli).
+
+## Releasing Your App
+
+To release your Energy App to the enyo platform, use the official CLI tool.
+
+### Installation
+
+Install the enyo CLI globally:
+
+```bash
+npm install -g @enyo-energy/cli
+```
+
+### Release Command
+
+Once your app is ready for deployment, run:
+
+```bash
+enyo release --api-key <DEVELOPER_ORG_API_KEY>
+```
+
+Replace `<DEVELOPER_ORG_API_KEY>` with your developer organization API key.
+
+For more information about the CLI, visit [@enyo-energy/cli on npm](https://www.npmjs.com/package/@enyo-energy/cli).
 
 ---
 
