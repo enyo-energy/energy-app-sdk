@@ -1,3 +1,7 @@
+import {OCPPMessage} from "../implementations/ocpp/ocpp-common.js";
+import {OCPP16Action} from "../implementations/ocpp/ocpp16.js";
+import {OCPP201Action} from "../implementations/ocpp/ocpp201.js";
+
 export interface EnyoOcppAvailableConnectionDetail {
     url: string;
     path: string;
@@ -54,7 +58,7 @@ export interface EnergyAppOcpp {
     listenForChargePointDisconnected: (listener: (chargePointId: string) => void) => string;
 
     registerHandler: <TRequest, TResponse>(
-        action: string,
+        action: OCPP16Action | OCPP201Action | string,
         handler: EnergyAppOcppMessageHandler<TRequest, TResponse>,
         version?: EnyoOCPPVersion
     ) => string;

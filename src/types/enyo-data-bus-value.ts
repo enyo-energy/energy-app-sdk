@@ -1,6 +1,7 @@
 import {EnyoApplianceStateEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
+import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -121,9 +122,13 @@ export enum EnyoDataBusMessageEnum {
     ChargingStartedV1 = 'ChargingStartedV1',
     ChargingMeterValuesUpdateV1 = 'ChargingMeterValuesUpdateV1',
     ChargingStoppedV1 = 'ChargingStoppedV1',
+    StartChargingFailedV1 = 'StartChargingFailedV1',
     PauseChargingV1 = 'PauseChargingV1',
     ResumeChargingV1 = 'ResumeChargingV1',
     ChangeChargingPowerV1 = 'ChangeChargingPowerV1',
+    SetChargingScheduleV1 = 'SetChargingScheduleV1',
+    StartChargeV1 = 'StartChargeV1',
+    StopChargeV1 = 'StopChargeV1',
     AggregatedStateUpdateV1 = 'AggregatedStateUpdateV1',
     EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1'
 }
@@ -343,6 +348,23 @@ export interface EnyoDataBusChargingStoppedV1 extends EnyoDataBusMessage {
     };
 }
 
+/**
+ * Message sent when a charging session fails to start.
+ * This message indicates that an attempt to start charging was unsuccessful.
+ */
+export interface EnyoDataBusStartChargingFailedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartChargingFailedV1;
+    /** ID of the appliance (charger) where the start attempt failed */
+    applianceId: string;
+    data: {
+        /** ID of the vehicle that attempted to start charging */
+        vehicleId?: string;
+        /** ID of the charging card used in the failed start attempt */
+        chargingCardId?: string;
+    };
+}
+
 export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.AggregatedStateUpdateV1;
@@ -412,6 +434,50 @@ export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
     data: {
         applianceId: string;
         maxChargingPowerKw: number;
+    };
+}
+
+export interface EnyoDataBusSetChargingScheduleV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetChargingScheduleV1;
+    data: {
+        applianceId: string;
+        relativeSchedule: EnyoOcppRelativeSchedule[];
+    };
+}
+/**
+ * Command message to start a charging session on a specific charger.
+ * This message triggers the charge point to begin charging.
+ */
+export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartChargeV1;
+    data: {
+        /** ID of the appliance (charger) to start charging on */
+        applianceId: string;
+        /** OCPP idTag for authorization */
+        idTag: string;
+        /** Unique request identifier for tracking this start request */
+        requestId: string;
+        /** ID of the vehicle to charge (optional) */
+        vehicleId?: string;
+        /** ID of the charging card used (optional) */
+        chargingCardId?: string;
+    };
+}
+
+/**
+ * Command message to stop an active charging session.
+ * This message triggers the charge point to end the specified transaction.
+ */
+export interface EnyoDataBusStopChargeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StopChargeV1;
+    data: {
+        /** ID of the appliance (charger) to stop */
+        applianceId: string;
+        /** OCPP transaction identifier of the session to stop */
+        transactionId: string;
     };
 }
 

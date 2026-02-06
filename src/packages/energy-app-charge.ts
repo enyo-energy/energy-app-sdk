@@ -11,4 +11,6 @@ export interface EnergyAppCharge {
     list: (filter?: EnyoChargeFilter) => Promise<EnyoCharge[]>;
     /** Get a specific charging session by its ID */
     getById: (id: string) => Promise<EnyoCharge | null>;
+    /** to find the currently active charge */
+    findActiveCharge: (applianceId: string) => Promise<EnyoCharge | null>;
 }
