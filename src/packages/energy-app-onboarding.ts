@@ -9,50 +9,58 @@ import {
  * Interface for managing onboarding guides within Energy App packages.
  * Provides methods to create, manage, and navigate through onboarding flows
  * for both package-level and appliance-specific configuration.
+ * Supports multiple parallel guides identified by their unique guideName.
  */
 export interface EnergyAppOnboarding {
     /**
-     * Saves an onboarding guide for the package or a specific appliance.
+     * Saves an onboarding guide.
      * This guide will be displayed when the corresponding state is ConfigurationRequired.
+     * The guide is identified by its guideName property.
      *
      * @param guide - The complete onboarding guide configuration with steps and translations
-     * @param applianceId - Optional appliance ID for appliance-specific onboarding
      * @returns Promise that resolves when the guide is successfully saved
      *
      * @example
      * ```typescript
      * await saveOnboardingGuide({
-     *   id: 'inverter-setup',
-     *   steps: [...],
-     *   currentStepIndex: 0
-     * }, 'appliance-123');
+     *   guideName: 'inverter-setup',
+     *   name: [{ language: 'en', value: 'Inverter Setup' }],
+     *   cta: [{ language: 'en', value: 'Set up your inverter' }],
+     *   steps: [...]
+     * });
      * ```
      */
-    saveOnboardingGuide(guide: EnyoOnboardingGuide, applianceId?: string): Promise<void>;
+    saveOnboardingGuide(guide: EnyoOnboardingGuide): Promise<void>;
 
     /**
      * Removes an onboarding guide from the system.
      * This will prevent the guide from being displayed even if ConfigurationRequired is set.
      *
-     * @param applianceId - Optional appliance ID to remove specific appliance guide.
-     *                      If omitted, removes the package-level guide.
+     * @param guideName - The unique name of the guide to remove
      * @returns Promise that resolves when the guide is successfully removed
      */
-    removeOnboardingGuide(applianceId?: string): Promise<void>;
+    removeOnboardingGuide(guideName: string): Promise<void>;
 
     /**
-     * Gets the current step being displayed in the onboarding flow.
+     * Gets all currently active onboarding guides.
+     * Returns an array of all guides that have been saved and not yet removed.
+     *
+     * @returns Promise that resolves to an array of all active onboarding guides
+     */
+    getAllOnboardingGuides(): Promise<EnyoOnboardingGuide[]>;
+
+    /**
+     * Gets the current step being displayed in the onboarding flow for a specific guide.
      * Returns null if no onboarding is active or if the guide is complete.
      *
-     * @param applianceId - Optional appliance ID for appliance-specific guide.
-     *                      If omitted, returns the current step of the package guide.
+     * @param guideName - The unique name of the guide to get the current step for
      * @returns The current step or null if no active onboarding
      */
-    getCurrentStep(applianceId?: string): Promise<EnyoOnboardingStep | null>;
+    getCurrentStep(guideName: string): Promise<EnyoOnboardingStep | null>;
 
     /**
      * Registers a listener that will be called when a user submits an onboarding step.
-     * The listener receives the step submission details including step name and optional appliance ID.
+     * The listener receives the step submission details including step name and guide name.
      * Must return a promise with either success or an error response with translated message.
      *
      * @param listener - The callback function to handle step submissions
@@ -84,13 +92,13 @@ export interface EnergyAppOnboarding {
      *
      * @param stepName - The name of the step to respond to
      * @param response - The response indicating success or error with optional message
-     * @param applianceId - Optional appliance ID if responding to appliance onboarding
+     * @param guideName - The unique name of the guide this step belongs to
      * @returns Promise that resolves when the response is processed
      */
     respondToStepSubmission(
         stepName: string,
         response: EnyoOnboardingStepResponse,
-        applianceId?: string
+        guideName: string
     ): Promise<void>;
 
     /**
@@ -98,28 +106,27 @@ export interface EnergyAppOnboarding {
      * This will increment the currentStepIndex and display the next step.
      * If already at the last step, this method has no effect.
      *
-     * @param applianceId - Optional appliance ID for appliance-specific guide
+     * @param guideName - The unique name of the guide to navigate
      * @returns Promise that resolves when navigation is complete
      */
-    moveToNextStep(applianceId?: string): Promise<void>;
+    moveToNextStep(guideName: string): Promise<void>;
 
     /**
      * Moves to the previous step in the onboarding guide.
      * This will decrement the currentStepIndex and display the previous step.
      * If already at the first step, this method has no effect.
      *
-     * @param applianceId - Optional appliance ID for appliance-specific guide
+     * @param guideName - The unique name of the guide to navigate
      * @returns Promise that resolves when navigation is complete
      */
-    moveToPreviousStep(applianceId?: string): Promise<void>;
+    moveToPreviousStep(guideName: string): Promise<void>;
 
     /**
      * Marks the onboarding as complete and clears the ConfigurationRequired state.
-     * For package onboarding, this updates the EnergyAppState.
-     * For appliance onboarding, this updates the specific appliance state.
+     * This updates the state for the specified guide.
      *
-     * @param applianceId - Optional appliance ID for appliance-specific onboarding
+     * @param guideName - The unique name of the guide to mark as complete
      * @returns Promise that resolves when onboarding is marked complete
      */
-    completeOnboarding(applianceId?: string): Promise<void>;
+    completeOnboarding(guideName: string): Promise<void>;
 }

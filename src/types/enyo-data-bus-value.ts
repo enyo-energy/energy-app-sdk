@@ -74,6 +74,16 @@ export enum EnyoChargingStopReason {
     Other = 'Other',
 }
 
+/**
+ * Mode for charging session
+ */
+export enum EnyoChargeModeEnum {
+    /** Start charging immediately at maximum rate */
+    Immediate = 'immediate',
+    /** Optimize charging schedule for lowest cost */
+    CostOptimized = 'cost-optimized',
+}
+
 export interface EnyoAggregatedStateApplianceValues {
     gridPowerW?: number;
     gridFeedInWh?: number;
@@ -463,6 +473,10 @@ export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
         vehicleId?: string;
         /** ID of the charging card used (optional) */
         chargingCardId?: string;
+        /** Mode for the charging session (optional) */
+        chargeMode: EnyoChargeModeEnum;
+        /** ISO timestamp for target completion time (optional) */
+        completeChargeAtIso?: string;
     };
 }
 

@@ -23,6 +23,8 @@ export enum EnyoOnboardingSectionType {
     PasswordInput = "password-input",
     /** A credentials display section */
     Credentials = "credentials",
+    /** A clickable URL section */
+    Url = "url",
 }
 
 /**
@@ -46,6 +48,16 @@ export interface EnyoOnboardingSectionCredential {
 }
 
 /**
+ * Represents a URL configuration within an onboarding section.
+ */
+export interface EnyoOnboardingSectionUrl {
+    /** Translated label/title for the URL */
+    label: EnyoOnboardingTranslatedContent[];
+    /** The URL value to display and link to */
+    url: string;
+}
+
+/**
  * Represents a content section within an onboarding step.
  * Each section has a heading and content body, both with translations.
  * The `type` field determines which optional nested object is used.
@@ -63,6 +75,8 @@ export interface EnyoOnboardingSection {
     password?: EnyoOnboardingSectionPassword;
     /** Optional credentials to display, used when type is 'credentials' */
     credentials?: EnyoOnboardingSectionCredential[];
+    /** Optional URL configuration, used when type is 'url' */
+    url?: EnyoOnboardingSectionUrl;
 }
 
 /**
@@ -85,9 +99,15 @@ export interface EnyoOnboardingStep {
  * Can be used for either package-level or appliance-specific onboarding.
  */
 export interface EnyoOnboardingGuide {
-    /** Unique identifier for this guide */
-    id: string;
-    /** Optional appliance ID if this is an appliance-specific guide */
+    /** Unique identifier for this guide, used in API methods */
+    guideName: string;
+    /** Translated display name for the guide */
+    name: EnyoOnboardingTranslatedContent[];
+    /** Translated call-to-action text */
+    cta: EnyoOnboardingTranslatedContent[];
+    /** Optional translated description of the guide */
+    description?: EnyoOnboardingTranslatedContent[];
+    /** Optional appliance ID if this guide is associated with an appliance */
     applianceId?: string;
     /** Ordered array of steps in the onboarding flow */
     steps: EnyoOnboardingStep[];
@@ -95,13 +115,13 @@ export interface EnyoOnboardingGuide {
 
 /**
  * Represents a step submission event when a user completes a step.
- * Includes context about which step and optionally which appliance.
+ * Includes context about which step and guide.
  */
 export interface EnyoOnboardingStepSubmission {
     /** Name of the step being submitted */
     stepName: string;
-    /** Optional appliance ID if this is from appliance-specific onboarding */
-    applianceId?: string;
+    /** Name of the guide this submission belongs to */
+    guideName: string;
     /** Optional data submitted with the step */
     data?: any;
 }
