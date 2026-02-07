@@ -2,8 +2,8 @@
  * Configuration options for establishing a Modbus connection.
  */
 export interface ModbusOptions {
-    /** Hostname or IP address of the Modbus server */
-    host: string;
+    /** Hostname or IP address of the Modbus server. If set as an array, we use the other hosts as fallbacks */
+    host: string | string[];
     /** Port number for the Modbus connection (default: 502) */
     port?: number;
     /** Connection timeout in milliseconds */

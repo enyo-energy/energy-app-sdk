@@ -176,6 +176,76 @@ export class FallbackIdentifierStrategy implements IdentifierStrategy {
 }
 
 /**
+ * Strategy that tries multiple strategies and returns the first available identifier.
+ * This is an OR operation - any strategy succeeding is sufficient.
+ */
+export class OrIdentifierStrategy implements IdentifierStrategy {
+    name: string;
+
+    /**
+     * Creates a strategy that tries multiple strategies in order.
+     * @param strategies The strategies to try (OR logic)
+     */
+    constructor(private strategies: IdentifierStrategy[]) {
+        this.name = `or(${strategies.map(s => s.name).join('|')})`;
+    }
+
+    /**
+     * Tries strategies in order and returns the first available identifier.
+     * @param appliance The appliance to extract identifiers from
+     * @returns The first available identifier or undefined if none match
+     */
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
+        for (const strategy of this.strategies) {
+            const value = strategy.extract(appliance);
+            if (value) {
+                return value;
+            }
+        }
+        return undefined;
+    }
+}
+
+/**
+ * Strategy that combines multiple strategies into a single composite identifier.
+ * This is an AND operation - all strategies must return a value.
+ */
+export class AndIdentifierStrategy implements IdentifierStrategy {
+    name: string;
+
+    /**
+     * Creates a strategy that requires all sub-strategies to match.
+     * @param strategies The strategies to combine (AND logic)
+     * @param separator The separator to use between identifier parts
+     */
+    constructor(
+        private strategies: IdentifierStrategy[],
+        private separator: string = ':'
+    ) {
+        this.name = `and(${strategies.map(s => s.name).join('&')})`;
+    }
+
+    /**
+     * Extracts and combines identifiers from all strategies.
+     * @param appliance The appliance to extract identifiers from
+     * @returns The combined identifier or undefined if any part is missing
+     */
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
+        const parts: string[] = [];
+
+        for (const strategy of this.strategies) {
+            const value = strategy.extract(appliance);
+            if (!value) {
+                return undefined; // All parts must be present (AND logic)
+            }
+            parts.push(value);
+        }
+
+        return parts.join(this.separator);
+    }
+}
+
+/**
  * Factory class for creating common identifier strategies.
  */
 export class IdentifierStrategyFactory {
@@ -224,5 +294,22 @@ export class IdentifierStrategyFactory {
      */
     static fallback(strategies: IdentifierStrategy[]): FallbackIdentifierStrategy {
         return new FallbackIdentifierStrategy(strategies);
+    }
+
+    /**
+     * Creates an OR strategy that returns the first available identifier.
+     * @param strategies The strategies to try
+     */
+    static or(strategies: IdentifierStrategy[]): OrIdentifierStrategy {
+        return new OrIdentifierStrategy(strategies);
+    }
+
+    /**
+     * Creates an AND strategy that combines all identifiers.
+     * @param strategies The strategies to combine
+     * @param separator The separator between parts
+     */
+    static and(strategies: IdentifierStrategy[], separator?: string): AndIdentifierStrategy {
+        return new AndIdentifierStrategy(strategies, separator);
     }
 }

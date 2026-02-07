@@ -2,6 +2,7 @@ import {EnyoApplianceStateEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
+import {GenericChargePointStatus} from "../implementations/ocpp/ocpp-common.js";
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -140,7 +141,9 @@ export enum EnyoDataBusMessageEnum {
     StartChargeV1 = 'StartChargeV1',
     StopChargeV1 = 'StopChargeV1',
     AggregatedStateUpdateV1 = 'AggregatedStateUpdateV1',
-    EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1'
+    EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1',
+    ChargeFinishedV1 = 'ChargeFinishedV1',
+    ChargerStatusChangedV1 = 'ChargerStatusChangedV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -507,5 +510,50 @@ export interface EnyoDataBusEnergyTariffUpdateV1 extends EnyoDataBusMessage {
     data: {
         /** Complete energy tariff information including pricing structure and validity */
         tariffInfo: EnergyTariffInfo;
+    };
+}
+
+/**
+ * Summary message emitted when a charging session has been completed.
+ * This message provides a comprehensive overview of the entire charging session,
+ * including timing, energy delivered, and optional identification information.
+ */
+export interface EnyoDataBusChargeFinishedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ChargeFinishedV1;
+    /** ID of the appliance (charger) that handled the session */
+    applianceId: string;
+    data: {
+        /** Unique identifier for this charge session */
+        chargeId: string;
+        /** OCPP transaction identifier for the charging session */
+        transactionId: string;
+        /** ID of the vehicle that was charged (optional) */
+        vehicleId?: string;
+        /** ID of the charging card used for this session (optional) */
+        chargingCardId?: string;
+        /** ISO 8601 timestamp when the charging session started */
+        startedAtIso: string;
+        /** ISO 8601 timestamp when the charging session ended */
+        endedAtIso: string;
+        /** Total energy delivered during the session in Watt hours */
+        energyDeliveredWh: number;
+    };
+}
+
+/**
+ * Message emitted when a charger's status changes.
+ * This message reports the current OCPP status of the charger.
+ */
+export interface EnyoDataBusChargerStatusChangedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ChargerStatusChangedV1;
+    /** ID of the appliance (charger) reporting the status change */
+    applianceId: string;
+    data: {
+        /** Current OCPP status of the charger */
+        status: GenericChargePointStatus;
+        /** Connector ID on the charge point (optional, for multi-connector chargers) */
+        connectorId?: number;
     };
 }

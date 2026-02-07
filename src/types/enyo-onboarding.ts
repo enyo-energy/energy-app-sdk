@@ -122,6 +122,7 @@ export interface EnyoOnboardingStepSubmission {
     stepName: string;
     /** Name of the guide this submission belongs to */
     guideName: string;
+    applianceId?: string;
     /** Optional data submitted with the step */
     data?: any;
 }
