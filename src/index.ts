@@ -19,6 +19,7 @@ import {EnergyAppLocation} from "./packages/energy-app-location.js";
 import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
+import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -36,6 +37,8 @@ export * from './implementations/appliances/appliance-manager.js'
 export * from './implementations/appliances/identifier-strategies.js'
 export * from './enyo-package-channel.js';
 export * from './types/enyo-timeseries.js';
+export * from './types/enyo-energy-manager.js';
+export * from './packages/energy-app-energy-manager.js';
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -164,6 +167,15 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useTimeseries(): EnergyAppTimeseries {
         return this.energyAppSdk.useTimeseries();
+    }
+
+    /**
+     * Gets the Energy Manager API for retrieving information about the active energy manager.
+     * Provides methods to check the current energy manager and its supported features.
+     * @returns The Energy Manager API instance
+     */
+    public useEnergyManager(): EnergyAppEnergyManager {
+        return this.energyAppSdk.useEnergyManager();
     }
 
     /**

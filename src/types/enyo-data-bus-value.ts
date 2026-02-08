@@ -3,6 +3,7 @@ import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
+import {PreviewChargingSchedule, PreviewChargingScheduleCostComparison, PreviewChargingScheduleUnavailableReasonEnum} from "./enyo-energy-manager.js";
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -143,7 +144,9 @@ export enum EnyoDataBusMessageEnum {
     AggregatedStateUpdateV1 = 'AggregatedStateUpdateV1',
     EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1',
     ChargeFinishedV1 = 'ChargeFinishedV1',
-    ChargerStatusChangedV1 = 'ChargerStatusChangedV1'
+    ChargerStatusChangedV1 = 'ChargerStatusChangedV1',
+    RequestPreviewChargingScheduleV1 = 'RequestPreviewChargingScheduleV1',
+    PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -306,6 +309,10 @@ export interface EnyoDataBusChargingStartedV1 extends EnyoDataBusMessage {
         transactionId: string;
         /** used charging card */
         chargingCardId?: string;
+        /** The charge mode of the started charge. If initiated by wallbox, use either user settings or immediate as default */
+        chargeMode: EnyoChargeModeEnum;
+        /** ISO timestamp for target completion time (optional) */
+        completeChargeAtIso?: string;
         /** vehicle that's charging */
         vehicleId?: string;
         /** Meter reading at session start in Watt hours */
@@ -556,5 +563,51 @@ export interface EnyoDataBusChargerStatusChangedV1 extends EnyoDataBusMessage {
         status: EnyoChargerApplianceStatusEnum;
         /** Connector ID on the charge point (optional, for multi-connector chargers) */
         connectorId?: number;
+    };
+}
+
+/**
+ * Request message to get a preview of the optimized charging schedule.
+ * Sent when user wants to see the charging plan before starting.
+ */
+export interface EnyoDataBusRequestPreviewChargingScheduleV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.RequestPreviewChargingScheduleV1;
+    data: {
+        /** ID of the appliance (charger) to get preview for */
+        applianceId: string;
+        /** Unique request identifier for correlating the response */
+        requestId: string;
+        /** Target energy to be delivered in Wh (optional) */
+        targetEnergyWh?: number;
+        /** Target completion time as ISO timestamp (optional) */
+        completeByIso?: string;
+        /** Charger max power setting in Watts for cost comparison (optional) */
+        chargerMaxPowerW?: number;
+        /** Whether to include cost comparison in response */
+        includeCostComparison?: boolean;
+    };
+}
+
+/**
+ * Response message containing the preview charging schedule or indicating unavailability.
+ * Sent by energy manager if available, or by device core if not.
+ */
+export interface EnyoDataBusPreviewChargingScheduleResponseV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.PreviewChargingScheduleResponseV1;
+    data: {
+        /** The request ID this response corresponds to */
+        requestId: string;
+        /** ID of the appliance this schedule is for */
+        applianceId: string;
+        /** Whether a preview charging schedule is available */
+        available: boolean;
+        /** The preview charging schedule (only present if available=true) */
+        schedule?: PreviewChargingSchedule;
+        /** Cost comparison data (only present if requested and available) */
+        costComparison?: PreviewChargingScheduleCostComparison;
+        /** Reason why preview is not available (only present if available=false) */
+        unavailableReason?: PreviewChargingScheduleUnavailableReasonEnum;
     };
 }

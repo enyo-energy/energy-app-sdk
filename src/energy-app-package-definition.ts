@@ -102,6 +102,17 @@ export interface EnergyAppPackageStoreEntry {
 }
 
 /**
+ * Defines a permission entry for an Energy App package.
+ * Contains the permission type and an internal comment explaining its usage.
+ */
+export interface EnergyAppPackagePermission {
+    /** The permission type required by the package */
+    permission: EnergyAppPermissionType;
+    /** Internal documentation describing what this permission is used for */
+    internalComment: string;
+}
+
+/**
  * Complete definition for a enyo Energy App package.
  * This interface defines all the metadata, permissions, and configuration
  * required to register a package with the enyo Hub.
@@ -111,14 +122,16 @@ export interface EnergyAppPackageDefinition {
     version: '1';
     /** Unique identifier for the package */
     packageName: string;
+    /** Internal documentation describing the concept and purpose of this energy app (optional) */
+    internalDescription?: string;
     /** Optional path to the logo */
     logo?: string;
     /** Categories that this package belongs to */
     categories: EnergyAppPackageCategory[];
     /** Localized store information for different languages */
     storeEntry: EnergyAppPackageStoreEntry[];
-    /** Required permissions for this package to function */
-    permissions: EnergyAppPermissionType[];
+    /** Required permissions for this package to function. Can be simple permission types or objects with internal comments */
+    permissions: (EnergyAppPermissionType | EnergyAppPackagePermission)[];
     /** Optional configuration settings */
     options?: EnergyAppPackageOptions;
     /** The version of the enyo SDK used to build this package (automatically injected) */

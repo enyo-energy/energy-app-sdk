@@ -123,6 +123,8 @@ import {
 const packageDef = defineEnergyAppPackage({
     version: '1',
     packageName: 'solar-optimizer',
+    // Optional: Internal documentation for developers (not shown to users)
+    internalDescription: 'This app optimizes solar energy production using weather forecasts and AI predictions.',
     logo: './assets/logo.png',
     categories: [
         EnergyAppPackageCategory.Inverter,
@@ -142,12 +144,15 @@ const packageDef = defineEnergyAppPackage({
             description: 'Erweiterte Solarenergie-Optimierung mit KI-gesteuerten Vorhersagen und Echtzeitanpassungen.'
         }
     ],
+    // Permissions can be objects with internal comments (recommended for documentation)
     permissions: [
-        EnergyAppPermissionTypeEnum.Modbus,
-        EnergyAppPermissionTypeEnum.SendDataBusValues,
-        EnergyAppPermissionTypeEnum.SubscribeDataBus,
-        EnergyAppPermissionTypeEnum.Storage
+        { permission: EnergyAppPermissionTypeEnum.Modbus, internalComment: 'Required to read inverter registers via Modbus TCP' },
+        { permission: EnergyAppPermissionTypeEnum.SendDataBusValues, internalComment: 'Used to publish inverter power values to the data bus' },
+        { permission: EnergyAppPermissionTypeEnum.SubscribeDataBus, internalComment: 'Listens for battery state updates' },
+        { permission: EnergyAppPermissionTypeEnum.Storage, internalComment: 'Stores configuration and historical optimization data' }
     ],
+    // Note: Simple permission types are also supported for backwards compatibility:
+    // permissions: [EnergyAppPermissionTypeEnum.Modbus, EnergyAppPermissionTypeEnum.Storage]
     options: {
         restrictedInternetAccess: {
             origins: ['api.weather.com', 'solar-forecasting.com']
