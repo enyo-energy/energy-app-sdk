@@ -17,6 +17,7 @@ import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
 import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
+import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 
 export * from './energy-app-package-definition.js';
@@ -34,6 +35,7 @@ export * from './types/enyo-location.js'
 export * from './implementations/appliances/appliance-manager.js'
 export * from './implementations/appliances/identifier-strategies.js'
 export * from './enyo-package-channel.js';
+export * from './types/enyo-timeseries.js';
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -152,6 +154,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useLocation(): EnergyAppLocation {
         return this.energyAppSdk.useLocation();
+    }
+
+    /**
+     * Gets the Timeseries API for querying historical energy data.
+     * Provides methods to retrieve aggregated timeseries data with 15-minute bucket granularity
+     * for various energy metrics including PV production, battery state, meter values, and grid power.
+     * @returns The Timeseries API instance
+     */
+    public useTimeseries(): EnergyAppTimeseries {
+        return this.energyAppSdk.useTimeseries();
     }
 
     /**

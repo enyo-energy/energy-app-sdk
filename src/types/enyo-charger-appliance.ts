@@ -1,6 +1,7 @@
 export enum EnyoChargerApplianceStatusEnum {
     Available = 'Available',
     Occupied = 'Occupied',
+    Charging = 'Charging',
     Suspended = 'Suspended',
     Finishing = 'Finishing',
     Reserved = 'Reserved',

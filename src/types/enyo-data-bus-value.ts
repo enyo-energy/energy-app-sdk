@@ -2,7 +2,7 @@ import {EnyoApplianceStateEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
-import {GenericChargePointStatus} from "../implementations/ocpp/ocpp-common.js";
+import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -528,6 +528,7 @@ export interface EnyoDataBusChargeFinishedV1 extends EnyoDataBusMessage {
         chargeId: string;
         /** OCPP transaction identifier for the charging session */
         transactionId: string;
+        numberOfPhases?: number;
         /** ID of the vehicle that was charged (optional) */
         vehicleId?: string;
         /** ID of the charging card used for this session (optional) */
@@ -552,7 +553,7 @@ export interface EnyoDataBusChargerStatusChangedV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         /** Current OCPP status of the charger */
-        status: GenericChargePointStatus;
+        status: EnyoChargerApplianceStatusEnum;
         /** Connector ID on the charge point (optional, for multi-connector chargers) */
         connectorId?: number;
     };
