@@ -1,5 +1,6 @@
 export enum OCPP16Action {
-  Authorize = 'Authorize',
+  /** The authorization is handled by the core and you will get an info if authorized */
+  AuthorizationInfo = 'AuthorizationInfo',
   BootNotification = 'BootNotification',
   CancelReservation = 'CancelReservation',
   ChangeAvailability = 'ChangeAvailability',
@@ -86,12 +87,10 @@ export interface OCPP16AuthorizeRequest {
   idTag: string;
 }
 
-export interface OCPP16AuthorizeResponse {
-  idTagInfo: {
-    status: 'Accepted' | 'Blocked' | 'Expired' | 'Invalid' | 'ConcurrentTx';
-    expiryDate?: string;
-    parentIdTag?: string;
-  };
+export interface OCPP16AuthorizationInfoResponse {
+  idTag: string;
+  chargingCardId?: string;
+  vehicleId?: string;
 }
 
 export interface OCPP16StartTransactionRequest {

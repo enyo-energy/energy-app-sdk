@@ -58,8 +58,6 @@ export interface EnergyAppPackageOptionsDeviceDetectionHttp {
 }
 
 export interface EnergyAppPackageOptionsDeviceDetectionOcpp {
-    /** ocpp message name, for example BootNotification */
-    message: string;
     /** field name in the boot notification */
     field: string;
     /** matching values, for example the vendor names or model names */

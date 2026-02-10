@@ -20,6 +20,7 @@ import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
+import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -39,6 +40,9 @@ export * from './enyo-package-channel.js';
 export * from './types/enyo-timeseries.js';
 export * from './types/enyo-energy-manager.js';
 export * from './packages/energy-app-energy-manager.js';
+export * from './types/enyo-electricity-tariff.js';
+export * from './packages/energy-app-electricity-tariff.js';
+export * from './types/enyo-pv-forecast.js';
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -176,6 +180,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useEnergyManager(): EnergyAppEnergyManager {
         return this.energyAppSdk.useEnergyManager();
+    }
+
+    /**
+     * Gets the Electricity Tariff API for managing electricity tariffs.
+     * Provides methods to register, retrieve, and remove electricity tariffs
+     * used for energy pricing and consumption calculations.
+     * @returns The Electricity Tariff API instance
+     */
+    public useElectricityTariff(): EnergyAppElectricityTariff {
+        return this.energyAppSdk.useElectricityTariff();
     }
 
     /**

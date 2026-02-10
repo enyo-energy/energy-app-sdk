@@ -10,6 +10,8 @@ export interface ElectricityPriceRequest {
     untilIso: string;
     /** Optional appliance ID to get appliance-specific pricing */
     applianceId?: string;
+    /** Optional tariff ID to use for pricing. If omitted, uses the default tariff */
+    tariffId?: string;
 }
 
 /**

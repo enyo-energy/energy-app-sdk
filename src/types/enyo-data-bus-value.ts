@@ -4,6 +4,7 @@ import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
 import {PreviewChargingSchedule, PreviewChargingScheduleCostComparison, PreviewChargingScheduleUnavailableReasonEnum} from "./enyo-energy-manager.js";
+import {PvForecast} from "./enyo-pv-forecast.js";
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -146,7 +147,8 @@ export enum EnyoDataBusMessageEnum {
     ChargeFinishedV1 = 'ChargeFinishedV1',
     ChargerStatusChangedV1 = 'ChargerStatusChangedV1',
     RequestPreviewChargingScheduleV1 = 'RequestPreviewChargingScheduleV1',
-    PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1'
+    PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1',
+    PvForecastV1 = 'PvForecastV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -580,6 +582,8 @@ export interface EnyoDataBusRequestPreviewChargingScheduleV1 extends EnyoDataBus
         requestId: string;
         /** Target energy to be delivered in Wh (optional) */
         targetEnergyWh?: number;
+        /** Alternative vehicle id instead of targetEnergyWh*/
+        vehicleId?: number;
         /** Target completion time as ISO timestamp (optional) */
         completeByIso?: string;
         /** Charger max power setting in Watts for cost comparison (optional) */
@@ -609,5 +613,20 @@ export interface EnyoDataBusPreviewChargingScheduleResponseV1 extends EnyoDataBu
         costComparison?: PreviewChargingScheduleCostComparison;
         /** Reason why preview is not available (only present if available=false) */
         unavailableReason?: PreviewChargingScheduleUnavailableReasonEnum;
+    };
+}
+
+/**
+ * Message for delivering PV production forecast data.
+ * Contains forecasted power and energy values in 15-minute intervals.
+ */
+export interface EnyoDataBusPvForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.PvForecastV1;
+    /** Optional ID of the specific PV appliance this forecast applies to */
+    applianceId?: string;
+    data: {
+        /** The PV forecast data including time range and 15-minute buckets */
+        forecast: PvForecast;
     };
 }

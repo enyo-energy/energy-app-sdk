@@ -54,6 +54,23 @@ export interface EnergyAppElectricityPrices {
      * @returns Promise that resolves to current price information, or null if no pricing data is available
      */
     getCurrentPrice(applianceId?: string): Promise<ElectricityPriceEntry | null>;
+
+    /**
+     * Retrieves the system default tariff information.
+     * Returns the full tariff including pricing data.
+     *
+     * @returns Promise that resolves to the default tariff info, or null if none is configured
+     */
+    getDefaultTariff(): Promise<EnergyTariffInfo | null>;
+
+    /**
+     * Retrieves tariff information by tariff ID.
+     * Returns the full tariff including pricing data.
+     *
+     * @param tariffId - The unique identifier of the tariff
+     * @returns Promise that resolves to the tariff info, or null if not found
+     */
+    getTariffById(tariffId: string): Promise<EnergyTariffInfo | null>;
 }
 
 /**

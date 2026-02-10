@@ -1,4 +1,3 @@
-import {OCPPMessage} from "../implementations/ocpp/ocpp-common.js";
 import {OCPP16Action} from "../implementations/ocpp/ocpp16.js";
 import {OCPP201Action} from "../implementations/ocpp/ocpp201.js";
 

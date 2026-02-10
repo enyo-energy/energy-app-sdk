@@ -18,6 +18,7 @@ import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
+import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -82,4 +83,6 @@ export interface EnyoEnergyAppSdk {
     useTimeseries: () => EnergyAppTimeseries;
     /** Get the Energy Manager API for retrieving energy manager info and capabilities */
     useEnergyManager: () => EnergyAppEnergyManager;
+    /** Get the Electricity Tariff API for managing electricity tariffs */
+    useElectricityTariff: () => EnergyAppElectricityTariff;
 }

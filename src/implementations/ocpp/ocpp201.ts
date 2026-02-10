@@ -1,5 +1,6 @@
 export enum OCPP201Action {
-  Authorize = 'Authorize',
+  /** The authorization is handled by the core and you will get an info if authorized */
+  AuthorizationInfo = 'AuthorizationInfo',
   BootNotification = 'BootNotification',
   CancelReservation = 'CancelReservation',
   CertificateSigned = 'CertificateSigned',
@@ -119,7 +120,9 @@ export interface OCPP201StatusNotificationRequest {
 
 export interface OCPP201StatusNotificationResponse {}
 
-export interface OCPP201AuthorizeRequest {
+export interface OCPP201AuthorizationInfoRequest {
+  chargingCardId?: string;
+  vehicleId?: string;
   idToken: {
     idToken: string;
     type: 'Central' | 'eMAID' | 'ISO14443' | 'ISO15693' | 'KeyCode' | 'Local' | 'MacAddress' | 'NoAuthorization';
@@ -128,13 +131,6 @@ export interface OCPP201AuthorizeRequest {
       type: string;
     }>;
   };
-  certificate?: string;
-  iso15118CertificateHashData?: Array<{
-    hashAlgorithm: 'SHA256' | 'SHA384' | 'SHA512';
-    issuerNameHash: string;
-    issuerKeyHash: string;
-    serialNumber: string;
-  }>;
 }
 
 export interface OCPP201AuthorizeResponse {
