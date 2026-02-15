@@ -21,6 +21,9 @@ import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
+import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
+import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
+import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -43,6 +46,12 @@ export * from './packages/energy-app-energy-manager.js';
 export * from './types/enyo-electricity-tariff.js';
 export * from './packages/energy-app-electricity-tariff.js';
 export * from './types/enyo-pv-forecast.js';
+export * from './types/enyo-forecasting.js';
+export * from './packages/energy-app-weather-forecasting.js';
+export * from './packages/energy-app-pv-forecasting.js';
+export * from './types/enyo-pv-system.js';
+export * from './packages/energy-app-pv-system.js';
+export * from './implementations/data-bus/data-bus-command-handler.js';
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -190,6 +199,35 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useElectricityTariff(): EnergyAppElectricityTariff {
         return this.energyAppSdk.useElectricityTariff();
+    }
+
+    /**
+     * Gets the Weather Forecasting API for managing weather forecast providers and retrieving weather forecasts.
+     * Provides methods to register/deregister weather forecast providers, list available providers,
+     * and fetch weather forecasts by zip code or coordinates.
+     * @returns The Weather Forecasting API instance
+     */
+    public useWeatherForecasting(): EnergyAppWeatherForecasting {
+        return this.energyAppSdk.useWeatherForecasting();
+    }
+
+    /**
+     * Gets the PV Forecasting API for managing PV forecast providers and retrieving PV forecasts.
+     * Provides methods to register/deregister PV forecast providers and fetch power production forecasts.
+     * @returns The PV Forecasting API instance
+     */
+    public usePvForecasting(): EnergyAppPvForecasting {
+        return this.energyAppSdk.usePvForecasting();
+    }
+
+    /**
+     * Gets the PV System API for managing PV system registrations and configurations.
+     * Provides methods to register, retrieve, update, and remove PV systems
+     * including DC string orientations, peak power, associated appliances, and feature flags.
+     * @returns The PV System API instance
+     */
+    public usePvSystem(): EnergyAppPvSystem {
+        return this.energyAppSdk.usePvSystem();
     }
 
     /**

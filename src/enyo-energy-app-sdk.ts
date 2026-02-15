@@ -19,6 +19,9 @@ import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
+import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
+import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
+import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -36,7 +39,7 @@ export enum EnergyAppStateEnum {
  */
 export interface EnyoEnergyAppSdk {
     /** Register a callback that gets called when the package is initialized */
-    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel) => void) => void;
+    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel) => void | Promise<void>) => void;
     /** Register a callback that gets called when the system is shutting down */
     onShutdown: (callback: () => Promise<void>) => void;
     /** Update the state of the Energy App. Default state set is launching*/
@@ -85,4 +88,10 @@ export interface EnyoEnergyAppSdk {
     useEnergyManager: () => EnergyAppEnergyManager;
     /** Get the Electricity Tariff API for managing electricity tariffs */
     useElectricityTariff: () => EnergyAppElectricityTariff;
+    /** Get the Weather Forecasting API for managing weather forecast providers and retrieving weather forecasts */
+    useWeatherForecasting: () => EnergyAppWeatherForecasting;
+    /** Get the PV Forecasting API for managing PV forecast providers and retrieving PV forecasts */
+    usePvForecasting: () => EnergyAppPvForecasting;
+    /** Get the PV System API for managing PV system registrations and configurations */
+    usePvSystem: () => EnergyAppPvSystem;
 }

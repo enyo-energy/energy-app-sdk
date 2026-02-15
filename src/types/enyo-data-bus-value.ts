@@ -85,6 +85,8 @@ export enum EnyoChargeModeEnum {
     Immediate = 'immediate',
     /** Optimize charging schedule for lowest cost */
     CostOptimized = 'cost-optimized',
+    /** Optimize charging schedule for a maximum price limit, for example 7 ct grid or pv production */
+    PriceLimit = 'price-limit',
 }
 
 export interface EnyoAggregatedStateApplianceValues {
@@ -148,7 +150,11 @@ export enum EnyoDataBusMessageEnum {
     ChargerStatusChangedV1 = 'ChargerStatusChangedV1',
     RequestPreviewChargingScheduleV1 = 'RequestPreviewChargingScheduleV1',
     PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1',
-    PvForecastV1 = 'PvForecastV1'
+    PvForecastV1 = 'PvForecastV1',
+    StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
+    StopStorageGridChargeV1 = 'StopStorageGridChargeV1',
+    SetStorageDischargeLimitV1 = 'SetStorageDischargeLimitV1',
+    CommandAcknowledgeV1 = 'CommandAcknowledgeV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -387,6 +393,21 @@ export interface EnyoDataBusStartChargingFailedV1 extends EnyoDataBusMessage {
     };
 }
 
+export interface EnyoDataBusStopChargingFailedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartChargingFailedV1;
+    /** ID of the appliance (charger) where the start attempt failed */
+    applianceId: string;
+    data: {
+        transactionId: string;
+        /** ID of the vehicle that attempted to start charging */
+        vehicleId?: string;
+        /** ID of the charging card used in the failed start attempt */
+        chargingCardId?: string;
+        reason?: string;
+    };
+}
+
 export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.AggregatedStateUpdateV1;
@@ -583,7 +604,7 @@ export interface EnyoDataBusRequestPreviewChargingScheduleV1 extends EnyoDataBus
         /** Target energy to be delivered in Wh (optional) */
         targetEnergyWh?: number;
         /** Alternative vehicle id instead of targetEnergyWh*/
-        vehicleId?: number;
+        vehicleId?: string;
         /** Target completion time as ISO timestamp (optional) */
         completeByIso?: string;
         /** Charger max power setting in Watts for cost comparison (optional) */
@@ -628,5 +649,80 @@ export interface EnyoDataBusPvForecastV1 extends EnyoDataBusMessage {
     data: {
         /** The PV forecast data including time range and 15-minute buckets */
         forecast: PvForecast;
+    };
+}
+
+/**
+ * Command message to start charging a storage/battery from the grid.
+ * Instructs the battery system to begin drawing power from the grid up to the specified limit.
+ */
+export interface EnyoDataBusStartStorageGridChargeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartStorageGridChargeV1;
+    /** ID of the battery/storage appliance to charge */
+    applianceId: string;
+    data: {
+        /** Maximum power in watts for grid-to-storage charging */
+        powerLimitW: number;
+    };
+}
+
+/**
+ * Command message to stop charging a storage/battery from the grid.
+ * Instructs the battery system to end grid-to-storage charging.
+ */
+export interface EnyoDataBusStopStorageGridChargeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StopStorageGridChargeV1;
+    /** ID of the battery/storage appliance to stop charging */
+    applianceId: string;
+    data: {};
+}
+
+/**
+ * Command message to limit the discharge rate of a storage/battery.
+ * Sets the maximum discharge power as a percentage of the battery's maximum discharge capacity.
+ */
+export interface EnyoDataBusSetStorageDischargeLimitV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetStorageDischargeLimitV1;
+    /** ID of the battery/storage appliance to limit */
+    applianceId: string;
+    data: {
+        /** Discharge limit as a percentage (0–100) of the battery's maximum discharge power */
+        dischargeLimitPercent: number;
+    };
+}
+
+/**
+ * Possible answers an appliance can give when acknowledging a command.
+ */
+export enum EnyoCommandAcknowledgeAnswerEnum {
+    /** The command was accepted and will be executed */
+    Accepted = 'Accepted',
+    /** The command was rejected by the appliance */
+    Rejected = 'Rejected',
+    /** The command is not supported by this appliance */
+    NotSupported = 'NotSupported'
+}
+
+/**
+ * Acknowledgment message sent by an appliance in response to a command.
+ * Contains the original message ID and the appliance's answer.
+ */
+export interface EnyoDataBusCommandAcknowledgeV1 extends EnyoDataBusMessage {
+    type: 'answer';
+    message: EnyoDataBusMessageEnum.CommandAcknowledgeV1;
+    /** ID of the appliance acknowledging the command */
+    applianceId: string;
+    data: {
+        /** ID of the original command message being acknowledged */
+        messageId: string;
+        /** The original message */
+        acknowledgeMessage: EnyoDataBusMessageEnum;
+        /** The appliance's acknowledgment answer */
+        answer: EnyoCommandAcknowledgeAnswerEnum;
+        /** Optional reason for rejection (relevant when answer is Rejected or NotSupported) */
+        rejectionReason?: string;
     };
 }

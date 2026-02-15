@@ -19,7 +19,13 @@ export type EnergyAppPermissionType =
     | 'LocationCoordinates'
     | 'Timeseries'
     | 'EnergyManagerInfo'
-    | 'ElectricityTariff';
+    | 'ElectricityTariff'
+    | 'WeatherForecastRegister'
+    | 'WeatherForecastUse'
+    | 'PvForecastRegister'
+    | 'PvForecastUse'
+    | 'PvSystemRegister'
+    | 'PvSystemUse';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -42,5 +48,11 @@ export enum EnergyAppPermissionTypeEnum {
     LocationCoordinates = 'LocationCoordinates',
     Timeseries = 'Timeseries',
     EnergyManagerInfo = 'EnergyManagerInfo',
-    ElectricityTariff = 'ElectricityTariff'
+    ElectricityTariff = 'ElectricityTariff',
+    WeatherForecastRegister = 'WeatherForecastRegister',
+    WeatherForecastUse = 'WeatherForecastUse',
+    PvForecastRegister = 'PvForecastRegister',
+    PvForecastUse = 'PvForecastUse',
+    PvSystemRegister = 'PvSystemRegister',
+    PvSystemUse = 'PvSystemUse'
 }
