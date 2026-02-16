@@ -59,6 +59,8 @@ export interface PreviewChargingSchedule {
     totalEnergyWh: number;
     /** Estimated completion time as ISO timestamp */
     estimatedCompletionIso: string;
+    estimatedKwhCharged?: number;
+    estimatedChargingCostCents?: number;
 }
 
 /**

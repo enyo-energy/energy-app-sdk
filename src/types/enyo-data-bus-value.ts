@@ -3,7 +3,11 @@ import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
-import {PreviewChargingSchedule, PreviewChargingScheduleCostComparison, PreviewChargingScheduleUnavailableReasonEnum} from "./enyo-energy-manager.js";
+import {
+    PreviewChargingSchedule,
+    PreviewChargingScheduleCostComparison,
+    PreviewChargingScheduleUnavailableReasonEnum
+} from "./enyo-energy-manager.js";
 import {PvForecast} from "./enyo-pv-forecast.js";
 
 export enum EnyoBatteryStateEnum {
@@ -154,6 +158,7 @@ export enum EnyoDataBusMessageEnum {
     StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
     StopStorageGridChargeV1 = 'StopStorageGridChargeV1',
     SetStorageDischargeLimitV1 = 'SetStorageDischargeLimitV1',
+    SetInverterFeedInLimitV1 = 'SetInverterFeedInLimitV1',
     CommandAcknowledgeV1 = 'CommandAcknowledgeV1'
 }
 
@@ -474,8 +479,8 @@ export interface EnyoDataBusResumeChargingV1 extends EnyoDataBusMessage {
 export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.ChangeChargingPowerV1;
+    applianceId: string;
     data: {
-        applianceId: string;
         maxChargingPowerKw: number;
     };
 }
@@ -483,11 +488,12 @@ export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
 export interface EnyoDataBusSetChargingScheduleV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.SetChargingScheduleV1;
+    applianceId: string;
     data: {
-        applianceId: string;
         relativeSchedule: EnyoOcppRelativeSchedule[];
     };
 }
+
 /**
  * Command message to start a charging session on a specific charger.
  * This message triggers the charge point to begin charging.
@@ -495,9 +501,8 @@ export interface EnyoDataBusSetChargingScheduleV1 extends EnyoDataBusMessage {
 export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.StartChargeV1;
+    applianceId: string;
     data: {
-        /** ID of the appliance (charger) to start charging on */
-        applianceId: string;
         /** OCPP idTag for authorization */
         idTag: string;
         /** Unique request identifier for tracking this start request */
@@ -520,9 +525,8 @@ export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
 export interface EnyoDataBusStopChargeV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.StopChargeV1;
+    applianceId: string;
     data: {
-        /** ID of the appliance (charger) to stop */
-        applianceId: string;
         /** OCPP transaction identifier of the session to stop */
         transactionId: string;
     };
@@ -621,11 +625,10 @@ export interface EnyoDataBusRequestPreviewChargingScheduleV1 extends EnyoDataBus
 export interface EnyoDataBusPreviewChargingScheduleResponseV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.PreviewChargingScheduleResponseV1;
+    applianceId: string;
     data: {
         /** The request ID this response corresponds to */
         requestId: string;
-        /** ID of the appliance this schedule is for */
-        applianceId: string;
         /** Whether a preview charging schedule is available */
         available: boolean;
         /** The preview charging schedule (only present if available=true) */
@@ -689,8 +692,24 @@ export interface EnyoDataBusSetStorageDischargeLimitV1 extends EnyoDataBusMessag
     /** ID of the battery/storage appliance to limit */
     applianceId: string;
     data: {
-        /** Discharge limit as a percentage (0–100) of the battery's maximum discharge power */
-        dischargeLimitPercent: number;
+        /** Discharge limit in W to limit the battery's discharge power */
+        dischargeLimitW: number;
+    };
+}
+
+/**
+ * Command message to set or reset the inverter's grid feed-in power limit.
+ * When a limit is set, the inverter will not feed more than the specified power into the grid.
+ * When set to null, the feed-in limit is removed and the inverter returns to default behavior.
+ */
+export interface EnyoDataBusSetInverterFeedInLimitV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetInverterFeedInLimitV1;
+    /** ID of the inverter appliance to limit */
+    applianceId: string;
+    data: {
+        /** Feed-in limit in watts, or null to reset to default (no limit) */
+        feedInLimitW: number | null;
     };
 }
 

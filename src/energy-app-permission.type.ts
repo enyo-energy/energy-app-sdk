@@ -25,7 +25,10 @@ export type EnergyAppPermissionType =
     | 'PvForecastRegister'
     | 'PvForecastUse'
     | 'PvSystemRegister'
-    | 'PvSystemUse';
+    | 'PvSystemUse'
+    | 'InverterControlCommands'
+    | 'BatteryControlCommands'
+    | 'ChargerControlCommands';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -54,5 +57,8 @@ export enum EnergyAppPermissionTypeEnum {
     PvForecastRegister = 'PvForecastRegister',
     PvForecastUse = 'PvForecastUse',
     PvSystemRegister = 'PvSystemRegister',
-    PvSystemUse = 'PvSystemUse'
+    PvSystemUse = 'PvSystemUse',
+    InverterControlCommands = 'InverterControlCommands',
+    BatteryControlCommands = 'BatteryControlCommands',
+    ChargerControlCommands = 'ChargerControlCommands',
 }
