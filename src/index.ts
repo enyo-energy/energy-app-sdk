@@ -24,6 +24,7 @@ import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tari
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
+import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -52,6 +53,7 @@ export * from './packages/energy-app-pv-forecasting.js';
 export * from './types/enyo-pv-system.js';
 export * from './packages/energy-app-pv-system.js';
 export * from './implementations/data-bus/data-bus-command-handler.js';
+export * from './packages/energy-app-sequence-generator.js';
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -228,6 +230,15 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public usePvSystem(): EnergyAppPvSystem {
         return this.energyAppSdk.usePvSystem();
+    }
+
+    /**
+     * Gets the Sequence Generator API for generating unique sequential numbers per named sequence.
+     * Each sequence is identified by a string name and maintains its own independent counter.
+     * @returns The Sequence Generator API instance
+     */
+    public useSequenceGenerator(): EnergyAppSequenceGenerator {
+        return this.energyAppSdk.useSequenceGenerator();
     }
 
     /**

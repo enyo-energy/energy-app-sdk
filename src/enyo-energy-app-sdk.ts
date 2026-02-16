@@ -22,6 +22,7 @@ import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tari
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
+import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -94,4 +95,6 @@ export interface EnyoEnergyAppSdk {
     usePvForecasting: () => EnergyAppPvForecasting;
     /** Get the PV System API for managing PV system registrations and configurations */
     usePvSystem: () => EnergyAppPvSystem;
+    /** Get the Sequence Generator API for generating unique sequential numbers per named sequence */
+    useSequenceGenerator: () => EnergyAppSequenceGenerator;
 }
