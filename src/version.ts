@@ -6,7 +6,7 @@
 /**
  * Current version of the enyo Energy App SDK.
  */
-export const SDK_VERSION = '0.0.64';
+export const SDK_VERSION = '0.0.65';
 
 /**
  * Gets the current SDK version.

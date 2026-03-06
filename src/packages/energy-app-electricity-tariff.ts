@@ -42,5 +42,5 @@ export interface EnergyAppElectricityTariff {
      */
     getDefaultTariff(): Promise<EnyoElectricityTariff | null>;
 
-    findTariff(filter: { applianceId?: string; tariffId?: string }): Promise<EnyoElectricityTariff | null>;
+    findTariff(filter: { applianceId?: string; tariffId?: string }): Promise<EnyoElectricityTariffWithDefault | null>;
 }

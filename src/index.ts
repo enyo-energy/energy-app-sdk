@@ -53,6 +53,7 @@ export * from './types/enyo-pv-system.js';
 export * from './packages/energy-app-pv-system.js';
 export * from './implementations/data-bus/data-bus-command-handler.js';
 export * from './packages/energy-app-sequence-generator.js';
+export * from './packages/energy-app-energy-prices.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
