@@ -1,4 +1,4 @@
-import {PvSystemRegistration, PvSystemInfo} from "../types/enyo-pv-system.js";
+import {EnyoPvSystem} from "../types/enyo-pv-system.js";
 
 /**
  * Interface for managing PV systems.
@@ -31,23 +31,23 @@ export interface EnergyAppPvSystem {
      * console.log(`Registered PV system: ${pvSystem.pvSystemId}`);
      * ```
      */
-    registerPvSystem(pvSystem: PvSystemRegistration): Promise<PvSystemInfo>;
+    registerPvSystem(pvSystem: Omit<EnyoPvSystem, 'id'>): Promise<EnyoPvSystem>;
 
     /**
      * Retrieves a registered PV system by its ID.
      *
-     * @param pvSystemId - The unique identifier of the PV system
+     * @param id - The unique identifier of the PV system
      * @returns Promise that resolves to the PV system info, or null if not found
      */
-    getPvSystem(pvSystemId: string): Promise<PvSystemInfo | null>;
+    findPvSystem(id: string): Promise<EnyoPvSystem | null>;
 
     /**
      * Updates an existing PV system configuration.
      * Allows changing the kWp, DC string configurations, appliances, and features
      * of a registered PV system.
      *
-     * @param pvSystemId - The unique identifier of the PV system to update
-     * @param pvSystem - The updated PV system registration data
+     * @param id - The unique identifier of the PV system to update
+     * @param attributes - The updated PV system registration data
      * @returns Promise that resolves to the updated PV system info
      *
      * @example
@@ -61,14 +61,16 @@ export interface EnergyAppPvSystem {
      * });
      * ```
      */
-    updatePvSystem(pvSystemId: string, pvSystem: PvSystemRegistration): Promise<PvSystemInfo>;
+    updatePvSystem(id: string, attributes: Partial<Omit<EnyoPvSystem, 'id'>>): Promise<EnyoPvSystem>;
 
     /**
      * Removes a registered PV system by its ID.
      * If the PV system does not exist, this operation is a no-op.
      *
-     * @param pvSystemId - The unique identifier of the PV system to remove
+     * @param id - The unique identifier of the PV system to remove
      * @returns Promise that resolves when the PV system has been removed
      */
-    removePvSystem(pvSystemId: string): Promise<void>;
+    removePvSystem(id: string): Promise<void>;
+
+    getPvSystems(): Promise<EnyoPvSystem[]>;
 }

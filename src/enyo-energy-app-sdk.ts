@@ -10,7 +10,7 @@ import {EnergyAppVehicle} from "./packages/energy-app-vehicle.js";
 import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
-import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
+import {EnergyAppEnergyPrices} from "./packages/energy-app-energy-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
@@ -74,7 +74,7 @@ export interface EnyoEnergyAppSdk {
     /** Get the Settings API */
     useSettings: () => EnergyAppSettings;
     /** Get the Electricity Prices API */
-    useElectricityPrices: () => EnergyAppElectricityPrices;
+    useElectricityPrices: () => EnergyAppEnergyPrices;
     /** Get the Notification API */
     useNotification: () => EnergyAppNotification;
     /** Get the Secret Manager API */

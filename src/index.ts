@@ -12,7 +12,7 @@ import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 import {getSdkVersion} from "./version.js";
 import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
-import {EnergyAppElectricityPrices} from "./packages/energy-app-electricity-prices.js";
+import {EnergyAppEnergyPrices} from "./packages/energy-app-energy-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
@@ -33,8 +33,7 @@ export * from './implementations/ocpp/ocpp201.js';
 export * from './implementations/ocpp/ocpp-common.js';
 export * from './types/enyo-authentication.js'
 export * from './types/enyo-settings.js'
-export * from './types/enyo-energy-tariff.js'
-export * from './types/enyo-electricity-prices.js'
+export * from './types/enyo-energy-prices.js'
 export * from './types/enyo-notification.js'
 export * from './types/enyo-secret-manager.js'
 export * from './types/enyo-location.js'
@@ -144,7 +143,7 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         return this.energyAppSdk.useSettings();
     }
 
-    public useElectricityPrices(): EnergyAppElectricityPrices {
+    public useElectricityPrices(): EnergyAppEnergyPrices {
         return this.energyAppSdk.useElectricityPrices();
     }
 

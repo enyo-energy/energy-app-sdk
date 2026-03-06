@@ -19,7 +19,15 @@ export enum PvOrientationEnum {
  * Source of the orientation information for a DC string.
  * Indicates whether the orientation was provided by the user or estimated automatically.
  */
-export type PvSystemOrientationSourceEnum = 'user' | 'estimated';
+export enum PvSystemOrientationSourceEnum {
+    UserProvided = 'user',
+    Estimated = 'estimated'
+}
+
+export enum PvSystemCreatedBy {
+    User = 'user',
+    EnergyApp = 'energy-app'
+}
 
 /**
  * Feature flags for a PV system.
@@ -55,23 +63,17 @@ export interface PvSystemDcString {
 /**
  * Registration data for a PV system.
  */
-export interface PvSystemRegistration {
+export interface EnyoPvSystem {
+    /** Unique identifier of the registered PV system */
+    id: string;
     /** Peak power capacity of the entire PV system in kilowatts peak */
     kWp: number;
+    /** Indicates who created the PV system entry (user or energy app) */
+    createdBy: PvSystemCreatedBy;
     /** Array of DC strings describing the panel groups and their orientations */
     dcStrings: PvSystemDcString[];
     /** Optional list of appliances associated with this PV system */
     appliances?: PvSystemAppliance[];
     /** Optional feature flags for this PV system */
     features?: PvSystemFeatureEnum[];
-}
-
-/**
- * A registered PV system with its identifier and metadata.
- */
-export interface PvSystemInfo extends PvSystemRegistration {
-    /** Unique identifier of the registered PV system */
-    pvSystemId: string;
-    /** Timestamp when this PV system was registered in ISO format */
-    registeredAtIso: string;
 }

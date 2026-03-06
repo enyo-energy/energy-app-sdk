@@ -1,7 +1,4 @@
-import {
-    ElectricityTariffRegistration,
-    ElectricityTariffWithDefault
-} from "../types/enyo-electricity-tariff.js";
+import {EnyoElectricityTariff, EnyoElectricityTariffWithDefault} from "../types/enyo-electricity-tariff.js";
 
 /**
  * Interface for managing electricity tariffs.
@@ -17,7 +14,7 @@ export interface EnergyAppElectricityTariff {
      * @param tariff - The tariff registration data including ID, type, name, and vendor
      * @returns Promise that resolves when the tariff has been registered
      */
-    registerTariff(tariff: ElectricityTariffRegistration): Promise<void>;
+    registerTariff(tariff: EnyoElectricityTariff): Promise<void>;
 
     /**
      * Retrieves all registered electricity tariffs.
@@ -26,7 +23,7 @@ export interface EnergyAppElectricityTariff {
      *
      * @returns Promise that resolves to an array of all registered tariffs with default indicators
      */
-    getAllTariffs(): Promise<ElectricityTariffWithDefault[]>;
+    getAllTariffs(): Promise<EnyoElectricityTariffWithDefault[]>;
 
     /**
      * Removes an electricity tariff by its ID.
@@ -36,4 +33,14 @@ export interface EnergyAppElectricityTariff {
      * @returns Promise that resolves when the tariff has been removed
      */
     removeTariff(tariffId: string): Promise<void>;
+
+    /**
+     * Retrieves the system default tariff information.
+     * Returns the full tariff including pricing data.
+     *
+     * @returns Promise that resolves to the default tariff info, or null if none is configured
+     */
+    getDefaultTariff(): Promise<EnyoElectricityTariff | null>;
+
+    findTariff(filter: { applianceId?: string; tariffId?: string }): Promise<EnyoElectricityTariff | null>;
 }

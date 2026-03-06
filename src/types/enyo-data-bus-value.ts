@@ -1,6 +1,5 @@
 import {EnyoApplianceStateEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
-import {EnergyTariffInfo} from "./enyo-energy-tariff.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
 import {
@@ -9,6 +8,7 @@ import {
     PreviewChargingScheduleUnavailableReasonEnum
 } from "./enyo-energy-manager.js";
 import {PvForecast} from "./enyo-pv-forecast.js";
+import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -543,7 +543,7 @@ export interface EnyoDataBusEnergyTariffUpdateV1 extends EnyoDataBusMessage {
     applianceId?: string;
     data: {
         /** Complete energy tariff information including pricing structure and validity */
-        tariffInfo: EnergyTariffInfo;
+        energyPrices: EnyoEnergyPrices;
     };
 }
 
