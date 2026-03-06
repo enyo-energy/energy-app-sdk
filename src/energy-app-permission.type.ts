@@ -52,6 +52,7 @@ export enum EnergyAppPermissionTypeEnum {
     Timeseries = 'Timeseries',
     EnergyManagerInfo = 'EnergyManagerInfo',
     ElectricityTariff = 'ElectricityTariff',
+    EnergyPrices = 'EnergyPrices',
     WeatherForecastRegister = 'WeatherForecastRegister',
     WeatherForecastUse = 'WeatherForecastUse',
     PvForecastRegister = 'PvForecastRegister',

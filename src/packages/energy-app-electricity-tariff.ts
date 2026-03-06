@@ -14,7 +14,7 @@ export interface EnergyAppElectricityTariff {
      * @param tariff - The tariff registration data including ID, type, name, and vendor
      * @returns Promise that resolves when the tariff has been registered
      */
-    registerTariff(tariff: EnyoElectricityTariff): Promise<void>;
+    registerTariff(tariff: Omit<EnyoElectricityTariff, 'id'>): Promise<EnyoElectricityTariffWithDefault>;
 
     /**
      * Retrieves all registered electricity tariffs.
@@ -29,10 +29,10 @@ export interface EnergyAppElectricityTariff {
      * Removes an electricity tariff by its ID.
      * If the tariff does not exist, this operation is a no-op.
      *
-     * @param tariffId - The unique identifier of the tariff to remove
+     * @param id - The unique identifier of the tariff to remove
      * @returns Promise that resolves when the tariff has been removed
      */
-    removeTariff(tariffId: string): Promise<void>;
+    removeTariff(id: string): Promise<void>;
 
     /**
      * Retrieves the system default tariff information.
