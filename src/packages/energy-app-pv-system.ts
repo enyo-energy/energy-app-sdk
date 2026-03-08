@@ -31,7 +31,7 @@ export interface EnergyAppPvSystem {
      * console.log(`Registered PV system: ${pvSystem.pvSystemId}`);
      * ```
      */
-    registerPvSystem(pvSystem: Omit<EnyoPvSystem, 'id'>): Promise<EnyoPvSystem>;
+    registerPvSystem(pvSystem: Omit<EnyoPvSystem, 'id' | 'createdBy'>): Promise<EnyoPvSystem>;
 
     /**
      * Retrieves a registered PV system by its ID.
@@ -61,7 +61,7 @@ export interface EnergyAppPvSystem {
      * });
      * ```
      */
-    updatePvSystem(id: string, attributes: Partial<Omit<EnyoPvSystem, 'id'>>): Promise<EnyoPvSystem>;
+    updatePvSystem(id: string, attributes: Partial<Omit<EnyoPvSystem, 'id' | 'createdBy'>>): Promise<EnyoPvSystem>;
 
     /**
      * Removes a registered PV system by its ID.

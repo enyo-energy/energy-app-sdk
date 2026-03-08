@@ -10,8 +10,6 @@ export interface EnyoEnergyPrices {
     type: ElectricityTariffTypeEnum;
     /** Pricing data structure */
     prices: EnyoEnergyPriceEntry[];
-    /** Timestamp when this tariff information was last updated */
-    lastUpdatedIso: string;
 }
 
 export interface EnyoEnergyPriceEntry {

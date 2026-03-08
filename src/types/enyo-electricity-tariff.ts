@@ -70,6 +70,8 @@ export interface EnyoElectricityTariff {
     timeVariableTariffData?: TimeVariableTariffData;
     /** Optional dynamic pricing data*/
     dynamicTariffData?: DynamicTariffData;
+    /** Optional external tariff id for easy identification */
+    externalTariffId?: string;
 }
 
 /**

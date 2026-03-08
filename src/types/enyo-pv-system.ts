@@ -61,6 +61,17 @@ export interface PvSystemDcString {
 }
 
 /**
+ * Feed-in tariff configuration for a PV system.
+ * Defines the price for grid feed-in and behavior during negative market prices.
+ */
+export interface PvSystemFeedInTariff {
+    /** Price per kWh received for feeding electricity into the grid */
+    gridFeedInPricePerKwh: number;
+    /** Whether feed-in refund is disabled when the market price is negative */
+    noFeedInRefundOnNegativeMarketPrice: boolean;
+}
+
+/**
  * Registration data for a PV system.
  */
 export interface EnyoPvSystem {
@@ -76,4 +87,6 @@ export interface EnyoPvSystem {
     appliances?: PvSystemAppliance[];
     /** Optional feature flags for this PV system */
     features?: PvSystemFeatureEnum[];
+    /** Optional feed-in tariff configuration for this PV system */
+    feedInTariff?: PvSystemFeedInTariff;
 }

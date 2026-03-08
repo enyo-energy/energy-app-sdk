@@ -23,7 +23,7 @@ export interface EnergyAppElectricityTariff {
      *
      * @returns Promise that resolves to an array of all registered tariffs with default indicators
      */
-    getAllTariffs(): Promise<EnyoElectricityTariffWithDefault[]>;
+    getAllTariffs(filter?: { myTariffs?: boolean }): Promise<EnyoElectricityTariffWithDefault[]>;
 
     /**
      * Removes an electricity tariff by its ID.
@@ -42,5 +42,15 @@ export interface EnergyAppElectricityTariff {
      */
     getDefaultTariff(): Promise<EnyoElectricityTariff | null>;
 
-    findTariff(filter: { applianceId?: string; tariffId?: string }): Promise<EnyoElectricityTariffWithDefault | null>;
+    findTariff(filter: { applianceId?: string; tariffId?: string; externalTariffId?: string; }): Promise<EnyoElectricityTariffWithDefault | null>;
+
+    /**
+     * Partially updates an existing electricity tariff.
+     * Only the provided attributes will be modified; all other fields remain unchanged.
+     *
+     * @param id - The unique identifier of the tariff to update
+     * @param attributes - A partial set of tariff fields to update (excluding `id`)
+     * @returns Promise that resolves to the full updated tariff with its default indicator
+     */
+    updateTariff(id: string, attributes: Partial<Omit<EnyoElectricityTariff, 'id'>>): Promise<EnyoElectricityTariffWithDefault>;
 }
