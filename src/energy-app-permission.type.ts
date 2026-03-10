@@ -28,7 +28,8 @@ export type EnergyAppPermissionType =
     | 'PvSystemUse'
     | 'InverterControlCommands'
     | 'BatteryControlCommands'
-    | 'ChargerControlCommands';
+    | 'ChargerControlCommands'
+    | 'EnergyPrices';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
