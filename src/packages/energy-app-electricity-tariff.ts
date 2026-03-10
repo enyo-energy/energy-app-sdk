@@ -35,6 +35,14 @@ export interface EnergyAppElectricityTariff {
     removeTariff(id: string): Promise<void>;
 
     /**
+     * Requests to make a tariff the default tariff.
+     *
+     * @param id - The unique identifier of the tariff
+     * @returns Promise that resolves with the result
+     */
+    makeDefaultTariff(id: string): Promise<'accepted' | 'rejected'>;
+
+    /**
      * Retrieves the system default tariff information.
      * Returns the full tariff including pricing data.
      *
