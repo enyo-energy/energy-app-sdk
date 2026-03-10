@@ -631,13 +631,24 @@ export interface EnyoDataBusPreviewChargingScheduleResponseV1 extends EnyoDataBu
         requestId: string;
         /** Whether a preview charging schedule is available */
         available: boolean;
-        /** The preview charging schedule (only present if available=true) */
-        schedule?: PreviewChargingSchedule;
-        /** Cost comparison data (only present if requested and available) */
-        costComparison?: PreviewChargingScheduleCostComparison;
+        /** Preview charging schedule and cost comparison per charging mode. Each entry's costComparison compares against immediate charging. Only present if available=true. */
+        chargingModeResults?: PreviewChargingScheduleModeResult[];
         /** Reason why preview is not available (only present if available=false) */
         unavailableReason?: PreviewChargingScheduleUnavailableReasonEnum;
     };
+}
+
+/**
+ * Result for a single charging mode in a preview charging schedule response.
+ * Contains the schedule and optional cost comparison for one specific charging mode.
+ */
+export interface PreviewChargingScheduleModeResult {
+    /** The charging mode this result represents */
+    chargeMode: EnyoChargeModeEnum;
+    /** The preview charging schedule for this mode */
+    schedule: PreviewChargingSchedule;
+    /** Cost comparison of this mode vs immediate charging (only present if cost data is available) */
+    costComparison?: PreviewChargingScheduleCostComparison;
 }
 
 /**

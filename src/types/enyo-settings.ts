@@ -19,6 +19,21 @@ export interface EnyoPackageConfigurationSettingSelectOption {
     optionName: EnyoPackageConfigurationTranslatedValue[];
 }
 
+export interface EnyoPackageConfigurationSettingFloatOptions {
+    maxValue?: number;
+    minValue?: number;
+    step?: number;
+}
+
+export interface EnyoPackageConfigurationSettingIntegerOptions {
+    maxValue?: number;
+    minValue?: number;
+}
+
+export interface EnyoPackageConfigurationSettingTextOptions {
+    maxLength?: number;
+}
+
 /**
  * Represents a single configuration setting for an Energy App package.
  */
@@ -26,7 +41,7 @@ export interface EnyoPackageConfigurationSetting {
     /** internal name of the setting - must be unique */
     name: string;
     /** the type of the setting */
-    type: 'text' | 'select';
+    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox';
     /** if the setting is required */
     required: boolean;
     /** The displayed name of the field */
@@ -38,12 +53,9 @@ export interface EnyoPackageConfigurationSetting {
     /** Optional appliance ID. If provided, setting is for specific appliance. If omitted, setting is for the whole package */
     applianceId?: string;
     selectOptions?: EnyoPackageConfigurationSettingSelectOption[];
-}
-
-/**
- * Configuration container for Energy App package settings.
- */
-export interface EnyoPackageConfiguration {
+    floatOptions?: EnyoPackageConfigurationSettingFloatOptions;
+    integerOptions?: EnyoPackageConfigurationSettingIntegerOptions;
+    textOptions?: EnyoPackageConfigurationSettingTextOptions;
 }
 
 /**
