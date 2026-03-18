@@ -84,6 +84,15 @@ export interface WeatherForecastResponse {
 
 // ─── PV Forecasting Types ────────────────────────────────────────────────────
 
+export enum EnyoPvForecastProviderQualityLevelEnum {
+    /** High-quality forecast with low expected error margin */
+    High = 'high',
+    /** Medium-quality forecast with moderate expected error margin */
+    Medium = 'medium',
+    /** Low-quality forecast with high expected error margin */
+    Low = 'low'
+}
+
 /**
  * Registration data for a PV forecast provider
  */
@@ -94,6 +103,7 @@ export interface PvForecastProviderRegistration {
     name: string;
     /** Vendor or company providing the forecast */
     vendor: string;
+    qualityLevel: EnyoPvForecastProviderQualityLevelEnum;
 }
 
 /**

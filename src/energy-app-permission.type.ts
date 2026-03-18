@@ -29,6 +29,7 @@ export type EnergyAppPermissionType =
     | 'InverterControlCommands'
     | 'BatteryControlCommands'
     | 'ChargerControlCommands'
+    | 'ModbusRtu'
     | 'EnergyPrices';
 
 export enum EnergyAppPermissionTypeEnum {
@@ -53,6 +54,7 @@ export enum EnergyAppPermissionTypeEnum {
     Timeseries = 'Timeseries',
     EnergyManagerInfo = 'EnergyManagerInfo',
     ElectricityTariff = 'ElectricityTariff',
+    ModbusRtu = 'ModbusRtu',
     EnergyPrices = 'EnergyPrices',
     WeatherForecastRegister = 'WeatherForecastRegister',
     WeatherForecastUse = 'WeatherForecastUse',

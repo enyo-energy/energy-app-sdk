@@ -23,6 +23,7 @@ import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecas
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
+import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -97,4 +98,6 @@ export interface EnyoEnergyAppSdk {
     usePvSystem: () => EnergyAppPvSystem;
     /** Get the Sequence Generator API for generating unique sequential numbers per named sequence */
     useSequenceGenerator: () => EnergyAppSequenceGenerator;
+    /** Get the Modbus RTU serial communication API */
+    useModbusRtu: () => EnergyAppModbusRtu;
 }

@@ -12,7 +12,8 @@ export enum EnergyAppPackageCategory {
     BatteryStorage = 'battery-storage',
     ClimateControl = 'climate-control',
     DynamicElectricityTariff = 'dynamic-electricity-tariff',
-    StaticElectricityTariff = 'static-electricity-tariff'
+    StaticElectricityTariff = 'static-electricity-tariff',
+    Other = 'other',
 }
 
 /**
@@ -83,6 +84,8 @@ export interface EnergyAppPackageOptions {
     restrictedInternetAccess?: EnergyAppPackageRestrictedInternetAccessOption;
     /** device detection configuration to auto-suggest this energy app on onboarding */
     deviceDetection?: EnergyAppPackageOptionsDeviceDetection;
+    /** If your Developer Org is allowed to auto install packages and the device is sold via your Distributor account, you can auto install packages*/
+    autoInstall?: boolean;
 }
 
 /**
@@ -135,6 +138,8 @@ export interface EnergyAppPackageDefinition {
     options?: EnergyAppPackageOptions;
     /** The version of the enyo SDK used to build this package (automatically injected) */
     sdkVersion: string;
+    /** If the energy app should be visible in the enyo store. Default is true*/
+    showInStore?: boolean;
 }
 
 /**

@@ -25,6 +25,7 @@ import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecas
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
+import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -54,6 +55,7 @@ export * from './packages/energy-app-pv-system.js';
 export * from './implementations/data-bus/data-bus-command-handler.js';
 export * from './packages/energy-app-sequence-generator.js';
 export * from './packages/energy-app-energy-prices.js'
+export * from './packages/energy-app-modbus-rtu.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -239,6 +241,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useSequenceGenerator(): EnergyAppSequenceGenerator {
         return this.energyAppSdk.useSequenceGenerator();
+    }
+
+    /**
+     * Gets the Modbus RTU serial communication API.
+     * Provides methods to connect to Modbus RTU devices over serial ports
+     * and read/write registers using slave IDs.
+     * @returns The Modbus RTU API instance
+     */
+    public useModbusRtu(): EnergyAppModbusRtu {
+        return this.energyAppSdk.useModbusRtu();
     }
 
     /**
