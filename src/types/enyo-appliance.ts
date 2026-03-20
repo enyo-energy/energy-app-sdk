@@ -30,6 +30,12 @@ export interface EnyoApplianceNetworkMetadata {
     imsi?: string;
 }
 
+/** Modbus connection metadata for the appliance */
+export interface EnyoApplianceModbusMetadata {
+    /** The Modbus unit identifier for addressing the appliance */
+    unitId: number;
+}
+
 export enum EnyoApplianceConnectionType {
     Connector = 'Connector',
     Cloud = 'Cloud'
@@ -43,6 +49,7 @@ export interface EnyoApplianceMetadata {
     hostname?: string;
     state?: EnyoApplianceStateEnum;
     network?: EnyoApplianceNetworkMetadata;
+    modbus?: EnyoApplianceModbusMetadata;
     connectionType: EnyoApplianceConnectionType;
 }
 
