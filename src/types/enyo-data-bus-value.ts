@@ -115,21 +115,6 @@ export interface EnyoAggregatedStateApplianceValues {
         kWh?: number;
         availableUntilIsoTimestamp?: string;
     },
-    outdoorTemperatureC?: number;
-    heatpumpFlowTemperatureC?: number;
-    domesticHotWater?: {
-        index: number;
-        targetTemperatureC: number;
-        temperatureC: number;
-    }[],
-    heatingCircuits?: {
-        index: number;
-        targetTemperatureC: number;
-        temperatureC: number;
-    }[],
-    bufferTank?: {
-        temperatureC: number;
-    }
 }
 
 export enum EnyoDataBusMessageEnum {
@@ -159,7 +144,9 @@ export enum EnyoDataBusMessageEnum {
     StopStorageGridChargeV1 = 'StopStorageGridChargeV1',
     SetStorageDischargeLimitV1 = 'SetStorageDischargeLimitV1',
     SetInverterFeedInLimitV1 = 'SetInverterFeedInLimitV1',
-    CommandAcknowledgeV1 = 'CommandAcknowledgeV1'
+    CommandAcknowledgeV1 = 'CommandAcknowledgeV1',
+    TemperatureSensorValuesUpdateV1 = 'TemperatureSensorValuesUpdateV1',
+    HeatpumpTemperaturesUpdateV1 = 'HeatpumpTemperaturesUpdateV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -219,25 +206,6 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
             /** Power generation for domestic hot water in Wh (meter value)*/
             heatGenerationDomesticHotWaterWh?: number;
         };
-        temperatures?: {
-            outdoorTemperatureC?: number;
-            /** The current temperature of the domestic hot water tank */
-            domesticHotWater?: {
-                index: number;
-                targetTemperatureC: number;
-                temperatureC: number;
-            }[],
-            /** The current flow temperature of the heatpump */
-            heatpumpFlowTemperatureC?: number;
-            heatingCircuits?: {
-                index: number;
-                targetTemperatureC: number;
-                temperatureC: number;
-            }[];
-            bufferTank?: {
-                temperatureC: number;
-            }
-        }
     }
 }
 
@@ -754,5 +722,73 @@ export interface EnyoDataBusCommandAcknowledgeV1 extends EnyoDataBusMessage {
         answer: EnyoCommandAcknowledgeAnswerEnum;
         /** Optional reason for rejection (relevant when answer is Rejected or NotSupported) */
         rejectionReason?: string;
+    };
+}
+
+/**
+ * A single temperature sensor reading within a temperature sensor values update.
+ */
+export interface EnyoTemperatureSensorValue {
+    /** Unique sensor identifier */
+    id: string;
+    /** Current temperature in Celsius */
+    temperatureC: number;
+    /** Optional target temperature in Celsius */
+    targetTemperatureC?: number;
+}
+
+/**
+ * Data bus message for reporting temperature sensor values.
+ * Contains an array of sensor readings from a temperature sensor appliance.
+ */
+export interface EnyoDataBusTemperatureSensorValuesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.TemperatureSensorValuesUpdateV1;
+    /** ID of the temperature sensor appliance that delivered these values */
+    applianceId: string;
+    data: {
+        /** Array of temperature sensor readings */
+        sensors: EnyoTemperatureSensorValue[];
+    };
+}
+
+/**
+ * Data bus message for reporting heatpump-specific temperature values.
+ * Contains outdoor temperature, domestic hot water temperatures, flow temperature,
+ * heating circuit temperatures, and buffer tank temperature from a heatpump appliance.
+ */
+export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpTemperaturesUpdateV1;
+    /** ID of the heatpump appliance that delivered these temperature values */
+    applianceId: string;
+    data: {
+        /** Outdoor temperature in Celsius */
+        outdoorTemperatureC?: number;
+        /** Domestic hot water tank temperatures */
+        domesticHotWater?: {
+            /** Index of the domestic hot water tank */
+            index: number;
+            /** Target temperature in Celsius */
+            targetTemperatureC: number;
+            /** Current temperature in Celsius */
+            temperatureC: number;
+        }[];
+        /** Heatpump flow temperature in Celsius */
+        heatpumpFlowTemperatureC?: number;
+        /** Heating circuit temperatures */
+        heatingCircuits?: {
+            /** Index of the heating circuit */
+            index: number;
+            /** Target temperature in Celsius */
+            targetTemperatureC: number;
+            /** Current temperature in Celsius */
+            temperatureC: number;
+        }[];
+        /** Buffer tank temperature */
+        bufferTank?: {
+            /** Current buffer tank temperature in Celsius */
+            temperatureC: number;
+        };
     };
 }

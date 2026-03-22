@@ -7,4 +7,5 @@ export enum EnergyAppApplianceTypeEnum {
     EnergyManagement = 'energy-management',
     BatteryStorage = 'battery-storage',
     ClimateControl = 'climate-control',
+    TemperatureSensor = 'temperature-sensor',
 }

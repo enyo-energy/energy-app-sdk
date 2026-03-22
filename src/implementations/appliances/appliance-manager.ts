@@ -14,6 +14,7 @@ import type {EnyoHeatpumpApplianceMetadata} from "../../types/enyo-heatpump-appl
 import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-appliance.js";
 import type {EnyoInverterApplianceMetadata} from "../../types/enyo-inverter-appliance.js";
 import type {EnyoMeterAppliance} from "../../types/enyo-meter-appliance.js";
+import type {EnyoTemperatureSensorApplianceMetadata} from "../../types/enyo-temperature-sensor-appliance.js";
 import {IdentifierStrategy} from "./identifier-strategies.js";
 
 /**
@@ -36,6 +37,7 @@ export interface ApplianceConfig {
     charger?: EnyoChargerApplianceMetadata;
     heatpump?: EnyoHeatpumpApplianceMetadata;
     battery?: EnyoBatteryApplianceMetadata;
+    temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
 }
 
 /**
@@ -162,6 +164,7 @@ export class ApplianceManager {
             battery: appliance.battery,
             charger: appliance.charger,
             inverter: appliance.inverter,
+            temperatureSensor: appliance.temperatureSensor,
         };
 
         // Save appliance

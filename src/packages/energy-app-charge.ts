@@ -13,4 +13,6 @@ export interface EnergyAppCharge {
     getById: (id: string) => Promise<EnyoCharge | null>;
     /** to find the currently active charge */
     findActiveCharge: (applianceId: string) => Promise<EnyoCharge | null>;
+    /** Find the currently active charge by appliance ID and transaction ID */
+    findActiveChargeByTransactionId: (applianceId: string, transactionId: string) => Promise<EnyoCharge | null>;
 }

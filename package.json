@@ -1,6 +1,6 @@
 {
   "name": "@enyo-energy/energy-app-sdk",
-  "version": "0.0.71",
+  "version": "0.0.72",
   "description": "enyo Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
