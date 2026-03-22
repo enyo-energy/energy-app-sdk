@@ -392,10 +392,10 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
         totalGridFeedInWh?: number;
         /** Total grid consumption from all appliances (in Watt hours) */
         totalGridConsumptionWh?: number;
-        /** Total self consumption from all appliances (in Watt) */
-        totalSelfConsumptionW?: number;
-        /** Total self consumed energy from all appliances (in Watt hours) */
-        totalSelfConsumptionWh?: number;
+        /** Total Home consumption from all appliances (in Watt) */
+        totalHomeConsumptionW?: number;
+        /** Total Home consumed energy from all appliances (in Watt hours) */
+        totalHomeConsumptionWh?: number;
         /** Total battery power from all appliances (in Watt). Positive = consumption, negative = charging */
         totalBatteryPowerW?: number;
         /** Total PV production from all appliances (in Watt) */
@@ -410,7 +410,8 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
         totalHeatGenerationHeatingWh?: number;
         /** Total heat generation for domestic hot water from all appliances (in Watt hours) */
         totalHeatGenerationDomesticHotWaterWh?: number;
-
+        autarkyPercentage?: number;
+        resolution: '1min' | '15min';
         /** Array of all appliances with their individual values and current state */
         appliances: Array<{
             /** ID of the appliance */

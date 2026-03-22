@@ -13,6 +13,7 @@ export enum EnergyAppPackageCategory {
     ClimateControl = 'climate-control',
     DynamicElectricityTariff = 'dynamic-electricity-tariff',
     StaticElectricityTariff = 'static-electricity-tariff',
+    TemperatureSensor = 'temperature-sensor',
     Other = 'other',
 }
 
