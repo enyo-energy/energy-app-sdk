@@ -1,4 +1,4 @@
-import {EnergyManagerInfo} from "../types/enyo-energy-manager.js";
+import {EnergyManagerFeatureEnum, EnergyManagerInfo} from "../types/enyo-energy-manager.js";
 
 /**
  * Interface for retrieving energy manager information and capabilities.
@@ -22,4 +22,7 @@ export interface EnergyAppEnergyManager {
      * ```
      */
     getEnergyManagerInfo(): Promise<EnergyManagerInfo | null>;
+
+    /** Only for Energy Manager Energy Apps: Register the features which are provided*/
+    registerFeatures(features: EnergyManagerFeatureEnum[]): void;
 }

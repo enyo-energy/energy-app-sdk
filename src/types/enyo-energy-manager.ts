@@ -4,7 +4,47 @@
  */
 export enum EnergyManagerFeatureEnum {
     /** The energy manager supports generating preview charge schedules */
-    PreviewChargeSchedule = 'preview-charge-schedule'
+    PreviewChargeSchedule = 'preview-charge-schedule',
+
+    // PV / Solar
+
+    /** Maximize on-site PV usage before grid export */
+    PvSelfConsumptionOptimization = 'pv-self-consumption-optimization',
+    /** Limit PV feed-in power per grid operator requirements */
+    PvCurtailment = 'pv-curtailment',
+
+    // Battery
+
+    /** Charge during low-cost periods, discharge during high-cost */
+    BatteryTouArbitrage = 'battery-tou-arbitrage',
+    /** Discharge during demand peaks to reduce grid draw */
+    BatteryPeakShaving = 'battery-peak-shaving',
+    /** Reserve battery capacity for power outages */
+    BatteryBackupPower = 'battery-backup-power',
+
+    // Wallbox / EV Charging
+
+    /** Charge EV from solar surplus */
+    WallboxPvSurplusCharging = 'wallbox-pv-surplus-charging',
+    /** Adjust EV charging based on total home load */
+    WallboxDynamicLoadManagement = 'wallbox-dynamic-load-management',
+
+    // Heat Pump
+
+    /** Prevent room overheating by adjusting heat pump output */
+    HeatpumpRoomOverheating = 'heatpump-room-overheating',
+    /** Force domestic hot water heating on demand */
+    HeatpumpDhwBoost = 'heatpump-dhw-boost',
+    /** Shift heating loads to renewable generation periods */
+    HeatpumpLoadShifting = 'heatpump-load-shifting',
+
+    // Climate Control / AC
+
+    /** Dynamic temperature setpoints based on occupancy/time */
+    ClimateControlSmartThermostat = 'climate-control-smart-thermostat',
+    /** Prioritize cooling when PV generation is high */
+    ClimateControlSolarDrivenCooling = 'climate-control-solar-driven-cooling',
+
 }
 
 /**

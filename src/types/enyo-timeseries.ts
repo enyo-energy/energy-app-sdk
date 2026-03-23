@@ -252,3 +252,34 @@ export interface GridPowerTimeseriesResponse extends TimeseriesResponseBase {
     /** Total energy exported to grid in Watt-hours across all buckets */
     totalExportWh: number;
 }
+
+// ============================================================================
+// Home Consumption Timeseries Types
+// ============================================================================
+
+/**
+ * A single entry in the home consumption timeseries.
+ * Contains power and energy values for a 15-minute bucket.
+ * Represents the total energy consumed by the home (all appliances combined).
+ */
+export interface HomeConsumptionTimeseriesEntry extends TimeseriesEntryBase {
+    /** Time-weighted average home consumption power in Watts for this bucket */
+    homeConsumptionW: number;
+    /** Cumulative home consumption energy in Watt-hours for this bucket */
+    homeConsumptionWh: number;
+}
+
+/**
+ * Request parameters for querying home consumption timeseries data.
+ */
+export interface HomeConsumptionTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Response containing home consumption timeseries data.
+ */
+export interface HomeConsumptionTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of home consumption entries, one per 15-minute bucket */
+    entries: HomeConsumptionTimeseriesEntry[];
+    /** Total home consumption energy in Watt-hours across all buckets */
+    totalHomeConsumptionWh: number;
+}

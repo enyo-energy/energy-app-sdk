@@ -11,6 +11,8 @@ import {
     MeterValuesTimeseriesResponse,
     GridPowerTimeseriesRequest,
     GridPowerTimeseriesResponse,
+    HomeConsumptionTimeseriesRequest,
+    HomeConsumptionTimeseriesResponse,
 } from "../types/enyo-timeseries.js";
 
 /**
@@ -140,4 +142,22 @@ export interface EnergyAppTimeseries {
      * ```
      */
     getGridPowerTimeseries(request: GridPowerTimeseriesRequest): Promise<GridPowerTimeseriesResponse>;
+
+    /**
+     * Retrieves home consumption timeseries data aggregated in 15-minute buckets.
+     * Returns total power consumed by the home (all appliances combined).
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to home consumption entries with total consumption
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getHomeConsumptionTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * console.log(`Total home consumption: ${response.totalHomeConsumptionWh} Wh`);
+     * ```
+     */
+    getHomeConsumptionTimeseries(request: HomeConsumptionTimeseriesRequest): Promise<HomeConsumptionTimeseriesResponse>;
 }

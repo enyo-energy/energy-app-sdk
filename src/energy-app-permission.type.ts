@@ -30,7 +30,8 @@ export type EnergyAppPermissionType =
     | 'BatteryControlCommands'
     | 'ChargerControlCommands'
     | 'ModbusRtu'
-    | 'EnergyPrices';
+    | 'EnergyPrices'
+    | 'EnergyManager';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -53,6 +54,7 @@ export enum EnergyAppPermissionTypeEnum {
     LocationCoordinates = 'LocationCoordinates',
     Timeseries = 'Timeseries',
     EnergyManagerInfo = 'EnergyManagerInfo',
+    EnergyManager = 'EnergyManager',
     ElectricityTariff = 'ElectricityTariff',
     ModbusRtu = 'ModbusRtu',
     EnergyPrices = 'EnergyPrices',
