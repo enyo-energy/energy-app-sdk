@@ -13,6 +13,10 @@ import {
     GridPowerTimeseriesResponse,
     HomeConsumptionTimeseriesRequest,
     HomeConsumptionTimeseriesResponse,
+    HeatpumpTemperatureTimeseriesRequest,
+    HeatpumpTemperatureTimeseriesResponse,
+    TemperatureSensorTimeseriesRequest,
+    TemperatureSensorTimeseriesResponse,
 } from "../types/enyo-timeseries.js";
 
 /**
@@ -160,4 +164,44 @@ export interface EnergyAppTimeseries {
      * ```
      */
     getHomeConsumptionTimeseries(request: HomeConsumptionTimeseriesRequest): Promise<HomeConsumptionTimeseriesResponse>;
+
+    /**
+     * Retrieves heatpump temperature timeseries data aggregated in 15-minute buckets.
+     * Returns average temperatures for outdoor, flow, buffer tank, DHW tanks, and heating circuits.
+     * All temperature fields are optional since not all heatpumps report all temperature types.
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to heatpump temperature entries with response-level averages
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getHeatpumpTemperatureTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * console.log(`Average outdoor temp: ${response.averageOutdoorTemperatureC} °C`);
+     * ```
+     */
+    getHeatpumpTemperatureTimeseries(request: HeatpumpTemperatureTimeseriesRequest): Promise<HeatpumpTemperatureTimeseriesResponse>;
+
+    /**
+     * Retrieves temperature sensor timeseries data aggregated in 15-minute buckets.
+     * Returns per-sensor average temperature readings for each bucket, along with
+     * per-sensor averages across the full queried period.
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to temperature sensor entries with per-sensor period averages
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getTemperatureSensorTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * response.sensors.forEach(s => {
+     *     console.log(`Sensor ${s.sensorId}: ${s.averageTemperatureC} °C`);
+     * });
+     * ```
+     */
+    getTemperatureSensorTimeseries(request: TemperatureSensorTimeseriesRequest): Promise<TemperatureSensorTimeseriesResponse>;
 }

@@ -411,7 +411,6 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
         /** Total heat generation for domestic hot water from all appliances (in Watt hours) */
         totalHeatGenerationDomesticHotWaterWh?: number;
         autarkyPercentage?: number;
-        resolution: '1min' | '15min';
         /** Array of all appliances with their individual values and current state */
         appliances: Array<{
             /** ID of the appliance */

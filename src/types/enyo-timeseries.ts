@@ -283,3 +283,92 @@ export interface HomeConsumptionTimeseriesResponse extends TimeseriesResponseBas
     /** Total home consumption energy in Watt-hours across all buckets */
     totalHomeConsumptionWh: number;
 }
+
+/**
+ * A single entry in the heatpump temperature timeseries.
+ * Contains average temperature readings for a 15-minute bucket.
+ * All fields are optional since not all heatpumps report all temperature types.
+ */
+export interface HeatpumpTemperatureTimeseriesEntry extends TimeseriesEntryBase {
+    /** Average outdoor temperature in degrees Celsius for this bucket */
+    outdoorTemperatureC?: number;
+    /** Average heatpump flow temperature in degrees Celsius for this bucket */
+    heatpumpFlowTemperatureC?: number;
+    /** Average buffer tank temperature in degrees Celsius for this bucket */
+    bufferTankTemperatureC?: number;
+    /** Domestic hot water tank temperature readings, indexed per tank */
+    domesticHotWater?: {
+        /** Zero-based index identifying the DHW tank */
+        index: number;
+        /** Average temperature in degrees Celsius for this bucket */
+        averageTemperatureC: number;
+        /** Average target temperature in degrees Celsius for this bucket */
+        averageTargetTemperatureC: number;
+    }[];
+    /** Heating circuit temperature readings, indexed per circuit */
+    heatingCircuits?: {
+        /** Zero-based index identifying the heating circuit */
+        index: number;
+        /** Average temperature in degrees Celsius for this bucket */
+        averageTemperatureC: number;
+        /** Average target temperature in degrees Celsius for this bucket */
+        averageTargetTemperatureC: number;
+    }[];
+}
+
+/**
+ * Request parameters for querying heatpump temperature timeseries data.
+ */
+export interface HeatpumpTemperatureTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Response containing heatpump temperature timeseries data.
+ */
+export interface HeatpumpTemperatureTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of heatpump temperature entries, one per 15-minute bucket */
+    entries: HeatpumpTemperatureTimeseriesEntry[];
+    /** Average outdoor temperature in degrees Celsius across all buckets */
+    averageOutdoorTemperatureC?: number;
+    /** Average heatpump flow temperature in degrees Celsius across all buckets */
+    averageHeatpumpFlowTemperatureC?: number;
+    /** Average buffer tank temperature in degrees Celsius across all buckets */
+    averageBufferTankTemperatureC?: number;
+}
+
+/**
+ * A single entry in the temperature sensor timeseries.
+ * Contains per-sensor average temperature readings for a 15-minute bucket.
+ */
+export interface TemperatureSensorTimeseriesEntry extends TimeseriesEntryBase {
+    /** Array of sensor readings for this bucket */
+    sensors: {
+        /** Unique identifier for the temperature sensor */
+        sensorId: string;
+        /** Average temperature in degrees Celsius for this bucket */
+        averageTemperatureC: number;
+        /** Average target temperature in degrees Celsius for this bucket, if applicable */
+        averageTargetTemperatureC?: number;
+    }[];
+}
+
+/**
+ * Request parameters for querying temperature sensor timeseries data.
+ */
+export interface TemperatureSensorTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Response containing temperature sensor timeseries data.
+ */
+export interface TemperatureSensorTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of temperature sensor entries, one per 15-minute bucket */
+    entries: TemperatureSensorTimeseriesEntry[];
+    /** Per-sensor average temperatures across the full queried period */
+    sensors: {
+        /** Unique identifier for the temperature sensor */
+        sensorId: string;
+        /** Average temperature in degrees Celsius across the full period */
+        averageTemperatureC: number;
+        /** Average target temperature in degrees Celsius across the full period, if applicable */
+        averageTargetTemperatureC?: number;
+    }[];
+}

@@ -65,6 +65,21 @@ export interface EnyoCharge {
     meterValues?: ChargeMeterValue[];
     /** Number of phases used for charging */
     numberOfPhases: number;
+    /** Active charging schedule entries, if smart charging is in use */
+    schedule?: EnyoChargeScheduleEntry[];
+}
+
+/**
+ * Represents a single entry in a charging schedule.
+ * Defines a time-bound current limit for smart charging.
+ */
+export interface EnyoChargeScheduleEntry {
+    /** Start time in seconds relative to the charge session start */
+    relativeStartSeconds: number;
+    /** Absolute start time as an ISO 8601 timestamp */
+    absoluteStartIso: string;
+    /** Current limit in Ampere for this schedule period */
+    limitAmpere: number;
 }
 
 export interface EnyoChargeFilter {

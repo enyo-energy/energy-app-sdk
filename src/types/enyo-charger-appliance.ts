@@ -14,9 +14,26 @@ export enum EnyoChargerApplianceAuthorizationModeEnum {
     NoAuthorization = 'NoAuthorization',
 }
 
+/**
+ * Represents a single OCPP configuration entry from the charger.
+ */
+export interface EnyoChargerApplianceOcppConfigurationEntry {
+    /** Configuration key name */
+    key: string;
+    /** Configuration value */
+    value: string;
+    /** Whether this configuration entry is read-only */
+    readonly: boolean;
+}
+
+/**
+ * OCPP-specific metadata for a charger appliance.
+ */
 export interface EnyoChargerApplianceOcppMetadata {
     chargePointId: string;
     ocppVersion: '1.6' | '2.0.1';
+    /** OCPP configuration entries retrieved from the charger */
+    configuration?: EnyoChargerApplianceOcppConfigurationEntry[];
 }
 
 export enum EnyoChargerApplianceAvailableFeaturesEnum {
@@ -51,4 +68,6 @@ export interface EnyoChargerApplianceMetadata {
     authorizationMode: EnyoChargerApplianceAuthorizationModeEnum;
     /** If cableType is Socket, the cable can be locked for theft protection */
     cableLocked?: boolean;
+    /** Current charging power limit in kilowatts */
+    currentChargingLimitKw?: number;
 }
