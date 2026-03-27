@@ -7,8 +7,50 @@ import {
     PreviewChargingScheduleCostComparison,
     PreviewChargingScheduleUnavailableReasonEnum
 } from "./enyo-energy-manager.js";
-import {PvForecast} from "./enyo-pv-forecast.js";
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
+import {EnyoCurrencyEnum} from "./enyo-currency.js";
+
+/**
+ * Enum representing the reason type for why a data bus command was issued.
+ * Used to attach context to commands for logging, debugging, and UI display.
+ */
+export enum EnyoDataBusCommandReasonTypeEnum {
+    /** Command issued because the electricity price is below a configured threshold */
+    ElectricityPriceBelowThreshold = 'electricity-price-below-threshold',
+    /** Command issued because the electricity price is above a configured threshold */
+    ElectricityPriceAboveThreshold = 'electricity-price-above-threshold',
+    /** Command issued because PV surplus is available */
+    PvSurplusAvailable = 'pv-surplus-available',
+    /** Command issued because PV surplus is unavailable */
+    PvSurplusUnavailable = 'pv-surplus-unavailable',
+    /** Command issued because battery capacity is available */
+    BatteryCapacityAvailable = 'battery-capacity-available',
+    /** Command issued because battery capacity is unavailable */
+    BatteryCapacityUnavailable = 'battery-capacity-unavailable',
+    /** Command issued because a grid operator power limitation is active */
+    GridOperatorPowerLimitationActive = 'grid-operator-power-limitation-active',
+    /** Command issued because a grid operator power limitation is inactive */
+    GridOperatorPowerLimitationInactive = 'grid-operator-power-limitation-inactive',
+}
+
+/**
+ * Interface describing the reason why a data bus command was issued.
+ * Provides context for commands such as pricing information, capacity, or power values.
+ */
+export interface EnyoDataBusCommandReason {
+    /** The reason type indicating why this command was issued */
+    type: EnyoDataBusCommandReasonTypeEnum;
+    /** Electricity price per kWh that triggered this command */
+    electricityPricePerKwh?: number;
+    /** Currency of the electricity price */
+    currency?: EnyoCurrencyEnum;
+    /** Relevant capacity in kWh */
+    capacityKwh?: number;
+    /** Relevant power in Watts */
+    powerW?: number;
+    /** Relevant energy in Watt hours */
+    powerWh?: number;
+}
 
 export enum EnyoBatteryStateEnum {
     Off = 'off',
@@ -140,13 +182,21 @@ export enum EnyoDataBusMessageEnum {
     RequestPreviewChargingScheduleV1 = 'RequestPreviewChargingScheduleV1',
     PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1',
     PvForecastV1 = 'PvForecastV1',
+    BatteryForecastV1 = 'BatteryForecastV1',
+    HomeConsumptionForecastV1 = 'HomeConsumptionForecastV1',
+    EvChargingForecastV1 = 'EvChargingForecastV1',
+    HeatpumpConsumptionForecastV1 = 'HeatpumpConsumptionForecastV1',
+    HeatpumpDhwTemperatureForecastV1 = 'HeatpumpDhwTemperatureForecastV1',
     StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
     StopStorageGridChargeV1 = 'StopStorageGridChargeV1',
     SetStorageDischargeLimitV1 = 'SetStorageDischargeLimitV1',
     SetInverterFeedInLimitV1 = 'SetInverterFeedInLimitV1',
     CommandAcknowledgeV1 = 'CommandAcknowledgeV1',
     TemperatureSensorValuesUpdateV1 = 'TemperatureSensorValuesUpdateV1',
-    HeatpumpTemperaturesUpdateV1 = 'HeatpumpTemperaturesUpdateV1'
+    HeatpumpTemperaturesUpdateV1 = 'HeatpumpTemperaturesUpdateV1',
+    MaxChargingPowerChangedV1 = 'MaxChargingPowerChangedV1',
+    MaxDischargePowerChangedV1 = 'MaxDischargePowerChangedV1',
+    GridOperatorPowerLimitationV1 = 'GridOperatorPowerLimitationV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -196,7 +246,7 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
     /** ID of the appliance that delivered these values */
     applianceId: string;
     data: {
-        values?: {
+        values: {
             /** Power consumption for heating in Wh (meter value)*/
             powerConsumptionHeatingWh?: number;
             /** Power consumption for domestic hot water in Wh (meter value)*/
@@ -432,6 +482,8 @@ export interface EnyoDataBusPauseChargingV1 extends EnyoDataBusMessage {
     message: EnyoDataBusMessageEnum.PauseChargingV1;
     data: {
         applianceId: string;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -441,6 +493,8 @@ export interface EnyoDataBusResumeChargingV1 extends EnyoDataBusMessage {
     data: {
         applianceId: string;
         maxChargingPowerKw: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -450,6 +504,8 @@ export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         maxChargingPowerKw: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -459,6 +515,8 @@ export interface EnyoDataBusSetChargingScheduleV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         relativeSchedule: EnyoOcppRelativeSchedule[];
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -483,6 +541,8 @@ export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
         chargeMode: EnyoChargeModeEnum;
         /** ISO timestamp for target completion time (optional) */
         completeChargeAtIso?: string;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -497,6 +557,8 @@ export interface EnyoDataBusStopChargeV1 extends EnyoDataBusMessage {
     data: {
         /** OCPP transaction identifier of the session to stop */
         transactionId: string;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -620,17 +682,183 @@ export interface PreviewChargingScheduleModeResult {
 }
 
 /**
+ * Available resolution options for forecast data points.
+ */
+export type EnyoForecastResolution = '10s' | '1m' | '5m' | '15m' | '1h';
+
+/**
+ * A single data point in a PV forecast, containing power and energy values.
+ */
+export interface EnyoPvForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted PV power in Watts */
+    powerW: number;
+    /** Forecasted PV energy in Watt hours for this interval */
+    powerWh: number;
+}
+
+/**
+ * A single data point in a battery forecast, containing capacity and state of charge values.
+ */
+export interface EnyoBatteryForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted battery capacity in Watt hours */
+    capacityWh: number;
+    /** Forecasted battery state of charge in percent (0-100) */
+    socPercent: number;
+}
+
+/**
+ * A single data point in a home consumption forecast, containing power and energy values.
+ */
+export interface EnyoHomeConsumptionForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted home consumption power in Watts */
+    powerW: number;
+    /** Forecasted home consumption energy in Watt hours for this interval */
+    powerWh: number;
+}
+
+/**
+ * A single data point in an EV charging forecast, containing power and energy values.
+ */
+export interface EnyoEvChargingForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted EV charging power in Watts */
+    powerW: number;
+    /** Forecasted EV charging energy in Watt hours for this interval */
+    powerWh: number;
+}
+
+/**
+ * A single data point in a heatpump consumption forecast, containing power and energy values.
+ */
+export interface EnyoHeatpumpConsumptionForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted heatpump consumption power in Watts */
+    powerW: number;
+    /** Forecasted heatpump consumption energy in Watt hours for this interval */
+    powerWh: number;
+}
+
+/**
+ * A single data point in a heatpump DHW temperature forecast.
+ */
+export interface EnyoHeatpumpDhwTemperatureForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted domestic hot water temperature in Celsius */
+    temperatureC: number;
+}
+
+/**
  * Message for delivering PV production forecast data.
- * Contains forecasted power and energy values in 15-minute intervals.
+ * Contains forecasted power and energy values at the specified resolution.
+ * Can be sent for a specific PV appliance or as a total across all PV systems.
  */
 export interface EnyoDataBusPvForecastV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.PvForecastV1;
-    /** Optional ID of the specific PV appliance this forecast applies to */
+    /** Optional ID of the specific PV appliance. Omit for total forecast. */
     applianceId?: string;
     data: {
-        /** The PV forecast data including time range and 15-minute buckets */
-        forecast: PvForecast;
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoPvForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering battery forecast data.
+ * Contains forecasted capacity and state of charge values at the specified resolution.
+ * Can be sent for a specific battery appliance or as a total across all batteries.
+ */
+export interface EnyoDataBusBatteryForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.BatteryForecastV1;
+    /** Optional ID of the specific battery appliance. Omit for total forecast. */
+    applianceId?: string;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoBatteryForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering home consumption forecast data.
+ * Contains forecasted power and energy values at the specified resolution.
+ * Always represents the total home consumption (no per-appliance breakdown).
+ */
+export interface EnyoDataBusHomeConsumptionForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HomeConsumptionForecastV1;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoHomeConsumptionForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering EV charging forecast data.
+ * Contains forecasted power and energy values at the specified resolution.
+ * Can be sent for a specific charger appliance or as a total across all chargers.
+ */
+export interface EnyoDataBusEvChargingForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.EvChargingForecastV1;
+    /** Optional ID of the specific charger appliance. Omit for total forecast. */
+    applianceId?: string;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoEvChargingForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering heatpump consumption forecast data.
+ * Contains forecasted power and energy values at the specified resolution.
+ * Always sent for a specific heatpump appliance.
+ */
+export interface EnyoDataBusHeatpumpConsumptionForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpConsumptionForecastV1;
+    /** ID of the heatpump appliance this forecast applies to */
+    applianceId: string;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoHeatpumpConsumptionForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering heatpump domestic hot water temperature forecast data.
+ * Contains forecasted temperature values at the specified resolution.
+ * Always sent for a specific heatpump appliance.
+ */
+export interface EnyoDataBusHeatpumpDhwTemperatureForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpDhwTemperatureForecastV1;
+    /** ID of the heatpump appliance this forecast applies to */
+    applianceId: string;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoHeatpumpDhwTemperatureForecastDataPoint[];
     };
 }
 
@@ -646,6 +874,8 @@ export interface EnyoDataBusStartStorageGridChargeV1 extends EnyoDataBusMessage 
     data: {
         /** Maximum power in watts for grid-to-storage charging */
         powerLimitW: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -658,7 +888,10 @@ export interface EnyoDataBusStopStorageGridChargeV1 extends EnyoDataBusMessage {
     message: EnyoDataBusMessageEnum.StopStorageGridChargeV1;
     /** ID of the battery/storage appliance to stop charging */
     applianceId: string;
-    data: {};
+    data: {
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
 }
 
 /**
@@ -673,6 +906,8 @@ export interface EnyoDataBusSetStorageDischargeLimitV1 extends EnyoDataBusMessag
     data: {
         /** Discharge limit in W to limit the battery's discharge power */
         dischargeLimitW: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -689,6 +924,8 @@ export interface EnyoDataBusSetInverterFeedInLimitV1 extends EnyoDataBusMessage 
     data: {
         /** Feed-in limit in watts, or null to reset to default (no limit) */
         feedInLimitW: number | null;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 
@@ -790,5 +1027,53 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
             /** Current buffer tank temperature in Celsius */
             temperatureC: number;
         };
+    };
+}
+
+/**
+ * Informational message sent by an appliance when its maximum charging power has changed.
+ * This allows the energy manager to adjust its optimization based on current appliance capabilities.
+ */
+export interface EnyoDataBusMaxChargingPowerChangedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.MaxChargingPowerChangedV1;
+    /** ID of the appliance reporting the change */
+    applianceId: string;
+    data: {
+        /** Maximum charging power in kilowatts */
+        maxChargingPowerKw: number;
+    };
+}
+
+/**
+ * Informational message sent by an appliance when its maximum discharge power has changed.
+ * This allows the energy manager to adjust its optimization based on current appliance capabilities.
+ */
+export interface EnyoDataBusMaxDischargePowerChangedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.MaxDischargePowerChangedV1;
+    /** ID of the appliance reporting the change */
+    applianceId: string;
+    data: {
+        /** Maximum discharge power in kilowatts */
+        maxDischargePowerKw: number;
+    };
+}
+
+/**
+ * Command message for grid operator power limitations directed at the energy manager.
+ * Communicates whether a power limitation is active, the power limit, and when it ends.
+ * The energy manager should adjust its optimization strategy accordingly.
+ */
+export interface EnyoDataBusGridOperatorPowerLimitationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.GridOperatorPowerLimitationV1;
+    data: {
+        /** Whether the grid operator power limitation is currently active */
+        active: boolean;
+        /** The power limitation in watts */
+        powerLimitationW: number;
+        /** ISO 8601 timestamp when the limitation ends */
+        endTimestampIso: string;
     };
 }
