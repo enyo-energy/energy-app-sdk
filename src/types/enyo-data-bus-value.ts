@@ -514,6 +514,8 @@ export interface EnyoDataBusSetChargingScheduleV1 extends EnyoDataBusMessage {
     message: EnyoDataBusMessageEnum.SetChargingScheduleV1;
     applianceId: string;
     data: {
+        /** If set, we set the charging profile bind to a transaction with TxProfile */
+        transactionId?: string;
         relativeSchedule: EnyoOcppRelativeSchedule[];
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
