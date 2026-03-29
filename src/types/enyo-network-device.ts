@@ -1,3 +1,11 @@
+export enum EnyoNetworkDeviceDetectedAtEnum {
+    Eebus = 'eebus',
+    Ocpp = 'ocpp',
+    Hostname = 'hostname',
+    Modbus = 'modbus',
+    Http = 'http'
+}
+
 /**
  * Represents a detected network device with its connectivity information.
  */
@@ -18,6 +26,7 @@ export interface EnyoNetworkDevice {
     ports?: EnyoNetworkPort[];
     /** Access status for the device */
     accessStatus: EnyoNetworkDeviceAccessStatus | undefined;
+    detectedAt: EnyoNetworkDeviceDetectedAtEnum[];
 }
 
 export type EnyoNetworkDeviceAccessStatus = 'granted' | 'denied' | 'pending';
