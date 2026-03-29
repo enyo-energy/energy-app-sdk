@@ -67,6 +67,13 @@ export interface EnergyAppPackageOptionsDeviceDetectionOcpp {
     matchingValues: string[];
 }
 
+export interface EnergyAppPackageOptionsDeviceDetectionEebus {
+    /** field name in the boot notification */
+    field: 'vendor' | 'brand' | 'model';
+    /** matching values, for example the vendor names or model names */
+    matchingValues: string[];
+}
+
 /**
  * Optional device detection configuration
  */
@@ -75,6 +82,7 @@ export interface EnergyAppPackageOptionsDeviceDetection {
     modbus?: EnergyAppPackageOptionsDeviceDetectionModbus[];
     http?: EnergyAppPackageOptionsDeviceDetectionHttp[];
     ocpp?: EnergyAppPackageOptionsDeviceDetectionOcpp[];
+    eebus?: EnergyAppPackageOptionsDeviceDetectionEebus[];
 }
 
 /**
