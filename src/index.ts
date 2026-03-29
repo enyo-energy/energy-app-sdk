@@ -26,6 +26,7 @@ import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
+import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 
 export * from './energy-app-package-definition.js';
 export * from './version.js';
@@ -57,6 +58,8 @@ export * from './types/enyo-currency.js';
 export * from './packages/energy-app-sequence-generator.js';
 export * from './packages/energy-app-energy-prices.js'
 export * from './packages/energy-app-modbus-rtu.js'
+export * from './types/enyo-eebus.js'
+export * from './packages/energy-app-eebus.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -252,6 +255,17 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useModbusRtu(): EnergyAppModbusRtu {
         return this.energyAppSdk.useModbusRtu();
+    }
+
+    /**
+     * Gets the EEbus API for SHIP/SPINE device communication.
+     * Provides device pairing and discovery, low-level SPINE data access,
+     * and high-level convenience methods for power management and device classification.
+     * Supports both appliance and energy manager roles for bidirectional communication.
+     * @returns The EEbus API instance
+     */
+    public useEebus(): EnergyAppEebus {
+        return this.energyAppSdk.useEebus();
     }
 
     /**

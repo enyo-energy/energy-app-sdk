@@ -31,7 +31,10 @@ export type EnergyAppPermissionType =
     | 'ChargerControlCommands'
     | 'ModbusRtu'
     | 'EnergyPrices'
-    | 'EnergyManager';
+    | 'EnergyManager'
+    | 'EebusDeviceManagement'
+    | 'EebusDataAccess'
+    | 'EebusControl';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -67,4 +70,7 @@ export enum EnergyAppPermissionTypeEnum {
     InverterControlCommands = 'InverterControlCommands',
     BatteryControlCommands = 'BatteryControlCommands',
     ChargerControlCommands = 'ChargerControlCommands',
+    EebusDeviceManagement = 'EebusDeviceManagement',
+    EebusDataAccess = 'EebusDataAccess',
+    EebusControl = 'EebusControl',
 }
