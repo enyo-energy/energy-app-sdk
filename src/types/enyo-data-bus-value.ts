@@ -9,6 +9,7 @@ import {
 } from "./enyo-energy-manager.js";
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
+import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -247,6 +248,9 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         values: {
+            operationMode: EnyoHeatpumpApplianceModeEnum;
+            /** current power consumption in W */
+            powerW?: number;
             /** Power consumption for heating in Wh (meter value)*/
             powerConsumptionHeatingWh?: number;
             /** Power consumption for domestic hot water in Wh (meter value)*/
