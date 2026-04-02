@@ -27,7 +27,9 @@ import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
+import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 
+export * from './energy-app-appliance-type.enum.js';
 export * from './energy-app-package-definition.js';
 export * from './version.js';
 export * from './implementations/ocpp/ocpp16.js';
@@ -60,6 +62,8 @@ export * from './packages/energy-app-energy-prices.js'
 export * from './packages/energy-app-modbus-rtu.js'
 export * from './types/enyo-eebus.js'
 export * from './packages/energy-app-eebus.js'
+export * from './types/enyo-mqtt.js'
+export * from './packages/energy-app-mqtt.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -266,6 +270,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useEebus(): EnergyAppEebus {
         return this.energyAppSdk.useEebus();
+    }
+
+    /**
+     * Gets the MQTT communication API.
+     * Provides methods to connect to the SDK-provided internal MQTT broker
+     * or external custom brokers for publishing and subscribing to topics.
+     * @returns The MQTT API instance
+     */
+    public useMqtt(): EnergyAppMqtt {
+        return this.energyAppSdk.useMqtt();
     }
 
     /**

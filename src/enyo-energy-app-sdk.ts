@@ -25,6 +25,7 @@ import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
+import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -103,4 +104,6 @@ export interface EnyoEnergyAppSdk {
     useModbusRtu: () => EnergyAppModbusRtu;
     /** Get the EEbus SHIP/SPINE communication API for device pairing, data access, and power management */
     useEebus: () => EnergyAppEebus;
+    /** Get the MQTT communication API for connecting to internal or external MQTT brokers */
+    useMqtt: () => EnergyAppMqtt;
 }

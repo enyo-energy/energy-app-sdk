@@ -32,6 +32,12 @@ export interface EnyoApplianceNetworkMetadata {
     imsi?: string;
 }
 
+/** Optional MQTT configuration for the appliance */
+export interface EnyoApplianceMqttConfig {
+    /** Optional MQTT client identifier for the appliance */
+    clientId?: string;
+}
+
 /** Modbus connection metadata for the appliance */
 export interface EnyoApplianceModbusMetadata {
     /** The Modbus unit identifier for addressing the appliance */
@@ -53,6 +59,8 @@ export interface EnyoApplianceMetadata {
     state?: EnyoApplianceStateEnum;
     network?: EnyoApplianceNetworkMetadata;
     modbus?: EnyoApplianceModbusMetadata;
+    /** Optional MQTT configuration */
+    mqtt?: EnyoApplianceMqttConfig;
     connectionType: EnyoApplianceConnectionType;
 }
 

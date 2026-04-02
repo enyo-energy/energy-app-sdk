@@ -38,13 +38,29 @@ export class EnergyAppModbusFaultTolerantReader implements IRegisterReader {
         }
     }
 
+    /**
+     * Reads input registers from the Modbus device with fault-tolerant error handling.
+     * @param startAddress The starting register address to read from
+     * @param quantity The number of registers to read
+     * @returns A result object containing the register data as a Buffer on success, or an error on failure
+     */
     async readInputRegisters(startAddress: number, quantity: number): Promise<RegisterReadResult<Buffer>> {
         try {
-            // Note: This would need to be implemented in the SDK if input registers are needed
-            throw new Error('Input registers not supported by current SDK');
+            const result = await this._modbusInstance.readInputRegisters(startAddress, quantity);
+            this._connectionHealth.recordSuccess();
+
+            return {
+                success: true,
+                value: result
+            };
         } catch (error) {
             const err = error as Error;
             this._connectionHealth.recordFailure(err);
+
+            console.warn(
+                `Failed to read input registers ${startAddress}-${startAddress + quantity - 1}: ${err.message} ` +
+                `(consecutive failures: ${this._connectionHealth.getConsecutiveFailures()})`
+            );
 
             return {
                 success: false,

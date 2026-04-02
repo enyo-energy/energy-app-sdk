@@ -14,6 +14,7 @@ export enum EnergyAppPackageCategory {
     DynamicElectricityTariff = 'dynamic-electricity-tariff',
     StaticElectricityTariff = 'static-electricity-tariff',
     TemperatureSensor = 'temperature-sensor',
+    SmartPlug = 'smart-plug',
     Other = 'other',
 }
 
@@ -75,6 +76,19 @@ export interface EnergyAppPackageOptionsDeviceDetectionEebus {
 }
 
 /**
+ * Optional device detection configuration for MQTT-based detection.
+ * Subscribes to a topic on the internal broker and matches messages against expected values.
+ */
+export interface EnergyAppPackageOptionsDeviceDetectionMqtt {
+    /** MQTT topic to subscribe to for device detection */
+    topic: string;
+    /** JSON field path to match against (e.g. "device.vendor"). If omitted, the entire payload is matched */
+    field?: string;
+    /** Matching values to identify the device */
+    matchingValues: string[];
+}
+
+/**
  * Optional device detection configuration
  */
 export interface EnergyAppPackageOptionsDeviceDetection {
@@ -83,6 +97,7 @@ export interface EnergyAppPackageOptionsDeviceDetection {
     http?: EnergyAppPackageOptionsDeviceDetectionHttp[];
     ocpp?: EnergyAppPackageOptionsDeviceDetectionOcpp[];
     eebus?: EnergyAppPackageOptionsDeviceDetectionEebus[];
+    mqtt?: EnergyAppPackageOptionsDeviceDetectionMqtt[];
 }
 
 /**
