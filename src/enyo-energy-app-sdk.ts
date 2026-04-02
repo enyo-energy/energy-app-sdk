@@ -42,7 +42,7 @@ export enum EnergyAppStateEnum {
  */
 export interface EnyoEnergyAppSdk {
     /** Register a callback that gets called when the package is initialized */
-    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel) => void | Promise<void>) => void;
+    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>) => void;
     /** Register a callback that gets called when the system is shutting down */
     onShutdown: (callback: () => Promise<void>) => void;
     /** Update the state of the Energy App. Default state set is launching*/

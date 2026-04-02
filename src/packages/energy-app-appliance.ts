@@ -15,4 +15,21 @@ export interface EnergyAppAppliance {
     getById: (id: string) => Promise<EnyoAppliance | null>;
     /** Remove an appliance by its ID */
     removeById: (id: string) => Promise<void>;
+    /**
+     * Listen for appliance updates (when an appliance is saved or modified).
+     * @param listener - Callback invoked with the updated appliance
+     * @returns A unique listener ID that can be used to remove the listener
+     */
+    listenForApplianceUpdated: (listener: (appliance: EnyoAppliance) => void) => string;
+    /**
+     * Listen for appliance removals.
+     * @param listener - Callback invoked with the ID of the removed appliance
+     * @returns A unique listener ID that can be used to remove the listener
+     */
+    listenForApplianceRemoved: (listener: (applianceId: string) => void) => string;
+    /**
+     * Removes a previously registered listener.
+     * @param listenerId - The ID returned by listenForApplianceUpdated or listenForApplianceRemoved
+     */
+    removeListener: (listenerId: string) => void;
 }

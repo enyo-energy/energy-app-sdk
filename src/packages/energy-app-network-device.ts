@@ -17,6 +17,12 @@ export interface EnergyAppNetworkDevice {
     listenForDeviceAccessChange: (listener: (deviceId: string, status: EnyoNetworkDeviceAccessStatus) => void) => string;
     /** listen for detected devices, based on the device definition in the energy app package definition */
     listenForDetectedDevice: (listener: (detectedDevices: EnyoNetworkDevice[]) => void) => string;
+    /**
+     * Listen for network device removals.
+     * @param listener - Callback invoked with the ID of the removed network device
+     * @returns A unique listener ID that can be used to remove the listener
+     */
+    listenForNetworkDeviceRemoved: (listener: (deviceId: string) => void) => string;
     /** Removes the listener */
     removeListener: (listenerId: string) => void;
 }

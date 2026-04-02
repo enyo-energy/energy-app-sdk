@@ -84,7 +84,7 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         this.energyAppSdk.updateEnergyAppState(state)
     }
 
-    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel) => void) {
+    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void) {
         // This registers the package with the enyo system
         this.energyAppSdk.register(callback);
     }

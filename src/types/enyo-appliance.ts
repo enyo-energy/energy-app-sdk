@@ -49,6 +49,7 @@ export interface EnyoApplianceMetadata {
     serialNumber?: string;
     firmwareVersion?: string;
     hostname?: string;
+    ipAddress?: string;
     state?: EnyoApplianceStateEnum;
     network?: EnyoApplianceNetworkMetadata;
     modbus?: EnyoApplianceModbusMetadata;
