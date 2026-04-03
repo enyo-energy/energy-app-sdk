@@ -197,7 +197,9 @@ export enum EnyoDataBusMessageEnum {
     HeatpumpTemperaturesUpdateV1 = 'HeatpumpTemperaturesUpdateV1',
     MaxChargingPowerChangedV1 = 'MaxChargingPowerChangedV1',
     MaxDischargePowerChangedV1 = 'MaxDischargePowerChangedV1',
-    GridOperatorPowerLimitationV1 = 'GridOperatorPowerLimitationV1'
+    GridOperatorPowerLimitationV1 = 'GridOperatorPowerLimitationV1',
+    ResetChargerV1 = 'ResetChargerV1',
+    RebootChargerV1 = 'RebootChargerV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -1081,5 +1083,37 @@ export interface EnyoDataBusGridOperatorPowerLimitationV1 extends EnyoDataBusMes
         powerLimitationW: number;
         /** ISO 8601 timestamp when the limitation ends */
         endTimestampIso: string;
+    };
+}
+
+/**
+ * Command message to reset a charger appliance.
+ * Sends a reset command to the specified charger, which performs a soft reset
+ * restoring the charger to its initial configuration without a full power cycle.
+ */
+export interface EnyoDataBusResetChargerV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ResetChargerV1;
+    /** ID of the charger appliance to reset */
+    applianceId: string;
+    data: {
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to reboot a charger appliance.
+ * Sends a reboot command to the specified charger, which performs a full power cycle
+ * including hardware restart of the charger.
+ */
+export interface EnyoDataBusRebootChargerV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.RebootChargerV1;
+    /** ID of the charger appliance to reboot */
+    applianceId: string;
+    data: {
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
