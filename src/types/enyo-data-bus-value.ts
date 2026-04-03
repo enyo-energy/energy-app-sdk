@@ -199,7 +199,9 @@ export enum EnyoDataBusMessageEnum {
     MaxDischargePowerChangedV1 = 'MaxDischargePowerChangedV1',
     GridOperatorPowerLimitationV1 = 'GridOperatorPowerLimitationV1',
     ResetChargerV1 = 'ResetChargerV1',
-    RebootChargerV1 = 'RebootChargerV1'
+    RebootChargerV1 = 'RebootChargerV1',
+    RequestChargerLogsV1 = 'RequestChargerLogsV1',
+    ClearChargingProfilesV1 = 'ClearChargingProfilesV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -1115,5 +1117,50 @@ export interface EnyoDataBusRebootChargerV1 extends EnyoDataBusMessage {
     data: {
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to request diagnostic logs from a charger appliance for a specific day.
+ * The charger should upload its logs to the provided upload URL.
+ */
+export interface EnyoDataBusRequestChargerLogsV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.RequestChargerLogsV1;
+    /** ID of the charger appliance to request logs from */
+    applianceId: string;
+    data: {
+        /** URL where the charger should upload its logs */
+        uploadUrl: string;
+        /** Optional date for which to retrieve logs (format: yyyy-mm-dd). If omitted, the charger should upload all available logs. */
+        date?: string;
+    };
+}
+
+/**
+ * Enum representing the type of charging profile to clear.
+ * Maps to OCPP charging profile purpose types.
+ */
+export enum EnyoChargingProfileTypeEnum {
+    /** Maximum charging profile for the entire charge point */
+    ChargePointMaxProfile = 'ChargePointMaxProfile',
+    /** Default charging profile for transactions */
+    TxDefaultProfile = 'TxDefaultProfile',
+    /** Charging profile for a specific transaction */
+    TxProfile = 'TxProfile',
+}
+
+/**
+ * Command message to clear charging profiles from a charger appliance.
+ * Instructs the charger to remove one or more charging profiles, optionally filtered by profile type.
+ */
+export interface EnyoDataBusClearChargingProfilesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ClearChargingProfilesV1;
+    /** ID of the charger appliance to clear charging profiles from */
+    applianceId: string;
+    data: {
+        /** Optional charging profile type to clear. If omitted, all charging profiles are cleared. */
+        profileType?: EnyoChargingProfileTypeEnum;
     };
 }
