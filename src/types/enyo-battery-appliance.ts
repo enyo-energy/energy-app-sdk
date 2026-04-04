@@ -7,7 +7,9 @@ export enum EnyoBatteryStorageMode {
 }
 
 export enum EnyoBatteryFeature {
-    GridCharging = 'grid-charging'
+    GridCharging = 'grid-charging',
+    /** If the battery supports discharge power limitation */
+    DischargeLimitation = 'discharge-limitation'
 }
 
 export interface EnyoBatteryApplianceMetadata {

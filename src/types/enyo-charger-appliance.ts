@@ -57,6 +57,12 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
     Socket = 'Socket',
     /** If the charger supports authorization via rfid reader*/
     RfidAuthorization = 'RfidAuthorization',
+    /** If the charger supports being reset */
+    ResetCharger = 'ResetCharger',
+    /** If the charger supports being rebooted */
+    RebootCharger = 'RebootCharger',
+    /** If the charger supports requesting log file uploads */
+    RequestLogFiles = 'RequestLogFiles',
 }
 
 export interface EnyoChargerApplianceMetadata {

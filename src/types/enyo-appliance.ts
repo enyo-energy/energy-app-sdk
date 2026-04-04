@@ -109,4 +109,6 @@ export interface EnyoAppliance {
     battery?: EnyoBatteryApplianceMetadata;
     /** Optional Metadata of the Appliance if of type TemperatureSensor */
     temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
+    /** Optional custom name for the appliance, defined by the user */
+    customName?: string;
 }

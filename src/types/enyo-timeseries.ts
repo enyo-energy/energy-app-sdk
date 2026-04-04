@@ -5,8 +5,27 @@ import {EnyoDataBusMessage, EnyoDataBusMessageEnum} from "./enyo-data-bus-value.
 // ============================================================================
 
 /**
+ * Supported time resolutions for timeseries data buckets.
+ * - `'1m'`  — 1-minute buckets aligned to clock minutes (:00, :01, :02, …)
+ * - `'15m'` — 15-minute buckets aligned to clock quarters (:00, :15, :30, :45)
+ */
+export type TimeseriesResolution = '1m' | '15m';
+
+/**
+ * Defines a custom time range for timeseries queries.
+ * Multiple ranges can be provided as an alternative to the single
+ * `startDateIso` / `endDateIso` pair on {@link TimeseriesRequestBase}.
+ */
+export interface TimeseriesRange {
+    /** ISO 8601 timestamp for the start of this range (inclusive) */
+    startDateIso: string;
+    /** ISO 8601 timestamp for the end of this range (exclusive) */
+    endDateIso: string;
+}
+
+/**
  * Base interface for all timeseries entries.
- * Contains the timestamp boundaries for each 15-minute bucket.
+ * Contains the timestamp boundaries for each time bucket.
  */
 export interface TimeseriesEntryBase {
     /** ISO 8601 timestamp marking the start of this bucket (inclusive) */
@@ -17,7 +36,7 @@ export interface TimeseriesEntryBase {
 
 /**
  * Base interface for all timeseries requests.
- * Defines the date range and optional appliance filter for queries.
+ * Defines the date range, resolution, and optional appliance filter for queries.
  */
 export interface TimeseriesRequestBase {
     /** ISO 8601 timestamp for the start of the query range (inclusive) */
@@ -26,6 +45,8 @@ export interface TimeseriesRequestBase {
     endDateIso: string;
     /** Optional array of appliance IDs to filter by. If omitted, returns aggregated data from all relevant appliances */
     applianceIds?: string[];
+    /** Time resolution of the requested data buckets. Defaults to `'15m'` if not specified */
+    resolution?: TimeseriesResolution;
 }
 
 /**
@@ -40,7 +61,7 @@ export interface TimeseriesResponseBase {
     /** ISO 8601 timestamp when this response was generated */
     generatedAtIso: string;
     /** Time resolution of the returned data buckets */
-    resolution: '15m';
+    resolution: TimeseriesResolution;
     /** Array of appliance IDs that contributed data to this response */
     includedApplianceIds: string[];
 }
@@ -97,7 +118,7 @@ export interface DataBusMessageQueryResponse {
 
 /**
  * A single entry in the PV production timeseries.
- * Contains power and energy values for a 15-minute bucket.
+ * Contains power and energy values for a single time bucket.
  */
 export interface PvProductionTimeseriesEntry extends TimeseriesEntryBase {
     /** Time-weighted average PV power output in Watts for this bucket */
@@ -115,7 +136,7 @@ export interface PvProductionTimeseriesRequest extends TimeseriesRequestBase {}
  * Response containing PV production timeseries data.
  */
 export interface PvProductionTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of PV production entries, one per 15-minute bucket */
+    /** Array of PV production entries, one per time bucket */
     entries: PvProductionTimeseriesEntry[];
     /** Total PV energy production in Watt-hours across all buckets in the response */
     totalPvProductionWh: number;
@@ -127,7 +148,7 @@ export interface PvProductionTimeseriesResponse extends TimeseriesResponseBase {
 
 /**
  * A single entry in the battery state of charge timeseries.
- * Contains SOC statistics for a 15-minute bucket.
+ * Contains SOC statistics for a single time bucket.
  */
 export interface BatterySocTimeseriesEntry extends TimeseriesEntryBase {
     /** Time-weighted average battery state of charge (0-100) for this bucket */
@@ -147,7 +168,7 @@ export interface BatterySocTimeseriesRequest extends TimeseriesRequestBase {}
  * Response containing battery SOC timeseries data.
  */
 export interface BatterySocTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of battery SOC entries, one per 15-minute bucket */
+    /** Array of battery SOC entries, one per time bucket */
     entries: BatterySocTimeseriesEntry[];
     /** Average state of charge across all buckets in the response */
     averageSoC: number;
@@ -159,7 +180,7 @@ export interface BatterySocTimeseriesResponse extends TimeseriesResponseBase {
 
 /**
  * A single entry in the battery power timeseries.
- * Contains power and energy values for a 15-minute bucket.
+ * Contains power and energy values for a single time bucket.
  * Positive values indicate discharge (consumption from battery),
  * negative values indicate charge (energy into battery).
  */
@@ -179,7 +200,7 @@ export interface BatteryPowerTimeseriesRequest extends TimeseriesRequestBase {}
  * Response containing battery power timeseries data.
  */
 export interface BatteryPowerTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of battery power entries, one per 15-minute bucket */
+    /** Array of battery power entries, one per time bucket */
     entries: BatteryPowerTimeseriesEntry[];
     /** Total energy discharged from battery in Watt-hours across all buckets */
     totalDischargeWh: number;
@@ -193,7 +214,7 @@ export interface BatteryPowerTimeseriesResponse extends TimeseriesResponseBase {
 
 /**
  * A single entry in the meter values timeseries.
- * Contains grid consumption and feed-in energy values for a 15-minute bucket.
+ * Contains grid consumption and feed-in energy values for a single time bucket.
  */
 export interface MeterValuesTimeseriesEntry extends TimeseriesEntryBase {
     /** Grid energy consumption in Watt-hours for this bucket */
@@ -211,7 +232,7 @@ export interface MeterValuesTimeseriesRequest extends TimeseriesRequestBase {}
  * Response containing meter values timeseries data.
  */
 export interface MeterValuesTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of meter value entries, one per 15-minute bucket */
+    /** Array of meter value entries, one per time bucket */
     entries: MeterValuesTimeseriesEntry[];
     /** Total grid consumption in Watt-hours across all buckets */
     totalGridConsumptionWh: number;
@@ -225,7 +246,7 @@ export interface MeterValuesTimeseriesResponse extends TimeseriesResponseBase {
 
 /**
  * A single entry in the grid power timeseries.
- * Contains power and energy values for a 15-minute bucket.
+ * Contains power and energy values for a single time bucket.
  * Positive values indicate import (consumption from grid),
  * negative values indicate export (feed-in to grid).
  */
@@ -245,7 +266,7 @@ export interface GridPowerTimeseriesRequest extends TimeseriesRequestBase {}
  * Response containing grid power timeseries data.
  */
 export interface GridPowerTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of grid power entries, one per 15-minute bucket */
+    /** Array of grid power entries, one per time bucket */
     entries: GridPowerTimeseriesEntry[];
     /** Total energy imported from grid in Watt-hours across all buckets */
     totalImportWh: number;
@@ -259,7 +280,7 @@ export interface GridPowerTimeseriesResponse extends TimeseriesResponseBase {
 
 /**
  * A single entry in the home consumption timeseries.
- * Contains power and energy values for a 15-minute bucket.
+ * Contains power and energy values for a single time bucket.
  * Represents the total energy consumed by the home (all appliances combined).
  */
 export interface HomeConsumptionTimeseriesEntry extends TimeseriesEntryBase {
@@ -278,7 +299,7 @@ export interface HomeConsumptionTimeseriesRequest extends TimeseriesRequestBase 
  * Response containing home consumption timeseries data.
  */
 export interface HomeConsumptionTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of home consumption entries, one per 15-minute bucket */
+    /** Array of home consumption entries, one per time bucket */
     entries: HomeConsumptionTimeseriesEntry[];
     /** Total home consumption energy in Watt-hours across all buckets */
     totalHomeConsumptionWh: number;
@@ -286,7 +307,7 @@ export interface HomeConsumptionTimeseriesResponse extends TimeseriesResponseBas
 
 /**
  * A single entry in the heatpump temperature timeseries.
- * Contains average temperature readings for a 15-minute bucket.
+ * Contains average temperature readings for a single time bucket.
  * All fields are optional since not all heatpumps report all temperature types.
  */
 export interface HeatpumpTemperatureTimeseriesEntry extends TimeseriesEntryBase {
@@ -325,7 +346,7 @@ export interface HeatpumpTemperatureTimeseriesRequest extends TimeseriesRequestB
  * Response containing heatpump temperature timeseries data.
  */
 export interface HeatpumpTemperatureTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of heatpump temperature entries, one per 15-minute bucket */
+    /** Array of heatpump temperature entries, one per time bucket */
     entries: HeatpumpTemperatureTimeseriesEntry[];
     /** Average outdoor temperature in degrees Celsius across all buckets */
     averageOutdoorTemperatureC?: number;
@@ -337,7 +358,7 @@ export interface HeatpumpTemperatureTimeseriesResponse extends TimeseriesRespons
 
 /**
  * A single entry in the temperature sensor timeseries.
- * Contains per-sensor average temperature readings for a 15-minute bucket.
+ * Contains per-sensor average temperature readings for a single time bucket.
  */
 export interface TemperatureSensorTimeseriesEntry extends TimeseriesEntryBase {
     /** Array of sensor readings for this bucket */
@@ -360,7 +381,7 @@ export interface TemperatureSensorTimeseriesRequest extends TimeseriesRequestBas
  * Response containing temperature sensor timeseries data.
  */
 export interface TemperatureSensorTimeseriesResponse extends TimeseriesResponseBase {
-    /** Array of temperature sensor entries, one per 15-minute bucket */
+    /** Array of temperature sensor entries, one per time bucket */
     entries: TemperatureSensorTimeseriesEntry[];
     /** Per-sensor average temperatures across the full queried period */
     sensors: {

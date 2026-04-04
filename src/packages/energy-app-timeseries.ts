@@ -20,13 +20,16 @@ import {
 } from "../types/enyo-timeseries.js";
 
 /**
- * Interface for querying historical energy data with 15-minute bucket granularity.
+ * Interface for querying historical energy data with configurable bucket granularity.
  * Provides methods to retrieve aggregated timeseries data for various energy metrics
  * including PV production, battery state, meter values, and grid power.
  *
- * All aggregated methods return data in 15-minute buckets aligned to clock time
- * (:00, :15, :30, :45). Power values (W) represent time-weighted averages within
- * each bucket, while energy values (Wh) represent cumulative sums.
+ * Data is returned in time buckets whose size is determined by the requested resolution:
+ * - `'1m'`  — 1-minute buckets aligned to clock minutes (:00, :01, :02, …)
+ * - `'15m'` — 15-minute buckets aligned to clock quarters (:00, :15, :30, :45) (default)
+ *
+ * Power values (W) represent time-weighted averages within each bucket,
+ * while energy values (Wh) represent cumulative sums.
  *
  * Date ranges use inclusive start and exclusive end timestamps.
  */
@@ -52,7 +55,7 @@ export interface EnergyAppTimeseries {
     queryDataBusMessages(request: DataBusMessageQueryRequest): Promise<DataBusMessageQueryResponse>;
 
     /**
-     * Retrieves PV production timeseries data aggregated in 15-minute buckets.
+     * Retrieves PV production timeseries data aggregated in time buckets.
      * Returns both instantaneous power (W) and cumulative energy (Wh) values.
      *
      * @param request - The query parameters including date range and optional appliance filter
@@ -70,7 +73,7 @@ export interface EnergyAppTimeseries {
     getPvProductionTimeseries(request: PvProductionTimeseriesRequest): Promise<PvProductionTimeseriesResponse>;
 
     /**
-     * Retrieves battery state of charge (SOC) timeseries data aggregated in 15-minute buckets.
+     * Retrieves battery state of charge (SOC) timeseries data aggregated in time buckets.
      * Returns average, minimum, and maximum SOC values for each bucket.
      *
      * @param request - The query parameters including date range and optional appliance filter
@@ -89,7 +92,7 @@ export interface EnergyAppTimeseries {
     getBatterySocTimeseries(request: BatterySocTimeseriesRequest): Promise<BatterySocTimeseriesResponse>;
 
     /**
-     * Retrieves battery power timeseries data aggregated in 15-minute buckets.
+     * Retrieves battery power timeseries data aggregated in time buckets.
      * Positive values indicate discharge (consumption from battery),
      * negative values indicate charge (energy into battery).
      *
@@ -109,7 +112,7 @@ export interface EnergyAppTimeseries {
     getBatteryPowerTimeseries(request: BatteryPowerTimeseriesRequest): Promise<BatteryPowerTimeseriesResponse>;
 
     /**
-     * Retrieves meter values timeseries data aggregated in 15-minute buckets.
+     * Retrieves meter values timeseries data aggregated in time buckets.
      * Returns grid consumption and feed-in energy values.
      *
      * @param request - The query parameters including date range and optional appliance filter
@@ -128,7 +131,7 @@ export interface EnergyAppTimeseries {
     getMeterValuesTimeseries(request: MeterValuesTimeseriesRequest): Promise<MeterValuesTimeseriesResponse>;
 
     /**
-     * Retrieves grid power timeseries data aggregated in 15-minute buckets.
+     * Retrieves grid power timeseries data aggregated in time buckets.
      * Positive values indicate import (consumption from grid),
      * negative values indicate export (feed-in to grid).
      *
@@ -148,7 +151,7 @@ export interface EnergyAppTimeseries {
     getGridPowerTimeseries(request: GridPowerTimeseriesRequest): Promise<GridPowerTimeseriesResponse>;
 
     /**
-     * Retrieves home consumption timeseries data aggregated in 15-minute buckets.
+     * Retrieves home consumption timeseries data aggregated in time buckets.
      * Returns total power consumed by the home (all appliances combined).
      *
      * @param request - The query parameters including date range and optional appliance filter
@@ -166,7 +169,7 @@ export interface EnergyAppTimeseries {
     getHomeConsumptionTimeseries(request: HomeConsumptionTimeseriesRequest): Promise<HomeConsumptionTimeseriesResponse>;
 
     /**
-     * Retrieves heatpump temperature timeseries data aggregated in 15-minute buckets.
+     * Retrieves heatpump temperature timeseries data aggregated in time buckets.
      * Returns average temperatures for outdoor, flow, buffer tank, DHW tanks, and heating circuits.
      * All temperature fields are optional since not all heatpumps report all temperature types.
      *
@@ -185,7 +188,7 @@ export interface EnergyAppTimeseries {
     getHeatpumpTemperatureTimeseries(request: HeatpumpTemperatureTimeseriesRequest): Promise<HeatpumpTemperatureTimeseriesResponse>;
 
     /**
-     * Retrieves temperature sensor timeseries data aggregated in 15-minute buckets.
+     * Retrieves temperature sensor timeseries data aggregated in time buckets.
      * Returns per-sensor average temperature readings for each bucket, along with
      * per-sensor averages across the full queried period.
      *

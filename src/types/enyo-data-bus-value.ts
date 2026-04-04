@@ -201,7 +201,8 @@ export enum EnyoDataBusMessageEnum {
     ResetChargerV1 = 'ResetChargerV1',
     RebootChargerV1 = 'RebootChargerV1',
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
-    ClearChargingProfilesV1 = 'ClearChargingProfilesV1'
+    ClearChargingProfilesV1 = 'ClearChargingProfilesV1',
+    HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -1162,5 +1163,41 @@ export interface EnyoDataBusClearChargingProfilesV1 extends EnyoDataBusMessage {
     data: {
         /** Optional charging profile type to clear. If omitted, all charging profiles are cleared. */
         profileType?: EnyoChargingProfileTypeEnum;
+    };
+}
+
+/**
+ * Overheating configuration for a single zone (room, buffer tank, or DHW).
+ * Defines the temperature delta and duration for which the heatpump should overheat.
+ */
+export interface EnyoHeatpumpOverheatingConfig {
+    /** Temperature delta in Kelvin to overheat above the current target temperature */
+    deltaK: number;
+    /** Duration in minutes for which the overheating should be applied */
+    durationMinutes: number;
+    /** Optional index of the heating circuit or DHW tank this config applies to */
+    index?: number;
+}
+
+/**
+ * Command message to instruct a heatpump to overheat one or more zones.
+ *
+ * Supports room overheating (via heating circuits), buffer tank overheating,
+ * and domestic hot water (DHW) overheating, each with their own temperature delta and duration.
+ */
+export interface EnyoDataBusHeatpumpOverheatingV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpOverheatingV1;
+    /** ID of the heatpump appliance to overheat */
+    applianceId: string;
+    data: {
+        /** Optional room overheating configuration for a heating circuit */
+        room?: EnyoHeatpumpOverheatingConfig;
+        /** Optional buffer tank overheating configuration */
+        bufferTank?: EnyoHeatpumpOverheatingConfig;
+        /** Optional domestic hot water overheating configuration */
+        dhw?: EnyoHeatpumpOverheatingConfig;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }

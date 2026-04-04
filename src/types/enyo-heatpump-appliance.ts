@@ -5,6 +5,12 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     DomesticHotWaterBoost = 'DomesticHotWaterBoost',
     /** If the heatpump has a heating rod*/
     HeatingRod = 'HeatingRod',
+    /** If the heatpump supports room overheating via heating circuits */
+    RoomOverheating = 'RoomOverheating',
+    /** If the heatpump supports buffer tank overheating */
+    BufferTankOverheating = 'BufferTankOverheating',
+    /** If the heatpump supports domestic hot water overheating */
+    DomesticHotWaterOverheating = 'DomesticHotWaterOverheating',
 }
 
 export enum EnyoHeatpumpApplianceModeEnum {
