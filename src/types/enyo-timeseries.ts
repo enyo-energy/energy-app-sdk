@@ -313,16 +313,40 @@ export interface HomeConsumptionTimeseriesResponse extends TimeseriesResponseBas
 export interface HeatpumpTemperatureTimeseriesEntry extends TimeseriesEntryBase {
     /** Average outdoor temperature in degrees Celsius for this bucket */
     outdoorTemperatureC?: number;
+    /** Minimum outdoor temperature in degrees Celsius observed in this bucket */
+    minOutdoorTemperatureC?: number;
+    /** Maximum outdoor temperature in degrees Celsius observed in this bucket */
+    maxOutdoorTemperatureC?: number;
+    /** Outdoor temperature difference (delta) in Kelvin for this bucket */
+    outdoorDeltaK?: number;
     /** Average heatpump flow temperature in degrees Celsius for this bucket */
     heatpumpFlowTemperatureC?: number;
+    /** Minimum heatpump flow temperature in degrees Celsius observed in this bucket */
+    minHeatpumpFlowTemperatureC?: number;
+    /** Maximum heatpump flow temperature in degrees Celsius observed in this bucket */
+    maxHeatpumpFlowTemperatureC?: number;
+    /** Heatpump flow temperature difference (delta) in Kelvin for this bucket */
+    heatpumpFlowDeltaK?: number;
     /** Average buffer tank temperature in degrees Celsius for this bucket */
     bufferTankTemperatureC?: number;
+    /** Minimum buffer tank temperature in degrees Celsius observed in this bucket */
+    minBufferTankTemperatureC?: number;
+    /** Maximum buffer tank temperature in degrees Celsius observed in this bucket */
+    maxBufferTankTemperatureC?: number;
+    /** Buffer tank temperature difference (delta) in Kelvin for this bucket */
+    bufferTankDeltaK?: number;
     /** Domestic hot water tank temperature readings, indexed per tank */
     domesticHotWater?: {
         /** Zero-based index identifying the DHW tank */
         index: number;
         /** Average temperature in degrees Celsius for this bucket */
         averageTemperatureC: number;
+        /** Minimum temperature in degrees Celsius observed in this bucket */
+        minTemperatureC: number;
+        /** Maximum temperature in degrees Celsius observed in this bucket */
+        maxTemperatureC: number;
+        /** Temperature difference (delta) in Kelvin for this bucket */
+        deltaK: number;
         /** Average target temperature in degrees Celsius for this bucket */
         averageTargetTemperatureC: number;
     }[];
@@ -332,6 +356,12 @@ export interface HeatpumpTemperatureTimeseriesEntry extends TimeseriesEntryBase 
         index: number;
         /** Average temperature in degrees Celsius for this bucket */
         averageTemperatureC: number;
+        /** Minimum temperature in degrees Celsius observed in this bucket */
+        minTemperatureC: number;
+        /** Maximum temperature in degrees Celsius observed in this bucket */
+        maxTemperatureC: number;
+        /** Temperature difference (delta) in Kelvin for this bucket */
+        deltaK: number;
         /** Average target temperature in degrees Celsius for this bucket */
         averageTargetTemperatureC: number;
     }[];
@@ -367,6 +397,12 @@ export interface TemperatureSensorTimeseriesEntry extends TimeseriesEntryBase {
         sensorId: string;
         /** Average temperature in degrees Celsius for this bucket */
         averageTemperatureC: number;
+        /** Minimum temperature in degrees Celsius observed in this bucket */
+        minTemperatureC: number;
+        /** Maximum temperature in degrees Celsius observed in this bucket */
+        maxTemperatureC: number;
+        /** Temperature difference (delta) in Kelvin for this bucket */
+        deltaK: number;
         /** Average target temperature in degrees Celsius for this bucket, if applicable */
         averageTargetTemperatureC?: number;
     }[];

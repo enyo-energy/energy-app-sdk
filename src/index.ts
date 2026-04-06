@@ -84,16 +84,25 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         return this.energyAppSdk.isSystemOnline();
     }
 
+    /**
+     * Registers a listener that gets called when the network status changes.
+     * @param listener - Callback invoked with `true` when the system goes online, `false` when it goes offline
+     * @returns A unique listener ID that can be used to remove the listener
+     */
+    public onNetworkStatusChanged(listener: (online: boolean) => void | Promise<void>): string {
+        return this.energyAppSdk.onNetworkStatusChanged(listener);
+    }
+
     public updateEnergyAppState(state: EnergyAppStateEnum) {
         this.energyAppSdk.updateEnergyAppState(state)
     }
 
-    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void) {
+    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>) {
         // This registers the package with the enyo system
         this.energyAppSdk.register(callback);
     }
 
-    public onShutdown(callback: () => Promise<void>) {
+    public onShutdown(callback: () => void | Promise<void>) {
         process.on('beforeExit', async (code) => {
             await callback();
         });

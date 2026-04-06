@@ -75,6 +75,8 @@ export interface FindResult {
 export class ApplianceManager {
     private applianceCache: Map<string, EnyoAppliance> = new Map();
     private identifierToApplianceId: Map<string, Set<string>> = new Map();
+    private listenerIds: string[] = [];
+    private disposed = false;
     protected config: Required<ApplianceManagerConfig>;
 
     /**
@@ -108,6 +110,7 @@ export class ApplianceManager {
     ): Promise<ApplianceManager> {
         const manager = new ApplianceManager(energyApp, config);
         await manager.refreshCache();
+        manager.subscribeToEvents();
         return manager;
     }
 
@@ -201,6 +204,53 @@ export class ApplianceManager {
             }
             this.identifierToApplianceId.get(identifier)!.add(appliance.id);
         }
+    }
+
+    /**
+     * Removes an appliance from the internal cache by its ID.
+     * Cleans both the applianceCache and identifierToApplianceId maps.
+     * @param applianceId The ID of the appliance to remove from cache
+     */
+    private removeFromCache(applianceId: string): void {
+        const appliance = this.applianceCache.get(applianceId);
+        if (appliance) {
+            this.applianceCache.delete(applianceId);
+
+            // Clean up identifier mapping
+            for (const [identifier, ids] of this.identifierToApplianceId.entries()) {
+                ids.delete(applianceId);
+                if (ids.size === 0) {
+                    this.identifierToApplianceId.delete(identifier);
+                }
+            }
+        }
+    }
+
+    /**
+     * Subscribes to appliance update and removal events to keep the cache in sync.
+     */
+    private subscribeToEvents(): void {
+        const applianceService = this.energyApp.useAppliances();
+
+        const updatedListenerId = applianceService.listenForApplianceUpdated(
+            (appliance: EnyoAppliance) => {
+                if (this.config.enableLogging) {
+                    console.debug(`Appliance updated event received for ${appliance.id}`);
+                }
+                this.updateCache(appliance);
+            }
+        );
+        this.listenerIds.push(updatedListenerId);
+
+        const removedListenerId = applianceService.listenForApplianceRemoved(
+            (applianceId: string) => {
+                if (this.config.enableLogging) {
+                    console.debug(`Appliance removed event received for ${applianceId}`);
+                }
+                this.removeFromCache(applianceId);
+            }
+        );
+        this.listenerIds.push(removedListenerId);
     }
 
     /**
@@ -411,20 +461,7 @@ export class ApplianceManager {
     async removeAppliance(applianceId: string): Promise<void> {
         try {
             await this.energyApp.useAppliances().removeById(applianceId);
-
-            // Clean up cache
-            const appliance = this.applianceCache.get(applianceId);
-            if (appliance) {
-                this.applianceCache.delete(applianceId);
-
-                // Clean up identifier mapping
-                for (const [identifier, ids] of this.identifierToApplianceId.entries()) {
-                    ids.delete(applianceId);
-                    if (ids.size === 0) {
-                        this.identifierToApplianceId.delete(identifier);
-                    }
-                }
-            }
+            this.removeFromCache(applianceId);
 
             console.log(`Removed appliance ${applianceId}`);
         } catch (error) {
@@ -537,37 +574,6 @@ export class ApplianceManager {
     }
 
     /**
-     * Gets statistics about the managed appliances.
-     * @returns Statistics object
-     */
-    async getStatistics(): Promise<{
-        total: number;
-        byType: Record<string, number>;
-        byState: Record<string, number>;
-        cached: number;
-    }> {
-        const appliances = await this.energyApp.useAppliances().list();
-        const byType: Record<string, number> = {};
-        const byState: Record<string, number> = {};
-
-        for (const appliance of appliances) {
-            // Count by type
-            byType[appliance.type] = (byType[appliance.type] ?? 0) + 1;
-
-            // Count by state
-            const state = appliance.metadata?.state ?? 'unknown';
-            byState[state] = (byState[state] ?? 0) + 1;
-        }
-
-        return {
-            total: appliances.length,
-            byType,
-            byState,
-            cached: this.applianceCache.size
-        };
-    }
-
-    /**
      * Changes the identifier strategy at runtime.
      * @param strategy The new strategy to use
      * @param rebuildCache Whether to rebuild the cache with the new strategy
@@ -587,5 +593,28 @@ export class ApplianceManager {
      */
     getIdentifierStrategy(): IdentifierStrategy {
         return this.config.identifierStrategy;
+    }
+
+    /**
+     * Disposes the ApplianceManager by removing all event listeners and clearing the cache.
+     * After calling dispose, the manager should no longer be used.
+     */
+    dispose(): void {
+        if (this.disposed) {
+            return;
+        }
+        this.disposed = true;
+
+        const applianceService = this.energyApp.useAppliances();
+        for (const listenerId of this.listenerIds) {
+            applianceService.removeListener(listenerId);
+        }
+        this.listenerIds = [];
+
+        this.clearCache();
+
+        if (this.config.enableLogging) {
+            console.log('ApplianceManager disposed');
+        }
     }
 }

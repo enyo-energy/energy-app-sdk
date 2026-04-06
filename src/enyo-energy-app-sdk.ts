@@ -45,11 +45,13 @@ export interface EnyoEnergyAppSdk {
     /** Register a callback that gets called when the package is initialized */
     register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>) => void;
     /** Register a callback that gets called when the system is shutting down */
-    onShutdown: (callback: () => Promise<void>) => void;
+    onShutdown: (callback: () => void | Promise<void>) => void;
     /** Update the state of the Energy App. Default state set is launching*/
     updateEnergyAppState: (state: EnergyAppStateEnum) => void;
     /** Check if the system is currently online */
     isSystemOnline: () => boolean;
+    /** Register a listener that gets called when the network status changes */
+    onNetworkStatusChanged: (listener: (online: boolean) => void | Promise<void>) => string;
     /** Get the fetch API for HTTP requests */
     useFetch: () => typeof fetch;
     /** Get the interval management API */
