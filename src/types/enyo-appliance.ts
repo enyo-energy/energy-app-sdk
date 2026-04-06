@@ -42,6 +42,10 @@ export interface EnyoApplianceMqttConfig {
 export interface EnyoApplianceModbusMetadata {
     /** The Modbus unit identifier for addressing the appliance */
     unitId: number;
+    /** Optional register offset for the appliance */
+    offset?: number;
+    /** Optional base address for the appliance's Modbus registers */
+    baseAddress?: number;
 }
 
 export enum EnyoApplianceConnectionType {
