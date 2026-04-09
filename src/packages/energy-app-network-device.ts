@@ -14,15 +14,15 @@ export interface EnergyAppNetworkDevice {
     /** Trigger an async request to the user to accept or reject a network device access request. Ports are optional */
     requestDeviceAccess: (deviceId: string, ports?: number[]) => Promise<{ status: EnyoNetworkDeviceAccessStatus }>;
     /** listen for device access changes. Returns a listener id */
-    listenForDeviceAccessChange: (listener: (deviceId: string, status: EnyoNetworkDeviceAccessStatus) => void) => string;
+    listenForDeviceAccessChange: (listener: (deviceId: string, status: EnyoNetworkDeviceAccessStatus) => void | Promise<void>) => string;
     /** listen for detected devices, based on the device definition in the energy app package definition */
-    listenForDetectedDevice: (listener: (detectedDevices: EnyoNetworkDevice[]) => void) => string;
+    listenForDetectedDevice: (listener: (detectedDevices: EnyoNetworkDevice[]) => void | Promise<void>) => string;
     /**
      * Listen for network device removals.
      * @param listener - Callback invoked with the ID of the removed network device
      * @returns A unique listener ID that can be used to remove the listener
      */
-    listenForNetworkDeviceRemoved: (listener: (deviceId: string) => void) => string;
+    listenForNetworkDeviceRemoved: (listener: (deviceId: string) => void | Promise<void>) => string;
     /** Removes the listener */
     removeListener: (listenerId: string) => void;
 }

@@ -53,7 +53,7 @@ export interface EnergyAppPackageOptionsDeviceDetectionHttp {
     /** path of http call */
     path: string;
     /** the operation to do */
-    operation: 'body_json_field_eq' | 'header_eq' | 'header_startsWith',
+    operation: 'body_json_field_eq' | 'header_eq' | 'header_startsWith' | 'body_contains';
     /** for rest APIs with json response, define the field for example device.vendor*/
     field?: string;
     headerName?: string;

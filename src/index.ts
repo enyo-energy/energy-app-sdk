@@ -28,6 +28,7 @@ import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generat
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
+import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 
 export * from './energy-app-appliance-type.enum.js';
 export * from './energy-app-package-definition.js';
@@ -64,6 +65,8 @@ export * from './types/enyo-eebus.js'
 export * from './packages/energy-app-eebus.js'
 export * from './types/enyo-mqtt.js'
 export * from './packages/energy-app-mqtt.js'
+export * from './types/enyo-diagnostics.js'
+export * from './packages/energy-app-diagnostics.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -289,6 +292,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useMqtt(): EnergyAppMqtt {
         return this.energyAppSdk.useMqtt();
+    }
+
+    /**
+     * Gets the Diagnostics API for submitting energy manager diagnostics data.
+     * Allows energy managers to report current state, forecast, and control plan
+     * for internal processing and analysis.
+     * @returns The Diagnostics API instance
+     */
+    public useDiagnostics(): EnergyAppDiagnostics {
+        return this.energyAppSdk.useDiagnostics();
     }
 
     /**
