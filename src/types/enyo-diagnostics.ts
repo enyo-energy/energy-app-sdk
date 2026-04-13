@@ -2,6 +2,25 @@ import {EnergyAppApplianceTypeEnum} from "../energy-app-appliance-type.enum.js";
 import {EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
 
+// ─── Price table types ────────────────────────────────────
+
+/** Energy source type for price table entries. */
+export enum EnyoDiagnosticsPriceTableSourceEnum {
+    Pv = "pv",
+    Battery = "battery",
+    Grid = "grid",
+}
+
+/** A single entry in a forecast bucket's price table. */
+export interface EnyoDiagnosticsPriceTableEntry {
+    /** The energy source type. */
+    type: EnyoDiagnosticsPriceTableSourceEnum;
+    /** Price per kilowatt-hour for this source. */
+    pricePerKwh: number;
+    /** Available power in Watts from this source. */
+    availablePowerW: number;
+}
+
 // ─── Decision & state types ────────────────────────────────
 
 /** Domestic hot water tank state. */
@@ -132,6 +151,8 @@ export interface EnyoDiagnosticsForecastBucket {
     relativeSeconds: number;
     gridConsumptionPricePerKwh: number;
     gridFeedInPricePerKwh: number;
+    /** Optional per-source price and available power breakdown. */
+    priceTable?: EnyoDiagnosticsPriceTableEntry[];
     // Home consumption (optional)
     homeConsumptionW?: number;
     homeConsumptionWh?: number;

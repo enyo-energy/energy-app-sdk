@@ -35,7 +35,8 @@ export type EnergyAppPermissionType =
     | 'EebusDeviceManagement'
     | 'EebusDataAccess'
     | 'EebusControl'
-    | 'Mqtt';
+    | 'Mqtt'
+    | 'ChildProcess';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -75,4 +76,5 @@ export enum EnergyAppPermissionTypeEnum {
     EebusDataAccess = 'EebusDataAccess',
     EebusControl = 'EebusControl',
     Mqtt = 'Mqtt',
+    ChildProcess = 'ChildProcess'
 }
