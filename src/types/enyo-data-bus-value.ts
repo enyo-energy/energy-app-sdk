@@ -1032,6 +1032,10 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
             targetTemperatureC: number;
             /** Current temperature in Celsius */
             temperatureC: number;
+            /** Target room temperature in Celsius */
+            targetRoomTemperatureC?: number;
+            /** Current room temperature in Celsius */
+            roomTemperatureC?: number;
         }[];
         /** Buffer tank temperature */
         bufferTank?: {

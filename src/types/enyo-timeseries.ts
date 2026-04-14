@@ -364,6 +364,16 @@ export interface HeatpumpTemperatureTimeseriesEntry extends TimeseriesEntryBase 
         deltaK: number;
         /** Average target temperature in degrees Celsius for this bucket */
         averageTargetTemperatureC: number;
+        /** Average room temperature in degrees Celsius for this bucket */
+        averageRoomTemperatureC?: number;
+        /** Minimum room temperature in degrees Celsius observed in this bucket */
+        minRoomTemperatureC?: number;
+        /** Maximum room temperature in degrees Celsius observed in this bucket */
+        maxRoomTemperatureC?: number;
+        /** Room temperature difference (delta) in Kelvin for this bucket */
+        roomDeltaK?: number;
+        /** Average target room temperature in degrees Celsius for this bucket */
+        averageTargetRoomTemperatureC?: number;
     }[];
 }
 
