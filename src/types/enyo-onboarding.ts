@@ -25,6 +25,8 @@ export enum EnyoOnboardingSectionType {
     Credentials = "credentials",
     /** A clickable URL section */
     Url = "url",
+    /** A dropdown/select section */
+    Select = "select",
 }
 
 /**
@@ -58,6 +60,28 @@ export interface EnyoOnboardingSectionUrl {
 }
 
 /**
+ * Represents a single option in a select/dropdown onboarding section.
+ */
+export interface EnyoOnboardingSectionSelectOption {
+    /** The internal value of this option */
+    value: string;
+    /** The displayed name of the option, translated for different languages */
+    optionName: EnyoOnboardingTranslatedContent[];
+}
+
+/**
+ * Represents a select/dropdown configuration within an onboarding section.
+ */
+export interface EnyoOnboardingSectionSelect {
+    /** Translated title/label for the select field */
+    title: EnyoOnboardingTranslatedContent[];
+    /** The field name used when submitting the selected value */
+    fieldName: string;
+    /** Available options for the dropdown */
+    options: EnyoOnboardingSectionSelectOption[];
+}
+
+/**
  * Represents a content section within an onboarding step.
  * Each section has a heading and content body, both with translations.
  * The `type` field determines which optional nested object is used.
@@ -77,6 +101,8 @@ export interface EnyoOnboardingSection {
     credentials?: EnyoOnboardingSectionCredential[];
     /** Optional URL configuration, used when type is 'url' */
     url?: EnyoOnboardingSectionUrl;
+    /** Optional select/dropdown configuration, used when type is 'select' */
+    select?: EnyoOnboardingSectionSelect;
 }
 
 /**
