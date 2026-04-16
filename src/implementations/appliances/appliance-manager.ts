@@ -444,6 +444,11 @@ export class ApplianceManager {
         return allAppliances.filter(a => a.type === type);
     }
 
+    async getAllAppliancesByType(type: EnyoApplianceTypeEnum): Promise<EnyoAppliance[]> {
+        const allAppliances = await this.energyApp.useAppliances().listAll();
+        return allAppliances.filter(a => a.type === type);
+    }
+
     /**
      * Updates the state of an appliance.
      * @param applianceId The ID of the appliance to update
