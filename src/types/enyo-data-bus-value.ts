@@ -275,7 +275,7 @@ export interface EnyoDataBusBatteryValuesUpdateV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         state?: EnyoBatteryStateEnum;
-        /** Current Battery Power (in Watt). Positive = Consumption from the Battery, Negative = Feed in / charging of the battery. */
+        /** Current Battery Power (in Watt). Positive = charging of the battery, Negative = Consumption from the Battery. */
         batteryPowerW?: number;
         /** Battery State of Charge. Value between 0 and 100 */
         batterySoC: number;
@@ -1039,9 +1039,10 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
         }[];
         /** Buffer tank temperature */
         bufferTank?: {
+            index: number;
             /** Current buffer tank temperature in Celsius */
             temperatureC: number;
-        };
+        }[];
     };
 }
 

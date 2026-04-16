@@ -27,6 +27,13 @@ export interface EnyoHeatpumpApplianceDomesticHotWater {
     hysteresisK?: number;
 }
 
+export interface EnyoHeatpumpApplianceBufferTank {
+    index: number;
+    tankSizeLiter?: number;
+    targetTemperatureC?: number;
+    hysteresisK?: number;
+}
+
 export interface EnyoHeatpumpApplianceCompressor {
     index: number;
 }
@@ -40,6 +47,7 @@ export interface EnyoHeatpumpApplianceMetadata {
     availableFeatures: EnyoHeatpumpApplianceAvailableFeaturesEnum[];
     mode?: EnyoHeatpumpApplianceModeEnum;
     domesticHotWater?: EnyoHeatpumpApplianceDomesticHotWater[];
+    bufferTanks?: EnyoHeatpumpApplianceBufferTank[];
     compressors?: EnyoHeatpumpApplianceCompressor[];
     heatingCircuits?: EnyoHeatpumpApplianceHeatingCircuit[];
 }

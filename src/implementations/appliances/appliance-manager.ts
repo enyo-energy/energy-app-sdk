@@ -80,6 +80,46 @@ export class ApplianceManager {
     protected config: Required<ApplianceManagerConfig>;
 
     /**
+     * Merges partial appliance data with an existing appliance, performing a shallow merge
+     * on each metadata sub-object (metadata, inverter, charger, battery, heatpump, meter,
+     * temperatureSensor) so that only the provided keys are overwritten and existing keys
+     * are preserved.
+     * @param existing The existing appliance data
+     * @param update The partial update data to merge
+     * @returns The merged appliance data
+     */
+    private mergeApplianceData(
+        existing: EnyoAppliance,
+        update: Partial<Omit<EnyoAppliance, 'id'>>
+    ): Omit<EnyoAppliance, 'id'> {
+        return {
+            ...existing,
+            ...update,
+            metadata: update.metadata
+                ? {...existing.metadata, ...update.metadata}
+                : existing.metadata,
+            inverter: update.inverter
+                ? {...existing.inverter, ...update.inverter}
+                : existing.inverter,
+            charger: update.charger
+                ? {...existing.charger, ...update.charger}
+                : existing.charger,
+            battery: update.battery
+                ? {...existing.battery, ...update.battery}
+                : existing.battery,
+            heatpump: update.heatpump
+                ? {...existing.heatpump, ...update.heatpump}
+                : existing.heatpump,
+            meter: update.meter
+                ? {...existing.meter, ...update.meter}
+                : existing.meter,
+            temperatureSensor: update.temperatureSensor
+                ? {...existing.temperatureSensor, ...update.temperatureSensor}
+                : existing.temperatureSensor,
+        };
+    }
+
+    /**
      * Creates a new ApplianceManager instance.
      * @param energyApp The EnergyApp instance to use for API calls
      * @param config Configuration options for the manager
@@ -155,8 +195,8 @@ export class ApplianceManager {
             metadata.vendorName = this.config.defaultVendorName;
         }
 
-        // Build appliance data
-        const applianceData: Omit<EnyoAppliance, 'id'> = {
+        // Build new appliance data
+        const newApplianceData: Omit<EnyoAppliance, 'id'> = {
             name: appliance.name,
             type: appliance.type,
             networkDeviceIds,
@@ -169,6 +209,15 @@ export class ApplianceManager {
             inverter: appliance.inverter,
             temperatureSensor: appliance.temperatureSensor,
         };
+
+        // When updating an existing appliance, merge metadata to preserve existing keys
+        let applianceData = newApplianceData;
+        if (existingApplianceId) {
+            const existingAppliance = await this.energyApp.useAppliances().getById(existingApplianceId);
+            if (existingAppliance) {
+                applianceData = this.mergeApplianceData(existingAppliance, newApplianceData);
+            }
+        }
 
         // Save appliance
         const applianceId = await this.energyApp.useAppliances().save(
@@ -436,10 +485,7 @@ export class ApplianceManager {
         try {
             const appliance = await this.energyApp.useAppliances().getById(applianceId);
             if (appliance) {
-                const updatedAppliance: Omit<EnyoAppliance, 'id'> = {
-                    ...appliance,
-                    ...attributes
-                };
+                const updatedAppliance = this.mergeApplianceData(appliance, attributes);
 
                 await this.energyApp.useAppliances().save(updatedAppliance, applianceId);
 
@@ -549,17 +595,13 @@ export class ApplianceManager {
             try {
                 const appliance = await this.energyApp.useAppliances().getById(update.applianceId);
                 if (appliance) {
-                    const updatedAppliance: Omit<EnyoAppliance, 'id'> = {
-                        ...appliance,
-                        ...update.data
-                    };
+                    const updatedAppliance = this.mergeApplianceData(appliance, update.data);
 
                     await this.energyApp.useAppliances().save(updatedAppliance, update.applianceId);
                     succeeded.push(update.applianceId);
 
                     // Update cache
-                    Object.assign(appliance, update.data);
-                    this.applianceCache.set(update.applianceId, appliance);
+                    this.applianceCache.set(update.applianceId, {id: update.applianceId, ...updatedAppliance});
                 } else {
                     failed.push(update.applianceId);
                 }

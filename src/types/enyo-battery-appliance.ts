@@ -14,6 +14,8 @@ export enum EnyoBatteryFeature {
 
 export interface EnyoBatteryApplianceMetadata {
     connectedToApplianceId?: string;
+    /** If the battery is connected in between dc strings, you can configure it here*/
+    connectedWithDcStrings?: number[];
     maxDischargePowerW?: number;
     maxChargingPowerW?: number;
     maxCapacityWh?: number;
