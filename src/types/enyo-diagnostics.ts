@@ -72,6 +72,7 @@ export interface EnyoDiagnosticsForecastHeatpumpAppliance {
     applianceId: string;
     values: {
         powerW?: number;
+        flowTemperatureC?: number;
         roomTemperatureC?: number;
         dhwTemperatureC?: number;
         bufferTankTemperatureC?: number;

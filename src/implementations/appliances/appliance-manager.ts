@@ -90,31 +90,31 @@ export class ApplianceManager {
      */
     private mergeApplianceData(
         existing: EnyoAppliance,
-        update: Partial<Omit<EnyoAppliance, 'id'>>
+        update: Partial<Omit<PartialEnyoAppliance, 'id'>>
     ): Omit<EnyoAppliance, 'id'> {
         return {
             ...existing,
             ...update,
             metadata: update.metadata
-                ? {...existing.metadata, ...update.metadata}
+                ? {...existing.metadata, ...update.metadata} as EnyoApplianceMetadata
                 : existing.metadata,
             inverter: update.inverter
                 ? {...existing.inverter, ...update.inverter}
                 : existing.inverter,
             charger: update.charger
-                ? {...existing.charger, ...update.charger}
+                ? {...existing.charger, ...update.charger} as EnyoChargerApplianceMetadata
                 : existing.charger,
             battery: update.battery
                 ? {...existing.battery, ...update.battery}
                 : existing.battery,
             heatpump: update.heatpump
-                ? {...existing.heatpump, ...update.heatpump}
+                ? {...existing.heatpump, ...update.heatpump} as EnyoHeatpumpApplianceMetadata
                 : existing.heatpump,
             meter: update.meter
-                ? {...existing.meter, ...update.meter}
+                ? {...existing.meter, ...update.meter} as EnyoMeterAppliance
                 : existing.meter,
             temperatureSensor: update.temperatureSensor
-                ? {...existing.temperatureSensor, ...update.temperatureSensor}
+                ? {...existing.temperatureSensor, ...update.temperatureSensor} as EnyoTemperatureSensorApplianceMetadata
                 : existing.temperatureSensor,
         };
     }
@@ -485,7 +485,7 @@ export class ApplianceManager {
      */
     async updateAppliance(
         applianceId: string,
-        attributes: Partial<EnyoAppliance>
+        attributes: Partial<PartialEnyoAppliance>
     ): Promise<void> {
         try {
             const appliance = await this.energyApp.useAppliances().getById(applianceId);
@@ -664,4 +664,33 @@ export class ApplianceManager {
             console.log('ApplianceManager disposed');
         }
     }
+}
+
+export interface PartialEnyoAppliance {
+    /** Unique identifier for the appliance */
+    id: string;
+    /** Name of the appliance in different supported languages */
+    name: EnyoApplianceName[];
+    /** Type/category of the appliance */
+    type: EnyoApplianceTypeEnum;
+    /** network device IDs associated with the appliance */
+    networkDeviceIds: string[];
+    /** Optional Metadata of the Appliance */
+    metadata?: Partial<EnyoApplianceMetadata>;
+    /** Topology Information of the appliance */
+    topology?: EnyoApplianceTopology;
+    /** Optional Metadata of the Appliance if of type Meter */
+    meter?: Partial<EnyoMeterAppliance>;
+    /** Optional Metadata of the Appliance if of type Inverter */
+    inverter?: Partial<EnyoInverterApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type Charger */
+    charger?: Partial<EnyoChargerApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type Heatpump */
+    heatpump?: Partial<EnyoHeatpumpApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type Battery */
+    battery?: Partial<EnyoBatteryApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type TemperatureSensor */
+    temperatureSensor?: Partial<EnyoTemperatureSensorApplianceMetadata>;
+    /** Optional custom name for the appliance, defined by the user */
+    customName?: string;
 }

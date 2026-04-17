@@ -1,8 +1,6 @@
 export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     /** If the heatpump is capable of domestic hot water*/
     DomesticHotWater = 'DomesticHotWater',
-    /** If the heatpump is capable of domestic hot water boost to use more pv energy*/
-    DomesticHotWaterBoost = 'DomesticHotWaterBoost',
     /** If the heatpump has a heating rod*/
     HeatingRod = 'HeatingRod',
     /** If the heatpump supports room overheating via heating circuits */

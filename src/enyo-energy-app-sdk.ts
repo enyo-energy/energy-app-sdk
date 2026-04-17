@@ -27,6 +27,7 @@ import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
+import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -111,4 +112,6 @@ export interface EnyoEnergyAppSdk {
     useMqtt: () => EnergyAppMqtt;
     /** Get the Diagnostics API for submitting energy manager diagnostics data */
     useDiagnostics: () => EnergyAppDiagnostics;
+    /** Get the Learning Phase API for registering and tracking learning phases */
+    useLearningPhase: () => EnergyAppLearningPhase;
 }

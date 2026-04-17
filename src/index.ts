@@ -29,6 +29,7 @@ import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
+import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 
 export * from './energy-app-appliance-type.enum.js';
 export * from './energy-app-package-definition.js';
@@ -67,6 +68,8 @@ export * from './types/enyo-mqtt.js'
 export * from './packages/energy-app-mqtt.js'
 export * from './types/enyo-diagnostics.js'
 export * from './packages/energy-app-diagnostics.js'
+export * from './types/enyo-learning-phase.js'
+export * from './packages/energy-app-learning-phase.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
@@ -302,6 +305,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useDiagnostics(): EnergyAppDiagnostics {
         return this.energyAppSdk.useDiagnostics();
+    }
+
+    /**
+     * Gets the Learning Phase API for registering and tracking learning phases.
+     * Provides methods to register new learning phases, check their status,
+     * and retrieve learning phase history for the package or specific appliances.
+     * @returns The Learning Phase API instance
+     */
+    public useLearningPhase(): EnergyAppLearningPhase {
+        return this.energyAppSdk.useLearningPhase();
     }
 
     /**

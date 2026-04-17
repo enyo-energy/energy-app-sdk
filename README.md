@@ -20,6 +20,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [Data Management](#data-management)
   - [Energy Resources](#energy-resources)
   - [User Features](#user-features)
+  - [App Intelligence](#app-intelligence)
 - [Advanced Modbus Integration](#advanced-modbus-integration)
 - [Examples](#examples)
   - [Basic Energy App](#basic-energy-app)
@@ -613,6 +614,61 @@ await notifications.sendNotification({
     title: 'System Fault',
     message: 'Inverter communication lost - please check connection'
 });
+```
+
+### App Intelligence
+
+#### `useLearningPhase(): EnergyAppLearningPhase`
+
+Track and manage learning phases — periods where an app or a specific appliance is calibrating, gathering data, or optimizing its behavior:
+
+```typescript
+const learningPhase = energyApp.useLearningPhase();
+
+// Register a package-wide learning phase
+const phaseId = await learningPhase.registerLearningPhase({
+    name: 'consumption-pattern-analysis',
+    reason: [
+        { language: 'en', value: 'Analyzing energy consumption patterns' },
+        { language: 'de', value: 'Analyse der Energieverbrauchsmuster' }
+    ],
+    description: [
+        { language: 'en', value: 'The system is learning your household energy consumption patterns to optimize scheduling.' },
+        { language: 'de', value: 'Das System lernt Ihre Energieverbrauchsmuster, um die Planung zu optimieren.' }
+    ]
+});
+
+// Register a learning phase for a specific appliance
+const heatpumpPhaseId = await learningPhase.registerLearningPhase({
+    name: 'heating-curve-optimization',
+    applianceId: 'heatpump-001',
+    reason: [
+        { language: 'en', value: 'Optimizing heating curve' },
+        { language: 'de', value: 'Optimierung der Heizkurve' }
+    ]
+});
+
+// Check if a learning phase is still active
+const isLearning = await learningPhase.isInLearningPhase(heatpumpPhaseId);
+console.log(`Heatpump is ${isLearning ? 'still learning' : 'done learning'}`);
+
+// Check if a learning phase is completed
+const isDone = await learningPhase.isLearningPhaseCompleted(heatpumpPhaseId);
+
+// Get all learning phases with their status and duration
+const allPhases = await learningPhase.getLearningPhases();
+for (const phase of allPhases) {
+    console.log(`${phase.name}: ${phase.durationInHours}h, active: ${!phase.endDate}`);
+}
+
+// Get learning phases for a specific appliance
+const heatpumpPhases = await learningPhase.getLearningPhasesByApplianceId('heatpump-001');
+
+// Complete a learning phase
+await learningPhase.completeLearningPhase(heatpumpPhaseId);
+
+// Remove a learning phase
+await learningPhase.removeLearningPhase(phaseId);
 ```
 
 ## Advanced Modbus Integration
