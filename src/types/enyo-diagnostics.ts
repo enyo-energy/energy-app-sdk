@@ -30,13 +30,13 @@ export type DhwState = "charging" | "discharging" | "idle";
 export type HeatingState = "active" | "idle";
 
 /** Battery control decision issued by the energy manager. */
-export type BatteryDecision = "normal" | "block_discharge" | "charge_from_grid" | "force_discharge";
+export type BatteryDecision = "block_discharge" | "charge_from_grid" | "force_discharge";
 
 /** EV charging control decision issued by the energy manager. */
-export type EvDecision = "normal" | "charging_pv" | "charging_grid" | "charging_mixed";
+export type EvDecision = "charging_pv" | "charging_grid" | "charging_mixed";
 
 /** Heat pump control decision issued by the energy manager. */
-export type HeatpumpDecision = "normal" | "dhw_boost" | "room_overheating" | "buffer_tank_boost";
+export type HeatpumpDecision = "dhw_boost" | "room_overheating" | "buffer_tank_boost";
 
 export interface EnyoDiagnosticsForecastInverterAppliance {
     type: EnyoApplianceTypeEnum.Inverter;
@@ -199,10 +199,14 @@ export interface EnyoDiagnosticsStorageControlCommand {
     type: EnyoApplianceTypeEnum.Storage;
     /** Target appliance ID. */
     applianceId: string;
+    /** ISO 8601 timestamp when this command starts. */
+    timestampIso: string;
     /** Control decision for the battery. */
     decision: BatteryDecision;
     /** Target power in Watts. */
     powerW: number;
+    /** Duration of this command in minutes. */
+    durationInMinutes: number;
     /** Optional target state of charge as a percentage. */
     targetSoCPercent?: number;
 }
@@ -212,10 +216,14 @@ export interface EnyoDiagnosticsChargerControlCommand {
     type: EnyoApplianceTypeEnum.Charger;
     /** Target appliance ID. */
     applianceId: string;
+    /** ISO 8601 timestamp when this command starts. */
+    timestampIso: string;
     /** Control decision for the EV charger. */
     decision: EvDecision;
     /** Charging power in Watts. */
     chargingPowerW: number;
+    /** Duration of this command in minutes. */
+    durationInMinutes: number;
     /** Optional charging limit in kW. */
     chargingLimitKw?: number;
 }
@@ -225,10 +233,14 @@ export interface EnyoDiagnosticsHeatpumpControlCommand {
     type: EnyoApplianceTypeEnum.Heatpump;
     /** Target appliance ID. */
     applianceId: string;
+    /** ISO 8601 timestamp when this command starts. */
+    timestampIso: string;
     /** Control decision for the heat pump. */
     decision: HeatpumpDecision;
     /** Target power in Watts. */
     powerW: number;
+    /** Duration of this command in minutes. */
+    durationInMinutes: number;
     /** Optional target temperature in Celsius. */
     targetTempC?: number;
 }
@@ -239,24 +251,12 @@ export type EnyoDiagnosticsApplianceControlCommand =
     | EnyoDiagnosticsChargerControlCommand
     | EnyoDiagnosticsHeatpumpControlCommand;
 
-// ─── Time-slotted control plan ─────────────────────────────
+// ─── Command-based control plan ─────────────────────────────
 
-/** A single time slot in a control plan with its associated commands. */
-export interface EnyoDiagnosticsControlSlot {
-    /** ISO 8601 timestamp for this slot. */
-    timestampIso: string;
-    /** Commands to execute during this slot. */
-    commands: EnyoDiagnosticsApplianceControlCommand[];
-    /** Estimated cost for this slot in EUR. */
-    estimatedSlotCostEur: number;
-    /** Estimated grid power in Watts for this slot. */
-    estimatedGridPowerW: number;
-}
-
-/** Complete control plan with time-slotted commands and cost estimates. */
+/** Complete control plan with duration-based commands and cost estimates. */
 export interface EnyoDiagnosticsControlPlan {
-    /** Time-slotted command sequence. */
-    slots: EnyoDiagnosticsControlSlot[];
+    /** Sequence of appliance control commands, each with its own duration. */
+    commands: EnyoDiagnosticsApplianceControlCommand[];
     /** ISO 8601 timestamp when this plan was generated. */
     generatedAtIso: string;
     /** Total estimated cost in EUR. */

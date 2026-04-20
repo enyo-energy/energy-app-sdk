@@ -1,4 +1,5 @@
 import {EnergyManagerFeatureEnum, EnergyManagerInfo} from "../types/enyo-energy-manager.js";
+import {EnyoDiagnosticsControlPlan} from "../types/enyo-diagnostics.js";
 
 /**
  * Interface for retrieving energy manager information and capabilities.
@@ -25,4 +26,34 @@ export interface EnergyAppEnergyManager {
 
     /** Only for Energy Manager Energy Apps: Register the features which are provided*/
     registerFeatures(features: EnergyManagerFeatureEnum[]): void;
+
+    /**
+     * Only for Energy Manager Energy Apps: Publishes the energy manager's control plan forecast.
+     * The control plan contains time-slotted commands for each appliance along with
+     * estimated costs and grid power values.
+     *
+     * @param controlPlan - The time-slotted control plan with commands for each appliance
+     *   and estimated costs
+     *
+     * @example
+     * ```typescript
+     * const energyManager = energyApp.useEnergyManager();
+     * energyManager.publishForecast({
+     *     commands: [
+     *         {
+     *             type: EnyoApplianceTypeEnum.Storage,
+     *             applianceId: 'battery-1',
+     *             decision: BatteryDecision.Charge,
+     *             powerW: 3000,
+     *             durationInMinutes: 60
+     *         }
+     *     ],
+     *     generatedAtIso: new Date().toISOString(),
+     *     totalEstimatedCostEur: 3.50,
+     *     totalGridImportKwh: 12.5,
+     *     totalGridExportKwh: 4.2
+     * });
+     * ```
+     */
+    publishForecast(controlPlan: EnyoDiagnosticsControlPlan): void;
 }
