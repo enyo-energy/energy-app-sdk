@@ -33,6 +33,23 @@ export type EnyoSelectDisplayOption = 'dropdown' | 'radioButtons';
 export type EnyoFloatDisplayOption = 'stepper';
 
 /**
+ * Step option for time-type settings, defining the interval between selectable time values.
+ * - `'15min'`: 15-minute intervals (e.g., 00:00, 00:15, 00:30, ...)
+ * - `'30min'`: 30-minute intervals (e.g., 00:00, 00:30, 01:00, ...)
+ * - `'1hour'`: 1-hour intervals (e.g., 00:00, 01:00, 02:00, ...)
+ */
+export type EnyoTimeStepOption = '15min' | '30min' | '1hour';
+
+/**
+ * Configuration options for time-type settings.
+ * Time values are represented in "HH:mm" format (e.g., "08:00", "14:30").
+ */
+export interface EnyoPackageConfigurationSettingTimeOptions {
+    /** The step interval between selectable time values */
+    stepOption: EnyoTimeStepOption;
+}
+
+/**
  * Configuration options for float-type settings.
  */
 export interface EnyoPackageConfigurationSettingFloatOptions {
@@ -66,7 +83,7 @@ export interface EnyoPackageConfigurationSetting {
     /** internal name of the setting - must be unique */
     name: string;
     /** the type of the setting */
-    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox';
+    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox' | 'time';
     /** if the setting is required */
     required: boolean;
     /** The displayed name of the field */
@@ -83,6 +100,8 @@ export interface EnyoPackageConfigurationSetting {
     floatOptions?: EnyoPackageConfigurationSettingFloatOptions;
     integerOptions?: EnyoPackageConfigurationSettingIntegerOptions;
     textOptions?: EnyoPackageConfigurationSettingTextOptions;
+    /** Optional configuration for time-type settings. Values are in "HH:mm" format. */
+    timeOptions?: EnyoPackageConfigurationSettingTimeOptions;
 }
 
 /**
