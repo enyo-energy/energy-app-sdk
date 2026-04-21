@@ -265,4 +265,6 @@ export interface EnyoDiagnosticsControlPlan {
     totalGridImportKwh: number;
     /** Total estimated grid export in kWh. */
     totalGridExportKwh: number;
+    /** Total estimated savings in EUR. */
+    totalEstimatedSavingsEur?: number;
 }

@@ -17,6 +17,24 @@ export interface EnyoPackageConfigurationSettingSelectOption {
     value: string;
     /** The displayed name of the option */
     optionName: EnyoPackageConfigurationTranslatedValue[];
+    /** Optional description providing additional context for this option */
+    optionDescription?: EnyoPackageConfigurationTranslatedValue[];
+}
+
+/**
+ * Represents an option in a priority-type setting field.
+ * Priority options are similar to select options but include an order index
+ * to define the relative priority of each option.
+ */
+export interface EnyoPackageConfigurationSettingPriorityOption {
+    /** The underlying value of this priority option */
+    value: string;
+    /** Translated caption displayed for this option */
+    caption: EnyoPackageConfigurationTranslatedValue[];
+    /** Optional translated description providing additional context for this option */
+    description?: EnyoPackageConfigurationTranslatedValue[];
+    /** The order/priority index of this option */
+    orderIndex: number;
 }
 
 /**
@@ -83,7 +101,7 @@ export interface EnyoPackageConfigurationSetting {
     /** internal name of the setting - must be unique */
     name: string;
     /** the type of the setting */
-    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox' | 'time';
+    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox' | 'time' | 'priority';
     /** if the setting is required */
     required: boolean;
     /** The displayed name of the field */
@@ -102,6 +120,8 @@ export interface EnyoPackageConfigurationSetting {
     textOptions?: EnyoPackageConfigurationSettingTextOptions;
     /** Optional configuration for time-type settings. Values are in "HH:mm" format. */
     timeOptions?: EnyoPackageConfigurationSettingTimeOptions;
+    /** Optional configuration for priority-type settings, defining the available priority options with order indices */
+    priorityOptions?: EnyoPackageConfigurationSettingPriorityOption[];
 }
 
 /**
@@ -146,8 +166,8 @@ export interface EnyoSettingConfigWithValue extends EnyoSettingConfigWithId {
 export interface EnyoPackageConfigurationSettingGroup {
     /** Internal name of the group - must be unique */
     groupName: string;
-    /** Translated caption displayed as the group heading */
-    caption: EnyoPackageConfigurationTranslatedValue[];
+    /** Optional translated caption displayed as the group heading */
+    caption?: EnyoPackageConfigurationTranslatedValue[];
     /** The settings belonging to this group (1 or more) */
     settings: EnyoPackageConfigurationSetting[];
 }
@@ -159,8 +179,8 @@ export interface EnyoPackageConfigurationSettingGroup {
 export interface EnyoSettingGroupWithValues {
     /** Internal name of the group */
     groupName: string;
-    /** Translated caption displayed as the group heading */
-    caption: EnyoPackageConfigurationTranslatedValue[];
+    /** Optional translated caption displayed as the group heading */
+    caption?: EnyoPackageConfigurationTranslatedValue[];
     /** The settings belonging to this group, including IDs and current values */
     settings: EnyoSettingConfigWithValue[];
 }
