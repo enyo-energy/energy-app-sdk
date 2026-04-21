@@ -39,6 +39,7 @@ export * from './implementations/ocpp/ocpp201.js';
 export * from './implementations/ocpp/ocpp-common.js';
 export * from './types/enyo-authentication.js'
 export * from './types/enyo-settings.js'
+export * from './packages/energy-app-settings.js'
 export * from './types/enyo-energy-prices.js'
 export * from './types/enyo-notification.js'
 export * from './types/enyo-secret-manager.js'

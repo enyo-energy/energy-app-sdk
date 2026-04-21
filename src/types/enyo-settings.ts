@@ -19,15 +19,40 @@ export interface EnyoPackageConfigurationSettingSelectOption {
     optionName: EnyoPackageConfigurationTranslatedValue[];
 }
 
+/**
+ * Display option for select-type settings.
+ * - `dropdown`: renders as a dropdown/select element
+ * - `radioButtons`: renders as radio button group
+ */
+export type EnyoSelectDisplayOption = 'dropdown' | 'radioButtons';
+
+/**
+ * Display option for float-type settings.
+ * - `stepper`: renders as a stepper control with +/- buttons
+ */
+export type EnyoFloatDisplayOption = 'stepper';
+
+/**
+ * Configuration options for float-type settings.
+ */
 export interface EnyoPackageConfigurationSettingFloatOptions {
     maxValue?: number;
     minValue?: number;
     step?: number;
+    /** Optional display option for the float input. Use 'stepper' to render a +/- button control. */
+    displayOption?: EnyoFloatDisplayOption;
+    /** Optional unit suffix displayed next to the value (e.g., "ct/kWh") */
+    suffix?: string;
 }
 
+/**
+ * Configuration options for integer-type settings.
+ */
 export interface EnyoPackageConfigurationSettingIntegerOptions {
     maxValue?: number;
     minValue?: number;
+    /** Optional unit suffix displayed next to the value (e.g., "ct/kWh") */
+    suffix?: string;
 }
 
 export interface EnyoPackageConfigurationSettingTextOptions {
@@ -53,6 +78,8 @@ export interface EnyoPackageConfigurationSetting {
     /** Optional appliance ID. If provided, setting is for specific appliance. If omitted, setting is for the whole package */
     applianceId?: string;
     selectOptions?: EnyoPackageConfigurationSettingSelectOption[];
+    /** Optional display option for select-type settings. Defaults to 'dropdown' if not specified. */
+    selectDisplayOption?: EnyoSelectDisplayOption;
     floatOptions?: EnyoPackageConfigurationSettingFloatOptions;
     integerOptions?: EnyoPackageConfigurationSettingIntegerOptions;
     textOptions?: EnyoPackageConfigurationSettingTextOptions;
@@ -91,4 +118,30 @@ export interface EnyoSettingConfigWithId extends EnyoPackageConfigurationSetting
 export interface EnyoSettingConfigWithValue extends EnyoSettingConfigWithId {
     /** Current value of the setting (if set) */
     currentValue?: string;
+}
+
+/**
+ * Represents a group of related settings with a name and translated caption.
+ * Groups allow organizing multiple settings under a common heading in the UI.
+ */
+export interface EnyoPackageConfigurationSettingGroup {
+    /** Internal name of the group - must be unique */
+    groupName: string;
+    /** Translated caption displayed as the group heading */
+    caption: EnyoPackageConfigurationTranslatedValue[];
+    /** The settings belonging to this group (1 or more) */
+    settings: EnyoPackageConfigurationSetting[];
+}
+
+/**
+ * Represents a setting group with resolved setting values.
+ * Used when retrieving groups including their current persisted values and IDs.
+ */
+export interface EnyoSettingGroupWithValues {
+    /** Internal name of the group */
+    groupName: string;
+    /** Translated caption displayed as the group heading */
+    caption: EnyoPackageConfigurationTranslatedValue[];
+    /** The settings belonging to this group, including IDs and current values */
+    settings: EnyoSettingConfigWithValue[];
 }

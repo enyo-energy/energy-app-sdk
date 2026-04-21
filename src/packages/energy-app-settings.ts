@@ -1,7 +1,9 @@
 import {
     EnyoPackageConfigurationSetting,
+    EnyoPackageConfigurationSettingGroup,
     EnyoSettingsChangeListener,
-    EnyoSettingConfigWithValue
+    EnyoSettingConfigWithValue,
+    EnyoSettingGroupWithValues
 } from "../types/enyo-settings.js";
 
 /**
@@ -53,4 +55,30 @@ export interface EnergyAppSettings {
      * @returns Promise that resolves to an array of all settings with their IDs and current values
      */
     getSettingsConfig(): Promise<EnyoSettingConfigWithValue[]>;
+
+    /**
+     * Adds a group of related settings to the Energy App.
+     * The group organizes multiple settings under a common heading with a translated caption.
+     * Each group must have a unique groupName. Settings within the group follow the same rules
+     * as individual settings (unique names, optional appliance scoping).
+     *
+     * @param group - The setting group configuration including group name, caption, and 1-n settings
+     * @returns Promise that resolves when the setting group is successfully added
+     */
+    addSettingGroup(group: EnyoPackageConfigurationSettingGroup): Promise<void>;
+
+    /**
+     * Removes a setting group and all its contained settings from the Energy App.
+     *
+     * @param groupName - The unique name of the group to remove
+     * @returns Promise that resolves when the group is successfully removed
+     */
+    removeSettingGroup(groupName: string): Promise<void>;
+
+    /**
+     * Retrieves all currently configured setting groups with their settings' unique identifiers and current values.
+     *
+     * @returns Promise that resolves to an array of all setting groups with their settings including IDs and current values
+     */
+    getSettingGroups(): Promise<EnyoSettingGroupWithValues[]>;
 }
