@@ -380,6 +380,10 @@ export interface EnyoDiagnosticsHeatpumpDhwBoostAction extends EnyoDiagnosticsCo
     powerW: number;
     /** Optional target temperature in Celsius. */
     targetTempC?: number;
+    /** Optional current domestic hot water temperature in Celsius. */
+    currentTemperatureC?: number;
+    /** Optional current outdoor temperature in Celsius. */
+    outdoorTemperatureC?: number;
 }
 
 /** Heatpump action: address room overheating. */
@@ -391,6 +395,10 @@ export interface EnyoDiagnosticsHeatpumpRoomOverheatingAction extends EnyoDiagno
     powerW: number;
     /** Optional target temperature in Celsius. */
     targetTempC?: number;
+    /** Optional current room temperature in Celsius. */
+    currentTemperatureC?: number;
+    /** Optional current outdoor temperature in Celsius. */
+    outdoorTemperatureC?: number;
 }
 
 /** Heatpump action: boost buffer tank temperature. */
@@ -402,6 +410,10 @@ export interface EnyoDiagnosticsHeatpumpBufferTankBoostAction extends EnyoDiagno
     powerW: number;
     /** Optional target temperature in Celsius. */
     targetTempC?: number;
+    /** Optional current room temperature in Celsius. */
+    currentTemperatureC?: number;
+    /** Optional current outdoor temperature in Celsius. */
+    outdoorTemperatureC?: number;
 }
 
 // ─── Control plan ───────────────────────────────────────────
