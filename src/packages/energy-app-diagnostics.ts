@@ -17,7 +17,7 @@ export interface EnergyAppDiagnostics {
      *   system-level power values, per-appliance snapshots, and derived energy values
      * @param forecast - The forecast containing time-bucketed predictions for consumption,
      *   production, pricing, and appliance-specific data
-     * @param controlPlan - The time-slotted control plan with commands for each appliance
+     * @param controlPlan - The time-slotted control plan with actions for each appliance
      *   and estimated costs
      *
      * @example

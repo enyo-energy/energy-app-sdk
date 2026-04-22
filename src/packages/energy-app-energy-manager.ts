@@ -29,23 +29,29 @@ export interface EnergyAppEnergyManager {
 
     /**
      * Only for Energy Manager Energy Apps: Publishes the energy manager's control plan forecast.
-     * The control plan contains time-slotted commands for each appliance along with
+     * The control plan contains time-slotted actions for each appliance along with
      * estimated costs and grid power values.
      *
-     * @param controlPlan - The time-slotted control plan with commands for each appliance
+     * @param controlPlan - The time-slotted control plan with actions for each appliance
      *   and estimated costs
      *
      * @example
      * ```typescript
      * const energyManager = energyApp.useEnergyManager();
      * energyManager.publishForecast({
-     *     commands: [
+     *     actions: [
      *         {
+     *             action: EnyoDiagnosticsControlActionEnum.BatteryChargeFromGrid,
      *             type: EnyoApplianceTypeEnum.Storage,
      *             applianceId: 'battery-1',
-     *             decision: BatteryDecision.Charge,
+     *             timestampIso: new Date().toISOString(),
+     *             isCommand: true,
      *             powerW: 3000,
-     *             durationInMinutes: 60
+     *             durationInMinutes: 60,
+     *             reason: {
+     *                 type: EnyoDiagnosticsActionReasonTypeEnum.ElectricityPriceBelowThreshold,
+     *                 electricityPricePerKwh: 0.15,
+     *             }
      *         }
      *     ],
      *     generatedAtIso: new Date().toISOString(),
