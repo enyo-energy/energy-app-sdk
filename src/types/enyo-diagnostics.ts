@@ -213,6 +213,8 @@ export enum EnyoDiagnosticsControlActionEnum {
     HeatpumpRoomOverheating = 'heatpump_room_overheating',
     /** Boost buffer tank temperature via heat pump. */
     HeatpumpBufferTankBoost = 'heatpump_buffer_tank_boost',
+    /** Announce available power to the heat pump. */
+    HeatpumpAvailablePowerAnnouncement = 'heatpump_available_power_announcement',
 }
 
 /**
@@ -416,6 +418,15 @@ export interface EnyoDiagnosticsHeatpumpBufferTankBoostAction extends EnyoDiagno
     outdoorTemperatureC?: number;
 }
 
+/** Heatpump action: announce available power to the heat pump. */
+export interface EnyoDiagnosticsHeatpumpAvailablePowerAnnouncementAction extends EnyoDiagnosticsControlActionBase {
+    action: EnyoDiagnosticsControlActionEnum.HeatpumpAvailablePowerAnnouncement;
+    type: EnyoApplianceTypeEnum.Heatpump;
+    isCommand: true;
+    /** Available power in Watts. */
+    powerW: number;
+}
+
 // ─── Control plan ───────────────────────────────────────────
 
 /** Union of all control plan action types. */
@@ -429,7 +440,8 @@ export type EnyoDiagnosticsControlAction =
     | EnyoDiagnosticsChargerPauseChargeAction
     | EnyoDiagnosticsHeatpumpDhwBoostAction
     | EnyoDiagnosticsHeatpumpRoomOverheatingAction
-    | EnyoDiagnosticsHeatpumpBufferTankBoostAction;
+    | EnyoDiagnosticsHeatpumpBufferTankBoostAction
+    | EnyoDiagnosticsHeatpumpAvailablePowerAnnouncementAction;
 
 /** Complete control plan with duration-based actions and cost estimates. */
 export interface EnyoDiagnosticsControlPlan {
