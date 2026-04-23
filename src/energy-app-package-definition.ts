@@ -76,6 +76,19 @@ export interface EnergyAppPackageOptionsDeviceDetectionEebus {
 }
 
 /**
+ * Optional device detection configuration for mDNS TXT record matching.
+ * Matches against TXT record key-value pairs advertised by devices via mDNS.
+ */
+export interface EnergyAppPackageOptionsDeviceDetectionMdns {
+    /** The TXT record key to match against */
+    key: 'model' | 'brand' | 'uuid' | 'serial' | string;
+    /** The matching operation to perform on the TXT record value */
+    operation: 'eq' | 'startsWith';
+    /** Values to match the TXT record value against */
+    matchingValues: string[];
+}
+
+/**
  * Optional device detection configuration for MQTT-based detection.
  * Subscribes to a topic on the internal broker and matches messages against expected values.
  */
@@ -98,6 +111,7 @@ export interface EnergyAppPackageOptionsDeviceDetection {
     ocpp?: EnergyAppPackageOptionsDeviceDetectionOcpp[];
     eebus?: EnergyAppPackageOptionsDeviceDetectionEebus[];
     mqtt?: EnergyAppPackageOptionsDeviceDetectionMqtt[];
+    mdns?: EnergyAppPackageOptionsDeviceDetectionMdns[];
 }
 
 /**

@@ -3,7 +3,8 @@ export enum EnyoNetworkDeviceDetectedAtEnum {
     Ocpp = 'ocpp',
     Hostname = 'hostname',
     Modbus = 'modbus',
-    Http = 'http'
+    Http = 'http',
+    Mdns = 'mdns'
 }
 
 /**
