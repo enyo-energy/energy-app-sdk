@@ -9,6 +9,8 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     BufferTankOverheating = 'BufferTankOverheating',
     /** If the heatpump supports domestic hot water overheating */
     DomesticHotWaterOverheating = 'DomesticHotWaterOverheating',
+    /** If the heatpump supports available power announcements */
+    AvailablePowerAnnouncement = 'AvailablePowerAnnouncement',
 }
 
 export enum EnyoHeatpumpApplianceModeEnum {

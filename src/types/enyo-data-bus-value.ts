@@ -202,7 +202,8 @@ export enum EnyoDataBusMessageEnum {
     RebootChargerV1 = 'RebootChargerV1',
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
     ClearChargingProfilesV1 = 'ClearChargingProfilesV1',
-    HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1'
+    HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1',
+    HeatpumpAvailablePowerAnnouncementV1 = 'HeatpumpAvailablePowerAnnouncementV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -277,6 +278,8 @@ export interface EnyoDataBusBatteryValuesUpdateV1 extends EnyoDataBusMessage {
         state?: EnyoBatteryStateEnum;
         /** Current Battery Power (in Watt). Positive = charging of the battery, Negative = Consumption from the Battery. */
         batteryPowerW?: number;
+        /** DC String input power (in Watt) */
+        dcStringInputPowerW?: number;
         /** Battery State of Charge. Value between 0 and 100 */
         batterySoC: number;
     }
@@ -1203,6 +1206,23 @@ export interface EnyoDataBusHeatpumpOverheatingV1 extends EnyoDataBusMessage {
         /** Optional domestic hot water overheating configuration */
         dhw?: EnyoHeatpumpOverheatingConfig;
         /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Data bus message announcing available power for a heatpump appliance.
+ * Used to inform the heatpump about how much power is available for consumption.
+ */
+export interface EnyoDataBusHeatpumpAvailablePowerAnnouncementV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1;
+    /** ID of the heatpump appliance */
+    applianceId: string;
+    data: {
+        /** Available power for the heatpump to use (in Watt) */
+        powerW: number;
+        /** Optional reason why this announcement was issued */
         reason?: EnyoDataBusCommandReason;
     };
 }
