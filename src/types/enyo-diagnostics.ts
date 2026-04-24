@@ -2,6 +2,7 @@ import {EnergyAppApplianceTypeEnum} from "../energy-app-appliance-type.enum.js";
 import {EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
+import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
 
 // ─── Price table types ────────────────────────────────────
 
@@ -71,10 +72,23 @@ export interface EnyoDiagnosticsForecastHeatpumpAppliance {
     };
 }
 
+/** Per-appliance forecast data for an air conditioning unit. */
+export interface EnyoDiagnosticsForecastAirConditioningAppliance {
+    type: EnyoApplianceTypeEnum.AirConditioning;
+    applianceId: string;
+    values: {
+        /** Current power consumption in Watts. */
+        powerW?: number;
+        /** Current operating mode of the air conditioning unit. */
+        operationMode?: EnyoAirConditioningApplianceModeEnum;
+    };
+}
+
 export type EnyoDiagnosticsForecastAppliance = EnyoDiagnosticsForecastInverterAppliance
     | EnyoDiagnosticsForecastStorageAppliance
     | EnyoDiagnosticsForecastChargerAppliance
-    | EnyoDiagnosticsForecastHeatpumpAppliance;
+    | EnyoDiagnosticsForecastHeatpumpAppliance
+    | EnyoDiagnosticsForecastAirConditioningAppliance;
 
 /** Aggregated current state of the entire energy system. */
 export interface EnyoDiagnosticsCurrentState {
@@ -84,6 +98,7 @@ export interface EnyoDiagnosticsCurrentState {
     totalBatterySoCPercent: number | undefined;
     totalGridPowerW: number | undefined;
     totalHeatpumpPowerW: number | undefined;
+    totalAirConditioningPowerW: number | undefined;
     totalChargerPowerW: number | undefined;
     // Per-appliance current state
     appliances: EnyoDiagnosticsCurrentStateAppliance[];
@@ -93,7 +108,8 @@ export type EnyoDiagnosticsCurrentStateAppliance =
     | EnyoDiagnosticsCurrentStateBatteryAppliance
     | EnyoDiagnosticsCurrentStateInverterAppliance
     | EnyoDiagnosticsCurrentStateHeatpumpAppliance
-    | EnyoDiagnosticsCurrentStateChargerAppliance;
+    | EnyoDiagnosticsCurrentStateChargerAppliance
+    | EnyoDiagnosticsCurrentStateAirConditioningAppliance;
 
 export interface EnyoDiagnosticsCurrentStateInverterAppliance {
     type: EnyoApplianceTypeEnum.Inverter;
@@ -138,6 +154,22 @@ export interface EnyoDiagnosticsCurrentStateChargerAppliance {
     };
 }
 
+/** Current state snapshot for an air conditioning appliance. */
+export interface EnyoDiagnosticsCurrentStateAirConditioningAppliance {
+    type: EnyoApplianceTypeEnum.AirConditioning;
+    applianceId: string;
+    values: {
+        /** Current power consumption in Watts. */
+        powerW?: number;
+        /** Current operating mode of the air conditioning unit. */
+        operationMode?: EnyoAirConditioningApplianceModeEnum;
+        /** Current room temperature in Celsius. */
+        roomTemperatureC?: number;
+        /** Target temperature in Celsius. */
+        targetTemperatureC?: number;
+    };
+}
+
 /** A single time bucket within a forecast. */
 export interface EnyoDiagnosticsForecastBucket {
     timestampIso: string;
@@ -166,6 +198,9 @@ export interface EnyoDiagnosticsForecastBucket {
     dhwTemperatureC?: number;
     dhwState?: DhwState;
     heatingState?: HeatingState;
+    // Air conditioning (optional)
+    airConditioningPowerW?: number;
+    airConditioningPowerWh?: number;
 }
 
 /** Complete forecast with per-bucket data, appliance breakdowns, and cost totals. */
@@ -215,6 +250,14 @@ export enum EnyoDiagnosticsControlActionEnum {
     HeatpumpBufferTankBoost = 'heatpump_buffer_tank_boost',
     /** Announce available power to the heat pump. */
     HeatpumpAvailablePowerAnnouncement = 'heatpump_available_power_announcement',
+    /** Start cooling via air conditioning. */
+    AirConditioningStartCooling = 'air_conditioning_start_cooling',
+    /** Stop cooling via air conditioning. */
+    AirConditioningStopCooling = 'air_conditioning_stop_cooling',
+    /** Start heating via air conditioning. */
+    AirConditioningStartHeating = 'air_conditioning_start_heating',
+    /** Stop heating via air conditioning. */
+    AirConditioningStopHeating = 'air_conditioning_stop_heating',
 }
 
 /**
@@ -250,6 +293,8 @@ export enum EnyoDiagnosticsActionReasonTypeEnum {
     BufferTankTemperatureLow = 'buffer-tank-temperature-low',
     /** Action planned because the home consumption is high. */
     HomeConsumptionHigh = 'home-consumption-high',
+    /** Action planned because the room temperature is low. */
+    RoomTemperatureLow = 'room-temperature-low',
 }
 
 /**
@@ -427,6 +472,52 @@ export interface EnyoDiagnosticsHeatpumpAvailablePowerAnnouncementAction extends
     powerW: number;
 }
 
+// ─── Air conditioning actions ──────────────────────────────
+
+/** Air conditioning action: start cooling. */
+export interface EnyoDiagnosticsAirConditioningStartCoolingAction extends EnyoDiagnosticsControlActionBase {
+    action: EnyoDiagnosticsControlActionEnum.AirConditioningStartCooling;
+    type: EnyoApplianceTypeEnum.AirConditioning;
+    isCommand: true;
+    /** Target power in Watts. */
+    powerW?: number;
+    /** Optional target temperature in Celsius. */
+    targetTempC?: number;
+    /** Optional current room temperature in Celsius. */
+    currentTemperatureC?: number;
+    /** Optional current outdoor temperature in Celsius. */
+    outdoorTemperatureC?: number;
+}
+
+/** Air conditioning action: stop cooling. */
+export interface EnyoDiagnosticsAirConditioningStopCoolingAction extends EnyoDiagnosticsControlActionBase {
+    action: EnyoDiagnosticsControlActionEnum.AirConditioningStopCooling;
+    type: EnyoApplianceTypeEnum.AirConditioning;
+    isCommand: true;
+}
+
+/** Air conditioning action: start heating. */
+export interface EnyoDiagnosticsAirConditioningStartHeatingAction extends EnyoDiagnosticsControlActionBase {
+    action: EnyoDiagnosticsControlActionEnum.AirConditioningStartHeating;
+    type: EnyoApplianceTypeEnum.AirConditioning;
+    isCommand: true;
+    /** Target power in Watts. */
+    powerW?: number;
+    /** Optional target temperature in Celsius. */
+    targetTempC?: number;
+    /** Optional current room temperature in Celsius. */
+    currentTemperatureC?: number;
+    /** Optional current outdoor temperature in Celsius. */
+    outdoorTemperatureC?: number;
+}
+
+/** Air conditioning action: stop heating. */
+export interface EnyoDiagnosticsAirConditioningStopHeatingAction extends EnyoDiagnosticsControlActionBase {
+    action: EnyoDiagnosticsControlActionEnum.AirConditioningStopHeating;
+    type: EnyoApplianceTypeEnum.AirConditioning;
+    isCommand: true;
+}
+
 // ─── Control plan ───────────────────────────────────────────
 
 /** Union of all control plan action types. */
@@ -441,7 +532,11 @@ export type EnyoDiagnosticsControlAction =
     | EnyoDiagnosticsHeatpumpDhwBoostAction
     | EnyoDiagnosticsHeatpumpRoomOverheatingAction
     | EnyoDiagnosticsHeatpumpBufferTankBoostAction
-    | EnyoDiagnosticsHeatpumpAvailablePowerAnnouncementAction;
+    | EnyoDiagnosticsHeatpumpAvailablePowerAnnouncementAction
+    | EnyoDiagnosticsAirConditioningStartCoolingAction
+    | EnyoDiagnosticsAirConditioningStopCoolingAction
+    | EnyoDiagnosticsAirConditioningStartHeatingAction
+    | EnyoDiagnosticsAirConditioningStopHeatingAction;
 
 /** Complete control plan with duration-based actions and cost estimates. */
 export interface EnyoDiagnosticsControlPlan {
