@@ -17,6 +17,10 @@ import {
     HeatpumpTemperatureTimeseriesResponse,
     TemperatureSensorTimeseriesRequest,
     TemperatureSensorTimeseriesResponse,
+    AirConditioningPowerTimeseriesRequest,
+    AirConditioningPowerTimeseriesResponse,
+    AirConditioningTemperatureTimeseriesRequest,
+    AirConditioningTemperatureTimeseriesResponse,
 } from "../types/enyo-timeseries.js";
 
 /**
@@ -207,4 +211,45 @@ export interface EnergyAppTimeseries {
      * ```
      */
     getTemperatureSensorTimeseries(request: TemperatureSensorTimeseriesRequest): Promise<TemperatureSensorTimeseriesResponse>;
+
+    /**
+     * Retrieves air conditioning power timeseries data aggregated in time buckets.
+     * Returns both instantaneous power (W) and cumulative energy (Wh) values
+     * for air conditioning appliances.
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to air conditioning power entries with total consumption
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getAirConditioningPowerTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * console.log(`Total AC consumption: ${response.totalAirConditioningPowerWh} Wh`);
+     * ```
+     */
+    getAirConditioningPowerTimeseries(request: AirConditioningPowerTimeseriesRequest): Promise<AirConditioningPowerTimeseriesResponse>;
+
+    /**
+     * Retrieves air conditioning temperature timeseries data aggregated in time buckets.
+     * Returns per-room average, min, max, and delta temperature readings for each bucket.
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to air conditioning temperature entries with per-room readings
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getAirConditioningTemperatureTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * response.entries.forEach(entry => {
+     *     entry.rooms?.forEach(room => {
+     *         console.log(`Room ${room.index}: ${room.averageTemperatureC} °C`);
+     *     });
+     * });
+     * ```
+     */
+    getAirConditioningTemperatureTimeseries(request: AirConditioningTemperatureTimeseriesRequest): Promise<AirConditioningTemperatureTimeseriesResponse>;
 }

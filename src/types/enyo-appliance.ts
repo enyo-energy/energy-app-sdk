@@ -5,6 +5,7 @@ import {EnyoBatteryApplianceMetadata} from "./enyo-battery-appliance.js";
 import {EnyoInverterApplianceMetadata} from "./enyo-inverter-appliance.js";
 import {EnyoMeterAppliance} from "./enyo-meter-appliance.js";
 import {EnyoTemperatureSensorApplianceMetadata} from "./enyo-temperature-sensor-appliance.js";
+import {EnyoAirConditioningApplianceMetadata} from "./enyo-air-conditioning-appliance.js";
 
 export enum EnyoApplianceTypeEnum {
     Inverter = 'Inverter',
@@ -113,6 +114,8 @@ export interface EnyoAppliance {
     battery?: EnyoBatteryApplianceMetadata;
     /** Optional Metadata of the Appliance if of type TemperatureSensor */
     temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
+    /** Optional Metadata of the Appliance if of type AirConditioning */
+    airConditioning?: EnyoAirConditioningApplianceMetadata;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
 }

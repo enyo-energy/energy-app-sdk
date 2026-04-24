@@ -15,6 +15,7 @@ import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-applia
 import type {EnyoInverterApplianceMetadata} from "../../types/enyo-inverter-appliance.js";
 import type {EnyoMeterAppliance} from "../../types/enyo-meter-appliance.js";
 import type {EnyoTemperatureSensorApplianceMetadata} from "../../types/enyo-temperature-sensor-appliance.js";
+import type {EnyoAirConditioningApplianceMetadata} from "../../types/enyo-air-conditioning-appliance.js";
 import {IdentifierStrategy} from "./identifier-strategies.js";
 
 /**
@@ -38,6 +39,7 @@ export interface ApplianceConfig {
     heatpump?: EnyoHeatpumpApplianceMetadata;
     battery?: EnyoBatteryApplianceMetadata;
     temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
+    airConditioning?: EnyoAirConditioningApplianceMetadata;
 }
 
 /**
@@ -82,7 +84,7 @@ export class ApplianceManager {
     /**
      * Merges partial appliance data with an existing appliance, performing a shallow merge
      * on each metadata sub-object (metadata, inverter, charger, battery, heatpump, meter,
-     * temperatureSensor) so that only the provided keys are overwritten and existing keys
+     * temperatureSensor, airConditioning) so that only the provided keys are overwritten and existing keys
      * are preserved.
      * @param existing The existing appliance data
      * @param update The partial update data to merge
@@ -116,6 +118,9 @@ export class ApplianceManager {
             temperatureSensor: update.temperatureSensor
                 ? {...existing.temperatureSensor, ...update.temperatureSensor} as EnyoTemperatureSensorApplianceMetadata
                 : existing.temperatureSensor,
+            airConditioning: update.airConditioning
+                ? {...existing.airConditioning, ...update.airConditioning} as EnyoAirConditioningApplianceMetadata
+                : existing.airConditioning,
         };
     }
 
@@ -208,6 +213,7 @@ export class ApplianceManager {
             charger: appliance.charger,
             inverter: appliance.inverter,
             temperatureSensor: appliance.temperatureSensor,
+            airConditioning: appliance.airConditioning,
         };
 
         // When updating an existing appliance, merge metadata to preserve existing keys
@@ -691,6 +697,8 @@ export interface PartialEnyoAppliance {
     battery?: Partial<EnyoBatteryApplianceMetadata>;
     /** Optional Metadata of the Appliance if of type TemperatureSensor */
     temperatureSensor?: Partial<EnyoTemperatureSensorApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type AirConditioning */
+    airConditioning?: Partial<EnyoAirConditioningApplianceMetadata>;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
 }

@@ -71,6 +71,7 @@ export * from './types/enyo-diagnostics.js'
 export * from './packages/energy-app-diagnostics.js'
 export * from './types/enyo-learning-phase.js'
 export * from './packages/energy-app-learning-phase.js'
+export * from './types/enyo-air-conditioning-appliance.js'
 
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;

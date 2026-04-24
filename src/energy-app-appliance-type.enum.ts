@@ -14,5 +14,6 @@ export enum EnergyAppApplianceTypeEnum {
     Fridge = 'fridge',
     Dryer = 'dryer',
     Oven = 'oven',
-    Freezer = 'freezer'
+    Freezer = 'freezer',
+    AirConditioning = 'air-conditioning'
 }

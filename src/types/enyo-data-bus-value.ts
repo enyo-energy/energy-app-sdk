@@ -10,6 +10,7 @@ import {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
+import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -203,7 +204,11 @@ export enum EnyoDataBusMessageEnum {
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
     ClearChargingProfilesV1 = 'ClearChargingProfilesV1',
     HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1',
-    HeatpumpAvailablePowerAnnouncementV1 = 'HeatpumpAvailablePowerAnnouncementV1'
+    HeatpumpAvailablePowerAnnouncementV1 = 'HeatpumpAvailablePowerAnnouncementV1',
+    AirConditioningValuesUpdateV1 = 'AirConditioningValuesUpdateV1',
+    AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
+    StartAirConditioningV1 = 'StartAirConditioningV1',
+    StopAirConditioningV1 = 'StopAirConditioningV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -1223,6 +1228,83 @@ export interface EnyoDataBusHeatpumpAvailablePowerAnnouncementV1 extends EnyoDat
         /** Available power for the heatpump to use (in Watt) */
         powerW: number;
         /** Optional reason why this announcement was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Data bus message for reporting air conditioning power values.
+ * Contains the current operating mode and power consumption.
+ */
+export interface EnyoDataBusAirConditioningValuesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.AirConditioningValuesUpdateV1;
+    /** ID of the air conditioning appliance that delivered these values */
+    applianceId: string;
+    data: {
+        values: {
+            /** Current operating mode of the air conditioning unit */
+            operationMode: EnyoAirConditioningApplianceModeEnum;
+            /** Current power consumption in Watts */
+            powerW?: number;
+        };
+    };
+}
+
+/**
+ * Data bus message for reporting air conditioning temperature values.
+ * Contains per-room temperature readings from an air conditioning appliance.
+ */
+export interface EnyoDataBusAirConditioningTemperaturesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.AirConditioningTemperaturesUpdateV1;
+    /** ID of the air conditioning appliance that delivered these temperature values */
+    applianceId: string;
+    data: {
+        /** Room temperature readings, indexed per room */
+        rooms?: {
+            /** Index of the room */
+            index: number;
+            /** Target temperature in Celsius */
+            targetTemperatureC: number;
+            /** Current temperature in Celsius */
+            temperatureC: number;
+        }[];
+    };
+}
+
+/**
+ * Command message to start an air conditioning appliance in a specified mode.
+ * This message instructs the air conditioning unit to begin operating in
+ * either heating or cooling mode.
+ */
+export interface EnyoDataBusStartAirConditioningV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartAirConditioningV1;
+    /** ID of the air conditioning appliance to start */
+    applianceId: string;
+    data: {
+        /** The operating mode to start the air conditioning unit in (Heating or Cooling) */
+        mode: EnyoAirConditioningApplianceModeEnum;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to stop an air conditioning appliance.
+ * This message instructs the air conditioning unit to stop operating.
+ * The mode indicates which operating mode (heating or cooling) should be stopped.
+ */
+export interface EnyoDataBusStopAirConditioningV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StopAirConditioningV1;
+    /** ID of the air conditioning appliance to stop */
+    applianceId: string;
+    data: {
+        /** The operating mode to stop (Heating or Cooling) */
+        mode: EnyoAirConditioningApplianceModeEnum;
+        /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };
 }

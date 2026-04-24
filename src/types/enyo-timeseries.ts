@@ -439,3 +439,72 @@ export interface TemperatureSensorTimeseriesResponse extends TimeseriesResponseB
         averageTargetTemperatureC?: number;
     }[];
 }
+
+// ============================================================================
+// Air Conditioning Power Timeseries Types
+// ============================================================================
+
+/**
+ * A single entry in the air conditioning power timeseries.
+ * Contains power and energy values for a single time bucket.
+ */
+export interface AirConditioningPowerTimeseriesEntry extends TimeseriesEntryBase {
+    /** Time-weighted average air conditioning power consumption in Watts for this bucket */
+    airConditioningPowerW: number;
+    /** Cumulative air conditioning energy consumption in Watt-hours for this bucket */
+    airConditioningPowerWh: number;
+}
+
+/**
+ * Request parameters for querying air conditioning power timeseries data.
+ */
+export interface AirConditioningPowerTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Response containing air conditioning power timeseries data.
+ */
+export interface AirConditioningPowerTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of air conditioning power entries, one per time bucket */
+    entries: AirConditioningPowerTimeseriesEntry[];
+    /** Total air conditioning energy consumption in Watt-hours across all buckets */
+    totalAirConditioningPowerWh: number;
+}
+
+// ============================================================================
+// Air Conditioning Temperature Timeseries Types
+// ============================================================================
+
+/**
+ * A single entry in the air conditioning temperature timeseries.
+ * Contains per-room temperature readings for a single time bucket.
+ */
+export interface AirConditioningTemperatureTimeseriesEntry extends TimeseriesEntryBase {
+    /** Room temperature readings, indexed per room */
+    rooms?: {
+        /** Zero-based index identifying the room */
+        index: number;
+        /** Average temperature in degrees Celsius for this bucket */
+        averageTemperatureC: number;
+        /** Minimum temperature in degrees Celsius observed in this bucket */
+        minTemperatureC: number;
+        /** Maximum temperature in degrees Celsius observed in this bucket */
+        maxTemperatureC: number;
+        /** Temperature difference (delta) in Kelvin for this bucket */
+        deltaK: number;
+        /** Average target temperature in degrees Celsius for this bucket */
+        averageTargetTemperatureC: number;
+    }[];
+}
+
+/**
+ * Request parameters for querying air conditioning temperature timeseries data.
+ */
+export interface AirConditioningTemperatureTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Response containing air conditioning temperature timeseries data.
+ */
+export interface AirConditioningTemperatureTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of air conditioning temperature entries, one per time bucket */
+    entries: AirConditioningTemperatureTimeseriesEntry[];
+}
