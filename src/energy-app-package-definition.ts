@@ -9,6 +9,7 @@ export enum EnergyAppPackageCategory {
     Meter = 'meter',
     EnergyManagement = 'energy-management',
     HeatPump = 'heat-pump',
+    AirConditioning = 'air-conditioning',
     BatteryStorage = 'battery-storage',
     ClimateControl = 'climate-control',
     DynamicElectricityTariff = 'dynamic-electricity-tariff',
