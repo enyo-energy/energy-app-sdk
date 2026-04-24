@@ -13,6 +13,7 @@ export enum EnyoApplianceTypeEnum {
     Storage = 'Storage',
     Meter = 'Meter',
     Heatpump = 'Heatpump',
+    AirConditioning = 'AirConditioning',
     TemperatureSensor = 'TemperatureSensor',
 }
 
