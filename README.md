@@ -9,6 +9,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Choosing the Right API](#choosing-the-right-api)
 - [Core Concepts](#core-concepts)
   - [Energy App Lifecycle](#energy-app-lifecycle)
   - [Package Definition](#package-definition)
@@ -22,6 +23,22 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [User Features](#user-features)
   - [App Intelligence](#app-intelligence)
 - [Advanced Modbus Integration](#advanced-modbus-integration)
+- [Device Integrations](#device-integrations)
+  - [IntegrationEnergyApp (Base Class)](#integrationenergyapp-base-class)
+  - [HeatpumpIntegrationEnergyApp](#heatpumpintegrationenergyapp)
+  - [WallboxIntegrationEnergyApp](#wallboxintegrationenergyapp)
+  - [StorageIntegrationEnergyApp](#storageintegrationenergyapp)
+  - [InverterIntegrationEnergyApp](#inverterintegrationenergyapp)
+  - [AirConditioningIntegrationEnergyApp](#airconditioningintegrationenergyapp)
+  - [EnergyManagerEnergyApp](#energymanagerenergyapp)
+- [Forecasting](#forecasting)
+  - [ForecastConfig](#forecastconfig)
+  - [PvProductionForecast](#pvproductionforecast)
+  - [BatteryForecast](#batteryforecast)
+  - [HomeConsumptionForecast](#homeconsumptionforecast)
+  - [EvChargingForecast](#evchargingforecast)
+  - [HeatpumpConsumptionForecast](#heatpumpconsumptionforecast)
+  - [HeatpumpDhwTemperatureForecast](#heatpumpdhwtemperatureforecast)
 - [Examples](#examples)
   - [Basic Energy App](#basic-energy-app)
   - [Device Integration](#device-integration)
@@ -75,6 +92,36 @@ async function startApp() {
     });
 }
 ```
+
+## Choosing the Right API
+
+The SDK exposes several layered building blocks. Pick the one that matches the kind of app you are building before diving into the API reference:
+
+- **Core SDK (`EnergyApp`)** — the always-present facade for system lifecycle, storage, data bus, settings, notifications, and HTTP. Every Energy App uses it.
+- **Modbus helpers (`EnergyAppModbusInverter` / `Battery` / `Meter`)** — vendor-agnostic, configuration-driven Modbus access for raw register polling.
+- **Device Integrations (`*IntegrationEnergyApp`)** — *inbound* abstractions for apps that **drive a real device** (heatpump, wallbox, inverter, storage, air conditioning). They subscribe to the right data-bus commands, dispatch them to your handlers, auto-acknowledge, and expose typed `publish*` helpers for status updates.
+- **Forecasting (`*Forecast`, `EnergyManagerEnergyApp`)** — *outbound* abstractions for apps that **predict** future PV production, consumption, battery state, EV charging load, heatpump load, or DHW tank temperature using historical timeseries plus live data-bus updates.
+
+### Decision Matrix
+
+| If you want to… | Use |
+|---|---|
+| React to system lifecycle, store data, send notifications | [`EnergyApp`](#api-reference) |
+| Talk to a Modbus device through configuration only | [`EnergyAppModbusInverter` / `Battery` / `Meter`](#advanced-modbus-integration) |
+| Build a **device integration** for a heatpump | [`HeatpumpIntegrationEnergyApp`](#heatpumpintegrationenergyapp) |
+| Build a **device integration** for an EV wallbox | [`WallboxIntegrationEnergyApp`](#wallboxintegrationenergyapp) |
+| Build a **device integration** for a battery / storage system | [`StorageIntegrationEnergyApp`](#storageintegrationenergyapp) |
+| Build a **device integration** for a PV inverter | [`InverterIntegrationEnergyApp`](#inverterintegrationenergyapp) |
+| Build a **device integration** for an air-conditioning unit | [`AirConditioningIntegrationEnergyApp`](#airconditioningintegrationenergyapp) |
+| Build an **energy manager** that orchestrates many forecasters | [`EnergyManagerEnergyApp`](#energymanagerenergyapp) |
+| Forecast PV production for a single inverter | [`PvProductionForecast`](#pvproductionforecast) |
+| Forecast battery state-of-charge | [`BatteryForecast`](#batteryforecast) |
+| Forecast total household consumption | [`HomeConsumptionForecast`](#homeconsumptionforecast) |
+| Forecast EV charging demand | [`EvChargingForecast`](#evchargingforecast) |
+| Forecast heatpump electrical consumption | [`HeatpumpConsumptionForecast`](#heatpumpconsumptionforecast) |
+| Forecast heatpump DHW tank temperature | [`HeatpumpDhwTemperatureForecast`](#heatpumpdhwtemperatureforecast) |
+
+> **Rule of thumb:** if your app *receives* commands and drives hardware, you want an **Integration**. If your app *produces* predictions, you want a **Forecast** (and likely an `EnergyManagerEnergyApp` to wire several together).
 
 ## Core Concepts
 
@@ -858,6 +905,333 @@ The Modbus implementation follows a clean, modular architecture:
 - **EnergyAppModbusConnectionHealth** - Connection health monitoring
 
 This modular design ensures maintainability, testability, and extensibility for future enhancements.
+
+## Device Integrations
+
+Device Integrations are the high-level building blocks for apps that **drive a real device** — a heatpump, EV wallbox, PV inverter, battery storage system, or air-conditioning unit. Each integration class hides the data-bus plumbing for its appliance type so you only implement the business logic that physically controls the device.
+
+### ✨ What the integration framework does for you
+
+- **Subscribes** to the relevant `*CommandV1` data-bus messages for the appliance type.
+- **Dispatches** each command to the async handler you register.
+- **Auto-acknowledges** every command via a `CommandAcknowledgeV1` response containing your `Accepted` / `Rejected` / `NotSupported` answer.
+- **Handles broadcast `GridOperatorPowerLimitationV1`** (§14a EnWG) and routes it once per managed appliance.
+- **Manages lifecycle** — auto-starts on construction and auto-stops on shutdown by default.
+- **Exposes typed `publish*` helpers** so your handler implementations can broadcast status updates back to the system without hand-building messages.
+
+### 🚀 Quick Start
+
+```typescript
+import {
+    HeatpumpIntegrationEnergyApp,
+    EnyoSourceEnum,
+    EnyoCommandAcknowledgeAnswerEnum,
+    ApplianceManager,
+} from '@enyo-energy/energy-app-sdk';
+
+class MyHeatpumpApp extends HeatpumpIntegrationEnergyApp {
+    constructor(applianceManager: ApplianceManager) {
+        super({ source: EnyoSourceEnum.Device, applianceManager });
+    }
+
+    protected async handleHeatpumpOverheating(message) {
+        await driveOverheating(message.data);
+        return { answer: EnyoCommandAcknowledgeAnswerEnum.Accepted };
+    }
+
+    protected async handleHeatpumpAvailablePowerAnnouncement(message) {
+        await scaleHeatpumpToEnvelope(message.data);
+        return { answer: EnyoCommandAcknowledgeAnswerEnum.Accepted };
+    }
+
+    protected async handleGridOperatorPowerLimitation(message, applianceId) {
+        await applyGridLimit(applianceId, message.data);
+        return { applianceId, answer: EnyoCommandAcknowledgeAnswerEnum.Accepted };
+    }
+}
+```
+
+### IntegrationEnergyApp (Base Class)
+
+`IntegrationEnergyApp` is the abstract base every device integration extends. It owns the data-bus subscription/acknowledgment loop and the broadcast routing so subclasses only declare *what* commands they care about and *how* to fulfil them.
+
+**Constructor options (`IntegrationEnergyAppOptions`)**
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `source` | `EnyoSourceEnum` | required | Source identifier for outbound messages (typically `Device`). |
+| `applianceManager` | `ApplianceManager` | optional | Lookup all appliances of the integration's `managedApplianceType`. |
+| `applianceIds` | `string[]` | optional | Explicit list of appliance IDs to manage. Overrides the manager-based lookup. |
+| `autoStart` | `boolean` | `true` | Subscribe to the data bus immediately after construction. |
+| `autoStopOnShutdown` | `boolean` | `true` | Register an SDK shutdown hook to release listeners. |
+
+**Lifecycle**
+
+- `start(): void` — idempotent; registers all command handlers via the subclass's `registerHandlers()`.
+- `stop(): void` — releases listeners and disposes the outbound command handler.
+
+**For subclass authors**
+
+- `protected abstract registerHandlers(): void` — call `registerCommandHandler(messageType, handler)` for each command you want to receive.
+- `protected abstract handleGridOperatorPowerLimitation(message, applianceId)` — handle the §14a EnWG broadcast per managed appliance.
+- `protected abstract get managedApplianceType(): EnyoApplianceTypeEnum` — used to resolve appliance IDs when no explicit list is given.
+
+### HeatpumpIntegrationEnergyApp
+
+Drives a heatpump. Manages building / DHW overheating commands and grid-power-availability announcements.
+
+- **Subscribed commands:** `HeatpumpOverheatingV1`, `HeatpumpAvailablePowerAnnouncementV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** `handleHeatpumpOverheating`, `handleHeatpumpAvailablePowerAnnouncement`, `handleGridOperatorPowerLimitation`
+- **Publish helpers:**
+  - `publishHeatpumpValuesUpdate(applianceId, values)` — operation mode, electrical and thermal power, energies.
+  - `publishHeatpumpTemperatures(applianceId, temperatures)` — outdoor, flow, return, DHW tanks, heating circuits, buffer tank.
+
+### WallboxIntegrationEnergyApp
+
+Drives an EV wallbox / charger. Has the richest command surface of all integrations.
+
+- **Subscribed commands:** `StartChargeV1`, `StopChargeV1`, `PauseChargingV1`, `ResumeChargingV1`, `ChangeChargingPowerV1`, `SetChargingScheduleV1`, `ResetChargerV1`, `RebootChargerV1`, `RequestChargerLogsV1`, `ClearChargingProfilesV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** one `handle*` method per command listed above plus `handleGridOperatorPowerLimitation`.
+- **Publish helpers:**
+  - `publishChargingStarted(applianceId, data)` / `publishChargingStopped(applianceId, data)`
+  - `publishChargingMeterValues(applianceId, data)` — periodic meter values during a session.
+  - `publishMaxChargingPowerChanged(applianceId, maxChargingPowerKw)` — e.g. on thermal derating.
+  - `publishChargerStatusChanged(applianceId, data)` — OCPP-style status changes.
+
+```typescript
+class MyWallbox extends WallboxIntegrationEnergyApp {
+    constructor(applianceManager: ApplianceManager) {
+        super({ source: EnyoSourceEnum.Device, applianceManager });
+    }
+
+    protected async handleStartCharge(message) {
+        const txId = await this.driver.start(message.data);
+        this.publishChargingStarted(message.applianceId, { transactionId: txId });
+        return { answer: EnyoCommandAcknowledgeAnswerEnum.Accepted };
+    }
+    // ... other handlers
+}
+```
+
+### StorageIntegrationEnergyApp
+
+Drives a battery / storage system. Controls grid-charging windows and discharge limits.
+
+- **Subscribed commands:** `StartStorageGridChargeV1`, `StopStorageGridChargeV1`, `SetStorageDischargeLimitV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** `handleStartStorageGridCharge`, `handleStopStorageGridCharge`, `handleSetStorageDischargeLimit`, `handleGridOperatorPowerLimitation`.
+- **Publish helpers:**
+  - `publishBatteryValuesUpdate(applianceId, data)` — state, power, SoC.
+  - `publishMaxDischargePowerChanged(applianceId, maxDischargePowerKw)` — discharge-limit changes.
+
+### InverterIntegrationEnergyApp
+
+Drives a PV inverter. Controls grid feed-in limits and publishes electrical metrics.
+
+- **Subscribed commands:** `SetInverterFeedInLimitV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** `handleSetInverterFeedInLimit` (`data.feedInLimitW` may be `null` to clear), `handleGridOperatorPowerLimitation`.
+- **Publish helpers:**
+  - `publishInverterValuesUpdate(applianceId, data)` — DC strings, AC voltages, total PV power, operating state.
+
+### AirConditioningIntegrationEnergyApp
+
+Drives an air-conditioning unit. Starts and stops heating or cooling modes.
+
+- **Subscribed commands:** `StartAirConditioningV1`, `StopAirConditioningV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** `handleStartAirConditioning` (mode is `Heating` or `Cooling`), `handleStopAirConditioning`, `handleGridOperatorPowerLimitation`.
+- **Publish helpers:**
+  - `publishAirConditioningValues(applianceId, values)` — current operation mode and electrical consumption.
+  - `publishAirConditioningTemperatures(applianceId, data)` — current and target temperatures per room.
+
+### EnergyManagerEnergyApp
+
+`EnergyManagerEnergyApp` is the **counterpart** to the device integrations: instead of receiving commands, it produces forecasts. It is the recommended entry point when your app needs **multiple forecasters** wired together — it lazily creates each forecaster on first request, caches it, and disposes them all on shutdown.
+
+**Constructor**
+
+```typescript
+new EnergyManagerEnergyApp({
+    source: EnyoSourceEnum.Device,
+    forecastConfig?: ForecastConfig,   // applied to every forecaster unless overridden per call
+    autoStopOnShutdown?: boolean,      // default true
+});
+```
+
+**Lazy forecaster factories** — each returns a ready-to-use forecaster (history loaded, live listeners attached):
+
+- `getPvProductionForecast(applianceId, config?)`
+- `getBatteryForecast(applianceId, config?)`
+- `getHomeConsumptionForecast(config?)` — system-wide, no appliance ID
+- `getEvChargingForecast(applianceId, config?)`
+- `getHeatpumpConsumptionForecast(applianceId, config?)`
+- `getHeatpumpDhwTemperatureForecast(applianceId, config?)`
+
+**Lifecycle**
+
+- `stop(): void` — disposes every cached forecaster.
+
+```typescript
+const manager = new EnergyManagerEnergyApp({ source: EnyoSourceEnum.Device });
+
+const pv = await manager.getPvProductionForecast('inverter-1');
+const battery = await manager.getBatteryForecast('battery-1');
+
+const pvForecast = pv.getForecast();
+const batteryForecast = battery.getForecast();
+```
+
+## Forecasting
+
+The forecasting module provides 24-hour predictions across the energy domains the SDK already understands (PV, battery, home consumption, EV charging, heatpump consumption, DHW temperature). Every forecaster follows the same lifecycle and shares the same configuration shape, so once you've used one you've used them all.
+
+### ✨ Common pattern
+
+1. Construct the forecaster with the SDK app, the appliance ID (where applicable), and an optional `ForecastConfig`.
+2. `await initialize()` — pulls historical timeseries and subscribes to live data-bus updates.
+3. Call `getForecast()` whenever you need a fresh prediction (cheap; uses in-memory state).
+4. Optionally call `publishForecast()` to manually push to the data bus (or rely on auto-publish).
+5. `dispose()` to release listeners on shutdown.
+
+All forecasters compute **same-weekday recency-weighted averages** at 15-minute resolution and optionally smooth the first ~2 hours toward recent actuals. `PvProductionForecast` is the exception — sun position is weekday-independent, so it weights all days equally.
+
+### ForecastConfig
+
+The shared configuration applied to every forecaster.
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `historyDays` | `number` | `7` | Lookback window for historical timeseries. |
+| `resolution` | `'1m' \| '15m'` | `'15m'` | Slot granularity for both history and forecast. |
+| `horizonHours` | `number` | `24` | How far ahead to forecast. |
+| `alignToRecentActuals` | `boolean` | `true` | Smoothly join the first ~2 forecast hours to recent observations. |
+| `publishToBus` | `boolean` | `true` | Auto-publish to the data bus on every refresh. |
+
+> **Per-forecaster overrides:** `PvProductionForecast` defaults to **4 days** (sun-driven, recency matters most). `BatteryForecast`, `EvChargingForecast`, and `HomeConsumptionForecast` default to **14 days** (strongly weekday-cyclic).
+
+All forecasters return a `BaseForecast<D>`-shaped object:
+
+```typescript
+{
+    generatedAtIso: string;      // ISO timestamp of computation
+    data: {
+        resolution: '1m' | '15m';
+        entries: Array<{ startIso: string; /* per-class fields */ }>;
+    };
+}
+```
+
+### PvProductionForecast
+
+Forecasts the AC power output of a single PV inverter.
+
+```typescript
+new PvProductionForecast(app, applianceId, { source: EnyoSourceEnum.Device, config? });
+```
+
+- **Output per slot:** `{ powerW: number; powerWh: number }`
+- **History default:** 4 days, all-day weighting.
+- **Live source:** `InverterValuesUpdateV1`.
+
+### BatteryForecast
+
+Forecasts state-of-charge (and derived stored energy) for a single battery.
+
+```typescript
+new BatteryForecast(app, applianceId, {
+    source: EnyoSourceEnum.Device,
+    config?: { ratedCapacityWh?: number, ...ForecastConfig }
+});
+```
+
+- **Output per slot:** `{ socPercent: number; capacityWh: number }` (SoC clamped to `[0, 100]`).
+- **History default:** 14 days.
+- **Notable config:** `ratedCapacityWh` is auto-loaded from the appliance metadata if omitted.
+- **Live source:** `BatteryValuesUpdateV1`.
+
+### HomeConsumptionForecast
+
+Forecasts total household electrical consumption — system-wide, no appliance ID.
+
+```typescript
+new HomeConsumptionForecast(app, { source: EnyoSourceEnum.Device, config? });
+```
+
+- **Output per slot:** `{ powerW: number; powerWh: number }`
+- **History default:** 14 days (household routines are strongly weekday-cyclic).
+- **Live source:** `AggregatedStateUpdateV1`.
+
+### EvChargingForecast
+
+Forecasts EV charging power for a single charger.
+
+```typescript
+new EvChargingForecast(app, applianceId, { source: EnyoSourceEnum.Device, config? });
+```
+
+- **Output per slot:** `{ powerW: number; powerWh: number }`
+- **History default:** 14 days.
+- **Live source:** `ChargingMeterValuesUpdateV1`.
+
+### HeatpumpConsumptionForecast
+
+Forecasts the electrical consumption of a heatpump (heating + cooling combined).
+
+```typescript
+new HeatpumpConsumptionForecast(app, applianceId, { source: EnyoSourceEnum.Device, config? });
+```
+
+- **Output per slot:** `{ powerW: number; powerWh: number }`
+- **History default:** 7 days.
+- **Live source:** `HeatpumpValuesUpdateV1`.
+- **Note:** does not adjust for forecasted weather; layer COP-based correction on top if you need that.
+
+### HeatpumpDhwTemperatureForecast
+
+Forecasts the temperature of a heatpump's domestic-hot-water tank.
+
+```typescript
+new HeatpumpDhwTemperatureForecast(app, applianceId, {
+    source: EnyoSourceEnum.Device,
+    config?: { dhwTankIndex?: number, ...ForecastConfig }
+});
+```
+
+- **Output per slot:** `{ temperatureC: number }` (rounded to 0.1 °C).
+- **History default:** 7 days.
+- **Notable config:** `dhwTankIndex` selects a specific tank (zero-based); omit to average across all tanks.
+- **Live source:** heatpump temperature timeseries / live updates.
+
+### 🚀 Common usage example
+
+```typescript
+import {
+    PvProductionForecast,
+    BatteryForecast,
+    EnyoSourceEnum,
+} from '@enyo-energy/energy-app-sdk';
+
+const pv = new PvProductionForecast(energyApp, 'inverter-1', {
+    source: EnyoSourceEnum.Device,
+});
+const battery = new BatteryForecast(energyApp, 'battery-1', {
+    source: EnyoSourceEnum.Device,
+    config: { ratedCapacityWh: 10_000 },
+});
+
+await Promise.all([pv.initialize(), battery.initialize()]);
+
+energyApp.useInterval().createInterval('15m', () => {
+    const pvNext24h = pv.getForecast();
+    const batteryNext24h = battery.getForecast();
+    runDispatch(pvNext24h, batteryNext24h);
+});
+
+energyApp.onShutdown(async () => {
+    pv.dispose();
+    battery.dispose();
+});
+```
+
+> **Tip:** if your app needs more than one forecaster, prefer [`EnergyManagerEnergyApp`](#energymanagerenergyapp) — it manages construction, caching, and disposal for you.
 
 ## Examples
 
