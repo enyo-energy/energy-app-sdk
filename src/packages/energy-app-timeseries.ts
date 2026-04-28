@@ -15,6 +15,8 @@ import {
     HomeConsumptionTimeseriesResponse,
     HeatpumpTemperatureTimeseriesRequest,
     HeatpumpTemperatureTimeseriesResponse,
+    HeatpumpPowerTimeseriesRequest,
+    HeatpumpPowerTimeseriesResponse,
     TemperatureSensorTimeseriesRequest,
     TemperatureSensorTimeseriesResponse,
     AirConditioningPowerTimeseriesRequest,
@@ -190,6 +192,34 @@ export interface EnergyAppTimeseries {
      * ```
      */
     getHeatpumpTemperatureTimeseries(request: HeatpumpTemperatureTimeseriesRequest): Promise<HeatpumpTemperatureTimeseriesResponse>;
+
+    /**
+     * Retrieves heatpump power timeseries data aggregated in time buckets.
+     * Returns time-weighted average electrical power (W) and cumulative
+     * electrical energy (Wh) for each bucket. When the heatpump reports them,
+     * also returns the split between space heating and domestic hot water for
+     * both electrical consumption and thermal energy delivered.
+     *
+     * Split fields are optional because not all heatpumps report meter values
+     * for the heating / domestic-hot-water categories.
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to heatpump power entries with total electrical consumption
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getHeatpumpPowerTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * console.log(`Total heatpump consumption: ${response.totalHeatpumpPowerWh} Wh`);
+     * if (response.totalHeatGenerationHeatingWh && response.totalPowerConsumptionHeatingWh) {
+     *     const cop = response.totalHeatGenerationHeatingWh / response.totalPowerConsumptionHeatingWh;
+     *     console.log(`Heating COP: ${cop.toFixed(2)}`);
+     * }
+     * ```
+     */
+    getHeatpumpPowerTimeseries(request: HeatpumpPowerTimeseriesRequest): Promise<HeatpumpPowerTimeseriesResponse>;
 
     /**
      * Retrieves temperature sensor timeseries data aggregated in time buckets.

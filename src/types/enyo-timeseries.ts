@@ -396,6 +396,57 @@ export interface HeatpumpTemperatureTimeseriesResponse extends TimeseriesRespons
     averageBufferTankTemperatureC?: number;
 }
 
+// ============================================================================
+// Heatpump Power Timeseries Types
+// ============================================================================
+
+/**
+ * A single entry in the heatpump power timeseries.
+ * Contains electrical power and energy values, optional split between space
+ * heating and domestic hot water consumption, and optional thermal energy
+ * delivered (heat generation) for the same split, for a single time bucket.
+ */
+export interface HeatpumpPowerTimeseriesEntry extends TimeseriesEntryBase {
+    /** Time-weighted average heatpump electrical power consumption in Watts for this bucket */
+    heatpumpPowerW: number;
+    /** Cumulative heatpump electrical energy consumption in Watt-hours for this bucket */
+    heatpumpPowerWh: number;
+    /** Electrical energy consumed for space heating in Watt-hours for this bucket */
+    powerConsumptionHeatingWh?: number;
+    /** Electrical energy consumed for domestic hot water in Watt-hours for this bucket */
+    powerConsumptionDomesticHotWaterWh?: number;
+    /** Thermal energy delivered for space heating in Watt-hours for this bucket */
+    heatGenerationHeatingWh?: number;
+    /** Thermal energy delivered for domestic hot water in Watt-hours for this bucket */
+    heatGenerationDomesticHotWaterWh?: number;
+}
+
+/**
+ * Request parameters for querying heatpump power timeseries data.
+ */
+export interface HeatpumpPowerTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Response containing heatpump power timeseries data.
+ * Aggregated totals for the heating / domestic-hot-water splits and for
+ * heat generation are optional because not all heatpumps report meter values
+ * for every category.
+ */
+export interface HeatpumpPowerTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of heatpump power entries, one per time bucket */
+    entries: HeatpumpPowerTimeseriesEntry[];
+    /** Total heatpump electrical energy consumption in Watt-hours across all buckets */
+    totalHeatpumpPowerWh: number;
+    /** Total electrical energy consumed for space heating in Watt-hours across all buckets */
+    totalPowerConsumptionHeatingWh?: number;
+    /** Total electrical energy consumed for domestic hot water in Watt-hours across all buckets */
+    totalPowerConsumptionDomesticHotWaterWh?: number;
+    /** Total thermal energy delivered for space heating in Watt-hours across all buckets */
+    totalHeatGenerationHeatingWh?: number;
+    /** Total thermal energy delivered for domestic hot water in Watt-hours across all buckets */
+    totalHeatGenerationDomesticHotWaterWh?: number;
+}
+
 /**
  * A single entry in the temperature sensor timeseries.
  * Contains per-sensor average temperature readings for a single time bucket.
