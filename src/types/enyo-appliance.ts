@@ -29,6 +29,20 @@ export enum EnyoApplianceStateEnum {
     ConfigurationRequired = 'configuration-required',
 }
 
+/**
+ * Health status of an appliance. Orthogonal to {@link EnyoApplianceStateEnum},
+ * which describes connectivity. `Healthy` means the appliance is operating
+ * normally; `Faulted` means it has reported an internal error and may need
+ * attention. Vendor- or protocol-specific details should be conveyed via
+ * accompanying error codes.
+ */
+export enum EnyoApplianceStatusEnum {
+    /** Appliance is operating normally */
+    Healthy = 'healthy',
+    /** Appliance has reported an internal fault */
+    Faulted = 'faulted',
+}
+
 export interface EnyoApplianceNetworkMetadata {
     /** If the appliance is connected via cellular network, you can put the imsi here*/
     imsi?: string;
@@ -63,6 +77,8 @@ export interface EnyoApplianceMetadata {
     hostname?: string;
     ipAddress?: string;
     state?: EnyoApplianceStateEnum;
+    /** Health status of the appliance (e.g. healthy or faulted) */
+    status?: EnyoApplianceStatusEnum;
     network?: EnyoApplianceNetworkMetadata;
     modbus?: EnyoApplianceModbusMetadata;
     /** Optional MQTT configuration */

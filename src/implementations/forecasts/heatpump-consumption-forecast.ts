@@ -35,6 +35,9 @@ import {
 interface HeatpumpConsumptionHistoryValues {
     /** Average heatpump electrical consumption power in Watts during the slot. */
     powerW: number;
+    /** Energy consumed during the slot in Watt-hours (resolution-dependent). */
+    powerWh: number;
+    /** Number of live samples that contributed to `powerW`. */
     samples: number;
 }
 
@@ -47,8 +50,10 @@ export type HeatpumpConsumptionForecastResult =
 
 /**
  * Builds a 24-hour heatpump electrical consumption forecast for a single
- * heatpump appliance from historical `HeatpumpValuesUpdateV1` data-bus
- * messages, with live updates merged in as new readings arrive.
+ * heatpump appliance. Historical buckets are sourced from the dedicated
+ * `useTimeseries().getHeatpumpPowerTimeseries()` endpoint, and live
+ * `HeatpumpValuesUpdateV1` data-bus messages are merged in as new readings
+ * arrive.
  *
  * Heatpump operation is strongly tied to outdoor temperature (which itself is
  * weekday-cyclic on average), so the algorithm uses a same-weekday
@@ -97,8 +102,9 @@ export class HeatpumpConsumptionForecast implements Forecaster {
     }
 
     /**
-     * Pulls historical `HeatpumpValuesUpdateV1` messages, aggregates them into
-     * 15-minute slots, and starts listening to live heatpump events. Idempotent.
+     * Loads historical heatpump power buckets via
+     * `useTimeseries().getHeatpumpPowerTimeseries()` and starts listening to
+     * live `HeatpumpValuesUpdateV1` events for ongoing updates. Idempotent.
      */
     public async initialize(): Promise<void> {
         if (this.initialized) return;
@@ -106,34 +112,21 @@ export class HeatpumpConsumptionForecast implements Forecaster {
 
         const now = Date.now();
         const startMs = now - this.config.historyDays * 24 * 60 * 60 * 1000;
-        const response = await this.app.useTimeseries().queryDataBusMessages({
-            applianceId: this.applianceId,
+        const response = await this.app.useTimeseries().getHeatpumpPowerTimeseries({
             startDateIso: new Date(startMs).toISOString(),
             endDateIso: new Date(now).toISOString(),
-            messageTypes: [EnyoDataBusMessageEnum.HeatpumpValuesUpdateV1],
-            limit: 100000,
+            applianceIds: [this.applianceId],
+            resolution: this.config.resolution,
         });
 
-        const slotAggregator = new Map<number, {sum: number; count: number}>();
-        for (const raw of response.messages) {
-            const message = raw as EnyoDataBusHeatpumpValuesV1;
-            const power = message.data.values.powerW;
-            if (typeof power !== 'number' || Number.isNaN(power)) continue;
-            const slotMs = roundDownTo15Minutes(new Date(message.timestampIso).getTime());
-            const existing = slotAggregator.get(slotMs);
-            if (existing) {
-                existing.sum += power;
-                existing.count += 1;
-            } else {
-                slotAggregator.set(slotMs, {sum: power, count: 1});
-            }
-        }
-        const slots = Array.from(slotAggregator.keys()).sort((a, b) => a - b);
-        for (const slotMs of slots) {
-            const agg = slotAggregator.get(slotMs)!;
+        for (const entry of response.entries) {
             this.history.push({
-                timestampIso: new Date(slotMs).toISOString(),
-                values: {powerW: agg.sum / agg.count, samples: agg.count},
+                timestampIso: entry.timestampIso,
+                values: {
+                    powerW: entry.heatpumpPowerW,
+                    powerWh: entry.heatpumpPowerWh,
+                    samples: 1,
+                },
             });
         }
 
@@ -249,11 +242,14 @@ export class HeatpumpConsumptionForecast implements Forecaster {
         upsertLiveBucket(
             this.history,
             this.currentSlotMs,
-            {powerW: avg, samples: this.currentSlotSamples},
+            {powerW: avg, powerWh: wToWhPer15Min(avg), samples: this.currentSlotSamples},
             (existing, incoming) => {
                 const total = existing.samples + incoming.samples;
+                const mergedPowerW =
+                    (existing.powerW * existing.samples + incoming.powerW * incoming.samples) / total;
                 return {
-                    powerW: (existing.powerW * existing.samples + incoming.powerW * incoming.samples) / total,
+                    powerW: mergedPowerW,
+                    powerWh: wToWhPer15Min(mergedPowerW),
                     samples: total,
                 };
             },

@@ -1,4 +1,4 @@
-import {EnyoApplianceStateEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js";
+import {EnyoApplianceStateEnum, EnyoApplianceStatusEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
@@ -166,6 +166,7 @@ export enum EnyoDataBusMessageEnum {
     MeterValuesUpdateV1 = 'MeterValuesUpdateV1',
     BatteryValuesUpdateV1 = 'BatteryValuesUpdateV1',
     ApplianceFlexibilityAnnouncementV1 = 'ApplianceFlexibilityAnnouncementV1',
+    ApplianceStateUpdateV1 = 'ApplianceStateUpdateV1',
     HeatpumpValuesUpdateV1 = 'HeatpumpValuesUpdateV1',
     ChargingStartedV1 = 'ChargingStartedV1',
     ChargingMeterValuesUpdateV1 = 'ChargingMeterValuesUpdateV1',
@@ -297,6 +298,8 @@ export interface EnyoDataBusInverterValuesV1String {
     powerW?: number;
     current?: number;
     state?: EnyoStringStateEnum;
+    /** Cumulative energy meter reading for this DC string in Watt hours */
+    meterValueWh?: number;
 }
 
 export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
@@ -325,6 +328,8 @@ export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
         dcPowerW?: number;
         /** Active power Limitation of the Inverter */
         activePowerLimitationW?: number;
+        /** Cumulative AC energy meter reading of the inverter in Watt hours */
+        meterValueWh?: number;
         /** DC String values. Please only provide active strings */
         strings?: EnyoDataBusInverterValuesV1String[];
     }
@@ -343,6 +348,32 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataB
             availableUntilIsoTimestamp: string;
         }
     }
+}
+
+/**
+ * Message sent when an appliance's connectivity state and/or health status
+ * changes. At least one of `state` or `status` should be set; both may be
+ * provided together if they change in the same event. `errorCodes` carries
+ * vendor- or protocol-specific codes that explain a transition into a
+ * `faulted` status.
+ */
+export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ApplianceStateUpdateV1;
+    /** ID of the appliance whose state and/or status changed */
+    applianceId: string;
+    data: {
+        /** New connectivity state of the appliance, if it changed */
+        state?: EnyoApplianceStateEnum;
+        /** New health status of the appliance, if it changed */
+        status?: EnyoApplianceStatusEnum;
+        /**
+         * Optional vendor- or protocol-specific error codes that explain the
+         * current status. Typically populated when transitioning into
+         * `faulted`; omitted or empty when there is nothing to report.
+         */
+        errorCodes?: string[];
+    };
 }
 
 export interface EnyoDataBusChargingStartedV1 extends EnyoDataBusMessage {
