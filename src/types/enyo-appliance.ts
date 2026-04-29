@@ -43,6 +43,32 @@ export enum EnyoApplianceStatusEnum {
     Faulted = 'faulted',
 }
 
+/**
+ * Translated, human-readable message for an appliance error code.
+ * Producers should emit at most one entry per supported language.
+ */
+export interface EnyoApplianceErrorMessage {
+    /** Language code for this translation */
+    language: EnergyAppPackageLanguage;
+    /** Localized message describing the error to end users */
+    message: string;
+}
+
+/**
+ * Vendor- or protocol-specific error reported by an appliance, optionally
+ * accompanied by translated human-readable messages. The `code` is the
+ * machine-readable identifier (stable, non-localized); `messages` is an
+ * optional set of pre-translated descriptions intended for UI display.
+ * Consumers should fall back to rendering `code` when no `messages` entry
+ * matches their locale.
+ */
+export interface EnyoApplianceErrorCode {
+    /** Machine-readable, vendor- or protocol-specific error code */
+    code: string;
+    /** Optional translated messages explaining the error */
+    messages?: EnyoApplianceErrorMessage[];
+}
+
 export interface EnyoApplianceNetworkMetadata {
     /** If the appliance is connected via cellular network, you can put the imsi here*/
     imsi?: string;

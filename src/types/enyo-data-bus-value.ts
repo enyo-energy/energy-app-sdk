@@ -1,4 +1,9 @@
-import {EnyoApplianceStateEnum, EnyoApplianceStatusEnum, EnyoApplianceTypeEnum} from "./enyo-appliance.js";
+import {
+    EnyoApplianceErrorCode,
+    EnyoApplianceStateEnum,
+    EnyoApplianceStatusEnum,
+    EnyoApplianceTypeEnum
+} from "./enyo-appliance.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
@@ -369,10 +374,12 @@ export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
         status?: EnyoApplianceStatusEnum;
         /**
          * Optional vendor- or protocol-specific error codes that explain the
-         * current status. Typically populated when transitioning into
-         * `faulted`; omitted or empty when there is nothing to report.
+         * current status. Each entry carries the raw code and may include
+         * pre-translated messages for UI display. Typically populated when
+         * transitioning into `faulted`; omitted or empty when there is
+         * nothing to report.
          */
-        errorCodes?: string[];
+        errorCodes?: EnyoApplianceErrorCode[];
     };
 }
 
