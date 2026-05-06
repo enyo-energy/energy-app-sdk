@@ -32,16 +32,27 @@ export enum EnyoApplianceStateEnum {
 /**
  * Health status of an appliance. Orthogonal to {@link EnyoApplianceStateEnum},
  * which describes connectivity. `Healthy` means the appliance is operating
- * normally; `Faulted` means it has reported an internal error and may need
- * attention. Vendor- or protocol-specific details should be conveyed via
- * accompanying error codes.
+ * normally; `Warning` means a non-blocking issue has been reported (the
+ * appliance is still functional but should be inspected); `Faulted` means it
+ * has reported an internal error and may need attention. Vendor- or
+ * protocol-specific details should be conveyed via accompanying error codes.
  */
 export enum EnyoApplianceStatusEnum {
     /** Appliance is operating normally */
     Healthy = 'healthy',
+    /** Appliance is operating but has reported a non-blocking issue that should be inspected */
+    Warning = 'warning',
     /** Appliance has reported an internal fault */
     Faulted = 'faulted',
 }
+
+/**
+ * Severity classification for an {@link EnyoApplianceErrorCode}.
+ * Producers should mark non-blocking issues as `'warning'` and blocking
+ * faults as `'error'`. When omitted on an error code, consumers should
+ * treat it as `'error'` for backwards compatibility.
+ */
+export type EnyoApplianceErrorSeverity = 'error' | 'warning';
 
 /**
  * Translated, human-readable message for an appliance error code.
@@ -55,18 +66,26 @@ export interface EnyoApplianceErrorMessage {
 }
 
 /**
- * Vendor- or protocol-specific error reported by an appliance, optionally
- * accompanied by translated human-readable messages. The `code` is the
- * machine-readable identifier (stable, non-localized); `messages` is an
+ * Vendor- or protocol-specific error or warning reported by an appliance,
+ * optionally accompanied by translated human-readable messages. The `code` is
+ * the machine-readable identifier (stable, non-localized); `messages` is an
  * optional set of pre-translated descriptions intended for UI display.
  * Consumers should fall back to rendering `code` when no `messages` entry
- * matches their locale.
+ * matches their locale. Use `severity` to distinguish a blocking error from
+ * a non-blocking warning; when omitted, consumers should treat the entry as
+ * an error for backwards compatibility.
  */
 export interface EnyoApplianceErrorCode {
     /** Machine-readable, vendor- or protocol-specific error code */
     code: string;
     /** Optional translated messages explaining the error */
     messages?: EnyoApplianceErrorMessage[];
+    /**
+     * Optional severity of this entry. Defaults to `'error'` semantics when
+     * omitted. Use `'warning'` to indicate a non-blocking issue that should
+     * be surfaced but does not put the appliance into a faulted state.
+     */
+    severity?: EnyoApplianceErrorSeverity;
 }
 
 export interface EnyoApplianceNetworkMetadata {

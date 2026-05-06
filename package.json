@@ -1,6 +1,6 @@
 {
   "name": "@enyo-energy/energy-app-sdk",
-  "version": "0.0.113",
+  "version": "0.0.114",
   "description": "enyo Energy App SDK",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,9 @@
   "scripts": {
     "extract-version": "node scripts/extract-version.js",
     "build": "npm run extract-version && duel",
-    "prepublishOnly": "npm run extract-version && npm run build"
+    "prepublishOnly": "npm run extract-version && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "files": [
     "dist",
@@ -34,7 +36,8 @@
     "@knighted/duel": "^2.1.4",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.13",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.9"
   },
   "dependencies": {},
   "volta": {

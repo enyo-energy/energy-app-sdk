@@ -12,6 +12,20 @@ export interface EnyoOnboardingTranslatedContent {
 }
 
 /**
+ * Enum representing the lifecycle category of an onboarding guide.
+ * Used to distinguish guides that perform different roles, e.g. initial
+ * configuration of a package vs. adding or reconnecting a single device.
+ */
+export enum EnyoOnboardingGuideCategory {
+    /** Initial package configuration — shown when EnergyAppStateEnum is 'configuration-required' */
+    InitialSetup = "initial-setup",
+    /** Guide for adding a new device to an already-configured package */
+    AddNewDevice = "add-new-device",
+    /** Guide for reconnecting an existing device that has lost its connection */
+    ReconnectDevice = "reconnect-device",
+}
+
+/**
  * Enum representing the type of content an onboarding section displays.
  */
 export enum EnyoOnboardingSectionType {
@@ -135,6 +149,12 @@ export interface EnyoOnboardingGuide {
     description?: EnyoOnboardingTranslatedContent[];
     /** Optional appliance ID if this guide is associated with an appliance */
     applianceId?: string;
+    /**
+     * Optional lifecycle category for this guide.
+     * Allows hosts to render category-specific entry points (e.g. "Add new device" buttons).
+     * Defaults to InitialSetup semantics when omitted, for backwards compatibility.
+     */
+    category?: EnyoOnboardingGuideCategory;
     /** Ordered array of steps in the onboarding flow */
     steps: EnyoOnboardingStep[];
 }

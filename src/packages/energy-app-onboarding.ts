@@ -1,5 +1,6 @@
 import {
     EnyoOnboardingGuide,
+    EnyoOnboardingGuideCategory,
     EnyoOnboardingStep,
     EnyoOnboardingStepListener,
     EnyoOnboardingStepResponse
@@ -48,6 +49,23 @@ export interface EnergyAppOnboarding {
      * @returns Promise that resolves to an array of all active onboarding guides
      */
     getAllOnboardingGuides(): Promise<EnyoOnboardingGuide[]>;
+
+    /**
+     * Gets all currently active onboarding guides that belong to the given category.
+     * Guides without an explicit category are excluded — use {@link getAllOnboardingGuides}
+     * if you need uncategorized guides as well.
+     *
+     * @param category - The lifecycle category to filter guides by
+     * @returns Promise resolving to all guides whose `category` matches
+     *
+     * @example
+     * ```typescript
+     * const reconnectGuides = await onboarding.getGuidesByCategory(
+     *   EnyoOnboardingGuideCategory.ReconnectDevice
+     * );
+     * ```
+     */
+    getGuidesByCategory(category: EnyoOnboardingGuideCategory): Promise<EnyoOnboardingGuide[]>;
 
     /**
      * Gets the current step being displayed in the onboarding flow for a specific guide.

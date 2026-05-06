@@ -40,6 +40,12 @@ export * from './packages/energy-app-diagnostics.js'
 export * from './types/enyo-learning-phase.js'
 export * from './packages/energy-app-learning-phase.js'
 export * from './types/enyo-air-conditioning-appliance.js'
+export * from './types/enyo-onboarding.js'
+export * from './packages/energy-app-onboarding.js'
+export * from './types/enyo-retry-manager.js'
+export * from './implementations/retry/backoff.js'
+export * from './implementations/retry/retry-manager.js'
+export * from './implementations/retry/retry-errors.js'
 
 export * from './integrations/integration-types.js';
 export * from './integrations/integration-energy-app.js';

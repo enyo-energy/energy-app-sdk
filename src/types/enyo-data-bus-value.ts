@@ -360,7 +360,8 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataB
  * changes. At least one of `state` or `status` should be set; both may be
  * provided together if they change in the same event. `errorCodes` carries
  * vendor- or protocol-specific codes that explain a transition into a
- * `faulted` status.
+ * `warning` or `faulted` status; each entry's `severity` field indicates
+ * which.
  */
 export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -375,9 +376,10 @@ export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
         /**
          * Optional vendor- or protocol-specific error codes that explain the
          * current status. Each entry carries the raw code and may include
-         * pre-translated messages for UI display. Typically populated when
-         * transitioning into `faulted`; omitted or empty when there is
-         * nothing to report.
+         * pre-translated messages for UI display, plus an optional `severity`
+         * (`'error'` or `'warning'`). Typically populated when transitioning
+         * into `warning` or `faulted`; omitted or empty when there is nothing
+         * to report.
          */
         errorCodes?: EnyoApplianceErrorCode[];
     };

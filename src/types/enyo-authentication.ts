@@ -3,6 +3,12 @@ import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
 export type EnyoAuthenticationType = 'apiKey' | 'oauth' | 'usernamePassword';
 
 /**
+ * Indicates whether the authentication request should be presented to the user
+ * before or after the onboarding guide. When omitted, the host decides the default ordering.
+ */
+export type EnyoAuthenticationOnboardingOrder = 'before-onboarding' | 'after-onboarding';
+
+/**
  * Represents an additional custom field for authentication forms.
  * Allows developers to add extra input fields beyond the standard username/password or API key.
  */
@@ -74,6 +80,11 @@ export interface EnyoAuthentication {
     oneTimeAuthentication: boolean;
     /** Optional appliance ID. If provided, authentication is for specific appliance. If omitted, authentication is for the whole package */
     applianceId?: string;
+    /**
+     * Optional ordering hint indicating whether this authentication request should be
+     * presented before or after the onboarding guide. When omitted, the host decides the default.
+     */
+    onboardingOrder?: EnyoAuthenticationOnboardingOrder;
 }
 
 export interface EnyoApiKeyAuthenticationResponse {
