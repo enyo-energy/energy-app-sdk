@@ -1,3 +1,5 @@
+import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
+
 /**
  * Status of a charging session
  */
@@ -67,6 +69,10 @@ export interface EnyoCharge {
     numberOfPhases: number;
     /** Active charging schedule entries, if smart charging is in use */
     schedule?: EnyoChargeScheduleEntry[];
+    /** Charging mode applied to this session (e.g. immediate, cost-optimized, price-limit) */
+    chargeMode?: EnyoChargeModeEnum;
+    /** Target completion time for the charging session as an ISO 8601 timestamp */
+    completeAtIsoTimestamp?: string;
 }
 
 /**
