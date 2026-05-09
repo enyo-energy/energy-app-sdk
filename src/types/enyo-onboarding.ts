@@ -41,6 +41,13 @@ export enum EnyoOnboardingSectionType {
     Url = "url",
     /** A dropdown/select section */
     Select = "select",
+    /**
+     * A branching decision section.
+     * Renders as a switch/segmented control or radio group; the user's
+     * selection determines which step is shown next, enabling dynamic routes
+     * within a single onboarding guide.
+     */
+    Branch = "branch",
 }
 
 /**
@@ -96,6 +103,50 @@ export interface EnyoOnboardingSectionSelect {
 }
 
 /**
+ * Represents a single option of a branching decision.
+ * Each option visually appears as a switch/segmented choice and, when selected,
+ * routes the user to a specific step on submission.
+ */
+export interface EnyoOnboardingSectionBranchOption {
+    /** The internal value submitted when this branch is chosen */
+    value: string;
+    /** Translated label displayed for this branch */
+    label: EnyoOnboardingTranslatedContent[];
+    /** Optional translated description shown below the label */
+    description?: EnyoOnboardingTranslatedContent[];
+    /**
+     * The `name` of the step to navigate to when this option is chosen.
+     * Must reference an existing step within the same guide.
+     */
+    targetStepName: string;
+}
+
+/**
+ * Represents a branching decision within an onboarding step.
+ *
+ * Renders as a switch / segmented control / radio group that lets the user pick
+ * one of several routes. When the step is submitted, the host uses the chosen
+ * option's `targetStepName` to determine which step to display next, allowing
+ * a single guide to expose multiple parallel onboarding routes.
+ */
+export interface EnyoOnboardingSectionBranch {
+    /** Translated title/label shown above the switch */
+    title: EnyoOnboardingTranslatedContent[];
+    /**
+     * Field name under which the selected option's `value` is submitted.
+     * Listeners can read `submission.data[fieldName]` to know which route was taken.
+     */
+    fieldName: string;
+    /** The available branches the user can choose from */
+    options: EnyoOnboardingSectionBranchOption[];
+    /**
+     * Optional value of the option that should be pre-selected when the step
+     * is first rendered. Must match one of `options[].value`.
+     */
+    defaultValue?: string;
+}
+
+/**
  * Represents a content section within an onboarding step.
  * Each section has a heading and content body, both with translations.
  * The `type` field determines which optional nested object is used.
@@ -117,6 +168,42 @@ export interface EnyoOnboardingSection {
     url?: EnyoOnboardingSectionUrl;
     /** Optional select/dropdown configuration, used when type is 'select' */
     select?: EnyoOnboardingSectionSelect;
+    /** Optional branching decision configuration, used when type is 'branch' */
+    branch?: EnyoOnboardingSectionBranch;
+}
+
+/**
+ * Describes a single value-to-step routing rule used by step-level branching.
+ */
+export interface EnyoOnboardingStepBranchRoute {
+    /** The submitted value that triggers this route */
+    value: string;
+    /** The `name` of the step to navigate to when the value matches */
+    targetStepName: string;
+}
+
+/**
+ * Step-level dynamic routing configuration.
+ *
+ * When a step has `branches` defined, the host evaluates the submitted form
+ * data after a successful step submission and navigates to the target step
+ * whose `value` matches `submission.data[fieldName]`. If no route matches,
+ * navigation falls back to `defaultStepName` (when provided) or to the next
+ * step in the guide (default sequential behavior).
+ *
+ * This makes it possible to embed switches, selects, or branch sections in a
+ * step and have the guide take a different route based on the user's choice.
+ */
+export interface EnyoOnboardingStepBranching {
+    /** Field name whose submitted value determines the next step */
+    fieldName: string;
+    /** Routes mapping submitted values to target step names */
+    routes: EnyoOnboardingStepBranchRoute[];
+    /**
+     * Optional fallback step name used when no route matches. When omitted,
+     * the host falls back to the next sequential step.
+     */
+    defaultStepName?: string;
 }
 
 /**
@@ -132,6 +219,13 @@ export interface EnyoOnboardingStep {
     sections: EnyoOnboardingSection[];
     /** Translated label for the next/continue button */
     nextButtonLabel: EnyoOnboardingTranslatedContent[];
+    /**
+     * Optional dynamic routing configuration. When present, on a successful
+     * step submission the host follows the route whose `value` matches the
+     * submitted data; otherwise the next sequential step is shown. Omit this
+     * field for plain linear steps.
+     */
+    branches?: EnyoOnboardingStepBranching;
 }
 
 /**

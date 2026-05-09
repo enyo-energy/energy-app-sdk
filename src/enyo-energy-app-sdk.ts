@@ -26,6 +26,7 @@ import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generat
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
+import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 
@@ -110,6 +111,8 @@ export interface EnyoEnergyAppSdk {
     useEebus: () => EnergyAppEebus;
     /** Get the MQTT communication API for connecting to internal or external MQTT brokers */
     useMqtt: () => EnergyAppMqtt;
+    /** Get the Bluetooth Low Energy API for scanning and GATT communication with peripherals */
+    useBluetooth: () => EnergyAppBluetooth;
     /** Get the Diagnostics API for submitting energy manager diagnostics data */
     useDiagnostics: () => EnergyAppDiagnostics;
     /** Get the Learning Phase API for registering and tracking learning phases */

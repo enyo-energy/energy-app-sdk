@@ -2,7 +2,7 @@
  * Supported interval durations for scheduled tasks.
  * Provides predefined time intervals from 1 second to 1 hour.
  */
-export type IntervalDuration = '10s' | '30s' | '1m' | '5m' | '1hr';
+export type IntervalDuration = '1s' | '5s' | '10s' | '30s' | '1m' | '5m' | '1hr';
 
 /**
  * Interface for managing scheduled intervals in enyo packages.

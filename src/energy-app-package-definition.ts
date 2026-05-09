@@ -154,6 +154,45 @@ export interface EnergyAppPackagePermission {
 }
 
 /**
+ * A specific device model supported by an Energy App package.
+ * Used inside {@link EnergyAppPackageCompatibilityVendor.models} to enumerate
+ * the concrete models the package has been verified to work with.
+ */
+export interface EnergyAppPackageCompatibilityModel {
+    /** Human-readable model name as marketed by the vendor (e.g. "SE10K-RW0TEBNN4") */
+    modelName: string;
+    /**
+     * Optional internal display name shown in the enyo Store / Admin UI when
+     * different from the official `modelName` (e.g. a friendlier label).
+     */
+    displayName?: string;
+    /**
+     * Optional minimum firmware version the package supports for this model.
+     * Free-form string compared lexicographically by hosts that need it.
+     */
+    minimumFirmwareVersion?: string;
+    /** Optional internal note explaining model-specific caveats or limitations */
+    internalComment?: string;
+}
+
+/**
+ * A vendor and the list of its models supported by an Energy App package.
+ * Used inside {@link EnergyAppPackageDefinition.compatibility} to declare
+ * which manufacturers and product models the package targets.
+ */
+export interface EnergyAppPackageCompatibilityVendor {
+    /** Human-readable vendor name (e.g. "SolarEdge", "Fronius") */
+    vendorName: string;
+    /**
+     * Optional vendor logo path, mirroring the package-level `logo` field.
+     * Useful when the host wants to render a vendor list in the store.
+     */
+    logo?: string;
+    /** Models from this vendor that the package supports */
+    models: EnergyAppPackageCompatibilityModel[];
+}
+
+/**
  * Complete definition for a enyo Energy App package.
  * This interface defines all the metadata, permissions, and configuration
  * required to register a package with the enyo Hub.
@@ -179,6 +218,14 @@ export interface EnergyAppPackageDefinition {
     sdkVersion: string;
     /** If the energy app should be visible in the enyo store. Default is true*/
     showInStore?: boolean;
+    /**
+     * Optional declaration of vendors and models this package is compatible with.
+     * Each entry pairs a vendor with the concrete models the package supports,
+     * allowing the enyo Store and onboarding flows to surface accurate
+     * compatibility information to users. Omit when the package targets a
+     * single vendor implicitly or has no fixed compatibility surface.
+     */
+    compatibility?: EnergyAppPackageCompatibilityVendor[];
 }
 
 /**

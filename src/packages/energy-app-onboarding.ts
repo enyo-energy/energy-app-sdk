@@ -140,6 +140,35 @@ export interface EnergyAppOnboarding {
     moveToPreviousStep(guideName: string): Promise<void>;
 
     /**
+     * Jumps to a specific step within the onboarding guide by its `name`.
+     *
+     * Useful when implementing dynamic onboarding routes — for example, after
+     * receiving a step submission the package can decide programmatically
+     * which step to show next based on the submitted data, rather than
+     * relying on the declarative `branches` configuration on the step.
+     *
+     * If the target step does not exist within the guide the call is a no-op.
+     *
+     * @param guideName - The unique name of the guide to navigate
+     * @param stepName - The `name` of the target step to display
+     * @returns Promise that resolves when navigation is complete
+     *
+     * @example
+     * ```typescript
+     * onboarding.listenForStepSubmission(async (submission) => {
+     *   if (submission.stepName === 'choose-route') {
+     *     const route = submission.data?.route;
+     *     await onboarding.moveToStep(submission.guideName,
+     *       route === 'cloud' ? 'cloud-credentials' : 'local-network');
+     *     return { state: 'success' };
+     *   }
+     *   return { state: 'success' };
+     * });
+     * ```
+     */
+    moveToStep(guideName: string, stepName: string): Promise<void>;
+
+    /**
      * Marks the onboarding as complete and clears the ConfigurationRequired state.
      * This updates the state for the specified guide.
      *

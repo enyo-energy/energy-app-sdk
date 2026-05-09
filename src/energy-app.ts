@@ -28,6 +28,7 @@ import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generat
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
+import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 
@@ -272,6 +273,15 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useMqtt(): EnergyAppMqtt {
         return this.energyAppSdk.useMqtt();
+    }
+
+    /**
+     * Gets the Bluetooth Low Energy API for scanning peripherals and
+     * performing GATT operations against them.
+     * @returns The Bluetooth API instance
+     */
+    public useBluetooth(): EnergyAppBluetooth {
+        return this.energyAppSdk.useBluetooth();
     }
 
     /**
