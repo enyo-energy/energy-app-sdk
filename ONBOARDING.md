@@ -208,6 +208,41 @@ Returns to the previous step. No effect if at the first step.
 moveToPreviousStep(applianceId?: string): Promise<void>
 ```
 
+### addStep
+
+Adds a new step to an existing guide at runtime. Use this when the next step can only be determined after the user submits the current one (e.g. a discovery step that finds N devices and needs N follow-up configuration steps). Combine with `moveToStep` to navigate into the freshly added step.
+
+```typescript
+addStep(
+  guideName: string,
+  step: EnyoOnboardingStep,
+  options?: { after?: string }
+): Promise<void>
+```
+
+**Parameters:**
+- `guideName` - The guide to extend
+- `step` - The step to add. Its `name` must be unique within the guide.
+- `options.after` - Optional; insert immediately after the step with this `name`. Omit to append at the end.
+
+```typescript
+onboarding.listenForStepSubmission(async (submission) => {
+  if (submission.stepName === 'discover-devices') {
+    const devices = await scanForDevices();
+    for (const device of devices) {
+      await onboarding.addStep(submission.guideName, {
+        name: `configure-${device.id}`,
+        sections: buildSectionsFor(device),
+        nextButtonLabel: [{ language: 'en', value: 'Continue' }],
+      }, { after: 'discover-devices' });
+    }
+    await onboarding.moveToStep(submission.guideName, `configure-${devices[0].id}`);
+    return { state: 'success' };
+  }
+  return { state: 'success' };
+});
+```
+
 ### completeOnboarding
 
 Marks onboarding as complete and clears the `ConfigurationRequired` state.

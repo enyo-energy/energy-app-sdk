@@ -169,6 +169,51 @@ export interface EnergyAppOnboarding {
     moveToStep(guideName: string, stepName: string): Promise<void>;
 
     /**
+     * Adds a new step to an existing onboarding guide at runtime.
+     *
+     * Intended for flows where the next step cannot be known up front — for
+     * example when a step submission produces data that determines which (or
+     * how many) follow-up steps are needed. Combine with {@link moveToStep}
+     * to route the user into the freshly added step.
+     *
+     * The new step's `name` must be unique within the guide; calls that would
+     * introduce a duplicate `name` are rejected. When `options.after` is
+     * provided, the step is inserted immediately after the step with that
+     * name; if no step matches, or `options` is omitted, the step is appended
+     * at the end of the guide.
+     *
+     * @param guideName - The unique name of the guide to extend
+     * @param step - The new step to add to the guide
+     * @param options - Optional positioning; `after` inserts the new step
+     *   immediately after the step with the given `name`. Omit to append.
+     * @returns Promise that resolves once the step has been added
+     *
+     * @example
+     * ```typescript
+     * onboarding.listenForStepSubmission(async (submission) => {
+     *   if (submission.stepName === 'discover-devices') {
+     *     const devices = await scanForDevices();
+     *     for (const device of devices) {
+     *       await onboarding.addStep(submission.guideName, {
+     *         name: `configure-${device.id}`,
+     *         sections: buildSectionsFor(device),
+     *         nextButtonLabel: [{ language: 'en', value: 'Continue' }],
+     *       }, { after: 'discover-devices' });
+     *     }
+     *     await onboarding.moveToStep(submission.guideName, `configure-${devices[0].id}`);
+     *     return { state: 'success' };
+     *   }
+     *   return { state: 'success' };
+     * });
+     * ```
+     */
+    addStep(
+        guideName: string,
+        step: EnyoOnboardingStep,
+        options?: { after?: string }
+    ): Promise<void>;
+
+    /**
      * Marks the onboarding as complete and clears the ConfigurationRequired state.
      * This updates the state for the specified guide.
      *
