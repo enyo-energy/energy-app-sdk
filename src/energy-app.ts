@@ -31,6 +31,7 @@ import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
+import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -302,6 +303,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useLearningPhase(): EnergyAppLearningPhase {
         return this.energyAppSdk.useLearningPhase();
+    }
+
+    /**
+     * Gets the WiFi API for scanning and listing known WiFi networks (SSIDs).
+     * Provides methods to discover saved/known SSIDs that are currently
+     * in range of the device's WiFi adapter.
+     * @returns The WiFi API instance
+     */
+    public useWifi(): EnergyAppWifi {
+        return this.energyAppSdk.useWifi();
     }
 
     /**

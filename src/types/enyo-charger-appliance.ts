@@ -63,6 +63,8 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
     RebootCharger = 'RebootCharger',
     /** If the charger supports requesting log file uploads */
     RequestLogFiles = 'RequestLogFiles',
+    /** If the Charger supprots a pv surplus mode */
+    PvSurplusMode = 'PvSurplusMode'
 }
 
 export interface EnyoChargerApplianceMetadata {
