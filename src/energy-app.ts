@@ -32,6 +32,7 @@ import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
+import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -52,6 +53,7 @@ import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
  */
 export class EnergyApp implements EnyoEnergyAppSdk {
     private readonly energyAppSdk: EnyoEnergyAppSdk;
+    private udpInstance: EnergyAppUdp | undefined;
 
     constructor() {
         // in our runtime, there is an instance of energyAppSdk available which needs to be used here
@@ -313,6 +315,23 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useWifi(): EnergyAppWifi {
         return this.energyAppSdk.useWifi();
+    }
+
+    /**
+     * Gets the UDP communication API for binding sockets and exchanging
+     * datagrams. Requires the `Udp` permission to be granted.
+     *
+     * Lazily instantiates a single {@link EnergyAppUdpServer} on first call
+     * and returns the same instance on subsequent calls. The runtime SDK's
+     * permission gate is invoked on every call so that revoked permissions
+     * are surfaced consistently with the other `use*` accessors.
+     *
+     * @returns The UDP API instance.
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Udp` permission
+     *         is not granted.
+     */
+    public useUdp(): EnergyAppUdp {
+        return this.energyAppSdk.useUdp();
     }
 
     /**

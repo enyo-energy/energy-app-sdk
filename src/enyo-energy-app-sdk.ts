@@ -30,6 +30,7 @@ import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
+import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -120,4 +121,6 @@ export interface EnyoEnergyAppSdk {
     useLearningPhase: () => EnergyAppLearningPhase;
     /** Get the WiFi API for scanning and listing known SSIDs */
     useWifi: () => EnergyAppWifi;
+    /** Get the UDP communication API for binding sockets and exchanging datagrams */
+    useUdp: () => EnergyAppUdp;
 }
