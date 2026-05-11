@@ -92,6 +92,36 @@ export interface MqttPublishOptions {
 }
 
 /**
+ * Connection details for an MQTT broker exposed to the energy app.
+ * Returned by {@link EnergyAppMqtt.getAvailableConnectionDetails} so callers can
+ * connect to the broker using their own MQTT client implementation if needed.
+ */
+export interface EnyoMqttAvailableConnectionDetail {
+    /** Fully qualified broker URL including protocol and port (e.g. "mqtt://127.0.0.1:1883" or "mqtts://broker.local:8883") */
+    url: string;
+    /** Broker hostname or IP address (e.g. "127.0.0.1") */
+    host: string;
+    /** Broker TCP port (e.g. 1883 for plain, 8883 for TLS) */
+    port: number;
+    /** Whether the broker requires a TLS/SSL connection */
+    secure: boolean;
+    /** Username for broker authentication, if required */
+    username?: string;
+    /** Password for broker authentication, if required */
+    password?: string;
+}
+
+/**
+ * Map of available MQTT broker connection details by scope.
+ * Mirrors the structure of OCPP available connection details so callers can
+ * uniformly discover broker endpoints exposed by the runtime.
+ */
+export interface EnyoMqttAvailableConnectionDetails {
+    /** Connection details for the SDK-provided local MQTT broker, when available */
+    local?: EnyoMqttAvailableConnectionDetail;
+}
+
+/**
  * Represents an incoming MQTT message received on a subscribed topic.
  */
 export interface MqttMessage {

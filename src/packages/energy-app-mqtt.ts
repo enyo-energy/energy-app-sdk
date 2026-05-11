@@ -5,6 +5,7 @@ import {
     MqttSubscribeOptions,
     MqttPublishOptions,
     MqttMessage,
+    EnyoMqttAvailableConnectionDetails,
 } from "../types/enyo-mqtt.js";
 
 /**
@@ -68,6 +69,27 @@ export interface EnergyAppMqtt {
      * ```
      */
     connect: (options: MqttExternalConnectOptions) => Promise<EnergyAppMqttClient>;
+
+    /**
+     * Get connection details for MQTT brokers exposed to the energy app.
+     * Currently returns details for the SDK-provided local MQTT broker so callers
+     * can connect with their own MQTT client implementation when {@link connectInternal}
+     * is not suitable (e.g. bridging to another runtime, configuring a third-party
+     * library, or providing the broker address to an external process).
+     *
+     * Mirrors the OCPP `getAvailableConnectionDetails` API.
+     *
+     * @returns A map of available broker connection details, keyed by scope (e.g. `local`).
+     *
+     * @example
+     * ```typescript
+     * const details = await mqtt.getAvailableConnectionDetails();
+     * if (details.local) {
+     *     console.log(`Local broker available at ${details.local.url}`);
+     * }
+     * ```
+     */
+    getAvailableConnectionDetails: () => Promise<EnyoMqttAvailableConnectionDetails>;
 }
 
 /**
