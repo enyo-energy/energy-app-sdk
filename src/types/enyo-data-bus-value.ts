@@ -615,7 +615,7 @@ export interface EnyoDataBusStopChargeV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         /** OCPP transaction identifier of the session to stop */
-        transactionId: string;
+        transactionId?: string;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };
