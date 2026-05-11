@@ -140,8 +140,6 @@ export enum EnyoChargeModeEnum {
     CostOptimized = 'cost-optimized',
     /** Optimize charging schedule for a maximum price limit, for example 7 ct grid or pv production */
     PriceLimit = 'price-limit',
-    /** Charge only from PV surplus, using excess solar production that would otherwise be fed into the grid */
-    PvSurplus = 'pv-surplus',
 }
 
 export interface EnyoAggregatedStateApplianceValues {
