@@ -10,6 +10,8 @@ export interface ModbusOptions {
     timeout?: number;
     /** Modbus unit identifier for the target device */
     unitId?: number;
+    /** Whether to use TLS/SSL for the Modbus connection. Defaults to false (plain Modbus TCP). Set to true to enable Modbus Security (TLS, typically port 802). */
+    useTls?: boolean;
 }
 
 /**
