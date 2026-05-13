@@ -163,6 +163,12 @@ export interface EnergyAppBluetooth {
     ): Promise<EnergyAppBluetoothSession>;
 
     /**
+     * Force-bond (SMP pairing) with a peripheral. Only required for devices that
+     * refuse GATT operations until bonded. Most BLE accessories do not need this.
+     */
+    pair(address: string, options?: EnergyAppBluetoothConnectOptions): Promise<void>;
+
+    /**
      * Convenience scope: connects to the peripheral, runs `fn`, and always
      * disconnects (even if `fn` throws). Strongly preferred over manual
      * connect/disconnect because it eliminates the risk of leaking sessions
