@@ -40,6 +40,12 @@ export interface ApplianceConfig {
     battery?: EnyoBatteryApplianceMetadata;
     temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
     airConditioning?: EnyoAirConditioningApplianceMetadata;
+    /**
+     * Optional identifier of the cloud-deployed energy app package that manages
+     * this appliance. Forwarded to {@link EnyoAppliance.cloudPackageId} when the
+     * appliance is created or updated.
+     */
+    cloudPackageId?: string;
 }
 
 /**
@@ -214,6 +220,7 @@ export class ApplianceManager {
             inverter: appliance.inverter,
             temperatureSensor: appliance.temperatureSensor,
             airConditioning: appliance.airConditioning,
+            cloudPackageId: appliance.cloudPackageId,
         };
 
         // When updating an existing appliance, merge metadata to preserve existing keys
@@ -701,4 +708,9 @@ export interface PartialEnyoAppliance {
     airConditioning?: Partial<EnyoAirConditioningApplianceMetadata>;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
+    /**
+     * Optional identifier of the cloud-deployed energy app package that manages
+     * this appliance. Mirrors {@link EnyoAppliance.cloudPackageId}.
+     */
+    cloudPackageId?: string;
 }

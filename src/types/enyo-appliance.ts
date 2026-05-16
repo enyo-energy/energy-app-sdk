@@ -200,4 +200,11 @@ export interface EnyoAppliance {
     airConditioning?: EnyoAirConditioningApplianceMetadata;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
+    /**
+     * Optional identifier of the cloud-deployed energy app package that manages
+     * this appliance. Set when the appliance is provisioned and operated by a
+     * cloud package (e.g. {@link EnyoApplianceConnectionType.Cloud}), so that
+     * downstream consumers can correlate the appliance with its owning package.
+     */
+    cloudPackageId?: string;
 }

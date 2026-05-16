@@ -33,6 +33,7 @@ import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
+import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -332,6 +333,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useUdp(): EnergyAppUdp {
         return this.energyAppSdk.useUdp();
+    }
+
+    /**
+     * Gets the Grid Connection Point API for retrieving details about the
+     * site's grid connection (main fuse rating in amperes, number of phases,
+     * and maximum allowed grid power in watts).
+     * @returns The Grid Connection Point API instance
+     */
+    public useGridConnectionPoint(): EnergyAppGridConnectionPoint {
+        return this.energyAppSdk.useGridConnectionPoint();
     }
 
     /**
