@@ -131,6 +131,19 @@ export interface EnyoApplianceMetadata {
     connectionType: EnyoApplianceConnectionType;
 }
 
+/**
+ * General-purpose capability flags that apply to any {@link EnyoAppliance}
+ * regardless of its {@link EnyoApplianceTypeEnum}. Appliance-type-specific
+ * capabilities (e.g. charger or heatpump features) are expressed via the
+ * dedicated `availableFeatures` enums on the respective metadata interfaces.
+ */
+export enum EnyoApplianceAvailableFeaturesEnum {
+    /** If the appliance can limit its power consumption (active power drawn from the grid/site) */
+    LimitPowerConsumption = 'LimitPowerConsumption',
+    /** If the appliance can limit its power production (active power fed into the grid/site) */
+    LimitPowerProduction = 'LimitPowerProduction',
+}
+
 export enum EnyoApplianceTopologyFeatureEnum {
     /** If the meter is the real Primary Meter collecting feed in and consumption in Wh */
     PrimaryMeter = 'PrimaryMeter',
@@ -160,6 +173,13 @@ export interface EnyoAppliance {
     type: EnyoApplianceTypeEnum;
     /** network device IDs associated with the appliance */
     networkDeviceIds: string[];
+    /**
+     * General-purpose capabilities supported by the appliance, independent of
+     * its {@link EnyoApplianceTypeEnum}. Appliance-type-specific capabilities
+     * are exposed via the `availableFeatures` field on the type-specific
+     * metadata (e.g. `charger.availableFeatures`).
+     */
+    availableFeatures?: EnyoApplianceAvailableFeaturesEnum[];
     /** Optional Metadata of the Appliance */
     metadata?: EnyoApplianceMetadata;
     /** Topology Information of the appliance */

@@ -16,6 +16,7 @@ import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
+import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -205,6 +206,7 @@ export enum EnyoDataBusMessageEnum {
     MaxChargingPowerChangedV1 = 'MaxChargingPowerChangedV1',
     MaxDischargePowerChangedV1 = 'MaxDischargePowerChangedV1',
     GridOperatorPowerLimitationV1 = 'GridOperatorPowerLimitationV1',
+    GridOperatorPowerProductionLimitationV1 = 'GridOperatorPowerProductionLimitationV1',
     ResetChargerV1 = 'ResetChargerV1',
     RebootChargerV1 = 'RebootChargerV1',
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
@@ -219,6 +221,30 @@ export enum EnyoDataBusMessageEnum {
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
 
+/**
+ * Optional addressing information for a {@link EnyoDataBusMessage}. When omitted
+ * the message is broadcast to all subscribers; when set, the message is only
+ * delivered to packages that match the specified target.
+ *
+ * Exactly one of {@link cloudPackageId} or {@link categories} should be provided.
+ * When both are set, consumers should treat them as an AND (the receiving package
+ * must match the cloud package id **and** belong to at least one of the listed
+ * categories). When neither is set, the target is treated as "all packages".
+ */
+export interface EnyoDataBusMessageTarget {
+    /**
+     * Target a single cloud-deployed energy app package by its package identifier.
+     * Use this when a message is intended for one specific package instance.
+     */
+    cloudPackageId?: string;
+    /**
+     * Target every energy app package whose definition declares at least one of
+     * the listed categories. Use this for category-scoped fan-out (e.g. send a
+     * grid operator limitation only to inverter and battery-storage packages).
+     */
+    categories?: EnergyAppPackageCategory[];
+}
+
 export interface EnyoDataBusMessage {
     id: string;
     message: EnyoDataBusMessageEnum;
@@ -229,6 +255,13 @@ export interface EnyoDataBusMessage {
     timestampIso: string;
     /** If you just forward events that occur, use dynamic as resolution */
     resolution?: EnyoDataBusMessageResolution;
+    /**
+     * Optional delivery target. When omitted the message is broadcast to all
+     * subscribers. Use this to restrict delivery to a specific cloud package or
+     * to packages matching one or more energy app categories. See
+     * {@link EnyoDataBusMessageTarget} for matching semantics.
+     */
+    target?: EnyoDataBusMessageTarget;
     data: object;
 }
 
@@ -1136,6 +1169,26 @@ export interface EnyoDataBusGridOperatorPowerLimitationV1 extends EnyoDataBusMes
         /** Whether the grid operator power limitation is currently active */
         active: boolean;
         /** The power limitation in watts */
+        powerLimitationW: number;
+        /** ISO 8601 timestamp when the limitation ends */
+        endTimestampIso: string;
+    };
+}
+
+/**
+ * Command message for grid operator power production limitations directed at the energy manager.
+ * Communicates whether a production-side power limitation (i.e. how much power may be fed into
+ * the grid) is active, the power limit, and when it ends. The energy manager should adjust its
+ * optimization strategy accordingly (e.g. curtail PV feed-in, prefer self-consumption, charge
+ * batteries from surplus).
+ */
+export interface EnyoDataBusGridOperatorPowerProductionLimitationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.GridOperatorPowerProductionLimitationV1;
+    data: {
+        /** Whether the grid operator power production limitation is currently active */
+        active: boolean;
+        /** The power production limitation in watts (maximum allowed feed-in power) */
         powerLimitationW: number;
         /** ISO 8601 timestamp when the limitation ends */
         endTimestampIso: string;
