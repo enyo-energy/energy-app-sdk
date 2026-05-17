@@ -217,3 +217,68 @@ export interface EebusOhpcfFlexibility {
     /** Whether the compressor is currently running */
     isRunning: boolean;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Setpoint — target value(s) for a controllable parameter (e.g. zone temperature)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A single setpoint reported or written via the EEBUS **Setpoint** feature.
+ *
+ * Setpoints carry the target value for a controllable parameter on a remote
+ * node — most commonly the per-zone target temperature on a heat pump.
+ * The {@link setpointId} matches the corresponding zone in
+ * `Identification.identificationListData`, so a caller can join setpoints to
+ * human-readable zone names.
+ */
+export interface EebusSetpointValue {
+    /**
+     * Setpoint list identifier. Matches the zone index used by
+     * `Identification.identificationListData`.
+     */
+    setpointId: number;
+    /** Target value (interpret using {@link unit}; e.g. °C for HVAC zones) */
+    value: number;
+    /**
+     * SPINE unit string for {@link value}, e.g. `'Cel'` for Celsius.
+     * Following the SPINE unit catalog.
+     */
+    unit: string;
+    /** Whether the setpoint is currently active on the remote */
+    isActive: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hvac — heating / cooling operation mode + per-zone state
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A heating/cooling operation mode advertised or selected via the EEBUS
+ * **Hvac** feature. Operation modes are vendor-defined identifiers (e.g.
+ * heating, cooling, auto, standby) accompanied by an optional description.
+ */
+export interface EebusHvacOperationMode {
+    /** SPINE operation mode identifier */
+    modeId: number;
+    /** Human-readable mode description as advertised by the remote */
+    description?: string;
+}
+
+/**
+ * Per-zone state reported via the EEBUS **Hvac** feature.
+ *
+ * The {@link zoneId} matches the zone index used by
+ * `Identification.identificationListData`, so a caller can join zone state to
+ * human-readable zone names.
+ */
+export interface EebusHvacZoneState {
+    /**
+     * Zone identifier. Matches the zone index used by
+     * `Identification.identificationListData`.
+     */
+    zoneId: number;
+    /** Current measured temperature in Celsius, if reported */
+    currentTemperatureC?: number;
+    /** Active operation mode for this zone, if reported */
+    operationMode?: EebusHvacOperationMode;
+}

@@ -1098,6 +1098,12 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
         domesticHotWater?: {
             /** Index of the domestic hot water tank */
             index: number;
+            /**
+             * Human-readable zone name (e.g. the `description` from SPINE
+             * `Identification.identificationListData` for this zone index).
+             * Omit when no identification is available.
+             */
+            name?: string;
             /** Target temperature in Celsius */
             targetTemperatureC: number;
             /** Current temperature in Celsius */
@@ -1109,6 +1115,12 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
         heatingCircuits?: {
             /** Index of the heating circuit */
             index: number;
+            /**
+             * Human-readable zone name (e.g. the `description` from SPINE
+             * `Identification.identificationListData` for this zone index).
+             * Omit when no identification is available.
+             */
+            name?: string;
             /** Target temperature in Celsius */
             targetTemperatureC: number;
             /** Current temperature in Celsius */

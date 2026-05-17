@@ -7,11 +7,13 @@ export {EebusDeviceManagement} from './eebus-device-management.js';
 export {EebusIdentityService} from './eebus-identity-service.js';
 export {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 export {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
+export {EebusHvacClient} from './eebus-hvac-client.js';
 export {EebusLpcClient} from './eebus-lpc-client.js';
 export {EebusLppClient} from './eebus-lpp-client.js';
 export {EebusMgcpClient} from './eebus-mgcp-client.js';
 export {EebusMpcClient} from './eebus-mpc-client.js';
 export {EebusOhpcfClient} from './eebus-ohpcf-client.js';
+export {EebusSetpointClient} from './eebus-setpoint-client.js';
 
 /**
  * Interface for EEbus (SHIP/SPINE) device communication in enyo packages.
@@ -20,7 +22,7 @@ export {EebusOhpcfClient} from './eebus-ohpcf-client.js';
  *
  * - {@link devices} — SHIP-level device lifecycle: discovery, pairing, connection
  * - {@link identity} — NID: observable per-node identity, diagnosis state, use-case discovery
- * - {@link useCases} — typed use-case clients: LPC, LPP, MGCP, MPC, OHPCF
+ * - {@link useCases} — typed use-case clients: LPC, LPP, MGCP, MPC, OHPCF, Setpoint, Hvac
  * - {@link spine} — low-level SPINE escape hatch for features not yet wrapped
  *
  * Dual roles (Energy Management System vs Controllable System) are modelled at

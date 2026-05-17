@@ -1,8 +1,10 @@
+import {EebusHvacClient} from './eebus-hvac-client.js';
 import {EebusLpcClient} from './eebus-lpc-client.js';
 import {EebusLppClient} from './eebus-lpp-client.js';
 import {EebusMgcpClient} from './eebus-mgcp-client.js';
 import {EebusMpcClient} from './eebus-mpc-client.js';
 import {EebusOhpcfClient} from './eebus-ohpcf-client.js';
+import {EebusSetpointClient} from './eebus-setpoint-client.js';
 
 /**
  * Registry of typed EEBUS use-case clients, scoped per remote device (SKI).
@@ -74,4 +76,20 @@ export interface EebusUseCaseRegistry {
      * @param ski Subject Key Identifier of the remote node
      */
     ohpcf: (ski: string) => EebusOhpcfClient;
+
+    /**
+     * Get the **Setpoint** client for a remote node. Manages target values
+     * for controllable parameters such as per-zone heat-pump temperature
+     * setpoints. Pair with {@link hvac} to read measured values.
+     * @param ski Subject Key Identifier of the remote node
+     */
+    setpoint: (ski: string) => EebusSetpointClient;
+
+    /**
+     * Get the **Hvac** client for a remote node. Observes heating/cooling
+     * operation mode and per-zone state on a heat-pump appliance. Pair with
+     * {@link setpoint} to write target values.
+     * @param ski Subject Key Identifier of the remote node
+     */
+    hvac: (ski: string) => EebusHvacClient;
 }
