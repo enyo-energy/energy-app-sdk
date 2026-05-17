@@ -1,0 +1,219 @@
+/**
+ * Payload types for the typed EEbus use-case clients exposed via
+ * {@link EebusUseCaseRegistry}.
+ *
+ * Each EEBUS use case has its own semantics, even when two cases superficially
+ * resemble each other:
+ * - **LPC** (Limitation of Power Consumption) — *obligation*. The consumer MUST
+ *   respect the limit.
+ * - **LPP** (Limitation of Power Production) — *recommendation*. The producer
+ *   SHOULD respect the limit but is not contractually bound.
+ * - **MGCP / MPC** — read-only telemetry, different vantage points.
+ * - **OHPCF** — incentive-table-driven, conceptually unrelated to LoadControl.
+ *
+ * Keep payload types per-use-case rather than sharing a generic `PowerLimit`
+ * type: the historical conflation of obligation vs recommendation behind a
+ * single `isObligatory` flag was the original API smell this module replaces.
+ */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LPC — Limitation of Power Consumption (obligation)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A consumption limit issued by an Energy Management System to a Controllable System.
+ * LPC limits are obligations: the controllable system MUST respect them.
+ */
+export interface EebusLpcLimit {
+    /** Maximum allowed power consumption in Watts */
+    value: number;
+    /** Whether the limit is currently active. `false` clears any previously active limit. */
+    isActive: boolean;
+    /**
+     * Duration in seconds for which the limit applies. Omit or set to `0` for an
+     * indefinite limit. The remote may downgrade or expire the limit independently
+     * based on its own failsafe configuration.
+     */
+    durationSeconds?: number;
+}
+
+/**
+ * Failsafe configuration for LPC — the limit a controllable system falls back to
+ * when the connection to the energy manager is lost.
+ */
+export interface EebusLpcFailsafe {
+    /** Power consumption limit in Watts to apply when the EMS connection is lost */
+    value: number;
+    /**
+     * Time in seconds before the failsafe activates after the EMS connection
+     * is detected as lost.
+     */
+    durationSeconds: number;
+}
+
+/**
+ * Acknowledgement returned by a controllable system after receiving an LPC limit.
+ */
+export interface EebusLpcAck {
+    /** Whether the controllable system accepted the limit */
+    accepted: boolean;
+    /** Optional human-readable reason when {@link accepted} is `false` */
+    reason?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LPP — Limitation of Power Production (recommendation)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A production limit issued by an Energy Management System to a producing
+ * Controllable System (e.g. a PV inverter). LPP limits are recommendations:
+ * the producer SHOULD respect them but is not contractually bound.
+ */
+export interface EebusLppLimit {
+    /** Maximum recommended power production in Watts */
+    value: number;
+    /** Whether the recommendation is currently active */
+    isActive: boolean;
+    /** Duration in seconds for which the recommendation applies. Omit or set to `0` for indefinite. */
+    durationSeconds?: number;
+}
+
+/**
+ * Failsafe configuration for LPP — the production limit a producer falls back to
+ * when the connection to the energy manager is lost.
+ */
+export interface EebusLppFailsafe {
+    /** Power production limit in Watts to apply when the EMS connection is lost */
+    value: number;
+    /**
+     * Time in seconds before the failsafe activates after the EMS connection
+     * is detected as lost.
+     */
+    durationSeconds: number;
+}
+
+/**
+ * Acknowledgement returned by a producing controllable system after receiving an LPP recommendation.
+ */
+export interface EebusLppAck {
+    /** Whether the producer acknowledged the recommendation */
+    accepted: boolean;
+    /** Optional human-readable reason when {@link accepted} is `false` */
+    reason?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MGCP — Monitoring of Grid Connection Point (read-only telemetry)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A single telemetry reading from a grid connection point.
+ * Positive power values indicate import (consumption from the grid);
+ * negative values indicate export (feed-in to the grid).
+ */
+export interface EebusMgcpReading {
+    /** Timestamp of this reading */
+    timestamp: Date;
+    /** Total active power in Watts. Positive = import, negative = export. */
+    activePowerW: number;
+    /** Optional per-phase active power in Watts (length 1 or 3) */
+    activePowerPerPhaseW?: number[];
+    /** Optional per-phase voltage in Volts */
+    voltagePerPhaseV?: number[];
+    /** Optional per-phase current in Amperes */
+    currentPerPhaseA?: number[];
+    /** Optional grid frequency in Hertz */
+    frequencyHz?: number;
+    /** Cumulative energy imported from the grid in Watt-hours */
+    totalEnergyImportWh?: number;
+    /** Cumulative energy exported to the grid in Watt-hours */
+    totalEnergyExportWh?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MPC — Monitoring of Power Consumption (read-only telemetry)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A single telemetry reading from a controllable system reporting its power consumption.
+ */
+export interface EebusMpcReading {
+    /** Timestamp of this reading */
+    timestamp: Date;
+    /** Active power consumption in Watts */
+    activePowerW: number;
+    /** Optional per-phase active power in Watts (length 1 or 3) */
+    activePowerPerPhaseW?: number[];
+    /** Optional per-phase current in Amperes */
+    currentPerPhaseA?: number[];
+    /** Cumulative energy consumed in Watt-hours */
+    totalEnergyConsumedWh?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OHPCF — Optimization of Self Consumption by Heat Pump Compressor Flexibility
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A single tier in an OHPCF incentive table. Each tier defines a price (or cost)
+ * that applies from {@link startTime} until the next tier starts.
+ *
+ * @see https://techdocs.wago.com/Software/EEBUS_Connector/en-US/3657311371.html
+ */
+export interface EebusOhpcfIncentiveTier {
+    /** Start of this tier */
+    startTime: Date;
+    /** Price or cost value for this tier (units defined by {@link EebusOhpcfIncentiveTable.currency} and {@link EebusOhpcfIncentiveTable.unit}) */
+    value: number;
+}
+
+/**
+ * An incentive table sent by a Customer Energy Manager to a heat pump,
+ * communicating the time-varying cost of energy. The heat pump uses this
+ * to schedule its compressor for cheap / green windows without further
+ * coordination with the CEM.
+ */
+export interface EebusOhpcfIncentiveTable {
+    /** ISO 4217 currency code (e.g. `'EUR'`, `'USD'`) for the {@link tiers} values */
+    currency: string;
+    /** Unit the price refers to (e.g. `'kWh'`) */
+    unit: string;
+    /** Ordered list of price tiers covering the planning horizon */
+    tiers: EebusOhpcfIncentiveTier[];
+}
+
+/**
+ * The heat pump's current operational plan in response to an incentive table.
+ * Allows the CEM to monitor whether the heat pump is producing the intended
+ * load shape.
+ */
+export interface EebusOhpcfPlanState {
+    /** Timestamp this plan state was generated */
+    timestamp: Date;
+    /** Currently planned electrical power consumption in Watts */
+    plannedPowerW: number;
+    /** Optional planned start time of the next operation interval */
+    nextStart?: Date;
+    /** Optional planned end time of the next operation interval */
+    nextEnd?: Date;
+}
+
+/**
+ * The compressor flexibility a heat pump advertises to the CEM — the band
+ * within which the CEM may shift consumption without affecting end-user comfort.
+ */
+export interface EebusOhpcfFlexibility {
+    /** Timestamp this flexibility report was generated */
+    timestamp: Date;
+    /** Minimum electrical power the compressor can draw while operating, in Watts */
+    minPowerW: number;
+    /** Maximum electrical power the compressor can draw while operating, in Watts */
+    maxPowerW: number;
+    /** Minimum operating duration in seconds once the compressor starts */
+    minRunDurationSeconds?: number;
+    /** Minimum pause duration in seconds between operation intervals */
+    minPauseDurationSeconds?: number;
+    /** Whether the compressor is currently running */
+    isRunning: boolean;
+}

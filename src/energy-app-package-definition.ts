@@ -70,8 +70,13 @@ export interface EnergyAppPackageOptionsDeviceDetectionOcpp {
 }
 
 export interface EnergyAppPackageOptionsDeviceDetectionEebus {
-    /** field name in the boot notification */
-    field: 'vendor' | 'brand' | 'model';
+    /**
+     * Field name to match against from the remote node's EEBUS Node
+     * Identification (NID) data. `'deviceCode'` and `'manufacturerNodeIdentification'`
+     * map to the corresponding fields on `EebusNodeIdentity` and allow
+     * stable identification across firmware upgrades.
+     */
+    field: 'vendor' | 'brand' | 'model' | 'deviceCode' | 'manufacturerNodeIdentification';
     /** matching values, for example the vendor names or model names */
     matchingValues: string[];
 }

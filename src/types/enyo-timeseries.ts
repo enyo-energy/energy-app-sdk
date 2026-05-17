@@ -26,12 +26,22 @@ export interface TimeseriesRange {
 /**
  * Base interface for all timeseries entries.
  * Contains the timestamp boundaries for each time bucket.
+ *
+ * Each bucket is identified by both an ISO 8601 string and a numeric
+ * Unix timestamp (UTC, milliseconds since epoch). The numeric form is
+ * provided so consumers can perform arithmetic — duration calculations,
+ * bucket alignment checks, chart x-axis values — without re-parsing the
+ * ISO string on every entry.
  */
 export interface TimeseriesEntryBase {
     /** ISO 8601 timestamp marking the start of this bucket (inclusive) */
     timestampIso: string;
     /** ISO 8601 timestamp marking the end of this bucket (exclusive) */
     timestampEndIso: string;
+    /** UTC Unix timestamp in milliseconds marking the start of this bucket (inclusive). Equivalent to `new Date(timestampIso).getTime()` */
+    timestampUtcMs: number;
+    /** UTC Unix timestamp in milliseconds marking the end of this bucket (exclusive). Equivalent to `new Date(timestampEndIso).getTime()` */
+    timestampEndUtcMs: number;
 }
 
 /**

@@ -260,9 +260,15 @@ export class EnergyApp implements EnyoEnergyAppSdk {
 
     /**
      * Gets the EEbus API for SHIP/SPINE device communication.
-     * Provides device pairing and discovery, low-level SPINE data access,
-     * and high-level convenience methods for power management and device classification.
-     * Supports both appliance and energy manager roles for bidirectional communication.
+     *
+     * The returned facade splits responsibilities across four sub-interfaces:
+     * - `devices` — SHIP-level device lifecycle (pairing, discovery, connection)
+     * - `identity` — EEBUS Node Identification (NID): observable identity, diagnosis, use-case discovery
+     * - `useCases` — typed use-case clients: LPC, LPP, MGCP, MPC, OHPCF
+     * - `spine` — low-level SPINE escape hatch for features not yet wrapped
+     *
+     * Use-case clients carry both Energy Management System and Controllable
+     * System methods; consumers act in whichever role(s) they need.
      * @returns The EEbus API instance
      */
     public useEebus(): EnergyAppEebus {
