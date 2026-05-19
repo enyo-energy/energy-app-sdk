@@ -150,7 +150,7 @@ export enum EnyoApplianceTopologyFeatureEnum {
     /** If the meter is an Intermediate Meter (like the meter of an Inverter) directly behind the Primary Meter */
     IntermediateOfPrimaryMeter = 'IntermediateOfPrimaryMeter',
     /** If the meter is an Intermediate Meter for a single appliance */
-    IntermediateMeter = 'PrimaryMeter',
+    IntermediateMeter = 'IntermediateMeter',
     /** If the inverter does a direct grid feed in without self consumption */
     InverterFullGridFeedIn = 'InverterFullGridFeedIn',
 }
@@ -159,6 +159,8 @@ export interface EnyoApplianceTopology {
     features: EnyoApplianceTopologyFeatureEnum[];
     /** Information, behind which meter this appliance is located, for example if the wallbox is behind the primary meter or a submeter. Put the appliance ID of the meter */
     behindMeterApplianceId?: string;
+    /** Information, in front of which appliance this appliance is located (i.e. upstream on the electrical path). Put the appliance ID of the downstream appliance. */
+    inFrontOfApplianceId?: string;
 }
 
 /**
