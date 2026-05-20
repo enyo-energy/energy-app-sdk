@@ -6,9 +6,12 @@ import {
     EnyoDataBusGridOperatorPowerLimitationV1,
     EnyoDataBusMaxDischargePowerChangedV1,
     EnyoDataBusMessageEnum,
+    EnyoDataBusSetStorageChargeLimitV1,
     EnyoDataBusSetStorageDischargeLimitV1,
     EnyoDataBusStartStorageGridChargeV1,
-    EnyoDataBusStopStorageGridChargeV1
+    EnyoDataBusStartStorageGridDischargeV1,
+    EnyoDataBusStopStorageGridChargeV1,
+    EnyoDataBusStopStorageGridDischargeV1
 } from "../types/enyo-data-bus-value.js";
 
 /**
@@ -17,7 +20,10 @@ import {
  * Subscribes to:
  *  - `StartStorageGridChargeV1` — start charging the battery from the grid.
  *  - `StopStorageGridChargeV1` — stop grid charging.
+ *  - `StartStorageGridDischargeV1` — start discharging the battery into the grid.
+ *  - `StopStorageGridDischargeV1` — stop grid discharging.
  *  - `SetStorageDischargeLimitV1` — set the maximum discharge power.
+ *  - `SetStorageChargeLimitV1` — set the maximum charge power.
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  */
 export abstract class StorageIntegrationEnergyApp extends IntegrationEnergyApp {
@@ -41,9 +47,21 @@ export abstract class StorageIntegrationEnergyApp extends IntegrationEnergyApp {
             EnyoDataBusMessageEnum.StopStorageGridChargeV1,
             (m) => this.handleStopStorageGridCharge(m)
         );
+        this.registerCommandHandler<EnyoDataBusStartStorageGridDischargeV1>(
+            EnyoDataBusMessageEnum.StartStorageGridDischargeV1,
+            (m) => this.handleStartStorageGridDischarge(m)
+        );
+        this.registerCommandHandler<EnyoDataBusStopStorageGridDischargeV1>(
+            EnyoDataBusMessageEnum.StopStorageGridDischargeV1,
+            (m) => this.handleStopStorageGridDischarge(m)
+        );
         this.registerCommandHandler<EnyoDataBusSetStorageDischargeLimitV1>(
             EnyoDataBusMessageEnum.SetStorageDischargeLimitV1,
             (m) => this.handleSetStorageDischargeLimit(m)
+        );
+        this.registerCommandHandler<EnyoDataBusSetStorageChargeLimitV1>(
+            EnyoDataBusMessageEnum.SetStorageChargeLimitV1,
+            (m) => this.handleSetStorageChargeLimit(m)
         );
     }
 
@@ -63,11 +81,34 @@ export abstract class StorageIntegrationEnergyApp extends IntegrationEnergyApp {
     ): Promise<IntegrationCommandResponse>;
 
     /**
+     * Handles a `StartStorageGridDischargeV1` command — start discharging the
+     * battery into the grid up to `data.powerLimitW`.
+     */
+    protected abstract handleStartStorageGridDischarge(
+        message: EnyoDataBusStartStorageGridDischargeV1
+    ): Promise<IntegrationCommandResponse>;
+
+    /**
+     * Handles a `StopStorageGridDischargeV1` command — end an active grid discharge.
+     */
+    protected abstract handleStopStorageGridDischarge(
+        message: EnyoDataBusStopStorageGridDischargeV1
+    ): Promise<IntegrationCommandResponse>;
+
+    /**
      * Handles a `SetStorageDischargeLimitV1` command — set the maximum
      * discharge power in watts.
      */
     protected abstract handleSetStorageDischargeLimit(
         message: EnyoDataBusSetStorageDischargeLimitV1
+    ): Promise<IntegrationCommandResponse>;
+
+    /**
+     * Handles a `SetStorageChargeLimitV1` command — set the maximum
+     * charge power in watts.
+     */
+    protected abstract handleSetStorageChargeLimit(
+        message: EnyoDataBusSetStorageChargeLimitV1
     ): Promise<IntegrationCommandResponse>;
 
     /**

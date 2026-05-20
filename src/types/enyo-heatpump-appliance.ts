@@ -13,6 +13,8 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     AvailablePowerAnnouncement = 'AvailablePowerAnnouncement',
     /** If the heatpump reports power values (e.g. electrical power consumption in watts) */
     Power = 'Power',
+    /** If the heatpump is ready for calibration (i.e. has all prerequisites in place to start a calibration run) */
+    ReadyForCalibration = 'ReadyForCalibration',
 }
 
 export enum EnyoHeatpumpApplianceModeEnum {

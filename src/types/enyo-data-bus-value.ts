@@ -198,7 +198,10 @@ export enum EnyoDataBusMessageEnum {
     HeatpumpDhwTemperatureForecastV1 = 'HeatpumpDhwTemperatureForecastV1',
     StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
     StopStorageGridChargeV1 = 'StopStorageGridChargeV1',
+    StartStorageGridDischargeV1 = 'StartStorageGridDischargeV1',
+    StopStorageGridDischargeV1 = 'StopStorageGridDischargeV1',
     SetStorageDischargeLimitV1 = 'SetStorageDischargeLimitV1',
+    SetStorageChargeLimitV1 = 'SetStorageChargeLimitV1',
     SetInverterFeedInLimitV1 = 'SetInverterFeedInLimitV1',
     CommandAcknowledgeV1 = 'CommandAcknowledgeV1',
     TemperatureSensorValuesUpdateV1 = 'TemperatureSensorValuesUpdateV1',
@@ -987,6 +990,38 @@ export interface EnyoDataBusStopStorageGridChargeV1 extends EnyoDataBusMessage {
 }
 
 /**
+ * Command message to start discharging a storage/battery into the grid.
+ * Instructs the battery system to begin feeding power into the grid up to the specified limit.
+ */
+export interface EnyoDataBusStartStorageGridDischargeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartStorageGridDischargeV1;
+    /** ID of the battery/storage appliance to discharge */
+    applianceId: string;
+    data: {
+        /** Maximum power in watts for storage-to-grid discharging */
+        powerLimitW: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to stop discharging a storage/battery into the grid.
+ * Instructs the battery system to end storage-to-grid discharging.
+ */
+export interface EnyoDataBusStopStorageGridDischargeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StopStorageGridDischargeV1;
+    /** ID of the battery/storage appliance to stop discharging */
+    applianceId: string;
+    data: {
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
  * Command message to limit the discharge rate of a storage/battery.
  * Sets the maximum discharge power as a percentage of the battery's maximum discharge capacity.
  */
@@ -998,6 +1033,23 @@ export interface EnyoDataBusSetStorageDischargeLimitV1 extends EnyoDataBusMessag
     data: {
         /** Discharge limit in W to limit the battery's discharge power */
         dischargeLimitW: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to limit the charge rate of a storage/battery.
+ * Sets the maximum charge power in watts that the battery is allowed to draw while charging.
+ */
+export interface EnyoDataBusSetStorageChargeLimitV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetStorageChargeLimitV1;
+    /** ID of the battery/storage appliance to limit */
+    applianceId: string;
+    data: {
+        /** Charge limit in W to limit the battery's charge power */
+        chargeLimitW: number;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };

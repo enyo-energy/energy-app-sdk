@@ -7,9 +7,14 @@ export enum EnyoBatteryStorageMode {
 }
 
 export enum EnyoBatteryFeature {
+    /** If the battery supports being charged from the grid */
     GridCharging = 'grid-charging',
+    /** If the battery supports discharging into the grid */
+    GridDischarging = 'grid-discharging',
     /** If the battery supports discharge power limitation */
     DischargeLimitation = 'discharge-limitation',
+    /** If the battery supports charge power limitation */
+    ChargeLimitation = 'charge-limitation',
     /** If the battery is connected between DC strings and the inverter */
     BetweenDcStringAndInverter = 'between-dc-string-and-inverter'
 }
