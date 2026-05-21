@@ -219,7 +219,8 @@ export enum EnyoDataBusMessageEnum {
     AirConditioningValuesUpdateV1 = 'AirConditioningValuesUpdateV1',
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
     StartAirConditioningV1 = 'StartAirConditioningV1',
-    StopAirConditioningV1 = 'StopAirConditioningV1'
+    StopAirConditioningV1 = 'StopAirConditioningV1',
+    VehicleSocUpdateV1 = 'VehicleSocUpdateV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -1463,5 +1464,23 @@ export interface EnyoDataBusStopAirConditioningV1 extends EnyoDataBusMessage {
         mode: EnyoAirConditioningApplianceModeEnum;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Informational message reporting the current state of charge of an electric vehicle.
+ * Published whenever an updated SoC reading becomes available — typically while the
+ * vehicle is plugged in or when the vehicle reports its SoC via a connected service.
+ */
+export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.VehicleSocUpdateV1;
+    data: {
+        /** ID of the vehicle the SoC reading belongs to */
+        vehicleId: string;
+        /** Current state of charge of the vehicle's traction battery in percent (0-100) */
+        socPercent: number;
+        /** Total usable capacity of the vehicle's traction battery in kWh, if known */
+        batterySizeKwh?: number;
     };
 }

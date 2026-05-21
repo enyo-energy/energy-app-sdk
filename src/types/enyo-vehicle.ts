@@ -9,4 +9,5 @@ export interface EnyoVehicle {
     licensePlate?: string;
     batterySizeKwh?: number;
     pinnedChargingCardId?: string;
+    socPercent?: number;
 }
