@@ -27,6 +27,13 @@ export interface EnyoBatteryApplianceMetadata {
     maxChargingPowerW?: number;
     maxCapacityWh?: number;
     storageMode?: EnyoBatteryStorageMode;
+    /** Whether grid-to-storage charging is currently enabled */
     gridChargingEnabled?: boolean;
+    /** Whether storage-to-grid discharging is currently enabled */
+    gridDischargingEnabled?: boolean;
+    /** Currently active charge power limit in Watts (if any) */
+    activeChargeLimitW?: number;
+    /** Currently active discharge power limit in Watts (if any) */
+    activeDischargeLimitW?: number;
     features?: EnyoBatteryFeature[];
 }

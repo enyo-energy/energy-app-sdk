@@ -232,3 +232,94 @@ export interface PvForecastResponse {
     /** Array of PV forecast entries ordered by timestamp */
     entries: PvForecastEntry[];
 }
+
+// ─── Dynamic Price Forecasting Types ─────────────────────────────────────────
+
+/**
+ * Registration data for a dynamic price forecast provider.
+ * A dynamic price forecast represents forward-looking electricity prices
+ * (e.g. day-ahead spot market prices) published by any energy app for
+ * consumption by other energy apps. The data is a forecast only and must
+ * not be treated as billed/realized pricing.
+ */
+export interface DynamicPriceForecastProviderRegistration {
+    /** Unique identifier for the dynamic price forecast provider */
+    forecastId: string;
+    /** Human-readable name of the forecast provider */
+    name: string;
+    /** Vendor or company providing the forecast */
+    vendor: string;
+}
+
+/**
+ * A registered dynamic price forecast provider with metadata.
+ */
+export interface DynamicPriceForecastProviderInfo extends DynamicPriceForecastProviderRegistration {
+    /** Timestamp when this forecast provider was registered in ISO format */
+    registeredAtIso: string;
+    /**
+     * Timestamp of the most recent published forecast in ISO format.
+     * Undefined when the provider has not yet published a forecast.
+     */
+    lastPublishedAtIso?: string;
+}
+
+/**
+ * A single data point in a dynamic price forecast.
+ * Prices are expressed per kWh in the forecast's declared currency.
+ * Both consumption and feed-in prices are forecasts and not realized values.
+ */
+export interface DynamicPriceForecastEntry {
+    /** Start time of this forecast interval in ISO format */
+    timestampIso: string;
+    /** Forecasted price per kWh for electricity consumption during this interval */
+    consumptionPricePerKwh: number;
+    /** Optional forecasted price per kWh for grid feed-in during this interval */
+    feedInPricePerKwh?: number;
+}
+
+/**
+ * Payload published by a dynamic price forecast provider.
+ * Contains the ordered forecast entries, their resolution, and the currency
+ * the prices are expressed in. The payload is forecast data only — it does
+ * not represent realized or billed energy prices.
+ */
+export interface DynamicPriceForecastPayload {
+    /** Currency code (ISO 4217, e.g., 'EUR', 'USD') the prices are expressed in */
+    currency: string;
+    /** The resolution of the forecast data */
+    resolution: ForecastResolutionEnum;
+    /**
+     * Ordered array of forecast entries. Entries must be sorted ascending by
+     * `timestampIso` and aligned to the declared `resolution`.
+     */
+    entries: DynamicPriceForecastEntry[];
+}
+
+/**
+ * Response containing a dynamic price forecast as returned by the consumer
+ * API. Carries the publishing provider's id and the time the forecast was
+ * published in addition to the {@link DynamicPriceForecastPayload}.
+ */
+export interface DynamicPriceForecastResponse extends DynamicPriceForecastPayload {
+    /** Identifier of the forecast provider that published this forecast */
+    forecastId: string;
+    /** ISO timestamp at which this forecast was published */
+    publishedAtIso: string;
+}
+
+/**
+ * Filter parameters for retrieving a dynamic price forecast.
+ */
+export interface DynamicPriceForecastFilter {
+    /**
+     * Optional lower bound (inclusive) for forecast entries in ISO format.
+     * When omitted, the full forecast horizon is returned.
+     */
+    fromIso?: string;
+    /**
+     * Optional upper bound (exclusive) for forecast entries in ISO format.
+     * When omitted, the full forecast horizon is returned.
+     */
+    untilIso?: string;
+}

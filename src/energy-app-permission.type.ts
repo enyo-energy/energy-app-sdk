@@ -24,6 +24,8 @@ export type EnergyAppPermissionType =
     | 'WeatherForecastUse'
     | 'PvForecastRegister'
     | 'PvForecastUse'
+    | 'DynamicPriceForecastRegister'
+    | 'DynamicPriceForecastUse'
     | 'PvSystemRegister'
     | 'PvSystemUse'
     | 'InverterControlCommands'
@@ -70,6 +72,8 @@ export enum EnergyAppPermissionTypeEnum {
     WeatherForecastUse = 'WeatherForecastUse',
     PvForecastRegister = 'PvForecastRegister',
     PvForecastUse = 'PvForecastUse',
+    DynamicPriceForecastRegister = 'DynamicPriceForecastRegister',
+    DynamicPriceForecastUse = 'DynamicPriceForecastUse',
     PvSystemRegister = 'PvSystemRegister',
     PvSystemUse = 'PvSystemUse',
     InverterControlCommands = 'InverterControlCommands',

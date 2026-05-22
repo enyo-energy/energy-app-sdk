@@ -21,6 +21,7 @@ import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
+import {EnergyAppDynamicPriceForecast} from "./packages/energy-app-dynamic-price-forecast.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
@@ -104,6 +105,8 @@ export interface EnyoEnergyAppSdk {
     useWeatherForecasting: () => EnergyAppWeatherForecasting;
     /** Get the PV Forecasting API for managing PV forecast providers and retrieving PV forecasts */
     usePvForecasting: () => EnergyAppPvForecasting;
+    /** Get the Dynamic Price Forecast API for publishing and consuming forward-looking electricity price forecasts */
+    useDynamicPriceForecast: () => EnergyAppDynamicPriceForecast;
     /** Get the PV System API for managing PV system registrations and configurations */
     usePvSystem: () => EnergyAppPvSystem;
     /** Get the Sequence Generator API for generating unique sequential numbers per named sequence */

@@ -14,6 +14,8 @@ export * from './types/enyo-secret-manager.js'
 export * from './types/enyo-location.js'
 export * from './implementations/appliances/appliance-manager.js'
 export * from './implementations/appliances/identifier-strategies.js'
+export * from './implementations/network-devices/network-access-guard.js'
+export * from './implementations/network-devices/network-device-manager.js'
 export * from './enyo-package-channel.js';
 export * from './types/enyo-timeseries.js';
 export * from './types/enyo-energy-manager.js';
@@ -24,6 +26,7 @@ export * from './types/enyo-pv-forecast.js';
 export * from './types/enyo-forecasting.js';
 export * from './packages/energy-app-weather-forecasting.js';
 export * from './packages/energy-app-pv-forecasting.js';
+export * from './packages/energy-app-dynamic-price-forecast.js';
 export * from './types/enyo-pv-system.js';
 export * from './packages/energy-app-pv-system.js';
 export * from './implementations/data-bus/data-bus-command-handler.js';

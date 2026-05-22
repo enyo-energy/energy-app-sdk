@@ -23,6 +23,7 @@ import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
+import {EnergyAppDynamicPriceForecast} from "./packages/energy-app-dynamic-price-forecast.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
@@ -227,6 +228,17 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public usePvForecasting(): EnergyAppPvForecasting {
         return this.energyAppSdk.usePvForecasting();
+    }
+
+    /**
+     * Gets the Dynamic Price Forecast API for publishing and consuming
+     * forward-looking electricity price forecasts (e.g. day-ahead spot
+     * prices). The data is forecast only — see
+     * {@link EnergyAppDynamicPriceForecast} for the full contract.
+     * @returns The Dynamic Price Forecast API instance
+     */
+    public useDynamicPriceForecast(): EnergyAppDynamicPriceForecast {
+        return this.energyAppSdk.useDynamicPriceForecast();
     }
 
     /**

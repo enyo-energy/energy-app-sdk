@@ -23,6 +23,10 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [User Features](#user-features)
   - [App Intelligence](#app-intelligence)
 - [Advanced Modbus Integration](#advanced-modbus-integration)
+- [Network Devices & Access Recovery](#network-devices--access-recovery)
+  - [NetworkAccessGuard](#networkaccessguard)
+  - [NetworkDeviceManager](#networkdevicemanager)
+  - [Startup pattern](#startup-pattern)
 - [Device Integrations](#device-integrations)
   - [IntegrationEnergyApp (Base Class)](#integrationenergyapp-base-class)
   - [HeatpumpIntegrationEnergyApp](#heatpumpintegrationenergyapp)
@@ -905,6 +909,165 @@ The Modbus implementation follows a clean, modular architecture:
 - **EnergyAppModbusConnectionHealth** - Connection health monitoring
 
 This modular design ensures maintainability, testability, and extensibility for future enhancements.
+
+## Network Devices & Access Recovery
+
+Packages that talk to local hardware over TCP (Modbus, SunSpec, EEBUS over SHIP, REST) must deal with two failure modes the `useNetworkDevices()` API exposes only at a low level:
+
+1. **Network-access-denied errors** — `EnyoNetworkDevice.accessStatus` is device-wide (`granted | denied | pending`). It does **not** carry per-port grants. A device can report `'granted'` while your package never received (or has since lost) access to its Modbus port, and the first symptom is the runtime error `[NET] Network access denied: Host '...:502' is not in the allowed list.` from a poll cycle.
+2. **User-driven access transitions** — the user revokes or re-grants access via the UI; the SDK fires `listenForDeviceAccessChange`, and packages need to disconnect / reconnect accordingly.
+
+The SDK ships two classes that encapsulate this lifecycle so packages don't reinvent it: a low-level **`NetworkAccessGuard`** for access-denied recovery, and a higher-level **`NetworkDeviceManager`** that wires the guard together with all the network-device listeners and the package's `ApplianceManager`.
+
+### NetworkAccessGuard
+
+`NetworkAccessGuard` recovers from access-denied errors raised by the SDK's network layer. Construct one per package with the ports it needs and a restored-callback that reconnects whatever client was reading from the device.
+
+```typescript
+import { NetworkAccessGuard } from '@enyo-energy/energy-app-sdk';
+
+const accessGuard = new NetworkAccessGuard(energyApp, {
+  ports: [502],
+  onAccessRestored: async (networkDeviceId) => {
+    await myModbusPool.reconnect(networkDeviceId);
+  },
+});
+
+// Precondition before a Modbus connect:
+if (!(await accessGuard.ensureAccess(networkDevice.id))) {
+  console.warn(`Modbus port access not granted for ${networkDevice.hostname}`);
+  return;
+}
+
+// Wrap any Modbus read so an access-denied error triggers recovery:
+const registers = await accessGuard.withAccessGuard(networkDevice.id, () =>
+  modbusClient.readHoldingRegisters(40000, 4),
+);
+```
+
+Recovery lifecycle:
+
+1. A read fails inside `withAccessGuard`. The guard detects the access-denied error via `NetworkAccessGuard.isAccessDeniedError(error)`, re-throws it to the caller (so the current poll cycle fails fast), and kicks off recovery in the background.
+2. The guard calls `requestDeviceAccess(deviceId, ports)`. If the SDK answers `'granted'` synchronously (the port was just missing from the allow-list and no user prompt is needed), the `onAccessRestored` handler fires immediately.
+3. Otherwise the device stays in a pending set and the `listenForDeviceAccessChange` registration fires the handler when the SDK reports the device flipped to `'granted'`.
+
+Re-entrancy: repeated `recoverAccess(...)` calls for the same device while a recovery is already in flight are coalesced — the handler runs exactly once per restoration.
+
+The guard exposes:
+
+| Method | Purpose |
+| --- | --- |
+| `static isAccessDeniedError(error)` | Recognise the SDK's access-denied error string |
+| `ensureAccess(deviceId)` | Idempotent port-allow-list request before a connect |
+| `withAccessGuard(deviceId, action)` | Wrap any async TCP call — recovers on access-denied |
+| `recoverAccess(deviceId)` | Explicit recovery trigger after catching an access-denied error |
+| `onAccessRestored(handler)` / `onAccessDenied(handler)` | Register additional handlers at runtime; returns a disposer |
+| `isRecovering(deviceId)` | Introspect whether a recovery is in flight |
+| `dispose()` | Tear down the SDK listener |
+
+### NetworkDeviceManager
+
+`NetworkDeviceManager` is the recommended entry point for any package that owns appliances backed by NetworkDevices. It bundles a `NetworkAccessGuard` with the three NetworkDevice-related SDK listeners (`listenForDeviceAccessChange`, `listenForDetectedDevice`, `listenForNetworkDeviceRemoved`) and resolves every event into **per-appliance callbacks** by joining against the package's `ApplianceManager`.
+
+```typescript
+import {
+  ApplianceManager,
+  EnergyApp,
+  NetworkDeviceManager,
+} from '@enyo-energy/energy-app-sdk';
+
+const energyApp = new EnergyApp();
+const applianceManager = await ApplianceManager.initialize(energyApp);
+
+const networkManager = await NetworkDeviceManager.initialize(
+  energyApp,
+  applianceManager,
+  {
+    ports: [502],
+    autoToggleApplianceState: true,
+    onApplianceAccessRestored: async ({ appliance, networkDeviceId }) => {
+      // Re-establish a Modbus session and restart the polling loop for this appliance.
+      await myModbusPool.reconnect(networkDeviceId);
+    },
+    onApplianceAccessRevoked: async ({ appliance, networkDeviceId }) => {
+      // User revoked access in the UI — tear down the connection.
+      await myModbusPool.disconnect(networkDeviceId);
+    },
+    onApplianceAccessDenied: async ({ appliance, networkDeviceId }) => {
+      // An access-denied error was just observed at runtime — mark the
+      // appliance offline. `autoToggleApplianceState: true` already does
+      // this; the handler is here for any custom side-effects.
+    },
+    onApplianceNetworkDeviceRemoved: async ({ appliance, networkDeviceId }) => {
+      await myModbusPool.disconnect(networkDeviceId);
+    },
+    onNetworkDeviceDetected: async (devices) => {
+      // New device found — classify + connect.
+      for (const device of devices) {
+        await classifyAndConnect(device);
+      }
+    },
+    onNetworkDeviceAccessChanged: async (deviceId, status) => {
+      // Optional: raw access-status passthrough, fires even for devices
+      // the package has no appliances on yet. Useful for first-time
+      // onboarding where a 'granted' transition needs to drive a discovery
+      // pass before any appliance exists.
+    },
+  },
+);
+
+// Every Modbus read inside the poll loop:
+await networkManager.withAccessGuard(networkDeviceId, () =>
+  modbusClient.readHoldingRegisters(40000, 4),
+);
+```
+
+What the manager handles for you:
+
+- **Access-denied recovery** — `withAccessGuard` / `ensureAccess` delegate to the bundled `NetworkAccessGuard`.
+- **User-driven transitions** — on `listenForDeviceAccessChange`, the manager dispatches `onApplianceAccessRestored` on `'granted'` and `onApplianceAccessRevoked` on `'denied'` / `'pending'`, resolving each transition into the per-appliance events your reconnect/disconnect code needs.
+- **Listener dedup** — the manager registers its access-change listener *before* the guard's, so a `'granted'` event during a recovery cycle dispatches only once (the manager observes `isRecovering(deviceId) === true` and skips, letting the guard's own restored callback win).
+- **Device removal** — on `listenForNetworkDeviceRemoved`, the manager fires `onApplianceNetworkDeviceRemoved` per affected appliance and clears its cache.
+- **Optional auto-state toggle** — with `autoToggleApplianceState: true`, the manager flips affected appliances to `EnyoApplianceStateEnum.Offline` on denial / revocation / removal, and back to `EnyoApplianceStateEnum.Connected` on restoration, via `applianceManager.updateApplianceState(...)`.
+
+Every handler is also registerable at runtime via `manager.onApplianceAccessRestored(fn)` / `onApplianceAccessDenied(fn)` / `onApplianceAccessRevoked(fn)` / `onApplianceNetworkDeviceRemoved(fn)` / `onNetworkDeviceDetected(fn)` / `onNetworkDeviceAccessChanged(fn)`, each returning a disposer.
+
+### Startup pattern
+
+The SDK's `listenForDeviceAccessChange` only fires on *transitions* — devices that are already `'granted'` from a previous session won't trigger it. Recommended startup flow for a package that supports both first-onboarding and warm restarts:
+
+```typescript
+client.register(async () => {
+  const applianceManager = await ApplianceManager.initialize(client);
+  const networkManager = await NetworkDeviceManager.initialize(
+    client,
+    applianceManager,
+    {
+      ports: [502],
+      onApplianceAccessRestored: ({ networkDeviceId }) => connectDevice(networkDeviceId),
+      onApplianceAccessRevoked: ({ networkDeviceId }) => disconnectDevice(networkDeviceId),
+      onNetworkDeviceDetected: async (devices) => {
+        for (const device of devices) await connectDevice(device.id);
+      },
+    },
+  );
+
+  // Warm-restart: reconnect to devices that already have access.
+  const granted = await client.useNetworkDevices().getDevices({ accessStatus: 'granted' });
+  for (const device of granted) {
+    await connectDevice(device.id);
+  }
+
+  client.updateEnergyAppState(EnergyAppStateEnum.Running);
+});
+
+async function connectDevice(networkDeviceId: string) {
+  if (!(await networkManager.ensureAccess(networkDeviceId))) return;
+  // ...classify, open modbus client, register appliances...
+}
+```
+
+This pattern matches the wiring used by real Sungrow / Fronius energy-app packages: one `NetworkDeviceManager` per package, `ensureAccess` before every connect, `withAccessGuard` around every poll, and a single `getDevices({ accessStatus: 'granted' })` pass at startup to cover the warm-restart case.
 
 ## Device Integrations
 
