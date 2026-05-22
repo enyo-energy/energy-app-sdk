@@ -616,6 +616,50 @@ settings.listenForSettingsChanges((settingName, newValue) => {
 const allSettings = await settings.getSettingsConfig();
 ```
 
+#### `useConfigurationManager(): EnergyAppConfigurationManager`
+
+Register **internal**, non user-facing configurations for your package and react to value changes. Unlike `useSettings()`, configurations registered here are NOT rendered in the Energy App UI — they are intended for values the package itself reads and writes at runtime (e.g. internal feature toggles, tuning parameters, calibration values) and need to be persisted across restarts.
+
+Each configuration is addressed by a unique `key` and is either of type `number` (with optional `minValue` / `maxValue` / `step` constraints) or `select` (with a fixed list of allowed `selectOptions`).
+
+```typescript
+const configManager = energyApp.useConfigurationManager();
+
+// Register the full set of internal configurations in a single call
+await configManager.registerConfigurations([
+    {
+        key: 'pollIntervalMs',
+        type: 'number',
+        defaultValue: 5000,
+        numberOptions: { minValue: 1000, maxValue: 60000, step: 1000 }
+    },
+    {
+        key: 'logLevel',
+        type: 'select',
+        defaultValue: 'info',
+        selectOptions: [
+            { value: 'debug' },
+            { value: 'info' },
+            { value: 'warn' },
+            { value: 'error' }
+        ]
+    }
+]);
+
+// Read the current (or default) value for a configuration
+const pollInterval = await configManager.getConfiguration('pollIntervalMs');
+
+// React to value changes
+configManager.onConfigurationChanged(event => {
+    console.log(
+        `Configuration ${event.key} changed from ${event.previousValue} to ${event.newValue}`
+    );
+});
+
+// Remove configurations (e.g. on cleanup or after a migration)
+await configManager.unregisterConfigurations(['logLevel']);
+```
+
 #### `useElectricityPrices(): EnergyAppElectricityPrices`
 
 Access electricity pricing information:

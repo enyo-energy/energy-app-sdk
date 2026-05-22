@@ -33,6 +33,7 @@ import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
+import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -129,4 +130,6 @@ export interface EnyoEnergyAppSdk {
     useUdp: () => EnergyAppUdp;
     /** Get the Grid Connection Point API for retrieving fuse rating, phase count, and power limit of the site's grid connection */
     useGridConnectionPoint: () => EnergyAppGridConnectionPoint;
+    /** Get the Configuration Manager API for registering internal (non user-facing) package configurations with change notifications */
+    useConfigurationManager: () => EnergyAppConfigurationManager;
 }

@@ -35,6 +35,7 @@ import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
+import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -361,6 +362,17 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useGridConnectionPoint(): EnergyAppGridConnectionPoint {
         return this.energyAppSdk.useGridConnectionPoint();
+    }
+
+    /**
+     * Gets the Configuration Manager API for registering internal (non user-facing)
+     * package configurations. Configurations are typed as either `number` or
+     * `select`, addressed by a unique key, and emit change events when their
+     * persisted value is updated.
+     * @returns The Configuration Manager API instance
+     */
+    public useConfigurationManager(): EnergyAppConfigurationManager {
+        return this.energyAppSdk.useConfigurationManager();
     }
 
     /**
