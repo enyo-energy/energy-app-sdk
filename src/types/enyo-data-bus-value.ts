@@ -644,14 +644,20 @@ export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
 
 /**
  * Command message to stop an active charging session.
- * This message triggers the charge point to end the specified transaction.
+ * When `transactionId` is provided the charge point ends that specific
+ * transaction; when omitted the integration should end the currently
+ * active session on the addressed appliance.
  */
 export interface EnyoDataBusStopChargeV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.StopChargeV1;
     applianceId: string;
     data: {
-        /** OCPP transaction identifier of the session to stop */
+        /**
+         * OCPP transaction identifier of the session to stop. Optional —
+         * if omitted, the integration stops the currently active session
+         * for {@link applianceId}.
+         */
         transactionId?: string;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;

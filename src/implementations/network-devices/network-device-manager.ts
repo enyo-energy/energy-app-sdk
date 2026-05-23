@@ -85,6 +85,16 @@ export interface NetworkDeviceManagerConfig {
      * Fired when the SDK reports newly detected NetworkDevices. The
      * SDK filters according to the package definition, so consumers
      * generally just need to react to whatever arrives.
+     *
+     * The manager dedupes the list by `ipAddress` before invoking the
+     * handler. Each IP fires the handler at most once until the SDK
+     * reports the corresponding device removed — at which point the
+     * IP becomes eligible to fire again. This collapses mDNS /
+     * discovery bursts (which re-emit the same physical host, sometimes
+     * under a fresh `EnyoNetworkDevice.id` per scan) into a single
+     * dispatch so handlers do not need to maintain their own
+     * "already-connected" set. Devices without an `ipAddress` are
+     * always forwarded.
      */
     onNetworkDeviceDetected?: NetworkDeviceDetectedHandler;
     /**
@@ -158,6 +168,8 @@ export class NetworkDeviceManager {
     private readonly accessChangedHandlers = new Set<NetworkDeviceAccessChangedHandler>();
     private readonly autoToggleApplianceState: boolean;
     private readonly enableLogging: boolean;
+    /** IPs already dispatched to detected-handlers; cleared per-IP on the SDK's removal event. */
+    private readonly dispatchedIps = new Set<string>();
     private disposed = false;
 
     /**
@@ -383,6 +395,7 @@ export class NetworkDeviceManager {
         this.listenerIds.length = 0;
         this.guard.dispose();
         this.deviceCache.clear();
+        this.dispatchedIps.clear();
         this.restoredHandlers.clear();
         this.deniedHandlers.clear();
         this.revokedHandlers.clear();
@@ -469,12 +482,31 @@ export class NetworkDeviceManager {
     }
 
     private async handleDetected(devices: EnyoNetworkDevice[]): Promise<void> {
+        // Refresh the cache for every observation regardless of dedup — the
+        // cache is keyed by canonical device id, so writes are idempotent and
+        // keep hostname / accessStatus / lastSeen current.
         for (const device of devices) {
             this.deviceCache.set(device.id, device);
         }
+
+        const toDispatch: EnyoNetworkDevice[] = [];
+        for (const device of devices) {
+            const ip = device.ipAddress;
+            if (!ip) {
+                // No IP to key on — forward without recording.
+                toDispatch.push(device);
+                continue;
+            }
+            if (this.dispatchedIps.has(ip)) continue;
+            this.dispatchedIps.add(ip);
+            toDispatch.push(device);
+        }
+
+        if (toDispatch.length === 0) return;
+
         for (const handler of this.detectedHandlers) {
             try {
-                await handler(devices);
+                await handler(toDispatch);
             } catch (error) {
                 if (this.enableLogging) {
                     console.warn(
@@ -486,6 +518,12 @@ export class NetworkDeviceManager {
     }
 
     private async handleRemoved(networkDeviceId: string): Promise<void> {
+        // Free the IP for re-dispatch before evicting the cached device — the
+        // cache is the only place we can recover the device's IP at this point.
+        const cached = this.deviceCache.get(networkDeviceId);
+        if (cached?.ipAddress) {
+            this.dispatchedIps.delete(cached.ipAddress);
+        }
         this.deviceCache.delete(networkDeviceId);
         const appliances = await this.getAppliancesForDevice(networkDeviceId);
         if (appliances.length === 0) return;

@@ -104,8 +104,10 @@ export abstract class WallboxIntegrationEnergyApp extends IntegrationEnergyApp {
     ): Promise<IntegrationCommandResponse>;
 
     /**
-     * Handles a `StopChargeV1` command. Implementers terminate the active
-     * charging session identified by the OCPP transaction id.
+     * Handles a `StopChargeV1` command. Implementers terminate the
+     * charging session identified by `message.data.transactionId`; when
+     * that field is omitted, terminate the currently active session on
+     * `message.applianceId`.
      */
     protected abstract handleStopCharge(
         message: EnyoDataBusStopChargeV1

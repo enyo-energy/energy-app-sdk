@@ -22,11 +22,17 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [Energy Resources](#energy-resources)
   - [User Features](#user-features)
   - [App Intelligence](#app-intelligence)
+  - [Networking & Protocols](#networking--protocols)
+  - [Location & Site](#location--site)
+  - [Energy Domain APIs](#energy-domain-apis)
+  - [Operational Utilities](#operational-utilities)
 - [Advanced Modbus Integration](#advanced-modbus-integration)
+- [Appliance Management](#appliance-management)
 - [Network Devices & Access Recovery](#network-devices--access-recovery)
   - [NetworkAccessGuard](#networkaccessguard)
   - [NetworkDeviceManager](#networkdevicemanager)
   - [Startup pattern](#startup-pattern)
+- [Retry Framework](#retry-framework)
 - [Device Integrations](#device-integrations)
   - [IntegrationEnergyApp (Base Class)](#integrationenergyapp-base-class)
   - [HeatpumpIntegrationEnergyApp](#heatpumpintegrationenergyapp)
@@ -124,6 +130,25 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Forecast EV charging demand | [`EvChargingForecast`](#evchargingforecast) |
 | Forecast heatpump electrical consumption | [`HeatpumpConsumptionForecast`](#heatpumpconsumptionforecast) |
 | Forecast heatpump DHW tank temperature | [`HeatpumpDhwTemperatureForecast`](#heatpumpdhwtemperatureforecast) |
+| Talk to an EEBUS / SHIP / SPINE device | [`useEebus()`](#useeebus-energyappeebus) |
+| Speak MQTT (SDK broker or external) | [`useMqtt()`](#usemqtt-energyappmqtt) |
+| Scan or talk to Bluetooth LE peripherals | [`useBluetooth()`](#usebluetooth-energyappbluetooth) |
+| Send/receive UDP datagrams | [`useUdp()`](#useudp-energyappudp) |
+| Read serial Modbus RTU | [`useModbusRtu()`](#usemodbusrtu-energyappmodbusrtu) |
+| List known WiFi SSIDs in range | [`useWifi()`](#usewifi-energyappwifi) |
+| Query historical timeseries (PV, battery, meter, …) | [`useTimeseries()`](#usetimeseries-energyapptimeseries) |
+| Read site location (zip or coordinates) | [`useLocation()`](#uselocation-energyapplocation) |
+| Read grid connection point (fuse, phases, max power) | [`useGridConnectionPoint()`](#usegridconnectionpoint-energyappgridconnectionpoint) |
+| Retrieve secrets from the developer org secret store | [`useSecretManager()`](#usesecretmanager-energyappsecretmanager) |
+| Submit energy-manager diagnostics | [`useDiagnostics()`](#usediagnostics-energyappdiagnostics) |
+| Register a weather / PV / dynamic-price forecast provider | [`useWeatherForecasting()`](#useweatherforecasting-energyappweatherforecasting) / [`usePvForecasting()`](#usepvforecasting-energyapppvforecasting) / [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast) |
+| Manage electricity tariffs (default tariff, price per kWh) | [`useElectricityTariff()`](#useelectricitytariff-energyappelectricitytariff) |
+| Register a PV system (kWp, DC strings, orientation) | [`usePvSystem()`](#usepvsystem-energyapppvsystem) |
+| Discover capabilities of the active energy manager | [`useEnergyManager()`](#useenergymanager-energyappenergymanager) |
+| Drive a multi-step onboarding flow | [`useOnboarding()`](#useonboarding-energyapponboarding) |
+| Allocate process-local sequential IDs | [`useSequenceGenerator()`](#usesequencegenerator-energyappsequencegenerator) |
+| Manage retries with circuit-breaker semantics | [`RetryManager`](#retry-framework) |
+| Keep an `applianceId` cache in sync with the SDK | [`ApplianceManager`](#appliance-management) |
 
 > **Rule of thumb:** if your app *receives* commands and drives hardware, you want an **Integration**. If your app *produces* predictions, you want a **Forecast** (and likely an `EnergyManagerEnergyApp` to wire several together).
 
@@ -229,9 +254,14 @@ const packageDef = defineEnergyAppPackage({
 - `Meter`: Energy metering applications
 - `EnergyManagement`: Overall energy optimization
 - `HeatPump`: Heat pump control systems
+- `AirConditioning`: Air-conditioning units
 - `BatteryStorage`: Battery management
 - `ClimateControl`: HVAC and climate systems
-- `ElectricityTariff`: Dynamic pricing integration
+- `DynamicElectricityTariff`: Dynamic / spot-price tariff providers
+- `StaticElectricityTariff`: Fixed-price tariff providers
+- `TemperatureSensor`: Standalone temperature sensors
+- `SmartPlug`: Smart-plug appliances
+- `Other`: Anything not covered above
 
 ### Permissions System
 
@@ -260,6 +290,42 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`Vehicle`**: Access vehicle information
 - **`Charge`**: Manage charging sessions
 
+#### Command Permissions
+
+- **`InverterControlCommands`**: Send inverter control commands (e.g. feed-in limit)
+- **`BatteryControlCommands`**: Send battery / storage control commands
+- **`ChargerControlCommands`**: Send wallbox / charger control commands
+
+#### Networking & Protocol Permissions
+
+- **`ModbusRtu`**: Communicate over Modbus RTU (serial)
+- **`EebusDeviceManagement`**: Pair / discover / connect EEBUS devices
+- **`EebusDataAccess`**: Read EEBUS use-case data
+- **`EebusControl`**: Send EEBUS control commands (write features)
+- **`Mqtt`**: Connect to the internal SDK MQTT broker or external brokers
+- **`Bluetooth`**: Scan and talk to BLE peripherals
+- **`Wifi`**: List known WiFi SSIDs
+- **`Udp`**: Bind UDP sockets and exchange datagrams
+- **`ChildProcess`**: Spawn child processes from the runtime
+
+#### Data & Domain Permissions
+
+- **`Timeseries`**: Query historical timeseries data
+- **`EnergyPrices`**: Read current and forecast electricity prices
+- **`ElectricityTariff`**: Manage electricity tariffs
+- **`EnergyManager`**: Run as the active energy manager
+- **`EnergyManagerInfo`**: Read information about the active energy manager
+- **`WeatherForecastRegister`** / **`WeatherForecastUse`**: Publish / consume weather forecasts
+- **`PvForecastRegister`** / **`PvForecastUse`**: Publish / consume PV forecasts
+- **`DynamicPriceForecastRegister`** / **`DynamicPriceForecastUse`**: Publish / consume dynamic-price forecasts
+- **`PvSystemRegister`** / **`PvSystemUse`**: Register / read PV system configuration
+
+#### Site & Identity Permissions
+
+- **`LocationZipCode`**: Read the site's zip-code-level location
+- **`LocationCoordinates`**: Read the site's full coordinates
+- **`SecretManager`**: Read developer-org secrets
+
 #### Internet Access
 
 - **`RestrictedInternetAccess`**: Access specific internet domains only
@@ -268,20 +334,30 @@ Energy Apps use a granular permissions system to control access to system resour
 
 ### Lifecycle Management
 
-#### `register(callback: (packageName: string, version: number) => void)`
+#### `register(callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>)`
 
-Register a callback that executes when your Energy App starts:
+Register a callback that executes when your Energy App starts. The callback receives the package name, version, release channel (`stable` / `beta` / …), and the device ID the package is running on. It may be `async`.
 
 ```typescript
-energyApp.register((packageName, version) => {
-    console.log(`${packageName} v${version} is now running`);
+energyApp.register(async (packageName, version, channel, deviceId) => {
+    console.log(`${packageName} v${version} on ${channel} (device ${deviceId}) is now running`);
     // Initialize your app here
 });
 ```
 
-#### `onShutdown(callback: () => Promise<void>)`
+#### `onNetworkStatusChanged(listener: (online: boolean) => void | Promise<void>): string`
 
-Register cleanup logic for graceful shutdown:
+Subscribe to system-online transitions. Returns a listener ID. Pairs well with [`isSystemOnline()`](#issystemonline-boolean) for first-state, then deltas:
+
+```typescript
+const listenerId = energyApp.onNetworkStatusChanged((online) => {
+    console.log(online ? 'System back online' : 'System went offline');
+});
+```
+
+#### `onShutdown(callback: () => void | Promise<void>)`
+
+Register cleanup logic for graceful shutdown. The callback may be sync or async; it runs on Node `beforeExit` **and** `exit`.
 
 ```typescript
 energyApp.onShutdown(async () => {
@@ -480,7 +556,7 @@ const intervalId = interval.createInterval('30s', (clockId) => {
 interval.stopInterval(intervalId);
 ```
 
-**Available intervals**: `'10s'`, `'30s'`, `'1m'`, `'5m'`, `'1hr'`
+**Available intervals**: `'1s'`, `'5s'`, `'10s'`, `'30s'`, `'1m'`, `'5m'`, `'1hr'` (defined by the `IntervalDuration` type — any other string is rejected).
 
 ### Energy Resources
 
@@ -766,6 +842,301 @@ await learningPhase.completeLearningPhase(heatpumpPhaseId);
 await learningPhase.removeLearningPhase(phaseId);
 ```
 
+### Networking & Protocols
+
+#### `useEebus(): EnergyAppEebus`
+
+Talk to EEBUS / SHIP / SPINE devices. The returned facade exposes four sub-interfaces:
+
+- `devices` — SHIP-level lifecycle: discovery, pairing, connection.
+- `identity` — Node Identification (NID), observable identity, supported use-case discovery.
+- `useCases` — typed use-case clients (LPC, LPP, MGCP, MPC, OHPCF).
+- `spine` — low-level SPINE escape hatch for features not yet wrapped.
+
+```typescript
+const eebus = energyApp.useEebus();
+
+const discovered = await eebus.devices.getDiscoveredDevices();
+const device = await eebus.devices.pairDevice(discovered[0].ski);
+
+const identity = await eebus.identity.get(device.ski);
+const useCases = await eebus.identity.getSupportedUseCases(device.ski);
+```
+
+Requires the `EebusDeviceManagement` permission for the calls above. `EebusDataAccess` / `EebusControl` gate reads and writes on use-case features.
+
+#### `useMqtt(): EnergyAppMqtt`
+
+Connect to the internal SDK MQTT broker or an external broker, publish, subscribe, and observe connection status.
+
+```typescript
+const mqtt = energyApp.useMqtt();
+const client = await mqtt.connectToSdkBroker();
+
+await client.subscribe('sensors/+/temperature');
+client.onTopic('sensors/+/temperature', (payload) => {
+    console.log('Sensor reading:', payload.toString());
+});
+
+await client.publish('control/pump', 'on', /* qos */ 1, /* retain */ false);
+```
+
+For external brokers use `connectToExternalBroker(brokerUrl, options)`. Requires the `Mqtt` permission.
+
+#### `useBluetooth(): EnergyAppBluetooth`
+
+Scan for BLE peripherals and perform GATT read / write / notify against them.
+
+```typescript
+const ble = energyApp.useBluetooth();
+
+const devices = await ble.scan({ durationMs: 5000 });
+
+await ble.withDevice(devices[0].address, async (session) => {
+    const value = await session.read('1800', '2a00');
+    await session.write('180a', '2a29', new TextEncoder().encode('hi'));
+});
+```
+
+Notifications can be consumed three ways from the session: `notifications(svc, ch).onValue(cb)` (push), `.next(timeoutMs)` (pull-once), or `.values()` (async iterator). Requires the `Bluetooth` permission.
+
+#### `useUdp(): EnergyAppUdp`
+
+Bind UDP sockets and exchange datagrams. Lazily instantiates a single server instance and reuses it on subsequent calls; the permission gate runs on every accessor call so revocations surface consistently.
+
+```typescript
+const udp = energyApp.useUdp();
+const socket = await udp.bind(5000);
+
+socket.onMessage((data, rinfo) => {
+    console.log(`Received ${data.length}B from ${rinfo.address}:${rinfo.port}`);
+});
+
+await socket.send(new TextEncoder().encode('hello'), 5001, '192.168.1.50');
+```
+
+Throws `EnergyAppPermissionNotGrantedError` if the `Udp` permission isn't granted.
+
+#### `useModbusRtu(): EnergyAppModbusRtu`
+
+Modbus RTU over serial. Open a port with baud rate / parity / data bits / stop bits, then read/write registers by slave ID.
+
+```typescript
+const rtu = energyApp.useModbusRtu();
+const client = await rtu.connect('/dev/ttyUSB0', { baudRate: 9600, parity: 'none' });
+
+const registers = await client.readRegisters(/* slaveId */ 1, /* startReg */ 0, /* count */ 10);
+await client.writeRegisters(1, 100, [42, 43]);
+```
+
+Requires the `ModbusRtu` permission.
+
+#### `useWifi(): EnergyAppWifi`
+
+List the SSIDs the device is configured to join that are currently in range.
+
+```typescript
+const wifi = energyApp.useWifi();
+const ssids = await wifi.getKnownSsids();
+for (const { ssid } of ssids) console.log(ssid);
+```
+
+Requires the `Wifi` permission.
+
+### Location & Site
+
+#### `useLocation(): EnergyAppLocation`
+
+Two-tier location API. Zip-code resolution and full coordinates are gated by separate permissions so apps can opt into the minimum precision they need.
+
+```typescript
+const location = energyApp.useLocation();
+
+const zip = await location.getZipCodeLocation();          // requires LocationZipCode
+const full = await location.getLocation();                 // requires LocationCoordinates
+if (full) console.log(`lat=${full.latitude} lon=${full.longitude}`);
+```
+
+#### `useGridConnectionPoint(): EnergyAppGridConnectionPoint`
+
+Read the site's grid connection details — main fuse rating, number of phases, and the maximum allowed grid power. Use this to size dispatch envelopes and avoid violating the contractual cap.
+
+```typescript
+const gcp = energyApp.useGridConnectionPoint();
+const point = await gcp.getGridConnectionPoint();
+if (point) {
+    console.log(`Fuse ${point.fuseAmpere}A across ${point.numberOfPhases} phases`);
+}
+```
+
+### Energy Domain APIs
+
+#### `useEnergyManager(): EnergyAppEnergyManager`
+
+Read information about the currently active energy manager (vendor, version, supported features). Useful for apps that want to behave differently depending on which manager owns dispatch.
+
+```typescript
+const em = energyApp.useEnergyManager();
+const info = await em.getEnergyManagerInfo();
+if (info) console.log(`Active manager: ${info.name} v${info.version}`);
+```
+
+Requires the `EnergyManagerInfo` permission.
+
+#### `useElectricityTariff(): EnergyAppElectricityTariff`
+
+Register, retrieve, and manage electricity tariffs. One tariff can be marked as the system default.
+
+```typescript
+const tariffs = energyApp.useElectricityTariff();
+
+await tariffs.registerTariff({ id: 't1', name: 'Spot 2026', pricePerKwh: 0.21 });
+await tariffs.makeDefaultTariff('t1');
+
+const defaultTariff = await tariffs.getDefaultTariff();
+const all = await tariffs.getAllTariffs();
+```
+
+Requires the `ElectricityTariff` permission.
+
+#### `useWeatherForecasting(): EnergyAppWeatherForecasting`
+
+Register a weather-forecast provider (e.g. wraps an external API) and / or consume forecasts by zip code or coordinates.
+
+```typescript
+const weather = energyApp.useWeatherForecasting();
+
+await weather.registerForecast({ forecastId: 'wx-prod', name: 'OpenWeather' });
+const byZip = await weather.getWeatherForecastByZipCode('wx-prod');
+const byCoords = await weather.getWeatherForecastByCoordinates('wx-prod', 48.13, 11.57);
+```
+
+Publishers need `WeatherForecastRegister`; consumers need `WeatherForecastUse`.
+
+#### `usePvForecasting(): EnergyAppPvForecasting`
+
+Same shape as weather forecasting, but for PV production.
+
+```typescript
+const pvForecast = energyApp.usePvForecasting();
+await pvForecast.registerForecast({ forecastId: 'pv-prod', name: 'Solargis' });
+const forecast = await pvForecast.getPvForecast('pv-prod');
+```
+
+Publishers need `PvForecastRegister`; consumers need `PvForecastUse`.
+
+#### `useDynamicPriceForecast(): EnergyAppDynamicPriceForecast`
+
+Publish and consume forward-looking electricity-price forecasts (e.g. day-ahead spot). The data is forecast only — never settled prices.
+
+```typescript
+const dpf = energyApp.useDynamicPriceForecast();
+
+await dpf.registerForecast({ forecastId: 'epex-da', name: 'EPEX Day-Ahead', vendor: 'EPEX' });
+await dpf.publishForecast('epex-da', {
+    currency: 'EUR',
+    resolution: '1h',
+    entries: [{ timestampIso: '2026-05-23T10:00:00Z', consumptionPricePerKwh: 0.21 }]
+});
+
+const latest = await dpf.getLatestForecast();
+dpf.onForecastPublished((forecast) => console.log('new forecast', forecast.forecastId));
+```
+
+Publishers need `DynamicPriceForecastRegister`; consumers need `DynamicPriceForecastUse`.
+
+#### `usePvSystem(): EnergyAppPvSystem`
+
+Register a PV system's structural configuration (kWp, DC string orientations, associated appliances) so other apps can reason about expected production.
+
+```typescript
+const pv = energyApp.usePvSystem();
+await pv.registerPvSystem({
+    id: 'pv-1',
+    kWp: 9.6,
+    dcStrings: [
+        { azimuth: 180, tilt: 30 },
+        { azimuth: 90, tilt: 30 }
+    ]
+});
+const systems = await pv.getPvSystems();
+```
+
+Publishers need `PvSystemRegister`; consumers need `PvSystemUse`.
+
+#### `useTimeseries(): EnergyAppTimeseries`
+
+Query historical 15-minute aggregated data across the energy domain (PV production, battery SoC / power, meter values, grid power, home consumption, heatpump electrical / thermal, air-conditioning, temperature sensors). Some endpoints also support 1-minute resolution.
+
+```typescript
+const ts = energyApp.useTimeseries();
+const last24h = await ts.query({
+    dataType: 'pvProduction',
+    resolution: '15m',
+    startTime: Date.now() - 24 * 60 * 60 * 1000,
+    endTime: Date.now()
+});
+```
+
+Requires the `Timeseries` permission.
+
+#### `useDiagnostics(): EnergyAppDiagnostics`
+
+Energy-manager packages can submit their current state, forecast, and control plan to internal diagnostics for offline analysis. Fire-and-forget.
+
+```typescript
+const diag = energyApp.useDiagnostics();
+diag.energyManagerDiagnostics(
+    { batterySoc: 47, gridPowerW: 1200 },
+    { pvNext24h: [...] },
+    { actions: [{ applianceId: 'battery-1', mode: 'charge', powerW: 3000 }] }
+);
+```
+
+### Operational Utilities
+
+#### `useOnboarding(): EnergyAppOnboarding`
+
+Drive a multi-step onboarding guide — start / advance / back / skip / cancel, persist responses, and observe step transitions.
+
+```typescript
+const guide = energyApp.useOnboarding();
+
+await guide.startGuide('pv-setup', EnyoOnboardingGuideCategory.PvSystem);
+const step = await guide.nextStep('pv-setup');
+await guide.respondToStep('pv-setup', { answer: 'yes' });
+
+const listenerId = guide.onStepListener('pv-setup', (event) => {
+    console.log('step changed:', event.stepId);
+});
+```
+
+#### `useSecretManager(): EnergyAppSecretManager`
+
+Encrypted retrieval / storage of developer-org secrets (API keys, vendor tokens, OAuth client secrets). Strongly typed accessors keep the call site safe.
+
+```typescript
+const secrets = energyApp.useSecretManager();
+
+await secrets.saveSecret('weather-api', { token: 'xyz' });
+const cred = await secrets.getSecret<{ token: string }>('weather-api');
+
+const names = await secrets.listAvailableSecrets();
+await secrets.removeSecret('weather-api');
+```
+
+Requires the `SecretManager` permission.
+
+#### `useSequenceGenerator(): EnergyAppSequenceGenerator`
+
+Process-local monotonic counter, keyed by an arbitrary name. Use it for stable request / message IDs without coordinating across instances.
+
+```typescript
+const seq = energyApp.useSequenceGenerator();
+const reqId = await seq.next('mqtt-publish');   // 1, 2, 3, …
+const txId = await seq.next('ocpp-tx');         // independent counter
+```
+
 ## Advanced Modbus Integration
 
 The SDK includes a powerful, vendor-agnostic Modbus implementation for energy management systems. This allows you to connect to any Modbus-enabled device through configuration without code changes.
@@ -954,6 +1325,57 @@ The Modbus implementation follows a clean, modular architecture:
 
 This modular design ensures maintainability, testability, and extensibility for future enhancements.
 
+## Appliance Management
+
+`ApplianceManager` is the recommended way to keep the SDK's appliance list and your in-process state in sync. It wraps `useAppliances()` with caching, identifier-based lookup strategies, bulk operations, and helpers that the device-integrations and `NetworkDeviceManager` consume internally.
+
+```typescript
+import { ApplianceManager } from '@enyo-energy/energy-app-sdk';
+
+const applianceManager = await ApplianceManager.initialize(energyApp, {
+    // Optional config: identifier strategy, cache options, etc.
+});
+
+// Create or update by identifier (idempotent — uses the configured strategy).
+const applianceId = await applianceManager.createOrUpdateAppliance({
+    identifier: 'sn-1234567890',
+    name: [{ language: 'en', name: 'Inverter A' }],
+    type: EnyoApplianceTypeEnum.Inverter,
+    /* ... */
+});
+
+// Lookups
+const inverters = await applianceManager.getAppliancesByType(EnyoApplianceTypeEnum.Inverter);
+const byId = await applianceManager.findApplianceById(applianceId);
+const matches = await applianceManager.findByIdentifier('sn-1234567890');
+
+// State transitions
+await applianceManager.updateApplianceState(
+    applianceId,
+    EnyoApplianceConnectionType.Modbus,
+    EnyoApplianceStateEnum.Connected
+);
+```
+
+**Key methods**
+
+| Method | Purpose |
+|---|---|
+| `static initialize(app, config?)` | Build a manager, prime the cache, install SDK listeners. |
+| `createOrUpdateAppliance(config)` | Upsert by the configured `IdentifierStrategy`. Returns the appliance ID. |
+| `updateAppliance(id, patch)` | Patch an existing appliance. |
+| `removeAppliance(id)` / `removeAppliancesByIdentifier(id)` | Delete one / many. |
+| `findApplianceById(id)` / `findByIdentifier(id)` / `findWithStrategies(…)` | Cache-backed lookups. |
+| `getAppliancesByType(type)` / `getAllAppliancesByType(type)` | Filtered listing (own / all). |
+| `updateApplianceState(id, connection, state)` | State transitions (`Connected` / `Offline` / `Error` / …). |
+| `setAppliancesOfflineByIdentifier(id)` / `setAppliancesOnlineByIdentifier(id)` | Bulk transitions for all appliances sharing an identifier. |
+| `bulkUpdate(updates)` | Atomic batch of state changes. |
+| `setIdentifierStrategy(strategy, rebuild?)` / `getIdentifierStrategy()` | Swap the identifier-resolution strategy at runtime. |
+| `refreshCache()` / `clearCache()` | Manual cache control. |
+| `dispose()` | Release SDK listeners. |
+
+Identifier strategies are exported from the package — typical choices match on serial number, hostname, or a composite of `manufacturer + model + sn`.
+
 ## Network Devices & Access Recovery
 
 Packages that talk to local hardware over TCP (Modbus, SunSpec, EEBUS over SHIP, REST) must deal with two failure modes the `useNetworkDevices()` API exposes only at a low level:
@@ -1112,6 +1534,37 @@ async function connectDevice(networkDeviceId: string) {
 ```
 
 This pattern matches the wiring used by real Sungrow / Fronius energy-app packages: one `NetworkDeviceManager` per package, `ensureAccess` before every connect, `withAccessGuard` around every poll, and a single `getDevices({ accessStatus: 'granted' })` pass at startup to cover the warm-restart case.
+
+## Retry Framework
+
+`RetryManager` centralises retry / backoff / circuit-breaker logic so polling loops don't have to reinvent it. Register one entry per logical operation, give it a `RetryPolicy`, and run attempts through `execute(id, fn)` — the manager handles attempt counting, exponential backoff, transition into `Open` after repeated failures, and recovery on the next success.
+
+```typescript
+import { RetryManager, exponentialBackoff } from '@enyo-energy/energy-app-sdk';
+
+const retries = new RetryManager();
+
+retries.register('modbus-inverter-1', {
+    backoff: exponentialBackoff({ initialMs: 1_000, maxMs: 60_000, factor: 2 }),
+    maxAttempts: Infinity,           // keep retrying forever
+    openAfterConsecutiveFailures: 5, // trip the breaker after 5 fails
+});
+
+const value = await retries.execute('modbus-inverter-1', () =>
+    modbusClient.readHoldingRegisters(40000, 4)
+);
+
+// React to circuit-breaker transitions (Idle → Retrying → Open → Closed).
+const unsubscribe = retries.onStateChange((snapshot) => {
+    console.log(`[${snapshot.id}] ${snapshot.state} (attempt ${snapshot.attempts})`);
+});
+
+retries.statuses();         // current snapshots of every registered op
+retries.reset('modbus-inverter-1');
+retries.unregister('modbus-inverter-1');
+```
+
+Backoff helpers (`exponentialBackoff`, `fixedBackoff`, `linearBackoff` — see `src/implementations/retry/backoff.ts`) and the dedicated error types (`RetryAbortedError`, `RetryOpenError`) live alongside the manager so you can distinguish "we gave up" from "the caller cancelled".
 
 ## Device Integrations
 
@@ -1426,7 +1879,7 @@ const battery = new BatteryForecast(energyApp, 'battery-1', {
 
 await Promise.all([pv.initialize(), battery.initialize()]);
 
-energyApp.useInterval().createInterval('15m', () => {
+energyApp.useInterval().createInterval('5m', () => {
     const pvNext24h = pv.getForecast();
     const batteryNext24h = battery.getForecast();
     runDispatch(pvNext24h, batteryNext24h);
@@ -1963,7 +2416,7 @@ For more information about the CLI, visit [@enyo-energy/cli on npm](https://www.
 
 ---
 
-**Package Version:** 0.0.34
+**Package Version:** see `package.json` (`version` field) — currently `0.0.134`
 **SDK Version:** Auto-injected during build
 **License:** ISC
 **Repository:** [github.com/enyo-energy/energy-app-sdk](https://github.com/enyo-energy/energy-app-sdk)

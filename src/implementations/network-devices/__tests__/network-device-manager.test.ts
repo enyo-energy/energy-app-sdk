@@ -118,7 +118,7 @@ function makeAppliance(id: string, networkDeviceIds: string[], overrides: Partia
     };
 }
 
-function makeNetworkDevice(id: string): EnyoNetworkDevice {
+function makeNetworkDevice(id: string, overrides: Partial<EnyoNetworkDevice> = {}): EnyoNetworkDevice {
     return {
         id,
         hostname: `host-${id}`,
@@ -127,6 +127,7 @@ function makeNetworkDevice(id: string): EnyoNetworkDevice {
         lastSeen: new Date(),
         accessStatus: 'granted',
         detectedAt: [],
+        ...overrides,
     };
 }
 
@@ -386,6 +387,98 @@ describe('NetworkDeviceManager', () => {
             // getDevice should now hit the cache, not the SDK.
             sdk.getDevice.mockClear();
             await expect(manager.getDevice('dev-new')).resolves.toEqual(device);
+            expect(sdk.getDevice).not.toHaveBeenCalled();
+        });
+
+        it('dedupes devices sharing the same IP within a single emission', async () => {
+            const onNetworkDeviceDetected = vi.fn();
+            buildManager([], {onNetworkDeviceDetected});
+
+            const a = makeNetworkDevice('dev-a', {ipAddress: '10.0.0.42'});
+            const b = makeNetworkDevice('dev-b', {ipAddress: '10.0.0.42'});
+
+            await sdk.emitDetected([a, b]);
+
+            expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
+            // Only the first occurrence of the duplicated IP is forwarded.
+            expect(onNetworkDeviceDetected).toHaveBeenCalledWith([a]);
+        });
+
+        it('coalesces repeated detections of the same IP across emissions', async () => {
+            const onNetworkDeviceDetected = vi.fn();
+            buildManager([], {onNetworkDeviceDetected});
+
+            const first = makeNetworkDevice('dev-1', {ipAddress: '10.0.0.42'});
+            const repeat = makeNetworkDevice('dev-1-bis', {ipAddress: '10.0.0.42'});
+
+            await sdk.emitDetected([first]);
+            await sdk.emitDetected([repeat]);
+
+            // The second emission is suppressed — the handler only sees the first device.
+            expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
+            expect(onNetworkDeviceDetected).toHaveBeenCalledWith([first]);
+        });
+
+        it('re-fires for an IP after the SDK reports its device removed', async () => {
+            const onNetworkDeviceDetected = vi.fn();
+            buildManager([], {onNetworkDeviceDetected});
+
+            const first = makeNetworkDevice('dev-1', {ipAddress: '10.0.0.42'});
+            const reborn = makeNetworkDevice('dev-1-reborn', {ipAddress: '10.0.0.42'});
+
+            await sdk.emitDetected([first]);
+            await sdk.emitDetected([reborn]); // suppressed
+            await sdk.emitRemoved('dev-1');   // frees the IP
+            await sdk.emitDetected([reborn]); // fires again
+
+            expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(2);
+            expect(onNetworkDeviceDetected).toHaveBeenNthCalledWith(1, [first]);
+            expect(onNetworkDeviceDetected).toHaveBeenNthCalledWith(2, [reborn]);
+        });
+
+        it('forwards devices on distinct IPs in the same emission', async () => {
+            const onNetworkDeviceDetected = vi.fn();
+            buildManager([], {onNetworkDeviceDetected});
+
+            const a = makeNetworkDevice('dev-a', {ipAddress: '10.0.0.1'});
+            const b = makeNetworkDevice('dev-b', {ipAddress: '10.0.0.2'});
+
+            await sdk.emitDetected([a, b]);
+
+            expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
+            expect(onNetworkDeviceDetected).toHaveBeenCalledWith([a, b]);
+        });
+
+        it('always forwards devices without an ipAddress', async () => {
+            const onNetworkDeviceDetected = vi.fn();
+            buildManager([], {onNetworkDeviceDetected});
+
+            const a = makeNetworkDevice('dev-a', {ipAddress: ''});
+            const b = makeNetworkDevice('dev-b', {ipAddress: ''});
+
+            await sdk.emitDetected([a]);
+            await sdk.emitDetected([b]);
+
+            expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(2);
+            expect(onNetworkDeviceDetected).toHaveBeenNthCalledWith(1, [a]);
+            expect(onNetworkDeviceDetected).toHaveBeenNthCalledWith(2, [b]);
+        });
+
+        it('refreshes the cache for suppressed devices even when the handler is not invoked', async () => {
+            const onNetworkDeviceDetected = vi.fn();
+            const manager = buildManager([], {onNetworkDeviceDetected});
+
+            const first = makeNetworkDevice('dev-1', {ipAddress: '10.0.0.42', hostname: 'old'});
+            const repeat = makeNetworkDevice('dev-1', {ipAddress: '10.0.0.42', hostname: 'new'});
+
+            await sdk.emitDetected([first]);
+            await sdk.emitDetected([repeat]);
+
+            // Handler only sees the first one (dedup).
+            expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
+            // But the cache reflects the latest observation.
+            sdk.getDevice.mockClear();
+            await expect(manager.getDevice('dev-1')).resolves.toMatchObject({hostname: 'new'});
             expect(sdk.getDevice).not.toHaveBeenCalled();
         });
     });
