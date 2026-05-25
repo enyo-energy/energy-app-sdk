@@ -104,6 +104,41 @@ describe('NetworkAccessGuard', () => {
             sdk.requestDeviceAccess.mockRejectedValueOnce(new Error('boom'));
             await expect(guard.ensureAccess('dev-1')).resolves.toBe(false);
         });
+
+        it('coalesces concurrent calls for the same device into one SDK round-trip', async () => {
+            sdk.requestDeviceAccess.mockImplementationOnce(
+                () => new Promise(resolve => setImmediate(() => resolve({status: 'granted'}))),
+            );
+
+            const [a, b, c] = await Promise.all([
+                guard.ensureAccess('dev-1'),
+                guard.ensureAccess('dev-1'),
+                guard.ensureAccess('dev-1'),
+            ]);
+
+            expect(sdk.requestDeviceAccess).toHaveBeenCalledTimes(1);
+            expect([a, b, c]).toEqual([true, true, true]);
+        });
+
+        it('still hits the SDK for distinct devices in parallel', async () => {
+            sdk.requestDeviceAccess.mockResolvedValue({status: 'granted'});
+
+            await Promise.all([
+                guard.ensureAccess('dev-1'),
+                guard.ensureAccess('dev-2'),
+            ]);
+
+            expect(sdk.requestDeviceAccess).toHaveBeenCalledTimes(2);
+        });
+
+        it('allows a fresh SDK call once the in-flight promise has settled', async () => {
+            sdk.requestDeviceAccess.mockResolvedValue({status: 'granted'});
+
+            await guard.ensureAccess('dev-1');
+            await guard.ensureAccess('dev-1');
+
+            expect(sdk.requestDeviceAccess).toHaveBeenCalledTimes(2);
+        });
     });
 
     describe('recoverAccess', () => {
@@ -136,31 +171,49 @@ describe('NetworkAccessGuard', () => {
             expect(guard.isRecovering('dev-1')).toBe(false);
         });
 
-        it('holds the device in pending on a non-granted response and fires restored only after a listener event', async () => {
-            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
+        it('clears pending on a non-granted response so a later access-denied error can drive a fresh recovery', async () => {
+            sdk.requestDeviceAccess
+                .mockResolvedValueOnce({status: 'pending'})
+                .mockResolvedValueOnce({status: 'granted'});
 
             await guard.recoverAccess('dev-1');
 
+            // First attempt fired onAccessDenied and got a non-granted response.
             expect(onAccessDenied).toHaveBeenCalledTimes(1);
             expect(onAccessRestored).not.toHaveBeenCalled();
-            expect(guard.isRecovering('dev-1')).toBe(true);
+            // Critical: the device is NOT held in pending forever — otherwise
+            // subsequent access-denied errors would coalesce into a no-op.
+            expect(guard.isRecovering('dev-1')).toBe(false);
 
+            // A second access-denied error can therefore drive a fresh attempt.
+            await guard.recoverAccess('dev-1');
+
+            expect(sdk.requestDeviceAccess).toHaveBeenCalledTimes(2);
+            expect(onAccessDenied).toHaveBeenCalledTimes(2);
+            expect(onAccessRestored).toHaveBeenCalledTimes(1);
+        });
+
+        it('ignores asynchronous "granted" listener events for devices not currently in recovery', async () => {
+            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
+
+            await guard.recoverAccess('dev-1');
+            // Non-granted response cleared the pending mark, so a late
+            // SDK listener event for the same device must not fire restored.
             await sdk.emitAccessChange('dev-1', 'granted');
 
-            expect(onAccessRestored).toHaveBeenCalledTimes(1);
-            expect(onAccessRestored).toHaveBeenCalledWith('dev-1');
-            expect(guard.isRecovering('dev-1')).toBe(false);
+            expect(onAccessRestored).not.toHaveBeenCalled();
         });
 
         it('does not fire restored when the listener reports a non-granted status', async () => {
-            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
-            await guard.recoverAccess('dev-1');
+            // While the recovery request itself is unresolved we ARE pending.
+            sdk.requestDeviceAccess.mockImplementationOnce(() => new Promise(() => {}));
+            void guard.recoverAccess('dev-1');
+            await Promise.resolve();
 
             await sdk.emitAccessChange('dev-1', 'denied');
             await sdk.emitAccessChange('dev-1', 'pending');
 
             expect(onAccessRestored).not.toHaveBeenCalled();
-            expect(guard.isRecovering('dev-1')).toBe(true);
         });
 
         it('ignores listener events for devices not currently in recovery', async () => {
@@ -169,22 +222,26 @@ describe('NetworkAccessGuard', () => {
         });
 
         it('coalesces concurrent recoverAccess calls for the same device', async () => {
-            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
+            sdk.requestDeviceAccess.mockImplementationOnce(() => new Promise(() => {}));
 
-            await guard.recoverAccess('dev-1');
-            await guard.recoverAccess('dev-1');
-            await guard.recoverAccess('dev-1');
+            void guard.recoverAccess('dev-1');
+            void guard.recoverAccess('dev-1');
+            void guard.recoverAccess('dev-1');
+            // Drain microtasks so the first call reaches ensureAccess.
+            await new Promise(resolve => setImmediate(resolve));
 
             expect(sdk.requestDeviceAccess).toHaveBeenCalledTimes(1);
             expect(onAccessDenied).toHaveBeenCalledTimes(1);
         });
 
         it('isolates recovery state across devices', async () => {
+            // dev-1's request hangs so we can observe per-device state mid-flight.
             sdk.requestDeviceAccess
-                .mockResolvedValueOnce({status: 'pending'})
+                .mockImplementationOnce(() => new Promise(() => {}))
                 .mockResolvedValueOnce({status: 'granted'});
 
-            await guard.recoverAccess('dev-1');
+            void guard.recoverAccess('dev-1');
+            await Promise.resolve();
             await guard.recoverAccess('dev-2');
 
             expect(guard.isRecovering('dev-1')).toBe(true);

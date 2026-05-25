@@ -45,6 +45,18 @@ export interface NetworkAccessGuardConfig {
 }
 
 /**
+ * Substring patterns the SDK currently uses in its network-access-denied
+ * error messages. Kept in one place so the test suite can pin them; if
+ * the SDK rephrases the message, only this constant and its tests need to
+ * change. There is no typed SDK error class to instanceof-check against
+ * today, so we have to substring-match.
+ */
+const ACCESS_DENIED_PATTERNS: readonly RegExp[] = [
+    /Network access denied/i,
+    /not in the allowed list/i,
+];
+
+/**
  * Recovers from "Network access denied" failures raised by the SDK's
  * network layer when a Modbus (or other TCP) call hits a host whose
  * port is not in the package's allowed list.
@@ -76,11 +88,14 @@ export interface NetworkAccessGuardConfig {
  * Precondition use: {@link ensureAccess} exposes the same idempotent
  * `requestDeviceAccess` call so callers can use a single API for both
  * "before a connect, make sure we have access" and "we just lost
- * access, recover it".
+ * access, recover it". Concurrent {@link ensureAccess} calls for the
+ * same device share a single SDK round-trip.
  */
 export class NetworkAccessGuard {
     /** Devices we've re-requested access for and are awaiting a 'granted' signal on. */
     private readonly pending = new Set<string>();
+    /** In-flight `ensureAccess` promises keyed by device id so concurrent callers share one SDK round-trip. */
+    private readonly ensureInFlight = new Map<string, Promise<boolean>>();
     /** Listener IDs registered against the network-devices service. */
     private readonly listenerIds: string[] = [];
     private readonly restoredHandlers = new Set<AccessRestoredHandler>();
@@ -93,12 +108,18 @@ export class NetworkAccessGuard {
      * Recognise the SDK's network-access-denied error so callers don't
      * have to re-implement the substring check. Matches both variants
      * observed in production logs.
+     *
+     * Note: this is a substring match against the error message because
+     * the SDK does not expose a typed error class. {@link ACCESS_DENIED_PATTERNS}
+     * is the single source of truth; if the SDK rephrases the message,
+     * update that constant and the corresponding pinning tests.
+     *
      * @param error The error to inspect (any value is accepted)
      * @returns `true` if the error message looks like an access-denied error
      */
     static isAccessDeniedError(error: unknown): boolean {
         const message = error instanceof Error ? error.message : String(error);
-        return /Network access denied|not in the allowed list/i.test(message);
+        return ACCESS_DENIED_PATTERNS.some(p => p.test(message));
     }
 
     /**
@@ -153,21 +174,32 @@ export class NetworkAccessGuard {
      * Idempotently request access to the configured ports for the
      * given NetworkDevice. Safe to call as a precondition before any
      * Modbus operation.
+     *
+     * Concurrent calls for the same device share a single underlying
+     * `requestDeviceAccess` SDK call — the SDK is hit exactly once per
+     * in-flight request, regardless of how many callers `await` on it.
+     *
      * @param networkDeviceId The NetworkDevice to request access on
      * @returns `true` when the SDK reports access is granted, `false` otherwise
      */
     async ensureAccess(networkDeviceId: string): Promise<boolean> {
+        const inFlight = this.ensureInFlight.get(networkDeviceId);
+        if (inFlight) return inFlight;
+
+        const promise = this.requestAccess(networkDeviceId)
+            .finally(() => this.ensureInFlight.delete(networkDeviceId));
+        this.ensureInFlight.set(networkDeviceId, promise);
+        return promise;
+    }
+
+    private async requestAccess(networkDeviceId: string): Promise<boolean> {
         try {
             const result = await this.energyApp
                 .useNetworkDevices()
                 .requestDeviceAccess(networkDeviceId, this.ports);
             return result.status === 'granted';
         } catch (error) {
-            if (this.enableLogging) {
-                console.warn(
-                    `[NetworkAccessGuard] requestDeviceAccess for ${networkDeviceId} failed: ${String(error)}`,
-                );
-            }
+            this.log('warn', `requestDeviceAccess for ${networkDeviceId} failed: ${String(error)}`);
             return false;
         }
     }
@@ -205,43 +237,47 @@ export class NetworkAccessGuard {
      * per recovery, regardless of whether the grant is observed
      * synchronously (from the request response) or asynchronously
      * (from the access-change listener).
+     *
+     * If the SDK responds with anything other than `'granted'`, the
+     * device is removed from the pending set so the next access-denied
+     * error from the same device can drive a fresh recovery attempt
+     * (instead of getting silently coalesced forever).
+     *
      * @param networkDeviceId The NetworkDevice whose access needs to be recovered
      */
     async recoverAccess(networkDeviceId: string): Promise<void> {
         if (this.disposed) return;
         if (this.pending.has(networkDeviceId)) {
-            if (this.enableLogging) {
-                console.debug(
-                    `[NetworkAccessGuard] recovery already in flight for ${networkDeviceId}`,
-                );
-            }
+            this.log('debug', `recovery already in flight for ${networkDeviceId}`);
             return;
         }
         this.pending.add(networkDeviceId);
-        if (this.enableLogging) {
-            console.log(
-                `[NetworkAccessGuard] re-requesting access for ${networkDeviceId} after access-denied`,
-            );
-        }
+        this.log('log', `re-requesting access for ${networkDeviceId} after access-denied`);
 
-        await this.fireDenied(networkDeviceId);
+        await this.fireHandlers(this.deniedHandlers, networkDeviceId, 'access-denied');
 
         const granted = await this.ensureAccess(networkDeviceId);
         if (!granted) {
-            // Leave the device in `pending` so the listener can fire the
-            // handlers when the user eventually accepts the request.
+            // Clear pending so a subsequent access-denied error can drive
+            // a fresh recovery cycle. The SDK won't necessarily emit a
+            // later `'granted'` event (e.g. on a permanent `denied`
+            // response, transient SDK error, or user dismissal), so
+            // leaving the device pending would orphan it.
+            this.pending.delete(networkDeviceId);
             return;
         }
         // Synchronous grant — the listener won't observe a transition,
         // so fire the handlers ourselves and clear the pending mark.
         this.pending.delete(networkDeviceId);
-        await this.fireRestored(networkDeviceId);
+        await this.fireHandlers(this.restoredHandlers, networkDeviceId, 'access-restored');
     }
 
     /**
      * Returns `true` if a recovery cycle is currently in flight for
-     * the given NetworkDevice. Mainly useful for tests and
-     * introspection.
+     * the given NetworkDevice. Intended for tests, introspection, and
+     * the dedup logic inside {@link NetworkDeviceManager} — do NOT
+     * poll this in a busy loop to wait for recovery completion; await
+     * the restored handler instead.
      */
     isRecovering(networkDeviceId: string): boolean {
         return this.pending.has(networkDeviceId);
@@ -249,7 +285,9 @@ export class NetworkAccessGuard {
 
     /**
      * Tears down the SDK listener and clears all handlers. After
-     * calling this the guard should no longer be used.
+     * calling this the guard should no longer be used. In-flight
+     * recoveries are not cancelled, but `recoverAccess` is a no-op
+     * after dispose so no new recoveries will start.
      */
     dispose(): void {
         if (this.disposed) return;
@@ -262,6 +300,7 @@ export class NetworkAccessGuard {
         this.restoredHandlers.clear();
         this.deniedHandlers.clear();
         this.pending.clear();
+        this.ensureInFlight.clear();
     }
 
     private async handleAccessChange(
@@ -271,34 +310,25 @@ export class NetworkAccessGuard {
         if (status !== 'granted') return;
         if (!this.pending.has(networkDeviceId)) return;
         this.pending.delete(networkDeviceId);
-        await this.fireRestored(networkDeviceId);
+        await this.fireHandlers(this.restoredHandlers, networkDeviceId, 'access-restored');
     }
 
-    private async fireRestored(networkDeviceId: string): Promise<void> {
-        for (const handler of this.restoredHandlers) {
+    private async fireHandlers<H extends (deviceId: string) => void | Promise<void>>(
+        handlers: Iterable<H>,
+        networkDeviceId: string,
+        label: 'access-restored' | 'access-denied',
+    ): Promise<void> {
+        for (const handler of handlers) {
             try {
                 await handler(networkDeviceId);
             } catch (error) {
-                if (this.enableLogging) {
-                    console.warn(
-                        `[NetworkAccessGuard] access-restored handler for ${networkDeviceId} failed: ${String(error)}`,
-                    );
-                }
+                this.log('warn', `${label} handler for ${networkDeviceId} failed: ${String(error)}`);
             }
         }
     }
 
-    private async fireDenied(networkDeviceId: string): Promise<void> {
-        for (const handler of this.deniedHandlers) {
-            try {
-                await handler(networkDeviceId);
-            } catch (error) {
-                if (this.enableLogging) {
-                    console.warn(
-                        `[NetworkAccessGuard] access-denied handler for ${networkDeviceId} failed: ${String(error)}`,
-                    );
-                }
-            }
-        }
+    private log(level: 'log' | 'debug' | 'warn', message: string): void {
+        if (!this.enableLogging) return;
+        console[level](`[NetworkAccessGuard] ${message}`);
     }
 }

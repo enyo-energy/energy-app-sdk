@@ -36,6 +36,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * @returns The ID of the created or updated appliance
      */
     async createOrUpdateAppliance(appliance: ApplianceConfig): Promise<string> {
+        this.throwIfDisposed();
         // Build network device IDs list
         const networkDeviceIds = appliance.networkDevices?.map(d => d.id) ?? [];
 
@@ -105,6 +106,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * @returns The appliance or null if not found
      */
     async getApplianceById(applianceId: string): Promise<EnyoAppliance | null> {
+        this.throwIfDisposed();
         return this.memoryStore.get(applianceId) || null;
     }
 
@@ -113,16 +115,8 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * @returns Array of all appliances
      */
     async getAllAppliances(): Promise<EnyoAppliance[]> {
+        this.throwIfDisposed();
         return Array.from(this.memoryStore.values());
-    }
-
-    /**
-     * Gets network devices associated with an appliance.
-     * @param appliance The appliance
-     * @returns Array of network devices
-     */
-    protected async getNetworkDevicesForApplianceDemo(appliance: EnyoAppliance): Promise<EnyoNetworkDevice[]> {
-        return this.networkDevicesStore.get(appliance.id) || [];
     }
 
     /**
@@ -131,11 +125,11 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * @returns Array of matching appliances
      */
     async findByIdentifier(identifier: string): Promise<EnyoAppliance[]> {
+        this.throwIfDisposed();
         const matches: EnyoAppliance[] = [];
         const strategy = this.getIdentifierStrategy();
 
         for (const appliance of this.memoryStore.values()) {
-            const networkDevices = await this.getNetworkDevicesForApplianceDemo(appliance);
             const extractedId = strategy.extract(appliance);
 
             if (extractedId === identifier) {
@@ -148,18 +142,18 @@ export class InMemoryApplianceManager extends ApplianceManager {
     }
 
     /**
-     * Finds an appliance using multiple strategies.
+     * Finds the first appliance matching `searchValue` under any of the given strategies.
      * @param searchValue The value to search for
-     * @param strategies Array of strategies to try
+     * @param strategies Array of strategies to try in order
      * @returns The first matching result or undefined
      */
-    async findWithStrategies(
+    async findFirstByStrategies(
         searchValue: string,
         strategies: IdentifierStrategy[]
     ): Promise<FindResult | undefined> {
+        this.throwIfDisposed();
         for (const strategy of strategies) {
             for (const appliance of this.memoryStore.values()) {
-                const networkDevices = await this.getNetworkDevicesForApplianceDemo(appliance);
                 const identifier = strategy.extract(appliance);
 
                 if (identifier === searchValue) {
@@ -181,6 +175,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * @returns Array of appliances of the specified type
      */
     async getAppliancesByType(type: EnyoApplianceTypeEnum): Promise<EnyoAppliance[]> {
+        this.throwIfDisposed();
         return Array.from(this.memoryStore.values()).filter(a => a.type === type);
     }
 
@@ -195,6 +190,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         connectionType: EnyoApplianceConnectionType,
         state: EnyoApplianceStateEnum
     ): Promise<void> {
+        this.throwIfDisposed();
         const appliance = this.memoryStore.get(applianceId);
         if (appliance) {
             appliance.metadata = {
@@ -219,6 +215,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         applianceId: string,
         metadata: Partial<EnyoApplianceMetadata> & { connectionType: EnyoApplianceConnectionType }
     ): Promise<void> {
+        this.throwIfDisposed();
         const appliance = this.memoryStore.get(applianceId);
         if (appliance) {
             appliance.metadata = {
@@ -238,6 +235,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * @param applianceId The ID of the appliance to remove
      */
     async removeAppliance(applianceId: string): Promise<void> {
+        this.throwIfDisposed();
         if (this.memoryStore.has(applianceId)) {
             this.memoryStore.delete(applianceId);
             this.networkDevicesStore.delete(applianceId);
@@ -260,6 +258,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         applianceId: string;
         data: Partial<Omit<EnyoAppliance, 'id'>>;
     }>): Promise<{ succeeded: string[]; failed: string[] }> {
+        this.throwIfDisposed();
         const succeeded: string[] = [];
         const failed: string[] = [];
 
@@ -299,6 +298,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         byState: Record<string, number>;
         cached: number;
     }> {
+        this.throwIfDisposed();
         const appliances = Array.from(this.memoryStore.values());
         const byType: Record<string, number> = {};
         const byState: Record<string, number> = {};
@@ -324,9 +324,9 @@ export class InMemoryApplianceManager extends ApplianceManager {
      * Refreshes the cache with all appliances from memory.
      */
     async refreshCache(): Promise<void> {
+        this.throwIfDisposed();
         this.clearCache();
         for (const appliance of this.memoryStore.values()) {
-            const networkDevices = await this.getNetworkDevicesForApplianceDemo(appliance);
             this.updateCache(appliance);
         }
     }

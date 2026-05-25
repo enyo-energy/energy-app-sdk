@@ -1362,15 +1362,18 @@ await applianceManager.updateApplianceState(
 | Method | Purpose |
 |---|---|
 | `static initialize(app, config?)` | Build a manager, prime the cache, install SDK listeners. |
-| `createOrUpdateAppliance(config)` | Upsert by the configured `IdentifierStrategy`. Returns the appliance ID. |
+| `createOrUpdateAppliance(config)` | Upsert by the configured `IdentifierStrategy`. Returns the appliance ID. Throws `MissingIdentifierError` if the strategy returns no identifier, or `DuplicateIdentifierError` if the identifier maps to more than one appliance. |
 | `updateAppliance(id, patch)` | Patch an existing appliance. |
 | `removeAppliance(id)` / `removeAppliancesByIdentifier(id)` | Delete one / many. |
-| `findApplianceById(id)` / `findByIdentifier(id)` / `findWithStrategies(…)` | Cache-backed lookups. |
+| `findApplianceById(id)` | SDK lookup by appliance ID. Returns `null` on not-found; **propagates** SDK errors. |
+| `findByIdentifier(extractedId)` | Cache-first lookup keyed by the configured identifier strategy. Falls through to one SDK list call on cache miss. |
+| `findFirstByStrategies(value, strategies)` | Probes each strategy in order against the SDK list; returns the first match plus which strategy hit. |
+| `findAppliancesByNetworkDeviceId(deviceId)` | Synchronous, cache-backed reverse lookup from a NetworkDevice to its appliances. |
 | `getAppliancesByType(type)` / `getAllAppliancesByType(type)` | Filtered listing (own / all). |
 | `updateApplianceState(id, connection, state)` | State transitions (`Connected` / `Offline` / `Error` / …). |
-| `setAppliancesOfflineByIdentifier(id)` / `setAppliancesOnlineByIdentifier(id)` | Bulk transitions for all appliances sharing an identifier. |
+| `setAppliancesStateByIdentifier(id, state)` | Bulk state transition for every appliance sharing an identifier; preserves each appliance's existing `connectionType`. |
 | `bulkUpdate(updates)` | Atomic batch of state changes. |
-| `setIdentifierStrategy(strategy, rebuild?)` / `getIdentifierStrategy()` | Swap the identifier-resolution strategy at runtime. |
+| `setIdentifierStrategy(strategy, rebuildCache)` / `getIdentifierStrategy()` | Swap the identifier-resolution strategy at runtime. `rebuildCache` is required: pass `false` to keep the cached appliances and just recompute the in-memory identifier index against the new strategy, or `true` to force a full refresh from the SDK. |
 | `refreshCache()` / `clearCache()` | Manual cache control. |
 | `dispose()` | Release SDK listeners. |
 
@@ -1492,7 +1495,9 @@ What the manager handles for you:
 
 - **Access-denied recovery** — `withAccessGuard` / `ensureAccess` delegate to the bundled `NetworkAccessGuard`.
 - **User-driven transitions** — on `listenForDeviceAccessChange`, the manager dispatches `onApplianceAccessRestored` on `'granted'` and `onApplianceAccessRevoked` on `'denied'` / `'pending'`, resolving each transition into the per-appliance events your reconnect/disconnect code needs.
-- **Listener dedup** — the manager registers its access-change listener *before* the guard's, so a `'granted'` event during a recovery cycle dispatches only once (the manager observes `isRecovering(deviceId) === true` and skips, letting the guard's own restored callback win).
+- **Listener dedup** — both the manager's SDK access-change listener and the guard's own restored callback feed into the same internal `dispatchAccessRestored`. The manager records which devices have already been dispatched for the current `'granted'` transition and short-circuits a second dispatch, so the dedup is order-independent and does not rely on SDK listener FIFO semantics. The mark is cleared on the next non-granted transition or device removal.
+- **AccessDenied vs AccessRevoked** — both signal "the package can no longer read this device", but the source differs. `onApplianceAccessDenied` fires when `withAccessGuard` catches a runtime read error (the SDK's "Network access denied" message). `onApplianceAccessRevoked` fires when the SDK explicitly reports a status transition to `'denied'` or `'pending'` (typically a user-driven UI action). Wire both if you want a single "lost access" signal — they will not double-fire for one underlying event.
+- **One manager per `EnergyApp`** — `NetworkDeviceManager.initialize` enforces a single active manager per `EnergyApp` instance. Calling it a second time without first calling `dispose()` throws `NetworkDeviceManagerAlreadyInitializedError`. After disposal a fresh manager can be created.
 - **Device removal** — on `listenForNetworkDeviceRemoved`, the manager fires `onApplianceNetworkDeviceRemoved` per affected appliance and clears its cache.
 - **Optional auto-state toggle** — with `autoToggleApplianceState: true`, the manager flips affected appliances to `EnyoApplianceStateEnum.Offline` on denial / revocation / removal, and back to `EnyoApplianceStateEnum.Connected` on restoration, via `applianceManager.updateApplianceState(...)`.
 

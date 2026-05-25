@@ -8,7 +8,7 @@ import {
     type EnyoAppliance,
 } from '../../../types/enyo-appliance.js';
 import type {ApplianceManager} from '../../appliances/appliance-manager.js';
-import {NetworkDeviceManager} from '../network-device-manager.js';
+import {NetworkDeviceManager, NetworkDeviceManagerAlreadyInitializedError} from '../network-device-manager.js';
 
 type AccessChangeListener = (deviceId: string, status: EnyoNetworkDeviceAccessStatus) => void | Promise<void>;
 type DetectedListener = (devices: EnyoNetworkDevice[]) => void | Promise<void>;
@@ -22,9 +22,11 @@ interface NetworkDevicesFake {
     listenForDetectedDevice: ReturnType<typeof vi.fn>;
     listenForNetworkDeviceRemoved: ReturnType<typeof vi.fn>;
     removeListener: ReturnType<typeof vi.fn>;
-    /** Lists every listener in the order it was registered — used to assert manager-before-guard ordering. */
+    /** Lists every listener in the order it was registered. */
     accessChangeListenerOrder: AccessChangeListener[];
     emitAccessChange: (deviceId: string, status: EnyoNetworkDeviceAccessStatus) => Promise<void>;
+    /** Replays each access-change listener in reverse registration order — used to assert dedup is order-independent. */
+    emitAccessChangeReverse: (deviceId: string, status: EnyoNetworkDeviceAccessStatus) => Promise<void>;
     emitDetected: (devices: EnyoNetworkDevice[]) => Promise<void>;
     emitRemoved: (deviceId: string) => Promise<void>;
 }
@@ -66,6 +68,9 @@ function createNetworkDevicesFake(initialDevices: EnyoNetworkDevice[] = []): Net
         emitAccessChange: async (deviceId, status) => {
             for (const {fn} of [...accessChangeListeners]) await fn(deviceId, status);
         },
+        emitAccessChangeReverse: async (deviceId, status) => {
+            for (const {fn} of [...accessChangeListeners].reverse()) await fn(deviceId, status);
+        },
         emitDetected: async (devices) => {
             for (const {fn} of [...detectedListeners]) await fn(devices);
         },
@@ -76,31 +81,31 @@ function createNetworkDevicesFake(initialDevices: EnyoNetworkDevice[] = []): Net
     return fake;
 }
 
-interface AppliancesFake {
-    list: ReturnType<typeof vi.fn>;
-}
-
-function createAppliancesFake(appliances: EnyoAppliance[]): AppliancesFake {
-    return {
-        list: vi.fn(async () => appliances),
-    };
-}
-
-function createEnergyAppFake(networkDevices: NetworkDevicesFake, appliances: AppliancesFake): EnergyApp {
+function createEnergyAppFake(networkDevices: NetworkDevicesFake): EnergyApp {
     return {
         useNetworkDevices: () => networkDevices,
-        useAppliances: () => appliances,
     } as unknown as EnergyApp;
 }
 
-function createApplianceManagerStub(): {
+interface ApplianceManagerStub {
     manager: ApplianceManager;
     updateApplianceState: ReturnType<typeof vi.fn>;
-} {
+    findAppliancesByNetworkDeviceId: ReturnType<typeof vi.fn>;
+}
+
+function createApplianceManagerStub(appliances: EnyoAppliance[] = []): ApplianceManagerStub {
     const updateApplianceState = vi.fn(async () => undefined);
+    const findAppliancesByNetworkDeviceId = vi.fn(
+        (networkDeviceId: string) =>
+            appliances.filter(a => a.networkDeviceIds.includes(networkDeviceId)),
+    );
     return {
-        manager: {updateApplianceState} as unknown as ApplianceManager,
+        manager: {
+            updateApplianceState,
+            findAppliancesByNetworkDeviceId,
+        } as unknown as ApplianceManager,
         updateApplianceState,
+        findAppliancesByNetworkDeviceId,
     };
 }
 
@@ -135,8 +140,7 @@ const silent = {enableLogging: false};
 
 describe('NetworkDeviceManager', () => {
     let sdk: NetworkDevicesFake;
-    let appliances: AppliancesFake;
-    let applianceManagerStub: ReturnType<typeof createApplianceManagerStub>;
+    let applianceManagerStub: ApplianceManagerStub;
     let energyApp: EnergyApp;
 
     function buildManager(
@@ -144,15 +148,103 @@ describe('NetworkDeviceManager', () => {
         config: Partial<Parameters<typeof NetworkDeviceManager.prototype.constructor>[2]> = {},
     ): NetworkDeviceManager {
         sdk = createNetworkDevicesFake();
-        appliances = createAppliancesFake(ownedAppliances);
-        applianceManagerStub = createApplianceManagerStub();
-        energyApp = createEnergyAppFake(sdk, appliances);
+        applianceManagerStub = createApplianceManagerStub(ownedAppliances);
+        energyApp = createEnergyAppFake(sdk);
         return new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
             ports: [502],
             ...silent,
             ...config,
         });
     }
+
+    describe('single-instance invariant', () => {
+        it('throws when constructed twice on the same EnergyApp without disposing first', () => {
+            sdk = createNetworkDevicesFake();
+            applianceManagerStub = createApplianceManagerStub();
+            energyApp = createEnergyAppFake(sdk);
+            new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
+                ports: [502],
+                ...silent,
+            });
+
+            expect(() =>
+                new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
+                    ports: [502],
+                    ...silent,
+                }),
+            ).toThrow(NetworkDeviceManagerAlreadyInitializedError);
+        });
+
+        it('allows constructing a fresh manager after the previous one is disposed', () => {
+            sdk = createNetworkDevicesFake();
+            applianceManagerStub = createApplianceManagerStub();
+            energyApp = createEnergyAppFake(sdk);
+            const first = new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
+                ports: [502],
+                ...silent,
+            });
+            first.dispose();
+
+            expect(() =>
+                new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
+                    ports: [502],
+                    ...silent,
+                }),
+            ).not.toThrow();
+        });
+    });
+
+    describe('partial-init cleanup', () => {
+        // If listener registration throws mid-construction, the manager must:
+        //   1. Unregister any listener it already managed to register,
+        //   2. Skip the `active` WeakMap registration so a retry is permitted,
+        //   3. Propagate the original error (not swallow it).
+        // Without these guarantees, the throw would leak SDK listeners that
+        // continue firing into a half-built manager.
+
+        it('removes any partially-registered listeners and does not claim the active slot when listener registration throws mid-init', () => {
+            sdk = createNetworkDevicesFake();
+            applianceManagerStub = createApplianceManagerStub();
+            energyApp = createEnergyAppFake(sdk);
+
+            // First call to listenForDeviceAccessChange (the manager's own)
+            // succeeds and returns an ID. Second call (the guard's, made via
+            // `new NetworkAccessGuard` inside the constructor) throws.
+            const original = sdk.listenForDeviceAccessChange.getMockImplementation()!;
+            let calls = 0;
+            sdk.listenForDeviceAccessChange.mockImplementation((fn) => {
+                calls++;
+                if (calls === 2) throw new Error('SDK refused listener registration');
+                return original(fn);
+            });
+
+            expect(() =>
+                new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
+                    ports: [502],
+                    ...silent,
+                }),
+            ).toThrow(/SDK refused listener registration/);
+
+            // The first listener was registered, so removeListener MUST have
+            // been called to release it. Without cleanupPartialInit this would
+            // be zero.
+            expect(sdk.removeListener).toHaveBeenCalledTimes(1);
+            expect(sdk.removeListener.mock.calls[0][0]).toBe(sdk.listenForDeviceAccessChange.mock.results[0].value);
+
+            // Reset the listener impl back to a working one for the retry.
+            sdk.listenForDeviceAccessChange.mockImplementation(original);
+
+            // The `active` WeakMap slot must NOT have been claimed by the
+            // failed manager — a fresh construction should succeed without
+            // tripping the singleton invariant.
+            expect(() =>
+                new NetworkDeviceManager(energyApp, applianceManagerStub.manager, {
+                    ports: [502],
+                    ...silent,
+                }),
+            ).not.toThrow();
+        });
+    });
 
     describe('listener registration', () => {
         it('registers all three SDK listeners on construction', () => {
@@ -162,12 +254,9 @@ describe('NetworkDeviceManager', () => {
             expect(sdk.listenForNetworkDeviceRemoved).toHaveBeenCalledTimes(1);
         });
 
-        it("registers the manager's access-change listener before the guard's", () => {
+        it('registers two access-change listeners (manager + guard)', () => {
             buildManager([]);
-            // Two access-change listeners are expected: the manager's and the guard's.
             expect(sdk.accessChangeListenerOrder).toHaveLength(2);
-            // The manager registers its own listener first (so isRecovering dedup works);
-            // the second one belongs to the guard.
             expect(sdk.listenForDeviceAccessChange).toHaveBeenCalledTimes(2);
         });
     });
@@ -176,9 +265,8 @@ describe('NetworkDeviceManager', () => {
         it('primes the device cache from the SDK', async () => {
             const device = makeNetworkDevice('dev-1');
             sdk = createNetworkDevicesFake([device]);
-            appliances = createAppliancesFake([]);
             applianceManagerStub = createApplianceManagerStub();
-            energyApp = createEnergyAppFake(sdk, appliances);
+            energyApp = createEnergyAppFake(sdk);
 
             const manager = await NetworkDeviceManager.initialize(
                 energyApp,
@@ -190,6 +278,8 @@ describe('NetworkDeviceManager', () => {
             sdk.getDevice.mockClear();
             await expect(manager.getDevice('dev-1')).resolves.toEqual(device);
             expect(sdk.getDevice).not.toHaveBeenCalled();
+
+            manager.dispose();
         });
     });
 
@@ -234,18 +324,48 @@ describe('NetworkDeviceManager', () => {
             const onApplianceAccessRestored = vi.fn();
             const manager = buildManager([a], {onApplianceAccessRestored});
 
-            // Force the guard into pending state via a recover that defers.
-            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
-            await manager.getAccessGuard().recoverAccess('dev-1');
+            // Hang the recover request so the guard stays in pending.
+            sdk.requestDeviceAccess.mockImplementationOnce(() => new Promise(() => {}));
+            void manager.getAccessGuard().recoverAccess('dev-1');
+            await Promise.resolve();
             expect(onApplianceAccessRestored).not.toHaveBeenCalled();
 
             // SDK fires 'granted' — both the manager's listener and the guard's
-            // listener observe it. Manager runs first, sees isRecovering=true,
-            // skips. Guard runs second, clears pending, fires its restored
-            // callback which dispatches to the manager. Net: ONE dispatch.
+            // listener observe it. The first one to reach dispatchAccessRestored
+            // marks the device as already-dispatched; the second one short-circuits.
             await sdk.emitAccessChange('dev-1', 'granted');
 
             expect(onApplianceAccessRestored).toHaveBeenCalledTimes(1);
+        });
+
+        it('dedups regardless of listener firing order (manager-first or guard-first)', async () => {
+            const a = makeAppliance('appl-1', ['dev-1']);
+            const onApplianceAccessRestored = vi.fn();
+            const manager = buildManager([a], {onApplianceAccessRestored});
+
+            sdk.requestDeviceAccess.mockImplementationOnce(() => new Promise(() => {}));
+            void manager.getAccessGuard().recoverAccess('dev-1');
+            await Promise.resolve();
+
+            // Replay listeners in REVERSE order — guard-first, manager-second.
+            // Without restoredAlreadyDispatched this would double-fire (the guard
+            // would clear pending, then the manager would see !isRecovering and
+            // dispatch a second time).
+            await sdk.emitAccessChangeReverse('dev-1', 'granted');
+
+            expect(onApplianceAccessRestored).toHaveBeenCalledTimes(1);
+        });
+
+        it('re-fires restored after a non-granted transition resets the dedup mark', async () => {
+            const a = makeAppliance('appl-1', ['dev-1']);
+            const onApplianceAccessRestored = vi.fn();
+            buildManager([a], {onApplianceAccessRestored});
+
+            await sdk.emitAccessChange('dev-1', 'granted');
+            await sdk.emitAccessChange('dev-1', 'denied');
+            await sdk.emitAccessChange('dev-1', 'granted');
+
+            expect(onApplianceAccessRestored).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -299,7 +419,7 @@ describe('NetworkDeviceManager', () => {
             const onApplianceAccessDenied = vi.fn();
             // Leave the device in pending so the denied handler fires but restored doesn't.
             const manager = buildManager([a], {onApplianceAccessDenied});
-            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
+            sdk.requestDeviceAccess.mockImplementationOnce(() => new Promise(() => {}));
 
             const action = vi.fn().mockRejectedValueOnce(new Error('Network access denied: ...'));
             await expect(manager.withAccessGuard('dev-1', action)).rejects.toThrow(/Network access denied/);
@@ -316,7 +436,7 @@ describe('NetworkDeviceManager', () => {
         it('marks appliances offline on access-denied error when autoToggleApplianceState is set', async () => {
             const a = makeAppliance('appl-1', ['dev-1']);
             const manager = buildManager([a], {autoToggleApplianceState: true});
-            sdk.requestDeviceAccess.mockResolvedValueOnce({status: 'pending'});
+            sdk.requestDeviceAccess.mockImplementationOnce(() => new Promise(() => {}));
 
             const action = vi.fn().mockRejectedValueOnce(new Error('Network access denied: ...'));
             await expect(manager.withAccessGuard('dev-1', action)).rejects.toThrow();
@@ -345,9 +465,8 @@ describe('NetworkDeviceManager', () => {
         it('clears the device from the local cache', async () => {
             const device = makeNetworkDevice('dev-1');
             sdk = createNetworkDevicesFake([device]);
-            appliances = createAppliancesFake([]);
             applianceManagerStub = createApplianceManagerStub();
-            energyApp = createEnergyAppFake(sdk, appliances);
+            energyApp = createEnergyAppFake(sdk);
 
             const manager = await NetworkDeviceManager.initialize(
                 energyApp,
@@ -362,6 +481,8 @@ describe('NetworkDeviceManager', () => {
             await manager.getDevice('dev-1');
             // Cache was cleared, so a fresh SDK call should happen.
             expect(sdk.getDevice).toHaveBeenCalledWith('dev-1');
+
+            manager.dispose();
         });
 
         it('is a no-op when no appliances are bound to the device', async () => {
@@ -372,6 +493,28 @@ describe('NetworkDeviceManager', () => {
 
             expect(onApplianceNetworkDeviceRemoved).not.toHaveBeenCalled();
             expect(applianceManagerStub.updateApplianceState).not.toHaveBeenCalled();
+        });
+
+        it('clears the restored dedup mark so a subsequent grant fires again', async () => {
+            const device = makeNetworkDevice('dev-1');
+            sdk = createNetworkDevicesFake([device]);
+            applianceManagerStub = createApplianceManagerStub([makeAppliance('appl-1', ['dev-1'])]);
+            energyApp = createEnergyAppFake(sdk);
+
+            const onApplianceAccessRestored = vi.fn();
+            const manager = await NetworkDeviceManager.initialize(
+                energyApp,
+                applianceManagerStub.manager,
+                {ports: [502], ...silent, onApplianceAccessRestored},
+            );
+
+            await sdk.emitAccessChange('dev-1', 'granted');
+            await sdk.emitRemoved('dev-1');
+            await sdk.emitAccessChange('dev-1', 'granted');
+
+            expect(onApplianceAccessRestored).toHaveBeenCalledTimes(2);
+
+            manager.dispose();
         });
     });
 
@@ -400,7 +543,6 @@ describe('NetworkDeviceManager', () => {
             await sdk.emitDetected([a, b]);
 
             expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
-            // Only the first occurrence of the duplicated IP is forwarded.
             expect(onNetworkDeviceDetected).toHaveBeenCalledWith([a]);
         });
 
@@ -414,7 +556,6 @@ describe('NetworkDeviceManager', () => {
             await sdk.emitDetected([first]);
             await sdk.emitDetected([repeat]);
 
-            // The second emission is suppressed — the handler only sees the first device.
             expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
             expect(onNetworkDeviceDetected).toHaveBeenCalledWith([first]);
         });
@@ -427,9 +568,9 @@ describe('NetworkDeviceManager', () => {
             const reborn = makeNetworkDevice('dev-1-reborn', {ipAddress: '10.0.0.42'});
 
             await sdk.emitDetected([first]);
-            await sdk.emitDetected([reborn]); // suppressed
-            await sdk.emitRemoved('dev-1');   // frees the IP
-            await sdk.emitDetected([reborn]); // fires again
+            await sdk.emitDetected([reborn]);
+            await sdk.emitRemoved('dev-1');
+            await sdk.emitDetected([reborn]);
 
             expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(2);
             expect(onNetworkDeviceDetected).toHaveBeenNthCalledWith(1, [first]);
@@ -474,9 +615,7 @@ describe('NetworkDeviceManager', () => {
             await sdk.emitDetected([first]);
             await sdk.emitDetected([repeat]);
 
-            // Handler only sees the first one (dedup).
             expect(onNetworkDeviceDetected).toHaveBeenCalledTimes(1);
-            // But the cache reflects the latest observation.
             sdk.getDevice.mockClear();
             await expect(manager.getDevice('dev-1')).resolves.toMatchObject({hostname: 'new'});
             expect(sdk.getDevice).not.toHaveBeenCalled();
@@ -537,15 +676,16 @@ describe('NetworkDeviceManager', () => {
     });
 
     describe('getAppliancesForDevice', () => {
-        it('returns only appliances bound to the given NetworkDevice', async () => {
+        it('reads from the ApplianceManager cache without an SDK call', () => {
             const a = makeAppliance('appl-1', ['dev-1']);
             const b = makeAppliance('appl-2', ['dev-2']);
             const c = makeAppliance('appl-3', ['dev-1', 'dev-2']);
             const manager = buildManager([a, b, c]);
 
-            await expect(manager.getAppliancesForDevice('dev-1')).resolves.toEqual([a, c]);
-            await expect(manager.getAppliancesForDevice('dev-2')).resolves.toEqual([b, c]);
-            await expect(manager.getAppliancesForDevice('dev-other')).resolves.toEqual([]);
+            expect(manager.getAppliancesForDevice('dev-1')).toEqual([a, c]);
+            expect(manager.getAppliancesForDevice('dev-2')).toEqual([b, c]);
+            expect(manager.getAppliancesForDevice('dev-other')).toEqual([]);
+            expect(applianceManagerStub.findAppliancesByNetworkDeviceId).toHaveBeenCalledTimes(3);
         });
     });
 

@@ -19,6 +19,7 @@ export enum OCPP16Action {
   RemoteStopTransaction = 'RemoteStopTransaction',
   ReserveNow = 'ReserveNow',
   Reset = 'Reset',
+  SecurityEventNotification = 'SecurityEventNotification',
   SendLocalList = 'SendLocalList',
   SetChargingProfile = 'SetChargingProfile',
   StartTransaction = 'StartTransaction',

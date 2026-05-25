@@ -22,10 +22,26 @@ export interface ApplianceNetworkEvent {
 /** Handler invoked once access to a NetworkDevice's required ports is granted (or re-granted). */
 export type ApplianceAccessRestoredHandler = (event: ApplianceNetworkEvent) => void | Promise<void>;
 
-/** Handler invoked the moment an access-denied error has been observed for a NetworkDevice. */
+/**
+ * Handler invoked the moment an access-denied **error** has been observed at
+ * runtime — i.e. a Modbus / TCP read inside {@link NetworkDeviceManager.withAccessGuard}
+ * threw the SDK's access-denied error despite the device reporting `'granted'`.
+ *
+ * Contrast with {@link ApplianceAccessRevokedHandler}: this fires on
+ * **runtime errors**, while revocation fires on **SDK status transitions**
+ * (typically user-driven via the UI).
+ */
 export type ApplianceAccessDeniedHandler = (event: ApplianceNetworkEvent) => void | Promise<void>;
 
-/** Handler invoked when the SDK reports a transition to a non-granted access status. */
+/**
+ * Handler invoked when the SDK reports a NetworkDevice transition to a
+ * non-granted access status (`'denied'` or `'pending'`), e.g. the user
+ * revoked access from the UI.
+ *
+ * Contrast with {@link ApplianceAccessDeniedHandler}: this fires when the
+ * SDK explicitly signals a status change, while access-denied fires when
+ * an in-flight read **fails** with the SDK's access-denied error.
+ */
 export type ApplianceAccessRevokedHandler = (event: ApplianceNetworkEvent & {
     /** The status the device transitioned to (typically `'denied'` or `'pending'`). */
     status: EnyoNetworkDeviceAccessStatus;
@@ -45,6 +61,17 @@ export type NetworkDeviceAccessChangedHandler = (
 
 /**
  * Construction options for {@link NetworkDeviceManager}.
+ *
+ * **AccessDenied vs AccessRevoked**: both represent "the package can no longer
+ * read this device", but their source differs:
+ *
+ * | Event | Source | When it fires |
+ * |---|---|---|
+ * | `onApplianceAccessDenied` | Runtime read error caught by {@link NetworkDeviceManager.withAccessGuard} | A live Modbus / TCP call returned the SDK's "Network access denied" error |
+ * | `onApplianceAccessRevoked` | SDK access-status listener | The SDK reported a transition to `'denied'` or `'pending'` — usually a user-driven UI action |
+ *
+ * If you want a single "lost access" signal, wire both handlers to the same
+ * downstream — they will not double-fire for a single underlying event.
  */
 export interface NetworkDeviceManagerConfig {
     /**
@@ -58,22 +85,9 @@ export interface NetworkDeviceManagerConfig {
      * connections or restart polling loops.
      */
     onApplianceAccessRestored?: ApplianceAccessRestoredHandler;
-    /**
-     * Fired the moment an access-denied error has been observed at
-     * runtime (via {@link NetworkDeviceManager.withAccessGuard} or an
-     * explicit call to the underlying guard's `recoverAccess`). This
-     * is distinct from {@link onApplianceAccessRevoked} — that fires
-     * when the SDK explicitly reports a status transition, while this
-     * fires when an in-flight read failed with the SDK's
-     * access-denied error.
-     */
+    /** See {@link ApplianceAccessDeniedHandler}. */
     onApplianceAccessDenied?: ApplianceAccessDeniedHandler;
-    /**
-     * Fired when the SDK transitions a NetworkDevice to a
-     * non-granted access status (`'denied'` or `'pending'`),
-     * typically because the user revoked access in the UI. Use this
-     * to tear down connections and mark affected appliances offline.
-     */
+    /** See {@link ApplianceAccessRevokedHandler}. */
     onApplianceAccessRevoked?: ApplianceAccessRevokedHandler;
     /**
      * Fired when a NetworkDevice the package depends on has been
@@ -119,6 +133,23 @@ export interface NetworkDeviceManagerConfig {
 }
 
 /**
+ * Thrown when {@link NetworkDeviceManager.initialize} is called more than
+ * once for the same `EnergyApp` without disposing the previous instance
+ * first. Constructing two managers per package leaks SDK listeners and
+ * causes every event to fire twice.
+ */
+export class NetworkDeviceManagerAlreadyInitializedError extends Error {
+    constructor() {
+        super(
+            'NetworkDeviceManager is already initialized for this EnergyApp. ' +
+            'Call dispose() on the existing instance before creating a new one, ' +
+            'or reuse the existing manager.',
+        );
+        this.name = 'NetworkDeviceManagerAlreadyInitializedError';
+    }
+}
+
+/**
  * High-level orchestrator that ties together:
  * - a {@link NetworkAccessGuard} (access-denied recovery),
  * - all relevant `useNetworkDevices()` listeners (access changes,
@@ -151,11 +182,14 @@ export interface NetworkDeviceManagerConfig {
  *   modbusClient.readHoldingRegisters(...));
  * ```
  *
- * The manager is event-driven: it caches the current NetworkDevice
- * list on construction and keeps the cache in sync via the SDK's
- * detected / removed / access-change listeners.
+ * Only one manager may be active per `EnergyApp`: calling
+ * {@link initialize} a second time without first disposing the previous
+ * instance throws {@link NetworkDeviceManagerAlreadyInitializedError}.
  */
 export class NetworkDeviceManager {
+    /** Per-EnergyApp registry used to enforce the single-instance invariant. */
+    private static readonly active = new WeakMap<EnergyApp, NetworkDeviceManager>();
+
     private readonly guard: NetworkAccessGuard;
     private readonly listenerIds: string[] = [];
     /** Local snapshot of NetworkDevices indexed by id, refreshed on every relevant event. */
@@ -170,21 +204,40 @@ export class NetworkDeviceManager {
     private readonly enableLogging: boolean;
     /** IPs already dispatched to detected-handlers; cleared per-IP on the SDK's removal event. */
     private readonly dispatchedIps = new Set<string>();
+    /**
+     * Devices whose `restored` dispatch has already fired for the current
+     * `granted` transition. Holds entries until the next non-granted transition
+     * or removal so that an out-of-order second `granted` listener fire
+     * (manager-listener and guard-callback both feed into
+     * {@link dispatchAccessRestored}) cannot produce a duplicate per-appliance
+     * dispatch. Order-independent — does not rely on SDK listener FIFO semantics.
+     */
+    private readonly restoredAlreadyDispatched = new Set<string>();
     private disposed = false;
 
     /**
      * Constructs the manager and wires up all SDK listeners. The
      * NetworkDevice cache is populated lazily — call
      * {@link initialize} if you need it primed before use.
+     *
+     * Prefer {@link initialize} over direct construction so the
+     * single-instance invariant is enforced.
+     *
      * @param energyApp The {@link EnergyApp} instance to read events from
      * @param applianceManager The {@link ApplianceManager} the package uses for its appliances
      * @param config Required ports plus optional handlers and behaviour flags
+     * @throws {NetworkDeviceManagerAlreadyInitializedError} if another manager for the same `EnergyApp` is still active
      */
     constructor(
         private readonly energyApp: EnergyApp,
         private readonly applianceManager: ApplianceManager,
         config: NetworkDeviceManagerConfig,
     ) {
+        const existing = NetworkDeviceManager.active.get(energyApp);
+        if (existing && !existing.disposed) {
+            throw new NetworkDeviceManagerAlreadyInitializedError();
+        }
+
         this.autoToggleApplianceState = config.autoToggleApplianceState ?? false;
         this.enableLogging = config.enableLogging ?? true;
         if (config.onApplianceAccessRestored) {
@@ -206,34 +259,69 @@ export class NetworkDeviceManager {
             this.accessChangedHandlers.add(config.onNetworkDeviceAccessChanged);
         }
 
-        // Register the manager's access-change listener BEFORE constructing
-        // the guard, so that on a SDK 'granted' event for a device the guard
-        // is currently recovering, the manager's listener observes the
-        // device while it is still in the guard's `pending` set. That lets
-        // it skip the per-appliance dispatch and leave it to the guard's
-        // own callback — preventing a double-fire on async recovery.
-        const accessListenerId = this.energyApp.useNetworkDevices().listenForDeviceAccessChange(
-            (networkDeviceId, status) => this.handleAccessChange(networkDeviceId, status),
-        );
-        this.listenerIds.push(accessListenerId);
+        // Wire up SDK listeners + the access guard under try/catch — if any
+        // step throws partway through, unwind the partial state so we don't
+        // leak orphan listeners that fire into a dead manager.
+        try {
+            // Register the manager's access-change listener BEFORE constructing
+            // the guard so the manager observes 'granted' transitions while the
+            // device is still in the guard's pending set (used by handleAccessChange
+            // as a hint to short-circuit). Note: the dedup that actually prevents
+            // double-fires is restoredAlreadyDispatched — it does NOT depend on
+            // listener ordering.
+            const accessListenerId = this.energyApp.useNetworkDevices().listenForDeviceAccessChange(
+                (networkDeviceId, status) => this.handleAccessChange(networkDeviceId, status),
+            );
+            this.listenerIds.push(accessListenerId);
 
-        this.guard = new NetworkAccessGuard(this.energyApp, {
-            ports: config.ports,
-            enableLogging: this.enableLogging,
-            onAccessRestored: (networkDeviceId) => this.dispatchAccessRestored(networkDeviceId),
-            onAccessDenied: (networkDeviceId) => this.dispatchAccessDenied(networkDeviceId),
-        });
+            this.guard = new NetworkAccessGuard(this.energyApp, {
+                ports: config.ports,
+                enableLogging: this.enableLogging,
+                onAccessRestored: (networkDeviceId) => this.dispatchAccessRestored(networkDeviceId),
+                onAccessDenied: (networkDeviceId) => this.dispatchAccessDenied(networkDeviceId),
+            });
 
-        this.subscribeToEvents();
+            this.subscribeToEvents();
+        } catch (error) {
+            this.cleanupPartialInit();
+            throw error;
+        }
+        NetworkDeviceManager.active.set(energyApp, this);
+    }
+
+    /**
+     * Reverses any side effects performed during a partially-failed
+     * construction: removes whatever SDK listeners we managed to register and
+     * disposes the guard if it was constructed. Idempotent and exception-safe.
+     */
+    private cleanupPartialInit(): void {
+        const service = this.energyApp.useNetworkDevices();
+        for (const listenerId of this.listenerIds) {
+            try {
+                service.removeListener(listenerId);
+            } catch {
+                // best-effort — we're already unwinding a construction failure
+            }
+        }
+        this.listenerIds.length = 0;
+        if (this.guard) {
+            try {
+                this.guard.dispose();
+            } catch {
+                // best-effort
+            }
+        }
     }
 
     /**
      * Convenience factory that constructs the manager and primes the
      * internal NetworkDevice cache from the SDK before returning.
+     *
      * @param energyApp The {@link EnergyApp} instance to read events from
      * @param applianceManager The {@link ApplianceManager} the package uses for its appliances
      * @param config Same options accepted by the constructor
      * @returns A manager ready to handle network-device events
+     * @throws {NetworkDeviceManagerAlreadyInitializedError} if another manager for the same `EnergyApp` is still active
      */
     static async initialize(
         energyApp: EnergyApp,
@@ -359,13 +447,14 @@ export class NetworkDeviceManager {
     }
 
     /**
-     * Resolves all appliances the {@link ApplianceManager} currently
-     * lists as bound to a given NetworkDevice.
+     * Resolves all appliances currently bound to a given NetworkDevice.
+     * Reads from the {@link ApplianceManager}'s in-memory index — never
+     * hits the SDK — so this is safe to call inside hot event handlers.
+     *
      * @param networkDeviceId The NetworkDevice ID to look up
      */
-    async getAppliancesForDevice(networkDeviceId: string): Promise<EnyoAppliance[]> {
-        const all = await this.energyApp.useAppliances().list();
-        return all.filter(a => a.networkDeviceIds.includes(networkDeviceId));
+    getAppliancesForDevice(networkDeviceId: string): EnyoAppliance[] {
+        return this.applianceManager.findAppliancesByNetworkDeviceId(networkDeviceId);
     }
 
     /**
@@ -384,6 +473,7 @@ export class NetworkDeviceManager {
     /**
      * Tears down all listeners on the SDK and on the internal access
      * guard. After calling this the manager should no longer be used.
+     * A new manager can be created for the same `EnergyApp` after disposal.
      */
     dispose(): void {
         if (this.disposed) return;
@@ -396,21 +486,40 @@ export class NetworkDeviceManager {
         this.guard.dispose();
         this.deviceCache.clear();
         this.dispatchedIps.clear();
+        this.restoredAlreadyDispatched.clear();
         this.restoredHandlers.clear();
         this.deniedHandlers.clear();
         this.revokedHandlers.clear();
         this.removedHandlers.clear();
         this.detectedHandlers.clear();
         this.accessChangedHandlers.clear();
+        if (NetworkDeviceManager.active.get(this.energyApp) === this) {
+            NetworkDeviceManager.active.delete(this.energyApp);
+        }
         if (this.enableLogging) {
             console.log('[NetworkDeviceManager] disposed');
         }
     }
 
+    /**
+     * Reacts to the SDK's access-status change events. Fires the raw
+     * pass-through handler for every transition, then dispatches the
+     * per-appliance event matching the new status.
+     *
+     * For a `granted` transition the dispatch is deduplicated against
+     * {@link restoredAlreadyDispatched} so that — regardless of which
+     * listener (this one or the guard's restored callback) runs first
+     * — each `granted` transition fires `dispatchAccessRestored` at
+     * most once.
+     */
     private async handleAccessChange(
         networkDeviceId: string,
         status: EnyoNetworkDeviceAccessStatus,
     ): Promise<void> {
+        // Short-circuit if dispose has run mid-flight — the cascaded
+        // dispatch would otherwise call into a disposed ApplianceManager
+        // and throw ApplianceManagerDisposedError up the SDK's listener stack.
+        if (this.disposed) return;
         // Fire the raw pass-through first so consumers see every transition
         // regardless of whether the package owns appliances for the device.
         for (const handler of this.accessChangedHandlers) {
@@ -426,24 +535,27 @@ export class NetworkDeviceManager {
         }
 
         if (status === 'granted') {
-            // If the guard is mid-recovery, its own SDK listener will clear
-            // pending and fire onAccessRestored → dispatchAccessRestored on
-            // this same event. Skip here to avoid a double-fire. Manager's
-            // listener is registered before the guard's, so pending is still
-            // set when we run.
-            if (this.guard.isRecovering(networkDeviceId)) return;
             await this.dispatchAccessRestored(networkDeviceId);
         } else {
+            // A transition away from 'granted' frees the device's restored
+            // dedup mark so the next 'granted' can fire again.
+            this.restoredAlreadyDispatched.delete(networkDeviceId);
             await this.dispatchAccessRevoked(networkDeviceId, status);
         }
     }
 
+    /**
+     * Dispatches the per-appliance `access-revoked` event for every
+     * appliance bound to the device. Optionally flips affected
+     * appliances to {@link EnyoApplianceStateEnum.Offline} first when
+     * `autoToggleApplianceState` is set.
+     */
     private async dispatchAccessRevoked(
         networkDeviceId: string,
         status: EnyoNetworkDeviceAccessStatus,
     ): Promise<void> {
         if (this.revokedHandlers.size === 0 && !this.autoToggleApplianceState) return;
-        const appliances = await this.getAppliancesForDevice(networkDeviceId);
+        const appliances = this.getAppliancesForDevice(networkDeviceId);
         for (const appliance of appliances) {
             if (this.autoToggleApplianceState) {
                 await this.setApplianceState(appliance, EnyoApplianceStateEnum.Offline);
@@ -467,6 +579,11 @@ export class NetworkDeviceManager {
         }
     }
 
+    /**
+     * Subscribes the manager to the SDK's detected and removed listeners.
+     * The access-change listener is set up in the constructor — see the
+     * comment there for the ordering rationale.
+     */
     private subscribeToEvents(): void {
         const service = this.energyApp.useNetworkDevices();
 
@@ -481,10 +598,18 @@ export class NetworkDeviceManager {
         this.listenerIds.push(removedListenerId);
     }
 
+    /**
+     * Refreshes the device cache for every observation, then forwards a
+     * deduped device list to the registered `detected` handlers. Dedup
+     * is keyed by `ipAddress` and persists until the SDK reports the
+     * corresponding device removed — collapsing mDNS / discovery bursts
+     * into a single dispatch per physical host.
+     */
     private async handleDetected(devices: EnyoNetworkDevice[]): Promise<void> {
-        // Refresh the cache for every observation regardless of dedup — the
-        // cache is keyed by canonical device id, so writes are idempotent and
-        // keep hostname / accessStatus / lastSeen current.
+        if (this.disposed) return;
+        // Cache writes are keyed by canonical device id, so they are idempotent
+        // and keep hostname / accessStatus / lastSeen current irrespective of
+        // whether the device passes the IP-based dedup below.
         for (const device of devices) {
             this.deviceCache.set(device.id, device);
         }
@@ -517,15 +642,22 @@ export class NetworkDeviceManager {
         }
     }
 
+    /**
+     * Reacts to the SDK's NetworkDevice-removed event. Frees the device's
+     * IP for re-dispatch, evicts the local cache entry, clears the
+     * `restored` dedup mark, and dispatches per-appliance removed handlers.
+     */
     private async handleRemoved(networkDeviceId: string): Promise<void> {
-        // Free the IP for re-dispatch before evicting the cached device — the
+        if (this.disposed) return;
+        // Free the IP for re-dispatch BEFORE evicting the cached device — the
         // cache is the only place we can recover the device's IP at this point.
         const cached = this.deviceCache.get(networkDeviceId);
         if (cached?.ipAddress) {
             this.dispatchedIps.delete(cached.ipAddress);
         }
         this.deviceCache.delete(networkDeviceId);
-        const appliances = await this.getAppliancesForDevice(networkDeviceId);
+        this.restoredAlreadyDispatched.delete(networkDeviceId);
+        const appliances = this.getAppliancesForDevice(networkDeviceId);
         if (appliances.length === 0) return;
 
         if (this.enableLogging) {
@@ -546,9 +678,20 @@ export class NetworkDeviceManager {
         }
     }
 
+    /**
+     * Dispatches the per-appliance `access-restored` event for every
+     * appliance bound to the device. Marks the device as already
+     * dispatched so the manager's SDK listener and the guard's restored
+     * callback cannot produce two dispatches for the same transition —
+     * order-independently. Optionally flips affected appliances to
+     * {@link EnyoApplianceStateEnum.Connected} first when
+     * `autoToggleApplianceState` is set.
+     */
     private async dispatchAccessRestored(networkDeviceId: string): Promise<void> {
+        if (this.restoredAlreadyDispatched.has(networkDeviceId)) return;
+        this.restoredAlreadyDispatched.add(networkDeviceId);
         if (this.restoredHandlers.size === 0 && !this.autoToggleApplianceState) return;
-        const appliances = await this.getAppliancesForDevice(networkDeviceId);
+        const appliances = this.getAppliancesForDevice(networkDeviceId);
         for (const appliance of appliances) {
             if (this.autoToggleApplianceState) {
                 await this.setApplianceState(appliance, EnyoApplianceStateEnum.Connected);
@@ -561,9 +704,14 @@ export class NetworkDeviceManager {
         }
     }
 
+    /**
+     * Dispatches the per-appliance `access-denied` event for every
+     * appliance bound to the device. Distinct from `revoked` — see the
+     * comment on {@link NetworkDeviceManagerConfig} for the difference.
+     */
     private async dispatchAccessDenied(networkDeviceId: string): Promise<void> {
         if (this.deniedHandlers.size === 0 && !this.autoToggleApplianceState) return;
-        const appliances = await this.getAppliancesForDevice(networkDeviceId);
+        const appliances = this.getAppliancesForDevice(networkDeviceId);
         for (const appliance of appliances) {
             if (this.autoToggleApplianceState) {
                 await this.setApplianceState(appliance, EnyoApplianceStateEnum.Offline);
@@ -576,6 +724,11 @@ export class NetworkDeviceManager {
         }
     }
 
+    /**
+     * Awaits every registered handler in `handlers` with the supplied
+     * `event`, catching and logging individual handler failures so one
+     * misbehaving consumer cannot prevent the rest from running.
+     */
     private async fireHandlers<H extends (event: ApplianceNetworkEvent) => void | Promise<void>>(
         handlers: Set<H>,
         event: ApplianceNetworkEvent,
@@ -594,6 +747,11 @@ export class NetworkDeviceManager {
         }
     }
 
+    /**
+     * Delegates an appliance state change to the {@link ApplianceManager},
+     * preserving the existing `connectionType` from the appliance's
+     * metadata. Failures are logged but do not propagate.
+     */
     private async setApplianceState(appliance: EnyoAppliance, state: EnyoApplianceStateEnum): Promise<void> {
         try {
             const connectionType = appliance.metadata?.connectionType ?? EnyoApplianceConnectionType.Connector;

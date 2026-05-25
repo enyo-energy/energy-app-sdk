@@ -64,7 +64,9 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
     /** If the charger supports requesting log file uploads */
     RequestLogFiles = 'RequestLogFiles',
     /** If the Charger supprots a pv surplus mode */
-    PvSurplusMode = 'PvSurplusMode'
+    PvSurplusMode = 'PvSurplusMode',
+    /** If the charger supports switching between three-phase and one-phase charging */
+    ThreeToOnePhaseSwitch = 'ThreeToOnePhaseSwitch'
 }
 
 export interface EnyoChargerApplianceMetadata {
