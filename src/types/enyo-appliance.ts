@@ -109,6 +109,68 @@ export interface EnyoApplianceModbusMetadata {
     baseAddress?: number;
 }
 
+/**
+ * EEBUS connection metadata for the appliance.
+ *
+ * Holds EEBUS-/SPINE-specific identifiers that identify the underlying
+ * remote node and entity. Vendor-neutral fields such as `vendorName`,
+ * `serialNumber`, `firmwareVersion` and `modelName` are already exposed on
+ * the top-level {@link EnyoApplianceMetadata} and should not be duplicated
+ * here — this interface only carries identifiers that have no meaningful
+ * equivalent outside of EEBUS.
+ */
+export interface EnyoApplianceEebusMetadata {
+    /**
+     * Subject Key Identifier — the unique cryptographic identifier of the
+     * remote EEBUS node this appliance is bound to. Stable across firmware
+     * upgrades and the primary key for EEBUS pairing/trust.
+     */
+    ski: string;
+    /**
+     * SPINE entity type of the appliance within the remote node (e.g.
+     * `'EVSE'`, `'EV'`, `'HeatPumpAppliance'`). Comes from
+     * `NodeManagement.DetailedDiscoveryData` and identifies which sub-entity
+     * of the node represents this appliance when a node exposes multiple.
+     */
+    deviceType?: string;
+    /**
+     * SPINE entity address of the appliance within the remote node — a
+     * sequence of integers identifying the entity. Useful when the node
+     * exposes multiple entities of the same {@link deviceType}.
+     */
+    entityAddress?: number[];
+    /**
+     * Vendor company code as reported via SPINE
+     * `DeviceClassification.ManufacturerData.VendorCode`. EEBUS-specific
+     * counterpart to the human-readable `vendorName` on the parent
+     * metadata.
+     */
+    vendorCode?: string;
+    /**
+     * Brand name under which the device is sold, as reported via SPINE
+     * `DeviceClassification.ManufacturerData.BrandName`.
+     */
+    brandName?: string;
+    /**
+     * Manufacturer-assigned device code (model identifier) as reported via
+     * SPINE `DeviceClassification.ManufacturerData.DeviceCode`.
+     */
+    deviceCode?: string;
+    /**
+     * Manufacturer-assigned node identifier — the literal
+     * `ManufacturerNodeIdentification` field from SPINE
+     * `DeviceClassificationManufacturerDataType`. Often used by vendors as
+     * a stable identifier across firmware upgrades.
+     */
+    manufacturerNodeIdentification?: string;
+    /**
+     * User-assigned node identifier — the literal `UserNodeIdentification`
+     * field from SPINE `DeviceClassificationUserDataType`. May be changed
+     * by the end user via the device's UI at any time.
+     */
+    userNodeIdentification?: string;
+}
+
 export enum EnyoApplianceConnectionType {
     Connector = 'Connector',
     Cloud = 'Cloud'
@@ -126,6 +188,8 @@ export interface EnyoApplianceMetadata {
     status?: EnyoApplianceStatusEnum;
     network?: EnyoApplianceNetworkMetadata;
     modbus?: EnyoApplianceModbusMetadata;
+    /** Optional EEBUS connection metadata (SKI, SPINE entity type, vendor code, …) */
+    eebus?: EnyoApplianceEebusMetadata;
     /** Optional MQTT configuration */
     mqtt?: EnyoApplianceMqttConfig;
     connectionType: EnyoApplianceConnectionType;
