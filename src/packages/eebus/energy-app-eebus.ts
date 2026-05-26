@@ -1,9 +1,11 @@
 import {EebusDeviceManagement} from './eebus-device-management.js';
+import {EebusFeatureCatalog} from './eebus-feature-catalog.js';
 import {EebusIdentityService} from './eebus-identity-service.js';
 import {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 import {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
 
 export {EebusDeviceManagement} from './eebus-device-management.js';
+export {EebusFeatureCatalog} from './eebus-feature-catalog.js';
 export {EebusIdentityService} from './eebus-identity-service.js';
 export {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 export {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
@@ -18,10 +20,11 @@ export {EebusSetpointClient} from './eebus-setpoint-client.js';
 /**
  * Interface for EEbus (SHIP/SPINE) device communication in enyo packages.
  *
- * The API is split into four orthogonal concerns, each its own sub-interface:
+ * The API is split into five orthogonal concerns, each its own sub-interface:
  *
  * - {@link devices} — SHIP-level device lifecycle: discovery, pairing, connection
  * - {@link identity} — NID: observable per-node identity, diagnosis state, use-case discovery
+ * - {@link features} — observable per-peer SPINE entity/feature catalog
  * - {@link useCases} — typed use-case clients: LPC, LPP, MGCP, MPC, OHPCF, Setpoint, Hvac
  * - {@link spine} — low-level SPINE escape hatch for features not yet wrapped
  *
@@ -43,16 +46,21 @@ export {EebusSetpointClient} from './eebus-setpoint-client.js';
  * console.log(`${identity.brandName} ${identity.deviceName} v${identity.softwareRevision}`);
  * eebus.identity.onIdentityChanged(device.ski, next => updateStatusBadge(next));
  *
- * // 3. Use cases — typed, role-aware
- * const supported = await eebus.identity.getSupportedUseCases(device.ski);
- * if (supported.some(u => u.name === 'limitationOfPowerConsumption')) {
+ * // 3. Feature catalog — gate behaviour on what the peer actually advertises
+ * const catalog = await eebus.features.get(device.ski);
+ * const hasLpcServer = catalog.entities
+ *   .flatMap(e => e.features)
+ *   .some(f => f.type === 'LoadControl' && f.role === 'server');
+ *
+ * // 4. Use cases — typed, role-aware
+ * if (hasLpcServer) {
  *   await eebus.useCases.lpc(device.ski).setConsumptionLimit({
  *     value: 11000,
  *     isActive: true,
  *   });
  * }
  *
- * // 4. Escape hatch — raw SPINE for unmodelled features
+ * // 5. Escape hatch — raw SPINE for unmodelled features
  * const dp = await eebus.spine.readData(device.ski, 'DeviceConfiguration', 'keyValueListData');
  * ```
  */
@@ -61,6 +69,12 @@ export interface EnergyAppEebus {
     devices: EebusDeviceManagement;
     /** EEBUS Node Identification (NID) — observable identity + use-case discovery */
     identity: EebusIdentityService;
+    /**
+     * Observable per-peer SPINE entity/feature catalog. Prefer feature-level
+     * gates from this catalog over use-case gates from {@link identity} when
+     * the peer is known to under-populate `NodeManagement.UseCaseData`.
+     */
+    features: EebusFeatureCatalog;
     /** Typed use-case clients for the implemented EEBUS use cases */
     useCases: EebusUseCaseRegistry;
     /** Low-level SPINE escape hatch for features not yet wrapped by a typed client */
