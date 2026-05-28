@@ -15,7 +15,8 @@ import {
  * The client exposes both actor roles on a single interface:
  * - **EMS role (outbound):** {@link getOperationMode}, {@link setOperationMode},
  *   {@link getZoneStates}, {@link onZoneStateChanged}
- * - **CS role (inbound):** {@link provideOperationMode}, {@link provideZoneStates}
+ * - **CS role (inbound):** {@link provideOperationMode}, {@link provideZoneStates},
+ *   {@link onOperationModeReceived}
  *
  * Consumers that only act in one role simply never call the other half — there
  * is no `asManager` / `asAppliance` split.
@@ -74,7 +75,20 @@ export interface EebusHvacClient {
     ) => void;
 
     /**
-     * Remove a listener previously registered via {@link onZoneStateChanged}.
+     * Register a handler invoked when a remote EMS writes the operation mode
+     * to this device. Implementations should apply the mode to the local
+     * controller. Mirrors {@link EebusSetpointClient.onSetpointReceived} so
+     * package authors see a consistent write-handler shape across features.
+     * @param handler Callback invoked with the incoming operation mode
+     * @returns Listener ID that can be passed to {@link removeListener} to deregister
+     */
+    onOperationModeReceived: (
+        handler: (mode: EebusHvacOperationMode) => Promise<void>
+    ) => string;
+
+    /**
+     * Remove a listener previously registered via {@link onZoneStateChanged}
+     * or {@link onOperationModeReceived}.
      * @param listenerId The ID returned by the registration method
      */
     removeListener: (listenerId: string) => void;
