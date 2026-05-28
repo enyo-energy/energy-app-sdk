@@ -181,6 +181,7 @@ export enum EnyoDataBusMessageEnum {
     PauseChargingV1 = 'PauseChargingV1',
     ResumeChargingV1 = 'ResumeChargingV1',
     ChangeChargingPowerV1 = 'ChangeChargingPowerV1',
+    ChangeChargeModeV1 = 'ChangeChargeModeV1',
     SetChargingScheduleV1 = 'SetChargingScheduleV1',
     StartChargeV1 = 'StartChargeV1',
     StopChargeV1 = 'StopChargeV1',
@@ -220,7 +221,9 @@ export enum EnyoDataBusMessageEnum {
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
     StartAirConditioningV1 = 'StartAirConditioningV1',
     StopAirConditioningV1 = 'StopAirConditioningV1',
-    VehicleSocUpdateV1 = 'VehicleSocUpdateV1'
+    VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
+    StartCalibrationV1 = 'StartCalibrationV1',
+    StopCalibrationV1 = 'StopCalibrationV1'
 }
 
 export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -598,6 +601,37 @@ export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
     applianceId: string;
     data: {
         maxChargingPowerKw: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to change the charge mode of an active or upcoming
+ * charging session on a specific charger. Allows switching between e.g.
+ * immediate, cost-optimized, or price-limit charging without stopping
+ * and restarting the session.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
+ * message's `id` to indicate whether the mode change was accepted,
+ * rejected, or is not supported.
+ */
+export interface EnyoDataBusChangeChargeModeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ChangeChargeModeV1;
+    /** ID of the charger appliance whose charge mode should be changed */
+    applianceId: string;
+    data: {
+        /** The new charge mode to apply to the session */
+        chargeMode: EnyoChargeModeEnum;
+        /**
+         * Optional ISO timestamp for target completion time. Relevant for
+         * modes such as {@link EnyoChargeModeEnum.CostOptimized} or
+         * {@link EnyoChargeModeEnum.PriceLimit} that need a deadline to
+         * plan against.
+         */
+        completeChargeAtIso?: string;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };
@@ -1488,5 +1522,48 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
         socPercent: number;
         /** Total usable capacity of the vehicle's traction battery in kWh, if known */
         batterySizeKwh?: number;
+    };
+}
+
+/**
+ * Command message to start a calibration routine on a specific appliance.
+ * Calibration is a vendor- and appliance-specific procedure (e.g. zeroing
+ * a meter, learning a power range, aligning sensors); the targeted
+ * integration decides what calibration entails for the given appliance.
+ *
+ * The receiving integration must answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
+ * message's `id` to indicate whether the calibration was accepted,
+ * rejected, or is not supported by the appliance.
+ */
+export interface EnyoDataBusStartCalibrationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StartCalibrationV1;
+    /** ID of the appliance to start calibration on */
+    applianceId: string;
+    data: {
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to stop a calibration routine that is currently running
+ * on a specific appliance. The targeted integration is expected to abort
+ * any in-progress calibration for the addressed appliance.
+ *
+ * The receiving integration must answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
+ * message's `id` to indicate whether the stop request was accepted,
+ * rejected, or is not supported by the appliance.
+ */
+export interface EnyoDataBusStopCalibrationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.StopCalibrationV1;
+    /** ID of the appliance to stop calibration on */
+    applianceId: string;
+    data: {
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
