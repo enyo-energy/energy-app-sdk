@@ -1,10 +1,10 @@
-import {EebusHvacClient} from './eebus-hvac-client.js';
-import {EebusLpcClient} from './eebus-lpc-client.js';
+import {EebusHvacClient, HvacClientOptions} from './eebus-hvac-client.js';
+import {EebusLpcClient, LpcClientOptions} from './eebus-lpc-client.js';
 import {EebusLppClient} from './eebus-lpp-client.js';
 import {EebusMgcpClient} from './eebus-mgcp-client.js';
-import {EebusMpcClient} from './eebus-mpc-client.js';
-import {EebusOhpcfClient} from './eebus-ohpcf-client.js';
-import {EebusSetpointClient} from './eebus-setpoint-client.js';
+import {EebusMpcClient, MpcClientOptions} from './eebus-mpc-client.js';
+import {EebusOhpcfClient, OhpcfClientOptions} from './eebus-ohpcf-client.js';
+import {EebusSetpointClient, SetpointClientOptions} from './eebus-setpoint-client.js';
 
 /**
  * Registry of typed EEBUS use-case clients, scoped per remote device (SKI).
@@ -44,9 +44,17 @@ export interface EebusUseCaseRegistry {
     /**
      * Get the **Limitation of Power Consumption** client for a remote node.
      * LPC limits are obligations the remote MUST respect.
+     *
+     * Multi-entity peers (e.g. a heat pump that hosts `LoadControl` on
+     * more than one entity) should pass {@link LpcClientOptions.address}
+     * or {@link LpcClientOptions.prefer} to pin the client to a specific
+     * entity. Omitting `options` keeps the existing first-match
+     * behaviour.
+     *
      * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
      */
-    lpc: (ski: string) => EebusLpcClient;
+    lpc: (ski: string, options?: LpcClientOptions) => EebusLpcClient;
 
     /**
      * Get the **Limitation of Power Production** client for a remote node.
@@ -65,31 +73,53 @@ export interface EebusUseCaseRegistry {
     /**
      * Get the **Monitoring of Power Consumption** client for a remote node.
      * Read-only telemetry from a controllable system reporting its own consumption.
+     *
+     * Heat pumps that host `Measurement` on both `HeatPumpAppliance` and
+     * `Compressor` should pass {@link MpcClientOptions.prefer} (or
+     * {@link MpcClientOptions.address} when the address is already
+     * known). Without a hint the client picks the first server match the
+     * SDK resolves.
+     *
+     * The default options enable `fallbackToInlineScope`, so a single
+     * slow `measurementDescriptionListData` read on a flaky peer no
+     * longer silences the client — it falls back to extracting scope
+     * from inbound notifies.
+     *
      * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout/fallback configuration
      */
-    mpc: (ski: string) => EebusMpcClient;
+    mpc: (ski: string, options?: MpcClientOptions) => EebusMpcClient;
 
     /**
      * Get the **Optimization of Self Consumption by Heat Pump Compressor
      * Flexibility** client for a remote node. Incentive-table-driven heat
      * pump coordination.
+     *
+     * Two on-wire flavours exist (see {@link OhpcfClientOptions.flavour}):
+     * `IncentiveTable` (canonical) and `SmartEnergyManagementPs`
+     * (Vaillant). `auto` (the default) probes the feature catalog and
+     * picks whichever the peer advertises.
+     *
      * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/flavour configuration
      */
-    ohpcf: (ski: string) => EebusOhpcfClient;
+    ohpcf: (ski: string, options?: OhpcfClientOptions) => EebusOhpcfClient;
 
     /**
      * Get the **Setpoint** client for a remote node. Manages target values
      * for controllable parameters such as per-zone heat-pump temperature
      * setpoints. Pair with {@link hvac} to read measured values.
      * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
      */
-    setpoint: (ski: string) => EebusSetpointClient;
+    setpoint: (ski: string, options?: SetpointClientOptions) => EebusSetpointClient;
 
     /**
      * Get the **Hvac** client for a remote node. Observes heating/cooling
      * operation mode and per-zone state on a heat-pump appliance. Pair with
      * {@link setpoint} to write target values.
      * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
      */
-    hvac: (ski: string) => EebusHvacClient;
+    hvac: (ski: string, options?: HvacClientOptions) => EebusHvacClient;
 }

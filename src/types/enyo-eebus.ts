@@ -1,3 +1,5 @@
+import {SpineEntityType} from './enyo-spine.js';
+
 /**
  * Enum representing the connection status of an EEbus device.
  */
@@ -43,6 +45,38 @@ export interface EebusDiscoveredDevice {
 }
 
 /**
+ * Targets a specific entity (and optionally feature) on a remote SPINE node
+ * when issuing a low-level read / write / subscribe.
+ *
+ * The SDK resolves the actual SPINE feature address from this hint:
+ * - When {@link feature} is supplied it is used verbatim.
+ * - When omitted the SDK searches for the unique server feature of the
+ *   requested type on {@link entity}; if more than one exists on that entity
+ *   the operation throws — callers can disambiguate by supplying
+ *   {@link feature} explicitly.
+ *
+ * Heat pumps routinely expose the same `featureType` on multiple entities
+ * (e.g. `Measurement` on both `HeatPumpAppliance` and `Compressor`). Without
+ * a target, the SDK has to pick one vantage point and consumers cannot tell
+ * which — pass a target whenever a peer advertises a feature on more than
+ * one entity. Use {@link EebusFeatureCatalog.findFeatureAddresses} to
+ * enumerate the candidates.
+ */
+export interface SpineRemoteTarget {
+    /**
+     * Remote entity address (e.g. `[3, 1]` for a Compressor sub-entity under
+     * a HeatPumpAppliance).
+     */
+    entity: number[];
+    /**
+     * Remote feature index within {@link entity}. Optional — when omitted
+     * the SDK resolves it from the entity's feature catalog by matching the
+     * requested feature type and server role.
+     */
+    feature?: number;
+}
+
+/**
  * Represents an opaque data point read from a SPINE feature via the low-level API.
  * The {@link value} is intentionally `unknown` — the low-level API is the escape
  * hatch and does not enforce SPINE message structure. Use the typed use-case
@@ -55,6 +89,22 @@ export interface EebusDataPoint {
     timestamp: Date;
     /** Unit of measurement, if applicable (e.g. "W", "Wh", "°C") */
     unit?: string;
+    /**
+     * Source address of this notify/reply from the remote SHIP node.
+     *
+     * Populated on inbound data points so callers that subscribed across
+     * multiple entities can attribute each event to a specific entity and
+     * feature — essential on peers that expose the same feature type on
+     * more than one entity. May be `undefined` on data points produced
+     * before the SDK could resolve the source address (e.g. an early notify
+     * that arrives before DetailedDiscovery has completed).
+     */
+    source?: {
+        /** SPINE entity address the data point originated from */
+        entity: number[];
+        /** SPINE feature index on {@link entity} the data point originated from */
+        feature: number;
+    };
 }
 
 /**
@@ -103,8 +153,11 @@ export enum EebusOperatingStateEnum {
 export interface EebusEntityDescriptor {
     /** SPINE entity address (a sequence of integers identifying the entity within the node) */
     address: number[];
-    /** SPINE entity type (e.g. "DeviceInformation", "EVSE", "EV", "HeatPumpAppliance") */
-    entityType: string;
+    /**
+     * SPINE entity type from the {@link SpineEntityType} catalogue
+     * (e.g. `SpineEntityType.EVSE`, `SpineEntityType.HM_HEAT_PUMP`).
+     */
+    entityType: SpineEntityType;
     /** Optional human-readable description provided by the device */
     description?: string;
 }

@@ -34,9 +34,11 @@ export * from './types/enyo-currency.js';
 export * from './packages/energy-app-sequence-generator.js';
 export * from './packages/energy-app-energy-prices.js'
 export * from './packages/energy-app-modbus-rtu.js'
+export * from './types/enyo-spine.js'
 export * from './types/enyo-eebus.js'
 export * from './types/enyo-eebus-use-cases.js'
 export * from './types/enyo-eebus-features.js'
+export * from './types/enyo-eebus-errors.js'
 export * from './packages/energy-app-eebus.js'
 export * from './types/enyo-mqtt.js'
 export * from './packages/energy-app-mqtt.js'

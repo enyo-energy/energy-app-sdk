@@ -5,17 +5,17 @@ import {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 import {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
 
 export {EebusDeviceManagement} from './eebus-device-management.js';
-export {EebusFeatureCatalog} from './eebus-feature-catalog.js';
+export {EebusFeatureCatalog, EebusFeatureAddressMatch} from './eebus-feature-catalog.js';
 export {EebusIdentityService} from './eebus-identity-service.js';
 export {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 export {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
-export {EebusHvacClient} from './eebus-hvac-client.js';
-export {EebusLpcClient} from './eebus-lpc-client.js';
+export {EebusHvacClient, HvacClientOptions} from './eebus-hvac-client.js';
+export {EebusLpcClient, LpcClientOptions} from './eebus-lpc-client.js';
 export {EebusLppClient} from './eebus-lpp-client.js';
 export {EebusMgcpClient} from './eebus-mgcp-client.js';
-export {EebusMpcClient} from './eebus-mpc-client.js';
-export {EebusOhpcfClient} from './eebus-ohpcf-client.js';
-export {EebusSetpointClient} from './eebus-setpoint-client.js';
+export {EebusMpcClient, MpcClientOptions} from './eebus-mpc-client.js';
+export {EebusOhpcfClient, OhpcfClientOptions} from './eebus-ohpcf-client.js';
+export {EebusSetpointClient, SetpointClientOptions} from './eebus-setpoint-client.js';
 
 /**
  * Interface for EEbus (SHIP/SPINE) device communication in enyo packages.

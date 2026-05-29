@@ -1,3 +1,5 @@
+import {SpineEntityType, SpineFeatureType, SpineFunctionType} from './enyo-spine.js';
+
 /**
  * Types describing the SPINE feature/entity catalog advertised by a remote
  * EEbus peer.
@@ -53,8 +55,12 @@ export interface EebusFeatureAddress {
  * when forwarding to {@link EebusSpineLowLevel}.
  */
 export interface EebusSupportedFunction {
-    /** SPINE function/data-set name (e.g. `'loadControlLimitListData'`, `'measurementListData'`) */
-    function: string;
+    /**
+     * SPINE function/data-set name from the
+     * {@link SpineFunctionType} catalogue
+     * (e.g. `SpineFunctionType.LoadControlLimitListData`).
+     */
+    function: SpineFunctionType;
     /** Operations the remote permits on this function */
     possibleOperations: {
         /** Present when the remote permits reads; payload mirrors the SPINE `read` operation parameters */
@@ -76,8 +82,13 @@ export interface EebusSupportedFunction {
 export interface EebusRemoteFeature {
     /** SPINE address triple for this feature */
     address: EebusFeatureAddress;
-    /** SPINE feature type wire string (e.g. `'LoadControl'`, `'Measurement'`) */
-    type: string;
+    /**
+     * SPINE feature type from the {@link SpineFeatureType} catalogue
+     * (e.g. `SpineFeatureType.LOAD_CONTROL`,
+     * `SpineFeatureType.MEASUREMENT`). The low-level SPINE escape hatch
+     * accepts wider strings; this structured surface does not.
+     */
+    type: SpineFeatureType;
     /** SPINE role under which the feature is advertised */
     role: EebusFeatureRole;
     /** Functions the remote advertises as supported on this feature */
@@ -101,8 +112,12 @@ export interface EebusRemoteFeature {
 export interface EebusRemoteEntity {
     /** SPINE entity address — a sequence of integers identifying the entity (e.g. `[1]` or `[1, 1]`) */
     address: number[];
-    /** SPINE entity type wire string (e.g. `'HeatPumpAppliance'`, `'Compressor'`, `'EVSE'`) */
-    type: string;
+    /**
+     * SPINE entity type from the {@link SpineEntityType} catalogue
+     * (e.g. `SpineEntityType.HM_HEAT_PUMP`,
+     * `SpineEntityType.HM_COMPRESSOR`, `SpineEntityType.EVSE`).
+     */
+    type: SpineEntityType;
     /** Optional manufacturer-provided label */
     label?: string;
     /** Optional manufacturer-provided description */

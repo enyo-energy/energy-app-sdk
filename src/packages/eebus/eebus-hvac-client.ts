@@ -1,7 +1,37 @@
+import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {
     EebusHvacOperationMode,
     EebusHvacZoneState
 } from '../../types/enyo-eebus-use-cases.js';
+import {SpineEntityType} from '../../types/enyo-spine.js';
+
+/**
+ * Per-call configuration for {@link EebusUseCaseRegistry.hvac}.
+ *
+ * Heat pumps expose `Hvac` on the entity that owns the zone, typically
+ * `HVACRoom`. Multi-zone peers may host the feature on more than one
+ * entity — pin the target via {@link address} or {@link prefer} to talk
+ * to a specific zone.
+ */
+export interface HvacClientOptions {
+    /**
+     * Bind the client to a specific entity (and optionally feature index)
+     * on the remote. Wins over {@link prefer} when both are supplied.
+     */
+    address?: SpineRemoteTarget;
+    /**
+     * Resolution hint when {@link address} is omitted. Pin to a
+     * {@link SpineEntityType} value — typically
+     * {@link SpineEntityType.HVAC_ROOM} or
+     * {@link SpineEntityType.HEATING_ZONE} on a multi-zone heat pump.
+     */
+    prefer?: SpineEntityType | 'auto';
+    /**
+     * Override the internal `hvacOperationModeDescriptionListData` read
+     * timeout (default 5_000 ms).
+     */
+    descriptionReadTimeoutMs?: number;
+}
 
 /**
  * Client for the EEBUS **Hvac** feature.
@@ -20,6 +50,13 @@ import {
  *
  * Consumers that only act in one role simply never call the other half — there
  * is no `asManager` / `asAppliance` split.
+ *
+ * **Resolution.** The client resolves the remote `Hvac` feature via the
+ * SPINE feature catalog rather than the peer's `NodeManagement.UseCaseData`
+ * advertisement, so peers that expose `Hvac` without advertising a
+ * matching use case (e.g. Vaillant VR940) are supported.
+ * `EebusFeatureUnavailableError` is thrown only when no `Hvac` server
+ * feature exists on the peer at all.
  */
 export interface EebusHvacClient {
     // ─── EMS role (outbound) ─────────────────────────────────────────

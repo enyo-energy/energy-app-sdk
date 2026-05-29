@@ -226,7 +226,7 @@ export enum EnyoDataBusMessageEnum {
     StopCalibrationV1 = 'StopCalibrationV1'
 }
 
-export type EnyoDataBusMessageResolution = '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
+export type EnyoDataBusMessageResolution = '1s' | '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
 
 /**
  * Optional addressing information for a {@link EnyoDataBusMessage}. When omitted

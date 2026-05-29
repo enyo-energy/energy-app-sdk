@@ -1,4 +1,36 @@
+import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusLpcAck, EebusLpcFailsafe, EebusLpcLimit} from '../../types/enyo-eebus-use-cases.js';
+import {SpineEntityType} from '../../types/enyo-spine.js';
+
+/**
+ * Per-call configuration for {@link EebusUseCaseRegistry.lpc}.
+ *
+ * On flat peers (a single controllable system per node) the defaults
+ * resolve correctly. Multi-entity peers — notably heat pumps that host
+ * `LoadControl` on both a top-level `HeatPumpAppliance` entity and an
+ * inner controllable entity — should pin the client to the entity whose
+ * limit semantics they want.
+ */
+export interface LpcClientOptions {
+    /**
+     * Bind the client to a specific entity (and optionally feature index)
+     * on the remote. Wins over {@link prefer} when both are supplied.
+     */
+    address?: SpineRemoteTarget;
+    /**
+     * Resolution hint when {@link address} is omitted. `'auto'` (default)
+     * keeps current first-match behaviour. Otherwise pin the resolver
+     * to a {@link SpineEntityType} value — typically
+     * {@link SpineEntityType.HM_HEAT_PUMP} for an appliance-level
+     * `LoadControl` server.
+     */
+    prefer?: SpineEntityType | 'auto';
+    /**
+     * Override the internal `loadControlLimitDescriptionListData` read
+     * timeout (default 5_000 ms).
+     */
+    descriptionReadTimeoutMs?: number;
+}
 
 /**
  * Client for the EEBUS **Limitation of Power Consumption (LPC)** use case.

@@ -1,4 +1,35 @@
+import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusSetpointValue} from '../../types/enyo-eebus-use-cases.js';
+import {SpineEntityType} from '../../types/enyo-spine.js';
+
+/**
+ * Per-call configuration for {@link EebusUseCaseRegistry.setpoint}.
+ *
+ * Heat pumps expose `Setpoint` on the entity that owns the zone — most
+ * commonly `HVACRoom`, occasionally `HeatingZone`. The default resolution
+ * scans the catalog and picks the first match. Pin the target via
+ * {@link address} or {@link prefer} when the peer hosts multiple
+ * candidates.
+ */
+export interface SetpointClientOptions {
+    /**
+     * Bind the client to a specific entity (and optionally feature index)
+     * on the remote. Wins over {@link prefer} when both are supplied.
+     */
+    address?: SpineRemoteTarget;
+    /**
+     * Resolution hint when {@link address} is omitted. Pin to a
+     * {@link SpineEntityType} value — typically
+     * {@link SpineEntityType.HVAC_ROOM} or
+     * {@link SpineEntityType.HEATING_ZONE} on a multi-zone heat pump.
+     */
+    prefer?: SpineEntityType | 'auto';
+    /**
+     * Override the internal `setpointDescriptionListData` read timeout
+     * (default 5_000 ms).
+     */
+    descriptionReadTimeoutMs?: number;
+}
 
 /**
  * Client for the EEBUS **Setpoint** feature.
@@ -17,6 +48,13 @@ import {EebusSetpointValue} from '../../types/enyo-eebus-use-cases.js';
  *
  * Consumers that only act in one role simply never call the other half — there
  * is no `asManager` / `asAppliance` split.
+ *
+ * **Resolution.** The client resolves the remote `Setpoint` feature via
+ * the SPINE feature catalog rather than the peer's
+ * `NodeManagement.UseCaseData` advertisement. Peers that expose `Setpoint`
+ * without advertising a matching use case (e.g. Vaillant VR940) are now
+ * supported. `EebusFeatureUnavailableError` is thrown only when no
+ * `Setpoint` server feature exists on the peer at all.
  */
 export interface EebusSetpointClient {
     // ─── EMS role (outbound) ─────────────────────────────────────────

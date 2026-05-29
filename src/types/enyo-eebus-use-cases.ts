@@ -218,6 +218,93 @@ export interface EebusOhpcfFlexibility {
     isRunning: boolean;
 }
 
+/**
+ * On-wire flavour of the OHPCF use case. EEBUS defines two compatible
+ * encodings:
+ *
+ * - `'incentiveTable'` — the canonical flavour. The CEM publishes an
+ *   {@link EebusOhpcfIncentiveTable}; the heat pump schedules its
+ *   compressor accordingly.
+ * - `'smartEnergyManagementPs'` — the Vaillant flavour, layered on the
+ *   `SmartEnergyManagementPs` SPINE feature. The heat pump publishes
+ *   {@link EebusOhpcfAnnouncement}s describing planned consumption
+ *   windows, and the CEM can activate a window now via
+ *   {@link EebusOhpcfClient.activateNow}.
+ *
+ * The two flavours are *not* mutually exclusive on every peer, but most
+ * peers expose only one. The default resolution (`'auto'`) probes the
+ * feature catalog and picks whichever the peer advertises.
+ */
+export type EebusOhpcfFlavour = 'incentiveTable' | 'smartEnergyManagementPs' | 'auto';
+
+/**
+ * An OHPCF announcement emitted by a heat pump under the
+ * `SmartEnergyManagementPs` flavour. The heat pump tells the CEM "here is
+ * a window in which I plan to consume X watts for Y seconds; you may
+ * activate me now or wait".
+ *
+ * Field shape is the SDK's parsed view of the SEMP payload — see
+ * `SmartEnergyManagementPs` in the SPINE spec for the underlying wire
+ * fields.
+ */
+export interface EebusOhpcfAnnouncement {
+    /** Timestamp this announcement was emitted */
+    timestamp: Date;
+    /**
+     * Manufacturer-assigned identifier for the announced operation window.
+     * Round-trip this on {@link EebusOhpcfApplianceContext.announcementId}
+     * when activating the window.
+     */
+    announcementId: string;
+    /**
+     * Earliest moment the CEM may activate the announced window. The heat
+     * pump will reject {@link EebusOhpcfClient.activateNow} calls before
+     * this point.
+     */
+    earliestActivation: Date;
+    /**
+     * Latest moment by which the CEM must have activated the window or it
+     * lapses.
+     */
+    latestActivation: Date;
+    /** Nominated electrical power the compressor will draw, in Watts */
+    nominatedPowerW: number;
+    /** Nominated operating duration, in seconds */
+    nominatedDurationSeconds: number;
+    /**
+     * Whether the heat pump considers the window optional (CEM may skip)
+     * or mandatory (heat pump will activate on its own at
+     * {@link latestActivation} if the CEM stays silent).
+     */
+    optional: boolean;
+}
+
+/**
+ * Context passed to {@link EebusOhpcfClient.activateNow} to tell the heat
+ * pump "activate the announced window right now under these parameters".
+ *
+ * Most callers populate {@link announcementId} verbatim from the matching
+ * {@link EebusOhpcfAnnouncement} and leave the optional overrides unset.
+ */
+export interface EebusOhpcfApplianceContext {
+    /**
+     * Identifier of the announcement being activated; copy from
+     * {@link EebusOhpcfAnnouncement.announcementId}.
+     */
+    announcementId: string;
+    /**
+     * Optional override of the activated power level, in Watts. Must lie
+     * within the announced flexibility band. Defaults to the
+     * announcement's nominated power.
+     */
+    powerW?: number;
+    /**
+     * Optional override of the activated duration, in seconds. Defaults to
+     * the announcement's nominated duration.
+     */
+    durationSeconds?: number;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Setpoint — target value(s) for a controllable parameter (e.g. zone temperature)
 // ═══════════════════════════════════════════════════════════════════════════

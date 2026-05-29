@@ -1,4 +1,36 @@
-import {EebusRemoteFeatureCatalog} from '../../types/enyo-eebus-features.js';
+import {EebusFeatureRole, EebusRemoteFeatureCatalog} from '../../types/enyo-eebus-features.js';
+import {SpineEntityType, SpineFeatureType, SpineFunctionType} from '../../types/enyo-spine.js';
+
+/**
+ * One match returned by {@link EebusFeatureCatalog.findFeatureAddresses}.
+ *
+ * Carries enough context for a caller to pick *which* entity it wants to
+ * target without having to walk the full {@link EebusRemoteFeatureCatalog}
+ * tree itself. {@link entityType} is the deciding field on heat pumps —
+ * it lets a caller say "the compressor's `Measurement`, not the heat
+ * pump's" without hard-coding entity addresses.
+ */
+export interface EebusFeatureAddressMatch {
+    /** SPINE entity address that hosts the feature (e.g. `[3, 1]`) */
+    entity: number[];
+    /**
+     * SPINE entity type that hosts the feature, from the
+     * {@link SpineEntityType} catalogue
+     * (e.g. `SpineEntityType.HM_COMPRESSOR`,
+     * `SpineEntityType.HVAC_ROOM`).
+     */
+    entityType: SpineEntityType;
+    /** SPINE feature index within {@link entity} */
+    feature: number;
+    /**
+     * Functions the remote advertises as supported on this feature
+     * (e.g. `[SpineFunctionType.MeasurementListData,
+     * SpineFunctionType.MeasurementDescriptionListData]`). Useful for
+     * picking between entities that nominally host the same feature
+     * type but expose different functions.
+     */
+    supportedFunctions: SpineFunctionType[];
+}
 
 /**
  * Per-peer SPINE entity/feature catalog for paired EEbus remotes.
@@ -86,6 +118,36 @@ export interface EebusFeatureCatalog {
         ski: string,
         listener: (catalog: EebusRemoteFeatureCatalog) => void,
     ) => string;
+
+    /**
+     * Enumerate every entity on a remote node that advertises a feature of
+     * the given type and role, with enough context for the caller to pick
+     * meaningfully between them.
+     *
+     * The canonical use case is multi-entity heat pumps: a Vaillant VR940
+     * advertises `Measurement` (server) on its `HeatPumpAppliance`,
+     * `Compressor`, `HVACRoom`, and `TemperatureSensor` entities. A caller
+     * that wants the compressor's electrical measurement (not the
+     * appliance-wide MPC roll-up) walks this list, filters by
+     * `entityType === 'Compressor'`, and passes the resulting `entity` /
+     * `feature` to {@link EebusSpineLowLevel.subscribe} (or to a typed
+     * use-case client's `address` option).
+     *
+     * The result is derived from the current {@link get} snapshot — it
+     * does not trigger a re-fetch from the remote. When the peer is not
+     * paired or not currently connected the call resolves to an empty
+     * array rather than throwing.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param featureType SPINE feature type from the {@link SpineFeatureType} catalogue (e.g. `SpineFeatureType.MEASUREMENT`, `SpineFeatureType.SMART_ENERGY_MANAGEMENT_PS`)
+     * @param role SPINE role to match: `'server'` for features the remote *hosts*, `'client'` for features it *consumes*
+     * @returns Every matching feature address on the peer, in catalog order
+     */
+    findFeatureAddresses: (
+        ski: string,
+        featureType: SpineFeatureType,
+        role: EebusFeatureRole,
+    ) => Promise<EebusFeatureAddressMatch[]>;
 
     /**
      * Remove a feature-catalog listener previously registered via
