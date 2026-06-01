@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusVapdTelemetry} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.vapd}.
@@ -30,7 +31,7 @@ export interface VapdClientOptions {
  * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
  * `Measurement` and `DeviceConfiguration` are already present.
  */
-export interface EebusVapdClient {
+export interface EebusVapdClient extends EebusUseCaseClient {
     /**
      * Read the PV system's current active production in Watts.
      *

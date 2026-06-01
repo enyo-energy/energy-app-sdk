@@ -1,4 +1,5 @@
 import {EebusMgcpReading} from '../../types/enyo-eebus-use-cases.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Client for the EEBUS **Monitoring of Grid Connection Point (MGCP)** use case.
@@ -11,7 +12,7 @@ import {EebusMgcpReading} from '../../types/enyo-eebus-use-cases.js';
  * - **CEM role (consume):** {@link getReading}, {@link onReading}
  * - **GCP role (provide):** {@link provideReading}
  */
-export interface EebusMgcpClient {
+export interface EebusMgcpClient extends EebusUseCaseClient {
     // ─── CEM role (consume) ──────────────────────────────────────────
 
     /**

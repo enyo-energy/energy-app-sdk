@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusOpevAck, EebusOpevLimit} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.opev}.
@@ -36,7 +37,7 @@ export interface OpevClientOptions {
  * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`
  * (LoadControl itself is already present).
  */
-export interface EebusOpevClient {
+export interface EebusOpevClient extends EebusUseCaseClient {
     // ─── EMS role ────────────────────────────────────────────────────
 
     /**

@@ -8,6 +8,7 @@ export {EebusDeviceManagement} from './eebus-device-management.js';
 export {EebusFeatureCatalog, EebusFeatureAddressMatch} from './eebus-feature-catalog.js';
 export {EebusIdentityService} from './eebus-identity-service.js';
 export {EebusSpineLowLevel} from './eebus-spine-low-level.js';
+export {EebusUseCaseClient} from './eebus-use-case-client.js';
 export {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
 export {EebusHvacClient, HvacClientOptions} from './eebus-hvac-client.js';
 export {EebusLpcClient, LpcClientOptions} from './eebus-lpc-client.js';

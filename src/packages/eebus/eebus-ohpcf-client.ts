@@ -7,6 +7,7 @@ import {
     EebusOhpcfIncentiveTable,
     EebusOhpcfPlanState,
 } from '../../types/enyo-eebus-use-cases.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.ohpcf}.
@@ -68,7 +69,7 @@ export interface OhpcfClientOptions {
  * @see https://techdocs.wago.com/Software/EEBUS_Connector/en-US/3657311371.html
  * @see https://github.com/enbility/eebus-go/pull/122
  */
-export interface EebusOhpcfClient {
+export interface EebusOhpcfClient extends EebusUseCaseClient {
     // ─── CEM role ────────────────────────────────────────────────────
 
     /**

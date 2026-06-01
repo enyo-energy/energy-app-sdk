@@ -5,6 +5,7 @@ import {
     EebusEvIdentification,
 } from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.evcc}.
@@ -40,7 +41,7 @@ export interface EvccClientOptions {
  * `@enyo-energy/eebus`. The SDK interface is shipped now so consumers
  * can compile against the final shape.
  */
-export interface EebusEvccClient {
+export interface EebusEvccClient extends EebusUseCaseClient {
     /**
      * Read the EV's identification (EVCCID and identification type).
      * Returns `undefined` when the EV does not publish an

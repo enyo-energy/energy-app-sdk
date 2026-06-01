@@ -4,6 +4,7 @@ import {
     EebusHvacZoneState
 } from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.hvac}.
@@ -58,7 +59,7 @@ export interface HvacClientOptions {
  * `EebusFeatureUnavailableError` is thrown only when no `Hvac` server
  * feature exists on the peer at all.
  */
-export interface EebusHvacClient {
+export interface EebusHvacClient extends EebusUseCaseClient {
     // ─── EMS role (outbound) ─────────────────────────────────────────
 
     /**

@@ -5,6 +5,7 @@ import {
     EebusOhpcfIncentiveTable,
 } from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.cevc}.
@@ -39,7 +40,7 @@ export interface CevcClientOptions {
  * until `ElectricalConnectionClient` and `TimeSeriesClient` both land
  * in `@enyo-energy/eebus`.
  */
-export interface EebusCevcClient {
+export interface EebusCevcClient extends EebusUseCaseClient {
     // ─── EMS role ────────────────────────────────────────────────────
 
     /**

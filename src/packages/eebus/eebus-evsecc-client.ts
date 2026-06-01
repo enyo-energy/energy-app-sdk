@@ -4,6 +4,7 @@ import {
     EebusEvseOperatingState,
 } from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.evsecc}.
@@ -49,7 +50,7 @@ export interface EvseccClientOptions {
  * present in the EEBUS library, so this client is fully wired
  * immediately (no missing-library throws).
  */
-export interface EebusEvseccClient {
+export interface EebusEvseccClient extends EebusUseCaseClient {
     /**
      * Read the EVSE's `DeviceClassification.ManufacturerData` — vendor /
      * model identifiers and revisions.

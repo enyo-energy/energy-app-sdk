@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusSetpointValue} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.setpoint}.
@@ -56,7 +57,7 @@ export interface SetpointClientOptions {
  * supported. `EebusFeatureUnavailableError` is thrown only when no
  * `Setpoint` server feature exists on the peer at all.
  */
-export interface EebusSetpointClient {
+export interface EebusSetpointClient extends EebusUseCaseClient {
     // ─── EMS role (outbound) ─────────────────────────────────────────
 
     /**

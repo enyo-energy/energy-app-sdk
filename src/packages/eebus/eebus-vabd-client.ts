@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusVabdTelemetry} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.vabd}.
@@ -31,7 +32,7 @@ export interface VabdClientOptions {
  * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
  * `Measurement` and `DeviceConfiguration` are already present.
  */
-export interface EebusVabdClient {
+export interface EebusVabdClient extends EebusUseCaseClient {
     /**
      * Read the battery's current state of charge in percent (0–100).
      *

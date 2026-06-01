@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusOscevAck, EebusOscevLimit} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.oscev}.
@@ -24,7 +25,7 @@ export interface OscevClientOptions {
  * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
  * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
  */
-export interface EebusOscevClient {
+export interface EebusOscevClient extends EebusUseCaseClient {
     // ─── EMS role ────────────────────────────────────────────────────
 
     /**

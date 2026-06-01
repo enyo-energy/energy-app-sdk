@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
-import {EebusLpcAck, EebusLpcFailsafe, EebusLpcLimit} from '../../types/enyo-eebus-use-cases.js';
+import {EebusLpcAck, EebusLpcFailsafe, EebusLpcLimit, EebusLpcNack} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.lpc}.
@@ -40,23 +41,56 @@ export interface LpcClientOptions {
  * {@link EebusLppClient} which is a recommendation.
  *
  * The client exposes both actor roles on a single interface:
- * - **EMS role (outbound):** {@link setConsumptionLimit}, {@link getActiveConsumptionLimit},
- *   {@link getFailsafeLimit}
- * - **CS role (inbound):** {@link onConsumptionLimitReceived}, {@link provideFailsafeLimit}
+ * - **EMS role (outbound):** {@link setConsumptionLimit}, {@link setFailsafeLimit},
+ *   {@link getActiveConsumptionLimit}, {@link getFailsafeLimit}
+ * - **EMS role (inbound):** {@link onActiveConsumptionLimitChanged},
+ *   {@link onConsumptionLimitNack}, {@link onFailsafeChanged}
+ * - **CS role (inbound):** {@link onConsumptionLimitReceived},
+ *   {@link provideFailsafeLimit}
  *
  * Consumers that only act in one role simply never call the other half — there is
  * no `asManager` / `asAppliance` split.
+ *
+ * **Acknowledgement semantics.** {@link setConsumptionLimit} resolves once
+ * the SPINE write-ack lands — the CS has accepted the message into its
+ * queue. That is *not* the same as the CS having applied the limit; for
+ * the latter, subscribe to {@link onActiveConsumptionLimitChanged}.
+ * Explicit rejections (limit out of permitted set, failsafe override
+ * engaged, etc.) arrive via {@link onConsumptionLimitNack} so EMS code
+ * does not have to poll {@link getActiveConsumptionLimit} to detect them.
  */
-export interface EebusLpcClient {
+export interface EebusLpcClient extends EebusUseCaseClient {
     // ─── EMS role (outbound) ─────────────────────────────────────────
 
     /**
      * Send a consumption limit to the controllable system. The remote is
      * obligated to respect the limit until it expires, is replaced, or is
      * cleared by sending a limit with `isActive: false`.
+     *
+     * Resolves on the SPINE write-ack. See the class-level note for the
+     * difference between "accepted" and "applied"; subscribe to
+     * {@link onActiveConsumptionLimitChanged} and
+     * {@link onConsumptionLimitNack} to observe the CS's downstream
+     * decision.
+     *
      * @param limit The consumption limit to apply
      */
     setConsumptionLimit: (limit: EebusLpcLimit) => Promise<void>;
+
+    /**
+     * Configure the controllable system's failsafe limit — the value it
+     * falls back to when the SHIP connection to this EMS drops. The
+     * canonical use case is §14a EnWG, where a grid-operator-acting
+     * EMS pushes a 4.2 kW (or jurisdictional equivalent) floor and a
+     * fall-back duration that survives transient disconnects.
+     *
+     * Resolves on the SPINE write-ack. To learn about subsequent
+     * CS-side revisions (e.g. the CS rounds the value to its nearest
+     * supported set-point), subscribe to {@link onFailsafeChanged}.
+     *
+     * @param failsafe The failsafe configuration to apply on the CS
+     */
+    setFailsafeLimit: (failsafe: EebusLpcFailsafe) => Promise<void>;
 
     /**
      * Read the consumption limit currently active on the controllable system,
@@ -71,6 +105,56 @@ export interface EebusLpcClient {
      * it loses the connection to this EMS.
      */
     getFailsafeLimit: () => Promise<EebusLpcFailsafe>;
+
+    // ─── EMS role (inbound) ──────────────────────────────────────────
+
+    /**
+     * Subscribe to changes in the *active* consumption limit reported by
+     * the CS — fires on every inbound `loadControlLimitListData` notify.
+     * The handler receives the new active limit, or `undefined` when the
+     * CS clears the active limit (e.g. on expiry).
+     *
+     * Use this instead of polling {@link getActiveConsumptionLimit} after
+     * a {@link setConsumptionLimit} call: the SPINE write-ack resolves
+     * before the CS publishes its updated active state, so the polling
+     * pattern races against the notify.
+     *
+     * @param handler Callback invoked with the new active limit (or `undefined`)
+     * @returns Listener ID that can be passed to {@link removeListener}
+     */
+    onActiveConsumptionLimitChanged: (
+        handler: (limit: EebusLpcLimit | undefined) => void
+    ) => string;
+
+    /**
+     * Subscribe to explicit NACKs from the CS — fires when the CS
+     * rejects a previously-sent limit with a reason (e.g. value
+     * out-of-range, failsafe override active, command queue full).
+     * Distinct from the SPINE write-ack that {@link setConsumptionLimit}
+     * resolves on: a write-ack means "received", a NACK arrives as a
+     * separate event when the CS subsequently decides not to honour
+     * the limit.
+     *
+     * @param handler Callback invoked with the NACK payload
+     * @returns Listener ID that can be passed to {@link removeListener}
+     */
+    onConsumptionLimitNack: (
+        handler: (nack: EebusLpcNack) => void
+    ) => string;
+
+    /**
+     * Subscribe to CS-published failsafe revisions — fires on every
+     * inbound `deviceConfigurationKeyValueListData` notify carrying
+     * a new failsafe value or duration. Allowed by the LPC UC TS as
+     * a mid-session signal; consumers that only read the failsafe at
+     * warm-up time will otherwise miss it.
+     *
+     * @param handler Callback invoked with the revised failsafe
+     * @returns Listener ID that can be passed to {@link removeListener}
+     */
+    onFailsafeChanged: (
+        handler: (failsafe: EebusLpcFailsafe) => void
+    ) => string;
 
     // ─── CS role (inbound) ───────────────────────────────────────────
 

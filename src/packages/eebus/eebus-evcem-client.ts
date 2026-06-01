@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusEvcemReading} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.evcem}.
@@ -28,7 +29,7 @@ export interface EvcemClientOptions {
  * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
  * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
  */
-export interface EebusEvcemClient {
+export interface EebusEvcemClient extends EebusUseCaseClient {
     /**
      * Read the most recent telemetry sample from the EV charging session.
      *

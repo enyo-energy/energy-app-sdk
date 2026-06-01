@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusMpcReading} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.mpc}.
@@ -64,7 +65,7 @@ export interface MpcClientOptions {
  * `EebusFeatureUnavailableError` when no `Measurement` server feature
  * exists at all on the peer.
  */
-export interface EebusMpcClient {
+export interface EebusMpcClient extends EebusUseCaseClient {
     // ─── EMS role (consume) ──────────────────────────────────────────
 
     /**

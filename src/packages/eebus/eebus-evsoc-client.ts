@@ -1,6 +1,7 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {EebusEvSocReading} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
+import {EebusUseCaseClient} from './eebus-use-case-client.js';
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.evsoc}.
@@ -27,7 +28,7 @@ export interface EvsocClientOptions {
  * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
  * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
  */
-export interface EebusEvsocClient {
+export interface EebusEvsocClient extends EebusUseCaseClient {
     /**
      * Read the most recent SoC sample, in percent (0–100).
      *

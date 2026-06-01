@@ -63,6 +63,28 @@ export interface EebusLpcAck {
     reason?: string;
 }
 
+/**
+ * Push-side rejection from a controllable system, delivered to an EMS
+ * subscriber via {@link EebusLpcClient.onConsumptionLimitNack}.
+ *
+ * Distinct from the SPINE write-ack that
+ * {@link EebusLpcClient.setConsumptionLimit} resolves on: a write-ack
+ * means "the CS received the limit message". A NACK arrives as a
+ * separate event when the CS subsequently decides not to honour the
+ * limit (out-of-range value, failsafe override active, queue full,
+ * etc.).
+ */
+export interface EebusLpcNack {
+    /** Human-readable reason the CS rejected the limit. */
+    reason: string;
+    /**
+     * The limit the CS rejected, when attribution to the originating
+     * write is available. Omitted on peers that don't echo the
+     * rejected payload (some VICTRON / KEBA firmwares).
+     */
+    rejectedLimit?: EebusLpcLimit;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // LPP — Limitation of Power Production (recommendation)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -103,6 +125,27 @@ export interface EebusLppAck {
     accepted: boolean;
     /** Optional human-readable reason when {@link accepted} is `false` */
     reason?: string;
+}
+
+/**
+ * Push-side rejection from a producing controllable system, delivered to
+ * an EMS subscriber via {@link EebusLppClient.onProductionLimitNack}.
+ *
+ * LPP is a *recommendation*: the producing CS may decline a
+ * recommendation without violating the use case (compare with LPC,
+ * where a NACK means the obligation could not be honoured). A NACK
+ * arrives as a separate event after the SPINE write-ack that
+ * {@link EebusLppClient.setProductionLimit} resolves on.
+ */
+export interface EebusLppNack {
+    /** Human-readable reason the producer declined the recommendation. */
+    reason: string;
+    /**
+     * The recommendation the producer declined, when attribution to the
+     * originating write is available. Omitted on peers that don't echo
+     * the declined payload.
+     */
+    rejectedLimit?: EebusLppLimit;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
