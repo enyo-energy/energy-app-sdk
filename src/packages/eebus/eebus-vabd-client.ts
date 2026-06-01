@@ -27,46 +27,28 @@ export interface VabdClientOptions {
  * battery state in its UI; not a control surface (use SetStorageSchedule
  * over the data bus for control).
  *
- * **Library status.** Methods throw
- * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
- * `Measurement` and `DeviceConfiguration` are already present.
+ * Backed by `ElectricalConnection` + `Measurement` + `DeviceConfiguration`
+ * on the lib side.
  */
 export interface EebusVabdClient extends EebusUseCaseClient {
     /**
      * Read the battery's current state of charge in percent (0–100).
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getBatterySocPercent: () => Promise<number>;
 
     /**
      * Read the battery's current active power in Watts. Positive =
      * charging, negative = discharging.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getBatteryPowerW: () => Promise<number>;
 
     /**
      * Read the battery's nominal capacity in Watt-hours, if advertised.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getBatteryNominalCapacityWh: () => Promise<number | undefined>;
 
     /**
      * Subscribe to consolidated battery telemetry updates.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onTelemetry: (handler: (telemetry: EebusVabdTelemetry) => void) => string;
 

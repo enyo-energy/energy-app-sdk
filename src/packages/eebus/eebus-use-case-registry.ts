@@ -137,9 +137,11 @@ export interface EebusUseCaseRegistry {
      * EV. Time-series-plan-driven; the most expressive EV control
      * surface. Requires ISO 15118 on the session.
      *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` and
-     * `TimeSeriesClient` land in `@enyo-energy/eebus`.
+     * The incentive-table path is wired immediately; the time-series
+     * paths (`setTimeSeriesPlan`, `getActiveChargingPlan`,
+     * `onPlanUpdated`, `providePlan`, `onTimeSeriesPlanReceived`)
+     * throw `EebusFeatureUnavailableError` from the `connect-core`
+     * runtime until `TimeSeriesClient` lands in `@enyo-energy/eebus`.
      *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
@@ -151,10 +153,6 @@ export interface EebusUseCaseRegistry {
      * remote EV. Surfaces EV identity, communication standard, and
      * asymmetric-charging support.
      *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `IdentificationClient` and
-     * `ElectricalConnectionClient` land in `@enyo-energy/eebus`.
-     *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
      */
@@ -165,10 +163,6 @@ export interface EebusUseCaseRegistry {
      * client for a remote EV. Read-only per-phase power / current /
      * voltage and cumulative energy delivered.
      *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` lands
-     * in `@enyo-energy/eebus`.
-     *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
      */
@@ -177,9 +171,7 @@ export interface EebusUseCaseRegistry {
     /**
      * Get the **EVSE Commissioning & Configuration (EVSECC)** client
      * for a remote EVSE. Read-only: vendor identity and operating
-     * state from `DeviceClassification` + `DeviceDiagnosis`. Fully
-     * wired immediately — does not depend on any pending
-     * `@enyo-energy/eebus` prerequisite.
+     * state from `DeviceClassification` + `DeviceDiagnosis`.
      *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
@@ -191,10 +183,6 @@ export interface EebusUseCaseRegistry {
      * Read-only; many vehicles do not publish their SoC over EEBUS, so
      * consumers should handle the "never arrives" case.
      *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` lands
-     * in `@enyo-energy/eebus`.
-     *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
      */
@@ -204,10 +192,6 @@ export interface EebusUseCaseRegistry {
      * Get the **Overload Protection by EV Charging Curtailment (OPEV)**
      * client for a remote EVSE. Per-phase current obligation
      * (grid-safety driven).
-     *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` lands
-     * in `@enyo-energy/eebus`.
      *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
@@ -219,10 +203,6 @@ export interface EebusUseCaseRegistry {
      * (OSCEV)** client for a remote EVSE. Per-phase current
      * recommendation (PV-optimisation driven).
      *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` lands
-     * in `@enyo-energy/eebus`.
-     *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
      */
@@ -233,10 +213,6 @@ export interface EebusUseCaseRegistry {
      * client for a remote battery / home-storage system. Read-only
      * telemetry (power, SoC, nominal capacity).
      *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` lands
-     * in `@enyo-energy/eebus`.
-     *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration
      */
@@ -246,10 +222,6 @@ export interface EebusUseCaseRegistry {
      * Get the **Visualization of Aggregated PV Data (VAPD)** client
      * for a remote PV / solar-inverter system. Read-only telemetry
      * (active power, nominal peak).
-     *
-     * Method bodies throw `EebusFeatureUnavailableError` from the
-     * `connect-core` runtime until `ElectricalConnectionClient` lands
-     * in `@enyo-energy/eebus`.
      *
      * @param ski Subject Key Identifier of the remote node
      * @param options Optional address/timeout configuration

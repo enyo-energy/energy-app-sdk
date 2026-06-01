@@ -21,29 +21,19 @@ export interface OscevClientOptions {
  * still draw more if the user has pressed "charge now"). Compare with
  * {@link EebusOpevClient}, which is the obligation flavour.
  *
- * **Library status.** Methods throw
- * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
+ * Backed by `LoadControl` + `ElectricalConnection` on the lib side.
  */
 export interface EebusOscevClient extends EebusUseCaseClient {
     // ─── EMS role ────────────────────────────────────────────────────
 
     /**
      * Send a per-phase current recommendation to the EVSE.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     setSelfConsumptionLimit: (limit: EebusOscevLimit) => Promise<EebusOscevAck>;
 
     /**
      * Read the self-consumption recommendation currently active on the
      * EVSE, if any.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getCurrentSelfConsumptionLimit: () => Promise<EebusOscevLimit | undefined>;
 
@@ -51,10 +41,6 @@ export interface EebusOscevClient extends EebusUseCaseClient {
      * Subscribe to limit-adjustment notifications from the EVSE — fires
      * when the EVSE chose to draw less than the recommendation (so the
      * EMS can update its forecast).
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onLimitAdjusted: (handler: (limit: EebusOscevLimit) => void) => string;
 
@@ -63,10 +49,6 @@ export interface EebusOscevClient extends EebusUseCaseClient {
     /**
      * Register a handler invoked when a remote EMS sends an OSCEV
      * recommendation to this EVSE.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onLimitReceived: (
         handler: (limit: EebusOscevLimit) => Promise<EebusOscevAck>,

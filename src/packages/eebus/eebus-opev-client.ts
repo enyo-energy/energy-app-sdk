@@ -32,10 +32,7 @@ export interface OpevClientOptions {
  *   {@link getActiveChargingLimits}.
  * - **EVSE role:** {@link onLimitReceived}, {@link onLimitNack}.
  *
- * **Library status.** Methods throw
- * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`
- * (LoadControl itself is already present).
+ * Backed by `LoadControl` + `ElectricalConnection` on the lib side.
  */
 export interface EebusOpevClient extends EebusUseCaseClient {
     // ─── EMS role ────────────────────────────────────────────────────
@@ -43,20 +40,12 @@ export interface EebusOpevClient extends EebusUseCaseClient {
     /**
      * Send a per-phase current limit to the EVSE. The EVSE MUST respect
      * the limit; ack is the EVSE's accept / reject decision.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     setChargingCurrentLimitsPerPhase: (limit: EebusOpevLimit) => Promise<EebusOpevAck>;
 
     /**
      * Read the per-phase current limits currently active on the EVSE,
      * if any.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getActiveChargingLimits: () => Promise<EebusOpevLimit | undefined>;
 
@@ -65,10 +54,6 @@ export interface EebusOpevClient extends EebusUseCaseClient {
     /**
      * Register a handler invoked when a remote EMS sends an OPEV limit
      * to this EVSE. The handler MUST return an ack.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onLimitReceived: (
         handler: (limit: EebusOpevLimit) => Promise<EebusOpevAck>,
@@ -77,10 +62,6 @@ export interface EebusOpevClient extends EebusUseCaseClient {
     /**
      * Subscribe to NACKs from the EVSE — fires when the EVSE rejects a
      * limit (e.g. unsupported phase count) so the EMS can renegotiate.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onLimitNack: (handler: (reason: string) => void) => string;
 

@@ -25,17 +25,11 @@ export interface EvcemClientOptions {
  * started. Surfaces the same per-phase view as MGCP / MPC do for the
  * grid / appliance, but rooted on the EV entity.
  *
- * **Library status.** Methods throw
- * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
+ * Backed by `Measurement` + `ElectricalConnection` on the lib side.
  */
 export interface EebusEvcemClient extends EebusUseCaseClient {
     /**
      * Read the most recent telemetry sample from the EV charging session.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getCurrentMeasurement: () => Promise<EebusEvcemReading>;
 
@@ -44,9 +38,6 @@ export interface EebusEvcemClient extends EebusUseCaseClient {
      *
      * @param handler Callback invoked with each new reading.
      * @returns Listener ID that can be passed to {@link removeListener}.
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onMeasurementUpdate: (handler: (reading: EebusEvcemReading) => void) => string;
 

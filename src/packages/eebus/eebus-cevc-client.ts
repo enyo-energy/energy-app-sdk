@@ -35,10 +35,13 @@ export interface CevcClientOptions {
  * - **EV role:** {@link providePlan},
  *   {@link onTimeSeriesPlanReceived}.
  *
- * **Library status.** Methods throw
+ * Backed by `ElectricalConnection` (already present) +
+ * `IncentiveTable` (already present) + `TimeSeries` (pending) on the
+ * lib side. {@link publishIncentiveTable} is wired immediately; the
+ * `setTimeSeriesPlan` / `getActiveChargingPlan` / `onPlanUpdated` /
+ * `providePlan` / `onTimeSeriesPlanReceived` paths throw
  * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` and `TimeSeriesClient` both land
- * in `@enyo-energy/eebus`.
+ * until `TimeSeriesClient` lands in `@enyo-energy/eebus`.
  */
 export interface EebusCevcClient extends EebusUseCaseClient {
     // ─── EMS role ────────────────────────────────────────────────────
@@ -65,10 +68,6 @@ export interface EebusCevcClient extends EebusUseCaseClient {
      * Publish an incentive table to the EV — the EV plans its own
      * charging from the price curve, analogous to the OHPCF flow on
      * heat pumps. Uses {@link EebusOhpcfIncentiveTable} verbatim.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     publishIncentiveTable: (table: EebusOhpcfIncentiveTable) => Promise<void>;
 

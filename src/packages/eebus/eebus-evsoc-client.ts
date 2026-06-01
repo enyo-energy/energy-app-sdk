@@ -24,17 +24,11 @@ export interface EvsocClientOptions {
  * arrives" case (e.g. by falling back to a vehicle-side service or by
  * estimating from charged energy + claimed battery capacity).
  *
- * **Library status.** Methods throw
- * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
+ * Backed by `ElectricalConnection` + `Measurement` on the lib side.
  */
 export interface EebusEvsocClient extends EebusUseCaseClient {
     /**
      * Read the most recent SoC sample, in percent (0–100).
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getStateOfChargePercent: () => Promise<number>;
 
@@ -43,9 +37,6 @@ export interface EebusEvsocClient extends EebusUseCaseClient {
      *
      * @param handler Callback invoked with each new SoC reading.
      * @returns Listener ID that can be passed to {@link removeListener}.
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onStateOfChargeUpdated: (handler: (reading: EebusEvSocReading) => void) => string;
 

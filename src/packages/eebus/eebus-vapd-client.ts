@@ -26,36 +26,22 @@ export interface VapdClientOptions {
  * current active production and nominal peak capacity. Used by an EMS
  * to render PV output in its UI.
  *
- * **Library status.** Methods throw
- * {@link EebusFeatureUnavailableError} from the `connect-core` runtime
- * until `ElectricalConnectionClient` lands in `@enyo-energy/eebus`.
- * `Measurement` and `DeviceConfiguration` are already present.
+ * Backed by `ElectricalConnection` + `Measurement` + `DeviceConfiguration`
+ * on the lib side.
  */
 export interface EebusVapdClient extends EebusUseCaseClient {
     /**
      * Read the PV system's current active production in Watts.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getPvActivePowerW: () => Promise<number>;
 
     /**
      * Read the PV system's nominal peak power in Watts, if advertised.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     getPvNominalPeakPowerW: () => Promise<number | undefined>;
 
     /**
      * Subscribe to consolidated PV telemetry updates.
-     *
-     * @throws {EebusFeatureUnavailableError} Until
-     *          `ElectricalConnectionClient` lands in
-     *          `@enyo-energy/eebus`.
      */
     onTelemetry: (handler: (telemetry: EebusVapdTelemetry) => void) => string;
 
