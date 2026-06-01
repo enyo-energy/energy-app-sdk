@@ -1,10 +1,19 @@
+import {CevcClientOptions, EebusCevcClient} from './eebus-cevc-client.js';
+import {EebusEvccClient, EvccClientOptions} from './eebus-evcc-client.js';
+import {EebusEvcemClient, EvcemClientOptions} from './eebus-evcem-client.js';
+import {EebusEvseccClient, EvseccClientOptions} from './eebus-evsecc-client.js';
+import {EebusEvsocClient, EvsocClientOptions} from './eebus-evsoc-client.js';
 import {EebusHvacClient, HvacClientOptions} from './eebus-hvac-client.js';
 import {EebusLpcClient, LpcClientOptions} from './eebus-lpc-client.js';
 import {EebusLppClient} from './eebus-lpp-client.js';
 import {EebusMgcpClient} from './eebus-mgcp-client.js';
 import {EebusMpcClient, MpcClientOptions} from './eebus-mpc-client.js';
 import {EebusOhpcfClient, OhpcfClientOptions} from './eebus-ohpcf-client.js';
+import {EebusOpevClient, OpevClientOptions} from './eebus-opev-client.js';
+import {EebusOscevClient, OscevClientOptions} from './eebus-oscev-client.js';
 import {EebusSetpointClient, SetpointClientOptions} from './eebus-setpoint-client.js';
+import {EebusVabdClient, VabdClientOptions} from './eebus-vabd-client.js';
+import {EebusVapdClient, VapdClientOptions} from './eebus-vapd-client.js';
 
 /**
  * Registry of typed EEBUS use-case clients, scoped per remote device (SKI).
@@ -122,4 +131,128 @@ export interface EebusUseCaseRegistry {
      * @param options Optional address/timeout configuration
      */
     hvac: (ski: string, options?: HvacClientOptions) => EebusHvacClient;
+
+    /**
+     * Get the **Controllable EV Charging (CEVC)** client for a remote
+     * EV. Time-series-plan-driven; the most expressive EV control
+     * surface. Requires ISO 15118 on the session.
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` and
+     * `TimeSeriesClient` land in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    cevc: (ski: string, options?: CevcClientOptions) => EebusCevcClient;
+
+    /**
+     * Get the **EV Commissioning & Configuration (EVCC)** client for a
+     * remote EV. Surfaces EV identity, communication standard, and
+     * asymmetric-charging support.
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `IdentificationClient` and
+     * `ElectricalConnectionClient` land in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    evcc: (ski: string, options?: EvccClientOptions) => EebusEvccClient;
+
+    /**
+     * Get the **Measurement of Electricity During EV Charging (EVCEM)**
+     * client for a remote EV. Read-only per-phase power / current /
+     * voltage and cumulative energy delivered.
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` lands
+     * in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    evcem: (ski: string, options?: EvcemClientOptions) => EebusEvcemClient;
+
+    /**
+     * Get the **EVSE Commissioning & Configuration (EVSECC)** client
+     * for a remote EVSE. Read-only: vendor identity and operating
+     * state from `DeviceClassification` + `DeviceDiagnosis`. Fully
+     * wired immediately — does not depend on any pending
+     * `@enyo-energy/eebus` prerequisite.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    evsecc: (ski: string, options?: EvseccClientOptions) => EebusEvseccClient;
+
+    /**
+     * Get the **EV State of Charge (EVSOC)** client for a remote EV.
+     * Read-only; many vehicles do not publish their SoC over EEBUS, so
+     * consumers should handle the "never arrives" case.
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` lands
+     * in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    evsoc: (ski: string, options?: EvsocClientOptions) => EebusEvsocClient;
+
+    /**
+     * Get the **Overload Protection by EV Charging Curtailment (OPEV)**
+     * client for a remote EVSE. Per-phase current obligation
+     * (grid-safety driven).
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` lands
+     * in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    opev: (ski: string, options?: OpevClientOptions) => EebusOpevClient;
+
+    /**
+     * Get the **Optimization of Self-Consumption During EV Charging
+     * (OSCEV)** client for a remote EVSE. Per-phase current
+     * recommendation (PV-optimisation driven).
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` lands
+     * in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    oscev: (ski: string, options?: OscevClientOptions) => EebusOscevClient;
+
+    /**
+     * Get the **Visualization of Aggregated Battery Data (VABD)**
+     * client for a remote battery / home-storage system. Read-only
+     * telemetry (power, SoC, nominal capacity).
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` lands
+     * in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    vabd: (ski: string, options?: VabdClientOptions) => EebusVabdClient;
+
+    /**
+     * Get the **Visualization of Aggregated PV Data (VAPD)** client
+     * for a remote PV / solar-inverter system. Read-only telemetry
+     * (active power, nominal peak).
+     *
+     * Method bodies throw `EebusFeatureUnavailableError` from the
+     * `connect-core` runtime until `ElectricalConnectionClient` lands
+     * in `@enyo-energy/eebus`.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param options Optional address/timeout configuration
+     */
+    vapd: (ski: string, options?: VapdClientOptions) => EebusVapdClient;
 }

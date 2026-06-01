@@ -197,12 +197,19 @@ export enum EnyoDataBusMessageEnum {
     EvChargingForecastV1 = 'EvChargingForecastV1',
     HeatpumpConsumptionForecastV1 = 'HeatpumpConsumptionForecastV1',
     HeatpumpDhwTemperatureForecastV1 = 'HeatpumpDhwTemperatureForecastV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} instead. The schedule message subsumes start/stop/limit commands by carrying a sequence of `{seconds, direction, powerW}` setpoints. */
     StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} with `mode: 'auto'` (or a schedule that returns control to the appliance) instead. */
     StopStorageGridChargeV1 = 'StopStorageGridChargeV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} instead. */
     StartStorageGridDischargeV1 = 'StartStorageGridDischargeV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} with `mode: 'auto'` (or a schedule that returns control to the appliance) instead. */
     StopStorageGridDischargeV1 = 'StopStorageGridDischargeV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} instead — the schedule's `powerW` per entry replaces the standalone discharge cap. */
     SetStorageDischargeLimitV1 = 'SetStorageDischargeLimitV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} instead — the schedule's `powerW` per entry replaces the standalone charge cap. */
     SetStorageChargeLimitV1 = 'SetStorageChargeLimitV1',
+    SetStorageScheduleV1 = 'SetStorageScheduleV1',
     SetInverterFeedInLimitV1 = 'SetInverterFeedInLimitV1',
     CommandAcknowledgeV1 = 'CommandAcknowledgeV1',
     TemperatureSensorValuesUpdateV1 = 'TemperatureSensorValuesUpdateV1',
@@ -1001,6 +1008,12 @@ export interface EnyoDataBusHeatpumpDhwTemperatureForecastV1 extends EnyoDataBus
 /**
  * Command message to start charging a storage/battery from the grid.
  * Instructs the battery system to begin drawing power from the grid up to the specified limit.
+ *
+ * @deprecated Use {@link EnyoDataBusSetStorageScheduleV1} instead. The
+ * schedule message expresses "charge from the grid at N watts now" as
+ * a single relative-schedule entry with `direction: 'charge'` and
+ * `powerW: N` at `seconds: 0`. Maintained for backward compatibility;
+ * new senders and receivers should switch to the schedule message.
  */
 export interface EnyoDataBusStartStorageGridChargeV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1018,6 +1031,11 @@ export interface EnyoDataBusStartStorageGridChargeV1 extends EnyoDataBusMessage 
 /**
  * Command message to stop charging a storage/battery from the grid.
  * Instructs the battery system to end grid-to-storage charging.
+ *
+ * @deprecated Use {@link EnyoDataBusSetStorageScheduleV1} with
+ * `mode: 'auto'` to hand control back to the appliance, or send a
+ * schedule whose first entry is `powerW: 0`. Maintained for backward
+ * compatibility.
  */
 export interface EnyoDataBusStopStorageGridChargeV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1033,6 +1051,11 @@ export interface EnyoDataBusStopStorageGridChargeV1 extends EnyoDataBusMessage {
 /**
  * Command message to start discharging a storage/battery into the grid.
  * Instructs the battery system to begin feeding power into the grid up to the specified limit.
+ *
+ * @deprecated Use {@link EnyoDataBusSetStorageScheduleV1} instead — a
+ * single relative-schedule entry with `direction: 'discharge'` and the
+ * desired `powerW` at `seconds: 0` carries the same intent. Maintained
+ * for backward compatibility.
  */
 export interface EnyoDataBusStartStorageGridDischargeV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1050,6 +1073,11 @@ export interface EnyoDataBusStartStorageGridDischargeV1 extends EnyoDataBusMessa
 /**
  * Command message to stop discharging a storage/battery into the grid.
  * Instructs the battery system to end storage-to-grid discharging.
+ *
+ * @deprecated Use {@link EnyoDataBusSetStorageScheduleV1} with
+ * `mode: 'auto'` to hand control back to the appliance, or send a
+ * schedule whose first entry is `powerW: 0`. Maintained for backward
+ * compatibility.
  */
 export interface EnyoDataBusStopStorageGridDischargeV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1065,6 +1093,11 @@ export interface EnyoDataBusStopStorageGridDischargeV1 extends EnyoDataBusMessag
 /**
  * Command message to limit the discharge rate of a storage/battery.
  * Sets the maximum discharge power as a percentage of the battery's maximum discharge capacity.
+ *
+ * @deprecated Use {@link EnyoDataBusSetStorageScheduleV1} instead — the
+ * schedule's per-entry `powerW` (paired with `direction: 'discharge'`)
+ * subsumes the standalone discharge cap. Maintained for backward
+ * compatibility.
  */
 export interface EnyoDataBusSetStorageDischargeLimitV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1082,6 +1115,11 @@ export interface EnyoDataBusSetStorageDischargeLimitV1 extends EnyoDataBusMessag
 /**
  * Command message to limit the charge rate of a storage/battery.
  * Sets the maximum charge power in watts that the battery is allowed to draw while charging.
+ *
+ * @deprecated Use {@link EnyoDataBusSetStorageScheduleV1} instead — the
+ * schedule's per-entry `powerW` (paired with `direction: 'charge'`)
+ * subsumes the standalone charge cap. Maintained for backward
+ * compatibility.
  */
 export interface EnyoDataBusSetStorageChargeLimitV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1092,6 +1130,121 @@ export interface EnyoDataBusSetStorageChargeLimitV1 extends EnyoDataBusMessage {
         /** Charge limit in W to limit the battery's charge power */
         chargeLimitW: number;
         /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Storage control mode carried by {@link EnyoDataBusSetStorageScheduleV1}.
+ *
+ * - `Auto` returns full control to the appliance's own logic — the energy
+ *   manager is no longer prescribing setpoints. Used to release a
+ *   previously-issued schedule.
+ * - `Schedule` instructs the appliance to follow the relative-schedule
+ *   setpoint stream carried alongside the message.
+ */
+export enum EnyoStorageScheduleModeEnum {
+    /** Hand control back to the appliance's own logic. */
+    Auto = 'auto',
+    /** Follow the relative schedule carried by the message. */
+    Schedule = 'schedule',
+}
+
+/**
+ * Direction of energy flow for one entry of a storage relative schedule.
+ *
+ * Direction is encoded as an explicit enum rather than a signed `powerW`
+ * to keep schedule entries unambiguous on the wire: `powerW` is always
+ * non-negative, and consumers never have to disambiguate `0` from
+ * "direction-of-zero" or interpret sign conventions per integration.
+ */
+export enum EnyoStorageScheduleDirectionEnum {
+    /** Power should flow from the grid into the battery (charging). */
+    Charge = 'charge',
+    /** Power should flow from the battery into the grid / home (discharging). */
+    Discharge = 'discharge',
+}
+
+/**
+ * A single setpoint within a storage relative schedule. The setpoint
+ * becomes active {@link seconds} after the receiving appliance processes
+ * the carrying {@link EnyoDataBusSetStorageScheduleV1} message and stays
+ * active until the next entry's `seconds` is reached, or — for the final
+ * entry — until a new schedule arrives.
+ */
+export interface EnyoStorageScheduleEntry {
+    /**
+     * Seconds from the moment the appliance receives the schedule message
+     * at which this setpoint becomes active. The first entry of a schedule
+     * should have `seconds = 0` so the appliance has a setpoint for "right
+     * now"; entries thereafter must be strictly increasing.
+     */
+    seconds: number;
+    /**
+     * Direction of energy flow for this setpoint
+     * ({@link EnyoStorageScheduleDirectionEnum.Charge} or
+     * {@link EnyoStorageScheduleDirectionEnum.Discharge}).
+     */
+    direction: EnyoStorageScheduleDirectionEnum;
+    /**
+     * Target power for this setpoint in Watts. Always non-negative —
+     * direction is carried by {@link direction}, never by sign. A
+     * `powerW` of `0` means "hold at zero in the named direction"
+     * (effectively idle until the next entry).
+     */
+    powerW: number;
+}
+
+/**
+ * Command message that prescribes a storage/battery's full control plan
+ * over a short relative horizon.
+ *
+ * Replaces the legacy start / stop / limit message family
+ * ({@link EnyoDataBusStartStorageGridChargeV1},
+ * {@link EnyoDataBusStopStorageGridChargeV1},
+ * {@link EnyoDataBusStartStorageGridDischargeV1},
+ * {@link EnyoDataBusStopStorageGridDischargeV1},
+ * {@link EnyoDataBusSetStorageDischargeLimitV1},
+ * {@link EnyoDataBusSetStorageChargeLimitV1}) with a single shape that
+ * carries the full control intent — direction + power — at every
+ * scheduled instant.
+ *
+ * When {@link data.mode} is {@link EnyoStorageScheduleModeEnum.Auto} the
+ * appliance regains full control of its own logic and the
+ * {@link data.relativeSchedule} field is omitted. When `mode` is
+ * {@link EnyoStorageScheduleModeEnum.Schedule} the appliance follows the
+ * provided schedule; the schedule MUST be sorted ascending by
+ * {@link EnyoStorageScheduleEntry.seconds} and SHOULD start at
+ * `seconds = 0` so the appliance has an authoritative setpoint
+ * immediately.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
+ * message's `id` to indicate whether the schedule was accepted, rejected,
+ * or is not supported.
+ */
+export interface EnyoDataBusSetStorageScheduleV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetStorageScheduleV1;
+    /** ID of the battery/storage appliance the schedule applies to. */
+    applianceId: string;
+    data: {
+        /**
+         * Control mode. `Auto` releases the appliance back to its own
+         * logic; `Schedule` instructs it to follow {@link relativeSchedule}.
+         */
+        mode: EnyoStorageScheduleModeEnum;
+        /**
+         * The relative schedule the appliance should follow, sorted
+         * ascending by {@link EnyoStorageScheduleEntry.seconds}. Present
+         * only when {@link mode} is
+         * {@link EnyoStorageScheduleModeEnum.Schedule}; omitted when
+         * `mode` is {@link EnyoStorageScheduleModeEnum.Auto}. The first
+         * entry should be at `seconds = 0` so the appliance has a
+         * setpoint for "right now".
+         */
+        relativeSchedule?: EnyoStorageScheduleEntry[];
+        /** Optional reason why this command was issued. */
         reason?: EnyoDataBusCommandReason;
     };
 }

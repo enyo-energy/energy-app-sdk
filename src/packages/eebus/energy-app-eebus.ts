@@ -16,6 +16,15 @@ export {EebusMgcpClient} from './eebus-mgcp-client.js';
 export {EebusMpcClient, MpcClientOptions} from './eebus-mpc-client.js';
 export {EebusOhpcfClient, OhpcfClientOptions} from './eebus-ohpcf-client.js';
 export {EebusSetpointClient, SetpointClientOptions} from './eebus-setpoint-client.js';
+export {EebusCevcClient, CevcClientOptions} from './eebus-cevc-client.js';
+export {EebusEvccClient, EvccClientOptions} from './eebus-evcc-client.js';
+export {EebusEvcemClient, EvcemClientOptions} from './eebus-evcem-client.js';
+export {EebusEvseccClient, EvseccClientOptions} from './eebus-evsecc-client.js';
+export {EebusEvsocClient, EvsocClientOptions} from './eebus-evsoc-client.js';
+export {EebusOpevClient, OpevClientOptions} from './eebus-opev-client.js';
+export {EebusOscevClient, OscevClientOptions} from './eebus-oscev-client.js';
+export {EebusVabdClient, VabdClientOptions} from './eebus-vabd-client.js';
+export {EebusVapdClient, VapdClientOptions} from './eebus-vapd-client.js';
 
 /**
  * Interface for EEbus (SHIP/SPINE) device communication in enyo packages.

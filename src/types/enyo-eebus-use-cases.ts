@@ -1,3 +1,5 @@
+import {EebusOperatingStateEnum} from './enyo-eebus.js';
+
 /**
  * Payload types for the typed EEbus use-case clients exposed via
  * {@link EebusUseCaseRegistry}.
@@ -368,4 +370,292 @@ export interface EebusHvacZoneState {
     currentTemperatureC?: number;
     /** Active operation mode for this zone, if reported */
     operationMode?: EebusHvacOperationMode;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVSECC — EVSE Commissioning & Configuration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Manufacturer-side identity of an EVSE (the charging station), as reported
+ * via `DeviceClassification.ManufacturerData`. Used by an EMS to render the
+ * EVSE in its UI and to gate vendor-specific behaviour by `vendorCode` /
+ * `deviceCode`.
+ */
+export interface EebusEvseManufacturerData {
+    /** Manufacturer-assigned device name (e.g. `'KEBA P30'`). */
+    manufacturerName?: string;
+    /** Brand under which the EVSE is sold. */
+    brandName?: string;
+    /** Vendor company code (manufacturer identifier). */
+    vendorCode?: string;
+    /** Manufacturer-assigned device / model code. */
+    deviceCode?: string;
+    /** Manufacturer-assigned serial number. */
+    serialNumber?: string;
+    /** Software / firmware revision of the EVSE. */
+    softwareRevision?: string;
+    /** Hardware revision of the EVSE. */
+    hardwareRevision?: string;
+}
+
+/**
+ * Operating state of an EVSE as reported via `DeviceDiagnosis.StateData` /
+ * `DeviceDiagnosis.HeartbeatData`.
+ *
+ * The state itself reuses {@link EebusOperatingStateEnum} (the same enum
+ * surfaced on {@link EebusNodeIdentity.operatingState}); this wrapper
+ * adds the heartbeat timestamp so a stale heartbeat can be detected even
+ * when the state nominally remains `Normal`.
+ */
+export interface EebusEvseOperatingState {
+    /** Current operating state. */
+    state: EebusOperatingStateEnum;
+    /**
+     * Timestamp of the last `DeviceDiagnosis.HeartbeatData` from the
+     * EVSE. A heartbeat older than ~30 s typically indicates the SHIP
+     * link is degraded even if `state` is still `Normal`.
+     */
+    lastHeartbeat?: Date;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVCC — EV Commissioning & Configuration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Communication standard between the EV and the EVSE — the on-wire
+ * protocol carrying the charging session (basic PWM signalling vs
+ * digital ISO 15118 negotiation).
+ *
+ * Surfaced as an enum because the value gates UI affordances (e.g.
+ * Plug & Charge is only available on ISO 15118 sessions) and gates
+ * which higher-level UCs are even relevant (CEVC requires ISO 15118).
+ */
+export enum EebusEvCommunicationStandardEnum {
+    /** Basic IEC 61851 PWM signalling — no digital negotiation. */
+    IEC61851 = 'IEC61851',
+    /** ISO 15118-2 digital communication (DIN SPEC 70121-compatible). */
+    ISO15118_2 = 'ISO15118-2',
+    /** ISO 15118-20 digital communication (next-gen). */
+    ISO15118_20 = 'ISO15118-20',
+    /** Standard not yet negotiated or unknown to the SDK. */
+    Unknown = 'unknown',
+}
+
+/**
+ * Identity of an EV currently presented to the EVSE, derived from the
+ * EEBUS `Identification` feature on the EV entity. Typically the
+ * EVCCID (a MAC-address-shaped vehicle identifier), but the EEBUS
+ * `Identification` feature is general — {@link type} disambiguates.
+ */
+export interface EebusEvIdentification {
+    /** Vendor-assigned EV identifier (often the EVCCID). */
+    id: string;
+    /**
+     * Identification type wire string (e.g. `'eui48'`, `'macAddress'`,
+     * `'vin'`). Mirrors the SPINE `Identification.identificationType`
+     * field.
+     */
+    type: string;
+    /** Optional human-readable description. */
+    description?: string;
+}
+
+/**
+ * Connection lifecycle event for the EV against this EVSE — fired when
+ * a vehicle plugs in or unplugs.
+ */
+export interface EebusEvConnectionState {
+    /** `true` for connect events; `false` for disconnect events. */
+    connected: boolean;
+    /** ISO timestamp when the connection state was observed. */
+    observedAt: Date;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVCEM — Measurement of Electricity During EV Charging
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Single telemetry reading from an EV charging session — combines the
+ * power, per-phase electrical view, and cumulative energy delivered
+ * since the session started.
+ */
+export interface EebusEvcemReading {
+    /** Timestamp of this reading. */
+    timestamp: Date;
+    /** Total active charging power in Watts. */
+    activePowerW: number;
+    /** Optional per-phase active power in Watts (length 1 or 3). */
+    activePowerPerPhaseW?: number[];
+    /** Optional per-phase current in Amperes (length 1 or 3). */
+    currentPerPhaseA?: number[];
+    /** Optional per-phase voltage in Volts (length 1 or 3). */
+    voltagePerPhaseV?: number[];
+    /** Cumulative energy charged since session start, in Watt-hours. */
+    totalEnergyChargedWh?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVSOC — EV State of Charge
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Single SoC reading from the connected EV. Reported only when the EV
+ * actually publishes its SoC over EEBUS — many vehicles do not.
+ */
+export interface EebusEvSocReading {
+    /** Timestamp of this reading. */
+    timestamp: Date;
+    /** State of charge in percent (0–100). */
+    percent: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CEVC — Controllable EV Charging
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * One segment of an EV charging plan — the average power the EVSE
+ * should deliver from {@link startSeconds} until the next segment's
+ * `startSeconds` (or until the plan ends, for the final segment).
+ */
+export interface EebusCevcChargingPlanEntry {
+    /** Start of this segment, relative to {@link EebusCevcChargingPlan.startTime}, in seconds. */
+    startSeconds: number;
+    /** Target average power for this segment, in Watts. */
+    powerW: number;
+}
+
+/**
+ * A time-series charging plan published by the EMS or returned by the EV.
+ * Segments are sorted ascending by {@link EebusCevcChargingPlanEntry.startSeconds};
+ * the first segment should be at `startSeconds = 0` so the EVSE has a
+ * setpoint for "right now".
+ */
+export interface EebusCevcChargingPlan {
+    /** Plan start time (wall clock). */
+    startTime: Date;
+    /** Ordered segments; first should be at `startSeconds = 0`. */
+    segments: EebusCevcChargingPlanEntry[];
+}
+
+/**
+ * Acknowledgement returned by the EV after receiving a CEVC time-series
+ * plan or incentive table.
+ */
+export interface EebusCevcAck {
+    /** Whether the EV accepted the plan. */
+    accepted: boolean;
+    /** Optional human-readable reason when {@link accepted} is `false`. */
+    reason?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OPEV — Overload Protection by EV Charging Curtailment
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Per-phase charging current limit issued by an EMS to an EVSE under the
+ * OPEV use case. OPEV is an *obligation*: the EVSE MUST respect the
+ * limit (it is grid-safety driven, not optimisation driven).
+ *
+ * Phase count is determined by the EVSE — single-phase wallboxes report
+ * length 1, three-phase wallboxes length 3.
+ */
+export interface EebusOpevLimit {
+    /** Per-phase current limits in Amperes (length 1 or 3). */
+    perPhaseA: number[];
+    /** Whether the limit is currently active. */
+    isActive: boolean;
+    /**
+     * Duration in seconds for which the limit applies. Omit or set to
+     * `0` for an indefinite limit.
+     */
+    durationSeconds?: number;
+}
+
+/**
+ * Acknowledgement returned by the EVSE after receiving an OPEV limit.
+ */
+export interface EebusOpevAck {
+    /** Whether the EVSE accepted the limit. */
+    accepted: boolean;
+    /** Optional human-readable reason when {@link accepted} is `false`. */
+    reason?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OSCEV — Optimization of Self-Consumption During EV Charging
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Per-phase recommended charging current limit issued by an EMS to an
+ * EVSE under the OSCEV use case. OSCEV is a *recommendation*: the EVSE
+ * SHOULD respect it to optimise PV self-consumption, but is not
+ * obligated.
+ *
+ * Compare {@link EebusOpevLimit} — same shape, different semantics
+ * (obligation vs recommendation), as with LPC vs LPP.
+ */
+export interface EebusOscevLimit {
+    /** Per-phase recommended current limits in Amperes (length 1 or 3). */
+    perPhaseA: number[];
+    /** Whether the recommendation is currently active. */
+    isActive: boolean;
+    /** Duration in seconds; omit or `0` for indefinite. */
+    durationSeconds?: number;
+}
+
+/**
+ * Acknowledgement returned by the EVSE after receiving an OSCEV
+ * recommendation.
+ */
+export interface EebusOscevAck {
+    /** Whether the EVSE acknowledged the recommendation. */
+    accepted: boolean;
+    /** Optional human-readable reason when {@link accepted} is `false`. */
+    reason?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VABD — Visualization of Aggregated Battery Data
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Aggregated telemetry reading for a battery / home storage system.
+ *
+ * Sign convention on {@link batteryPowerW}: positive = charging the
+ * battery, negative = discharging into the home / grid. Same convention
+ * as {@link EnyoBatteryValuesUpdateV1.data.batteryPowerW} for parity.
+ */
+export interface EebusVabdTelemetry {
+    /** Timestamp of this reading. */
+    timestamp: Date;
+    /** Active power in Watts. Positive = charging, negative = discharging. */
+    batteryPowerW: number;
+    /** State of charge in percent (0–100). */
+    batterySocPercent: number;
+    /** Nominal capacity of the battery in Watt-hours, if known. */
+    batteryNominalCapacityWh?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VAPD — Visualization of Aggregated PV Data
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Aggregated telemetry reading for a PV / solar inverter system.
+ *
+ * {@link activePowerW} is the *current* production; {@link nominalPeakPowerW}
+ * is the *installed* peak — useful to chart utilisation.
+ */
+export interface EebusVapdTelemetry {
+    /** Timestamp of this reading. */
+    timestamp: Date;
+    /** Current active production in Watts. */
+    activePowerW: number;
+    /** Nominal peak production capacity of the PV system, in Watts. */
+    nominalPeakPowerW?: number;
 }
