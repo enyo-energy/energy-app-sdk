@@ -82,7 +82,10 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
         if (options.autoStart !== false) {
             // Defer until subclass constructors finish so they can override
             // `managedApplianceType` and register handlers in `registerHandlers()`.
-            queueMicrotask(() => this.start());
+            // Use Promise.resolve().then() rather than queueMicrotask() — both
+            // schedule a microtask but the latter is not available as a bare
+            // identifier in all sandbox environments (e.g. older enyo Hub builds).
+            void Promise.resolve().then(() => this.start());
         }
     }
 
