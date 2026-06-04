@@ -3,6 +3,7 @@ export type EnergyAppPermissionType =
     | 'NetworkDeviceDiscovery'
     | 'NetworkDeviceSearch'
     | 'NetworkDeviceAccess'
+    | 'AllNetworkDeviceAccess'
     | 'Modbus'
     | 'Storage'
     | 'Appliance'
@@ -48,6 +49,7 @@ export enum EnergyAppPermissionTypeEnum {
     NetworkDeviceDiscovery = 'NetworkDeviceDiscovery',
     NetworkDeviceSearch = 'NetworkDeviceSearch',
     NetworkDeviceAccess = 'NetworkDeviceAccess',
+    AllNetworkDeviceAccess = 'AllNetworkDeviceAccess',
     Modbus = 'Modbus',
     Storage = 'Storage',
     Appliance = 'Appliance',
