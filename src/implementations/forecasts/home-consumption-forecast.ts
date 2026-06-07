@@ -202,7 +202,7 @@ export class HomeConsumptionForecast implements Forecaster {
     }
 
     private onAggregatedState(message: EnyoDataBusAggregatedStateValuesV1): void {
-        const power = message.data.totalHomeConsumptionW;
+        const power = message.data.homeConsumptionW;
         if (typeof power !== 'number' || Number.isNaN(power)) return;
         const ts = new Date(message.timestampIso).getTime();
         const slotMs = roundDownTo15Minutes(ts);

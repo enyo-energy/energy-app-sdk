@@ -144,27 +144,12 @@ export enum EnyoChargeModeEnum {
 }
 
 export interface EnyoAggregatedStateApplianceValues {
-    gridPowerW?: number;
-    gridFeedInWh?: number;
-    gridConsumptionWh?: number;
-    selfConsumptionW?: number;
-    selfConsumptionWh?: number;
-    batteryPowerW?: number;
+    powerW?: number;
     batterySoC?: number;
-    pvPowerW?: number;
     currentA?: number;
     voltageL1?: number;
     voltageL2?: number;
     voltageL3?: number;
-    pvProductionWh?: number;
-    powerConsumptionHeatingWh?: number;
-    powerConsumptionDomesticHotWaterWh?: number;
-    heatGenerationHeatingWh?: number;
-    heatGenerationDomesticHotWaterWh?: number;
-    flexibility?: {
-        kWh?: number;
-        availableUntilIsoTimestamp?: string;
-    },
 }
 
 export enum EnyoDataBusMessageEnum {
@@ -228,9 +213,7 @@ export enum EnyoDataBusMessageEnum {
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
     StartAirConditioningV1 = 'StartAirConditioningV1',
     StopAirConditioningV1 = 'StopAirConditioningV1',
-    VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
-    StartCalibrationV1 = 'StartCalibrationV1',
-    StopCalibrationV1 = 'StopCalibrationV1'
+    VehicleSocUpdateV1 = 'VehicleSocUpdateV1'
 }
 
 export type EnyoDataBusMessageResolution = '1s' | '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -541,29 +524,17 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
     clockId: string;
     data: {
         /** Total grid power from all appliances (in Watt). Negative: grid feed in, positive: grid consumption */
-        totalGridPowerW?: number;
-        /** Total grid feed in from all appliances (in Watt hours) */
-        totalGridFeedInWh?: number;
-        /** Total grid consumption from all appliances (in Watt hours) */
-        totalGridConsumptionWh?: number;
-        /** Total Home consumption from all appliances (in Watt) */
-        totalHomeConsumptionW?: number;
-        /** Total Home consumed energy from all appliances (in Watt hours) */
-        totalHomeConsumptionWh?: number;
-        /** Total battery power from all appliances (in Watt). Positive = consumption, negative = charging */
-        totalBatteryPowerW?: number;
+        gridPowerW?: number;
+        gridConsumptionW?: number;
+        gridFeedInW?: number;
+        homeConsumptionW?: number;
+        homeConsumptionWithAppliancesW?: number;
+        /** battery power from all appliances (in Watt). Positive = consumption, negative = charging */
+        batteryPowerW?: number;
         /** Total PV production from all appliances (in Watt) */
-        totalPvPowerW?: number;
-        /** Total PV production from all appliances (in Watt hours) */
-        totalPvProductionWh?: number;
-        /** Total power consumption for heating from all appliances (in Watt hours) */
-        totalPowerConsumptionHeatingWh?: number;
-        /** Total power consumption for domestic hot water from all appliances (in Watt hours) */
-        totalPowerConsumptionDomesticHotWaterWh?: number;
-        /** Total heat generation for heating from all appliances (in Watt hours) */
-        totalHeatGenerationHeatingWh?: number;
-        /** Total heat generation for domestic hot water from all appliances (in Watt hours) */
-        totalHeatGenerationDomesticHotWaterWh?: number;
+        pvProductionPowerW?: number;
+        heatpumpPowerW?: number;
+        chargerPowerW?: number;
         autarkyPercentage?: number;
         /** Array of all appliances with their individual values and current state */
         appliances: Array<{
@@ -573,8 +544,6 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
             type: EnyoApplianceTypeEnum;
             /** Current connection state of the appliance */
             state: EnyoApplianceStateEnum;
-            /** ISO timestamp of the last update from this appliance */
-            lastUpdateIso?: string;
             /** the current state values of the appliance */
             values: EnyoAggregatedStateApplianceValues;
         }>;
@@ -1675,48 +1644,5 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
         socPercent: number;
         /** Total usable capacity of the vehicle's traction battery in kWh, if known */
         batterySizeKwh?: number;
-    };
-}
-
-/**
- * Command message to start a calibration routine on a specific appliance.
- * Calibration is a vendor- and appliance-specific procedure (e.g. zeroing
- * a meter, learning a power range, aligning sensors); the targeted
- * integration decides what calibration entails for the given appliance.
- *
- * The receiving integration must answer with an
- * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
- * message's `id` to indicate whether the calibration was accepted,
- * rejected, or is not supported by the appliance.
- */
-export interface EnyoDataBusStartCalibrationV1 extends EnyoDataBusMessage {
-    type: 'message';
-    message: EnyoDataBusMessageEnum.StartCalibrationV1;
-    /** ID of the appliance to start calibration on */
-    applianceId: string;
-    data: {
-        /** Optional reason why this command was issued */
-        reason?: EnyoDataBusCommandReason;
-    };
-}
-
-/**
- * Command message to stop a calibration routine that is currently running
- * on a specific appliance. The targeted integration is expected to abort
- * any in-progress calibration for the addressed appliance.
- *
- * The receiving integration must answer with an
- * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
- * message's `id` to indicate whether the stop request was accepted,
- * rejected, or is not supported by the appliance.
- */
-export interface EnyoDataBusStopCalibrationV1 extends EnyoDataBusMessage {
-    type: 'message';
-    message: EnyoDataBusMessageEnum.StopCalibrationV1;
-    /** ID of the appliance to stop calibration on */
-    applianceId: string;
-    data: {
-        /** Optional reason why this command was issued */
-        reason?: EnyoDataBusCommandReason;
     };
 }
