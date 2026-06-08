@@ -33,6 +33,17 @@ export interface EebusEvsocClient extends EebusUseCaseClient {
     getStateOfChargePercent: () => Promise<number>;
 
     /**
+     * Return the most recent SoC sample the SDK has observed on this
+     * peer, without dispatching a wire read. Synchronous and
+     * side-effect-free.
+     *
+     * Returns `undefined` until the first SoC notify has landed — and
+     * may stay `undefined` indefinitely on vehicles that do not publish
+     * their SoC over EEBUS (see the class-level note).
+     */
+    getLastStateOfCharge: () => EebusEvSocReading | undefined;
+
+    /**
      * Subscribe to SoC updates.
      *
      * @param handler Callback invoked with each new SoC reading.

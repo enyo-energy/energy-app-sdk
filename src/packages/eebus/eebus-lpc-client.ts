@@ -1,7 +1,67 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
-import {EebusLpcAck, EebusLpcFailsafe, EebusLpcLimit, EebusLpcNack} from '../../types/enyo-eebus-use-cases.js';
+import {
+    EebusLpcAck,
+    EebusLpcFailsafe,
+    EebusLpcLimit,
+    EebusLpcLimitCategory,
+    EebusLpcLimitDescriptor,
+    EebusLpcLimitDirection,
+    EebusLpcNack,
+} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
 import {EebusUseCaseClient} from './eebus-use-case-client.js';
+
+/**
+ * Options for {@link EebusLpcClient.findLimit} — used to disambiguate
+ * peers that advertise more than one LoadControl limit slot.
+ */
+export interface FindLpcLimitOptions {
+    /**
+     * Limit direction to match — `'consume'` for LPC obligations on a
+     * controllable load, `'produce'` for production limits on a
+     * battery / inverter.
+     */
+    direction: EebusLpcLimitDirection;
+    /**
+     * Optional limit category to match. Omit to accept either category
+     * (the resolver picks the first match it finds in description-list
+     * order). Pin when the peer advertises both an obligation and a
+     * recommendation in the same direction.
+     */
+    category?: EebusLpcLimitCategory;
+}
+
+/**
+ * Options for {@link EebusLpcClient.findPerPhaseLimitIds} — used by EMS
+ * code that needs to write per-phase limits (OPEV-style) over the
+ * LoadControl feature.
+ */
+export interface FindPerPhaseLimitIdsOptions {
+    /**
+     * Limit category to match — see
+     * {@link FindLpcLimitOptions.category}.
+     */
+    category: EebusLpcLimitCategory;
+}
+
+/**
+ * Options for {@link EebusLpcClient.setConsumptionLimit}.
+ */
+export interface SetConsumptionLimitOptions {
+    /**
+     * When `true`, write the limit as a partial
+     * `LoadControlLimitListData` payload (only the addressed limit slot,
+     * not the full list). Some non-conformant firmwares — notably
+     * Vaillant VR940 — reject the full-list write the spec mandates;
+     * partial writes are the only way to push a limit there.
+     *
+     * Default `false` — the spec-conformant full-list write. Consumers
+     * should gate `true` on
+     * {@link EebusDeviceManagement.getPeerManufacturerData} so the
+     * vendor sniff stays at the consumer boundary.
+     */
+    partial?: boolean;
+}
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.lpc}.
@@ -73,9 +133,17 @@ export interface EebusLpcClient extends EebusUseCaseClient {
      * {@link onConsumptionLimitNack} to observe the CS's downstream
      * decision.
      *
+     * Pass `{ partial: true }` in {@link options} for peers that only
+     * accept partial `LoadControlLimitListData` writes — currently
+     * Vaillant VR940 firmware, which rejects the full-list write the
+     * SPINE spec mandates. Default is a bare full-list write; consumers
+     * should gate `partial: true` on
+     * {@link EebusDeviceManagement.getPeerManufacturerData}.
+     *
      * @param limit The consumption limit to apply
+     * @param options Optional write-style configuration
      */
-    setConsumptionLimit: (limit: EebusLpcLimit) => Promise<void>;
+    setConsumptionLimit: (limit: EebusLpcLimit, options?: SetConsumptionLimitOptions) => Promise<void>;
 
     /**
      * Configure the controllable system's failsafe limit — the value it
@@ -180,4 +248,35 @@ export interface EebusLpcClient extends EebusUseCaseClient {
      * @param listenerId The ID returned by the registration method
      */
     removeListener: (listenerId: string) => void;
+
+    // ─── Description-list helpers (sync, cached) ─────────────────────
+
+    /**
+     * Resolve the descriptor for a LoadControl limit slot on the peer,
+     * using the SDK's cached `loadControlLimitDescriptionListData`.
+     * Synchronous; does not hit the wire.
+     *
+     * Returns the matching descriptor, or `undefined` when no slot on
+     * the resolved entity satisfies the requested
+     * {@link FindLpcLimitOptions.direction} (and, when supplied,
+     * {@link FindLpcLimitOptions.category}). On peers that advertise
+     * several matching slots the resolver returns the first one in
+     * description-list order — consumers that need a different slot
+     * should use {@link EebusFeatureCatalog.findFeatureAddressForClient}
+     * + a per-slot enumeration.
+     */
+    findLimit: (opts: FindLpcLimitOptions) => EebusLpcLimitDescriptor | undefined;
+
+    /**
+     * Resolve the per-phase `limitId`s advertised by the peer for a
+     * given limit {@link FindPerPhaseLimitIdsOptions.category}, in
+     * phase order (L1, L2, L3). Used by EMS code that pushes per-phase
+     * current limits over LoadControl (the OPEV / OSCEV path on
+     * wallboxes that don't expose a dedicated OPEV feature).
+     *
+     * Returns `undefined` when the peer does not advertise per-phase
+     * slots for the requested category. Synchronous; does not hit the
+     * wire.
+     */
+    findPerPhaseLimitIds: (opts: FindPerPhaseLimitIdsOptions) => number[] | undefined;
 }

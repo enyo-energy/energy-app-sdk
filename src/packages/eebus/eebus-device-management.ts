@@ -2,6 +2,7 @@ import {
     EebusConnectionStatusEnum,
     EebusDevice,
     EebusDiscoveredDevice,
+    EebusPeerManufacturerData,
 } from '../../types/enyo-eebus.js';
 
 /**
@@ -73,6 +74,32 @@ export interface EebusDeviceManagement {
      * @returns The current connection status (Connected, Disconnected, or Connecting)
      */
     getConnectionStatus: (ski: string) => Promise<EebusConnectionStatusEnum>;
+
+    /**
+     * Read the cached `DeviceClassification.ManufacturerData` payload
+     * the peer published after the SHIP handshake — the compact
+     * identity record vendor packages need to gate vendor-specific
+     * behaviour (e.g. enabling partial LoadControl writes on Vaillant
+     * VR940 firmware).
+     *
+     * Synchronous on the wire — the lib auto-fetches the payload after
+     * connect and surfaces the cached value here. Returns:
+     * - the populated record once the peer has answered the post-handshake fetch
+     * - `null` when the peer is paired but has not answered the fetch yet
+     * - `undefined` when the SDK has no record of the peer (never paired or fully forgotten)
+     *
+     * The async wrapper is preserved for symmetry with the other
+     * `EebusDeviceManagement` methods; the result resolves immediately
+     * from the cached snapshot.
+     *
+     * Prefer this over reaching for {@link EebusIdentityService.get}
+     * when all you need is vendor sniffing — it avoids waking the full
+     * identity pipeline and keeps vendor matching at the consumer
+     * boundary.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     */
+    getPeerManufacturerData: (ski: string) => Promise<EebusPeerManufacturerData | null | undefined>;
 
     /**
      * Register a listener for connection status changes of EEbus devices.

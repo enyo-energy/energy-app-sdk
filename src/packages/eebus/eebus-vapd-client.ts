@@ -41,6 +41,15 @@ export interface EebusVapdClient extends EebusUseCaseClient {
     getPvNominalPeakPowerW: () => Promise<number | undefined>;
 
     /**
+     * Return the most recent consolidated PV telemetry the SDK has
+     * observed on this peer, without dispatching a wire read.
+     * Synchronous and side-effect-free.
+     *
+     * Returns `undefined` until the first inbound notify has landed.
+     */
+    getLastTelemetry: () => EebusVapdTelemetry | undefined;
+
+    /**
      * Subscribe to consolidated PV telemetry updates.
      */
     onTelemetry: (handler: (telemetry: EebusVapdTelemetry) => void) => string;

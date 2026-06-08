@@ -1,7 +1,25 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
-import {EebusMpcReading} from '../../types/enyo-eebus-use-cases.js';
+import {EebusMpcMeasurementDescriptor, EebusMpcReading} from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
 import {EebusUseCaseClient} from './eebus-use-case-client.js';
+
+/**
+ * Options for {@link EebusMpcClient.findMeasurement} — disambiguates
+ * peers that advertise more than one measurement slot.
+ */
+export interface FindMpcMeasurementOptions {
+    /**
+     * SPINE scope-type wire string to match (e.g. `'acPowerTotal'`,
+     * `'acEnergyConsumed'`). Identifies *what* the slot represents.
+     */
+    scope: string;
+    /**
+     * Optional SPINE commodity-type wire string (e.g. `'electricity'`,
+     * `'heat'`). Pin when the peer advertises the same scope across
+     * commodities — uncommon outside multi-commodity heat-pump peers.
+     */
+    commodity?: string;
+}
 
 /**
  * Per-call configuration for {@link EebusUseCaseRegistry.mpc}.
@@ -74,6 +92,19 @@ export interface EebusMpcClient extends EebusUseCaseClient {
     getReading: () => Promise<EebusMpcReading>;
 
     /**
+     * Return the most recent reading the SDK has observed on this peer
+     * without dispatching a wire read. Synchronous and side-effect-free.
+     *
+     * Returns `undefined` until the first `measurementListData` notify
+     * lands after attach (the SPINE binding is in progress, or the peer
+     * has not pushed any sample yet). Once populated, the snapshot
+     * tracks every subsequent notify — callers do not need to combine
+     * this with a manual {@link onReading} subscription unless they
+     * want push-style delivery.
+     */
+    getLastReading: () => EebusMpcReading | undefined;
+
+    /**
      * Subscribe to updates whenever the controllable system publishes new telemetry.
      * @param listener Callback invoked with each new reading
      * @returns Listener ID that can be passed to {@link removeListener} to cancel
@@ -94,4 +125,20 @@ export interface EebusMpcClient extends EebusUseCaseClient {
      * @param listenerId The ID returned by the registration method
      */
     removeListener: (listenerId: string) => void;
+
+    // ─── Description-list helpers (sync, cached) ─────────────────────
+
+    /**
+     * Resolve the descriptor for a Measurement slot on the peer, using
+     * the SDK's cached `measurementDescriptionListData`. Synchronous;
+     * does not hit the wire.
+     *
+     * Returns the matching descriptor, or `undefined` when no slot on
+     * the resolved entity satisfies the requested
+     * {@link FindMpcMeasurementOptions.scope} (and, when supplied,
+     * {@link FindMpcMeasurementOptions.commodity}). On peers that
+     * advertise several matching slots the resolver returns the first
+     * one in description-list order.
+     */
+    findMeasurement: (opts: FindMpcMeasurementOptions) => EebusMpcMeasurementDescriptor | undefined;
 }

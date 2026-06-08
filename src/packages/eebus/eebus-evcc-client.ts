@@ -1,7 +1,9 @@
 import {SpineRemoteTarget} from '../../types/enyo-eebus.js';
 import {
     EebusEvCommunicationStandardEnum,
+    EebusEvConfigurationSnapshot,
     EebusEvConnectionState,
+    EebusEvElectricalLimits,
     EebusEvIdentification,
 } from '../../types/enyo-eebus-use-cases.js';
 import {SpineEntityType} from '../../types/enyo-spine.js';
@@ -56,6 +58,63 @@ export interface EebusEvccClient extends EebusUseCaseClient {
      * Read whether the EV supports asymmetric (per-phase) charging.
      */
     getEvAsymmetricChargingSupport: () => Promise<boolean>;
+
+    /**
+     * Return the most recent EV identification (EVCCID + identification
+     * type) the SDK has observed on this peer, without dispatching a
+     * wire read. Synchronous and side-effect-free.
+     *
+     * Returns `undefined` until the first `identificationListData`
+     * notify has landed.
+     */
+    getLastEvIdentification: () => EebusEvIdentification | undefined;
+
+    /**
+     * Return the most recent `DeviceConfiguration.keyValueListData`
+     * snapshot the SDK has observed on this peer. Surfaces every
+     * configuration key the EV advertises with its current value;
+     * consumers that only need a specific key can use
+     * {@link getCommunicationStandard} or
+     * {@link supportsAsymmetricCharging} which already narrow the
+     * lookup.
+     *
+     * Returns `undefined` until the first notify has landed.
+     */
+    getLastEvConfiguration: () => EebusEvConfigurationSnapshot | undefined;
+
+    /**
+     * Return the most recent EV electrical permitted-value snapshot the
+     * SDK has observed on this peer — per-phase minimum / maximum
+     * current and total power the EV reports as allowable.
+     *
+     * Returns `undefined` until the first
+     * `permittedValueSetListData` notify has landed.
+     */
+    getLastEvElectricalLimits: () => EebusEvElectricalLimits | undefined;
+
+    /**
+     * Read the EV's negotiated communication standard from the cached
+     * configuration snapshot — `'IEC61851'`, `'ISO15118-2'`,
+     * `'ISO15118-20'`, etc. Synchronous; does not hit the wire.
+     *
+     * Distinct from {@link getEvCommunicationStandard} (async, returns
+     * the typed enum) — this getter returns the raw wire string for
+     * vendor-specific values the enum doesn't cover, and `undefined`
+     * when the key is not yet cached.
+     */
+    getCommunicationStandard: () => string | undefined;
+
+    /**
+     * Read whether the EV advertises asymmetric (per-phase) charging
+     * support from the cached configuration snapshot. Synchronous;
+     * does not hit the wire.
+     *
+     * Returns `undefined` when the key is not yet cached (handshake
+     * still in progress, or the EV does not publish the key at all).
+     * Callers that need a boolean-only answer should treat `undefined`
+     * as `false` only after {@link ready} reports the client is bound.
+     */
+    supportsAsymmetricCharging: () => boolean | undefined;
 
     /**
      * Subscribe to EV-connect events (vehicle plugged in).

@@ -21,6 +21,17 @@ export interface EebusMgcpClient extends EebusUseCaseClient {
     getReading: () => Promise<EebusMgcpReading>;
 
     /**
+     * Return the most recent reading the SDK has observed on this peer
+     * without dispatching a wire read. Synchronous and side-effect-free.
+     *
+     * Returns `undefined` until the first inbound notify lands.
+     * Subsequent notifies update the snapshot — callers that only need
+     * to poll the latest value can drop their {@link onReading}
+     * subscription in favour of this getter.
+     */
+    getLastReading: () => EebusMgcpReading | undefined;
+
+    /**
      * Subscribe to updates whenever the grid connection point publishes new telemetry.
      * @param listener Callback invoked with each new reading
      * @returns Listener ID that can be passed to {@link removeListener} to cancel

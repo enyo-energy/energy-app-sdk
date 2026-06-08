@@ -34,6 +34,15 @@ export interface EebusEvcemClient extends EebusUseCaseClient {
     getCurrentMeasurement: () => Promise<EebusEvcemReading>;
 
     /**
+     * Return the most recent telemetry sample the SDK has observed on
+     * this peer, without dispatching a wire read. Synchronous and
+     * side-effect-free.
+     *
+     * Returns `undefined` until the first inbound notify has landed.
+     */
+    getLastMeasurement: () => EebusEvcemReading | undefined;
+
+    /**
      * Subscribe to per-update telemetry samples.
      *
      * @param handler Callback invoked with each new reading.

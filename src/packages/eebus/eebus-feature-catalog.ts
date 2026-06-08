@@ -2,6 +2,40 @@ import {EebusFeatureRole, EebusRemoteFeatureCatalog} from '../../types/enyo-eebu
 import {SpineEntityType, SpineFeatureType, SpineFunctionType} from '../../types/enyo-spine.js';
 
 /**
+ * Options for {@link EebusFeatureCatalog.findFeatureAddressForClient}.
+ *
+ * Mirrors the lib's priority-ordered resolver used internally by the
+ * typed use-case clients. Consumers that needed to reimplement this
+ * resolver (heat pumps that host the same feature type on several
+ * entities) can now call into the SDK instead.
+ */
+export interface EebusFindFeatureForClientOptions {
+    /** SPINE feature type to look up (e.g. `SpineFeatureType.LOAD_CONTROL`). */
+    featureType: SpineFeatureType;
+    /** SPINE role to match (`'server'` or `'client'`). */
+    role: EebusFeatureRole;
+    /**
+     * Entity types to prefer, in priority order. The resolver picks the
+     * first feature found whose host entity matches the earliest entry
+     * in this list. Mix {@link SpineEntityType} values with raw wire
+     * strings for vendor-specific entity types that pre-date the
+     * catalogue.
+     *
+     * Omit to skip preference-based matching and fall straight back to
+     * {@link fallbackToAny}.
+     */
+    preferredEntityTypes?: Array<SpineEntityType | string>;
+    /**
+     * When no entity in {@link preferredEntityTypes} hosts the feature,
+     * return the first match from any entity instead of resolving to
+     * `undefined`. Defaults to `true` — preserves the legacy
+     * "first-match-wins" behaviour. Set `false` to force a strict match
+     * on {@link preferredEntityTypes}.
+     */
+    fallbackToAny?: boolean;
+}
+
+/**
  * One match returned by {@link EebusFeatureCatalog.findFeatureAddresses}.
  *
  * Carries enough context for a caller to pick *which* entity it wants to
@@ -148,6 +182,29 @@ export interface EebusFeatureCatalog {
         featureType: SpineFeatureType,
         role: EebusFeatureRole,
     ) => Promise<EebusFeatureAddressMatch[]>;
+
+    /**
+     * Resolve a single best-fit feature address for a typed client
+     * binding, applying the lib's priority-ordered resolver.
+     *
+     * Walks {@link findFeatureAddresses} and picks the first match that
+     * (a) sits on one of {@link EebusFindFeatureForClientOptions.preferredEntityTypes}
+     * in the supplied order, or (b) — when no preferred entity hosts the
+     * feature and {@link EebusFindFeatureForClientOptions.fallbackToAny}
+     * is `true` (the default) — the first match from any entity.
+     *
+     * Returns `undefined` when the peer is not connected, when no
+     * entity hosts a matching feature, or when
+     * `fallbackToAny: false` is set and no entity in the preferred
+     * list hosts one.
+     *
+     * @param ski Subject Key Identifier of the remote node
+     * @param opts Match parameters; see {@link EebusFindFeatureForClientOptions}
+     */
+    findFeatureAddressForClient: (
+        ski: string,
+        opts: EebusFindFeatureForClientOptions,
+    ) => Promise<EebusFeatureAddressMatch | undefined>;
 
     /**
      * Remove a feature-catalog listener previously registered via

@@ -48,6 +48,18 @@ export interface EebusVabdClient extends EebusUseCaseClient {
     getBatteryNominalCapacityWh: () => Promise<number | undefined>;
 
     /**
+     * Return the most recent consolidated battery telemetry the SDK has
+     * observed on this peer, without dispatching a wire read.
+     * Synchronous and side-effect-free.
+     *
+     * Returns `undefined` until the first `measurementListData` notify
+     * has landed. Once populated, the snapshot tracks every subsequent
+     * notify — callers can drop their {@link onTelemetry} subscription
+     * if they only need to poll the latest value.
+     */
+    getLastTelemetry: () => EebusVabdTelemetry | undefined;
+
+    /**
      * Subscribe to consolidated battery telemetry updates.
      */
     onTelemetry: (handler: (telemetry: EebusVabdTelemetry) => void) => string;

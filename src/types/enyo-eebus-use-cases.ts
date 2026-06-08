@@ -85,6 +85,62 @@ export interface EebusLpcNack {
     rejectedLimit?: EebusLpcLimit;
 }
 
+/**
+ * Direction a LoadControl limit applies to — whether it caps power
+ * flowing *into* the controllable system (consumption) or *out of* it
+ * (production).
+ *
+ * Used by {@link EebusLpcClient.findLimit} to disambiguate peers that
+ * advertise both directions (a battery storage system, for instance,
+ * advertises both `consume` and `produce` limits).
+ */
+export type EebusLpcLimitDirection = 'consume' | 'produce';
+
+/**
+ * Category of a LoadControl limit — whether the controllable system
+ * MUST respect it (obligation, LPC semantics) or SHOULD respect it
+ * (recommendation, LPP semantics).
+ *
+ * Used by {@link EebusLpcClient.findLimit} to pin lookups when the peer
+ * advertises both categories on the same direction.
+ */
+export type EebusLpcLimitCategory = 'obligation' | 'recommendation';
+
+/**
+ * Typed view of one entry in the peer's
+ * `loadControlLimitDescriptionListData`. Returned by
+ * {@link EebusLpcClient.findLimit} so consumers don't have to walk the
+ * description list themselves.
+ */
+export interface EebusLpcLimitDescriptor {
+    /**
+     * SPINE `limitId` — opaque identifier the peer assigned to this
+     * limit slot. Round-trip on subsequent writes when the peer
+     * advertises more than one limit in the same direction / category.
+     */
+    limitId: number;
+    /** Limit direction (consume / produce). */
+    direction: EebusLpcLimitDirection;
+    /** Limit category (obligation / recommendation). */
+    category: EebusLpcLimitCategory;
+    /** SPINE unit string (e.g. `'W'`, `'A'`). */
+    unit?: string;
+    /**
+     * Optional cross-reference to the `MeasurementListData` slot the
+     * limit constrains (a peer may report the live value via
+     * Measurement while exposing the slot via LoadControl).
+     */
+    measurementId?: number;
+    /**
+     * Optional SPINE scope-type wire string (e.g. `'acPowerTotal'`,
+     * `'acCurrentPerPhase'`). Useful when the peer advertises per-phase
+     * slots that share a direction/category — pair with
+     * {@link EebusLpcClient.findPerPhaseLimitIds} when a per-phase lookup
+     * is needed.
+     */
+    scopeType?: string;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // LPP — Limitation of Power Production (recommendation)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -194,6 +250,41 @@ export interface EebusMpcReading {
     currentPerPhaseA?: number[];
     /** Cumulative energy consumed in Watt-hours */
     totalEnergyConsumedWh?: number;
+}
+
+/**
+ * Typed view of one entry in the peer's
+ * `measurementDescriptionListData`. Returned by
+ * {@link EebusMpcClient.findMeasurement} so consumers don't have to walk
+ * the description list themselves.
+ */
+export interface EebusMpcMeasurementDescriptor {
+    /**
+     * SPINE `measurementId` — opaque identifier the peer assigned to
+     * this measurement slot. Round-trip when joining a measurement
+     * sample back to its descriptor.
+     */
+    measurementId: number;
+    /**
+     * SPINE scope-type wire string (e.g. `'acPowerTotal'`,
+     * `'acEnergyConsumed'`, `'stateOfCharge'`). Identifies *what* the
+     * measurement represents.
+     */
+    scopeType: string;
+    /**
+     * SPINE measurement-type wire string (e.g. `'power'`, `'energy'`,
+     * `'current'`). Identifies *which physical quantity* the slot
+     * carries.
+     */
+    measurementType?: string;
+    /**
+     * SPINE commodity-type wire string (e.g. `'electricity'`, `'gas'`,
+     * `'heat'`). Disambiguates peers that report several commodities
+     * on the same node.
+     */
+    commodityType?: string;
+    /** SPINE unit string (e.g. `'W'`, `'Wh'`, `'A'`, `'%'`). */
+    unit?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -514,6 +605,70 @@ export interface EebusEvConnectionState {
     connected: boolean;
     /** ISO timestamp when the connection state was observed. */
     observedAt: Date;
+}
+
+/**
+ * One configuration key/value pair reported by the EV via
+ * `DeviceConfiguration.keyValueListData`. The set of advertised keys is
+ * EVCC-vocabulary defined (e.g. `'communicationStandard'`,
+ * `'asymmetricChargingSupported'`); the {@link valueType} disambiguates
+ * how to read {@link value}.
+ */
+export interface EebusEvConfigurationKey {
+    /**
+     * Vendor-published key name. Matches the wire string the EV
+     * advertises in `keyValueDescriptionListData` (e.g.
+     * `'communicationStandard'`).
+     */
+    key: string;
+    /**
+     * SPINE value-type discriminator (e.g. `'string'`, `'boolean'`,
+     * `'scaledNumber'`). Use this to interpret {@link value}.
+     */
+    valueType: string;
+    /**
+     * Raw value as the EV published it — number, boolean, or string
+     * depending on {@link valueType}. Callers that already know the key
+     * may narrow the type at the call site; helper getters such as
+     * {@link EebusEvccClient.getCommunicationStandard} narrow on the
+     * caller's behalf.
+     */
+    value: number | boolean | string;
+    /** Whether the value is currently advertised as active by the EV. */
+    isActive?: boolean;
+}
+
+/**
+ * Snapshot of the EV's `DeviceConfiguration.keyValueListData` — every
+ * configuration key the EV currently advertises with its most recent
+ * value. Surfaced as a snapshot so consumers don't have to walk
+ * description + list separately.
+ */
+export interface EebusEvConfigurationSnapshot {
+    /** Timestamp of the most recent `keyValueListData` notify. */
+    timestamp: Date;
+    /** Every key the EV currently advertises. */
+    keys: EebusEvConfigurationKey[];
+}
+
+/**
+ * Snapshot of the EV's electrical permitted-value sets — per-phase
+ * minimum / maximum current the EV reports as allowable, derived from
+ * `ElectricalConnection.permittedValueSetListData`. Used by the EMS to
+ * gate per-phase charging limits (OPEV / OSCEV) against what the
+ * vehicle will accept.
+ */
+export interface EebusEvElectricalLimits {
+    /** Timestamp of the most recent `permittedValueSetListData` notify. */
+    timestamp: Date;
+    /** Minimum per-phase charging current the EV will accept, in Amperes. */
+    minCurrentPerPhaseA?: number[];
+    /** Maximum per-phase charging current the EV will accept, in Amperes. */
+    maxCurrentPerPhaseA?: number[];
+    /** Minimum total charging power the EV will accept, in Watts. */
+    minPowerW?: number;
+    /** Maximum total charging power the EV will accept, in Watts. */
+    maxPowerW?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

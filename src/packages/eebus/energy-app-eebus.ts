@@ -5,16 +5,26 @@ import {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 import {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
 
 export {EebusDeviceManagement} from './eebus-device-management.js';
-export {EebusFeatureCatalog, EebusFeatureAddressMatch} from './eebus-feature-catalog.js';
+export {
+    EebusFeatureCatalog,
+    EebusFeatureAddressMatch,
+    EebusFindFeatureForClientOptions,
+} from './eebus-feature-catalog.js';
 export {EebusIdentityService} from './eebus-identity-service.js';
 export {EebusSpineLowLevel} from './eebus-spine-low-level.js';
-export {EebusUseCaseClient} from './eebus-use-case-client.js';
+export {EebusUseCaseClient, EebusUseCaseReadiness} from './eebus-use-case-client.js';
 export {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
 export {EebusHvacClient, HvacClientOptions} from './eebus-hvac-client.js';
-export {EebusLpcClient, LpcClientOptions} from './eebus-lpc-client.js';
+export {
+    EebusLpcClient,
+    LpcClientOptions,
+    FindLpcLimitOptions,
+    FindPerPhaseLimitIdsOptions,
+    SetConsumptionLimitOptions,
+} from './eebus-lpc-client.js';
 export {EebusLppClient} from './eebus-lpp-client.js';
 export {EebusMgcpClient} from './eebus-mgcp-client.js';
-export {EebusMpcClient, MpcClientOptions} from './eebus-mpc-client.js';
+export {EebusMpcClient, MpcClientOptions, FindMpcMeasurementOptions} from './eebus-mpc-client.js';
 export {EebusOhpcfClient, OhpcfClientOptions} from './eebus-ohpcf-client.js';
 export {EebusSetpointClient, SetpointClientOptions} from './eebus-setpoint-client.js';
 export {EebusCevcClient, CevcClientOptions} from './eebus-cevc-client.js';

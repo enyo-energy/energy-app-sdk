@@ -108,6 +108,35 @@ export interface EebusDataPoint {
 }
 
 /**
+ * Compact view of the `DeviceClassification.ManufacturerData` SPINE
+ * payload — the fields a vendor package most often needs to gate
+ * behaviour on (vendor identity, model code, firmware revision).
+ *
+ * Returned by {@link EebusDeviceManagement.getPeerManufacturerData} so
+ * consumers can keep vendor-specific quirks at the consumer boundary
+ * instead of pushing them into the SDK. Distinct from
+ * {@link EebusNodeIdentity}, which carries the full NID snapshot — use
+ * this getter when you only need the identity fields and want to skip
+ * the identity-service round trip.
+ */
+export interface EebusPeerManufacturerData {
+    /** Manufacturer-assigned device name (e.g. `'KEBA P30'`). */
+    manufacturerName?: string;
+    /** Brand under which the device is sold. */
+    brandName?: string;
+    /** Vendor company code (manufacturer identifier). */
+    vendorCode?: string;
+    /** Manufacturer-assigned device / model code. */
+    deviceCode?: string;
+    /** Manufacturer-assigned serial number. */
+    serialNumber?: string;
+    /** Software / firmware revision of the device. */
+    softwareRevision?: string;
+    /** Hardware revision of the device. */
+    hardwareRevision?: string;
+}
+
+/**
  * Power source of an EEbus device as reported via `DeviceClassification`.
  * Mirrors SPINE `PowerSourceType`. Values beyond this set may appear in
  * future SPINE revisions; consumers should treat unknown strings as opaque.
