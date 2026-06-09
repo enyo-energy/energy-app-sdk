@@ -34,14 +34,14 @@ export interface EebusEvsocClient extends EebusUseCaseClient {
 
     /**
      * Return the most recent SoC sample the SDK has observed on this
-     * peer, without dispatching a wire read. Synchronous and
-     * side-effect-free.
+     * peer, without dispatching a wire read. Resolves from the lib's
+     * cached snapshot — side-effect-free.
      *
-     * Returns `undefined` until the first SoC notify has landed — and
-     * may stay `undefined` indefinitely on vehicles that do not publish
-     * their SoC over EEBUS (see the class-level note).
+     * Resolves to `undefined` until the first SoC notify has landed —
+     * and may stay `undefined` indefinitely on vehicles that do not
+     * publish their SoC over EEBUS (see the class-level note).
      */
-    getLastStateOfCharge: () => EebusEvSocReading | undefined;
+    getLastStateOfCharge: () => Promise<EebusEvSocReading | undefined>;
 
     /**
      * Subscribe to SoC updates.

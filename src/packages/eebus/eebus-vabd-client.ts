@@ -49,15 +49,15 @@ export interface EebusVabdClient extends EebusUseCaseClient {
 
     /**
      * Return the most recent consolidated battery telemetry the SDK has
-     * observed on this peer, without dispatching a wire read.
-     * Synchronous and side-effect-free.
+     * observed on this peer, without dispatching a wire read. Resolves
+     * from the lib's cached snapshot — side-effect-free.
      *
-     * Returns `undefined` until the first `measurementListData` notify
-     * has landed. Once populated, the snapshot tracks every subsequent
-     * notify — callers can drop their {@link onTelemetry} subscription
-     * if they only need to poll the latest value.
+     * Resolves to `undefined` until the first `measurementListData`
+     * notify has landed. Once populated, the snapshot tracks every
+     * subsequent notify — callers can drop their {@link onTelemetry}
+     * subscription if they only need to poll the latest value.
      */
-    getLastTelemetry: () => EebusVabdTelemetry | undefined;
+    getLastTelemetry: () => Promise<EebusVabdTelemetry | undefined>;
 
     /**
      * Subscribe to consolidated battery telemetry updates.

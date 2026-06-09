@@ -62,12 +62,13 @@ export interface EebusEvccClient extends EebusUseCaseClient {
     /**
      * Return the most recent EV identification (EVCCID + identification
      * type) the SDK has observed on this peer, without dispatching a
-     * wire read. Synchronous and side-effect-free.
+     * wire read. Resolves from the lib's cached snapshot —
+     * side-effect-free.
      *
-     * Returns `undefined` until the first `identificationListData`
+     * Resolves to `undefined` until the first `identificationListData`
      * notify has landed.
      */
-    getLastEvIdentification: () => EebusEvIdentification | undefined;
+    getLastEvIdentification: () => Promise<EebusEvIdentification | undefined>;
 
     /**
      * Return the most recent `DeviceConfiguration.keyValueListData`
@@ -78,43 +79,44 @@ export interface EebusEvccClient extends EebusUseCaseClient {
      * {@link supportsAsymmetricCharging} which already narrow the
      * lookup.
      *
-     * Returns `undefined` until the first notify has landed.
+     * Resolves to `undefined` until the first notify has landed.
      */
-    getLastEvConfiguration: () => EebusEvConfigurationSnapshot | undefined;
+    getLastEvConfiguration: () => Promise<EebusEvConfigurationSnapshot | undefined>;
 
     /**
      * Return the most recent EV electrical permitted-value snapshot the
      * SDK has observed on this peer — per-phase minimum / maximum
      * current and total power the EV reports as allowable.
      *
-     * Returns `undefined` until the first
+     * Resolves to `undefined` until the first
      * `permittedValueSetListData` notify has landed.
      */
-    getLastEvElectricalLimits: () => EebusEvElectricalLimits | undefined;
+    getLastEvElectricalLimits: () => Promise<EebusEvElectricalLimits | undefined>;
 
     /**
      * Read the EV's negotiated communication standard from the cached
      * configuration snapshot — `'IEC61851'`, `'ISO15118-2'`,
-     * `'ISO15118-20'`, etc. Synchronous; does not hit the wire.
+     * `'ISO15118-20'`, etc. Resolves from the lib's cached snapshot;
+     * does not hit the wire.
      *
-     * Distinct from {@link getEvCommunicationStandard} (async, returns
-     * the typed enum) — this getter returns the raw wire string for
+     * Distinct from {@link getEvCommunicationStandard} which returns
+     * the typed enum — this getter returns the raw wire string for
      * vendor-specific values the enum doesn't cover, and `undefined`
      * when the key is not yet cached.
      */
-    getCommunicationStandard: () => string | undefined;
+    getCommunicationStandard: () => Promise<string | undefined>;
 
     /**
      * Read whether the EV advertises asymmetric (per-phase) charging
-     * support from the cached configuration snapshot. Synchronous;
-     * does not hit the wire.
+     * support from the cached configuration snapshot. Resolves from the
+     * lib's cached snapshot; does not hit the wire.
      *
-     * Returns `undefined` when the key is not yet cached (handshake
+     * Resolves to `undefined` when the key is not yet cached (handshake
      * still in progress, or the EV does not publish the key at all).
      * Callers that need a boolean-only answer should treat `undefined`
      * as `false` only after {@link ready} reports the client is bound.
      */
-    supportsAsymmetricCharging: () => boolean | undefined;
+    supportsAsymmetricCharging: () => Promise<boolean | undefined>;
 
     /**
      * Subscribe to EV-connect events (vehicle plugged in).

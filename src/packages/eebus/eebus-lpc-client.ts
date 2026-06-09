@@ -254,10 +254,10 @@ export interface EebusLpcClient extends EebusUseCaseClient {
     /**
      * Resolve the descriptor for a LoadControl limit slot on the peer,
      * using the SDK's cached `loadControlLimitDescriptionListData`.
-     * Synchronous; does not hit the wire.
+     * Resolves from the cached snapshot; does not hit the wire.
      *
-     * Returns the matching descriptor, or `undefined` when no slot on
-     * the resolved entity satisfies the requested
+     * Resolves to the matching descriptor, or `undefined` when no slot
+     * on the resolved entity satisfies the requested
      * {@link FindLpcLimitOptions.direction} (and, when supplied,
      * {@link FindLpcLimitOptions.category}). On peers that advertise
      * several matching slots the resolver returns the first one in
@@ -265,7 +265,7 @@ export interface EebusLpcClient extends EebusUseCaseClient {
      * should use {@link EebusFeatureCatalog.findFeatureAddressForClient}
      * + a per-slot enumeration.
      */
-    findLimit: (opts: FindLpcLimitOptions) => EebusLpcLimitDescriptor | undefined;
+    findLimit: (opts: FindLpcLimitOptions) => Promise<EebusLpcLimitDescriptor | undefined>;
 
     /**
      * Resolve the per-phase `limitId`s advertised by the peer for a
@@ -274,9 +274,9 @@ export interface EebusLpcClient extends EebusUseCaseClient {
      * current limits over LoadControl (the OPEV / OSCEV path on
      * wallboxes that don't expose a dedicated OPEV feature).
      *
-     * Returns `undefined` when the peer does not advertise per-phase
-     * slots for the requested category. Synchronous; does not hit the
-     * wire.
+     * Resolves to `undefined` when the peer does not advertise
+     * per-phase slots for the requested category. Resolves from the
+     * cached snapshot; does not hit the wire.
      */
-    findPerPhaseLimitIds: (opts: FindPerPhaseLimitIdsOptions) => number[] | undefined;
+    findPerPhaseLimitIds: (opts: FindPerPhaseLimitIdsOptions) => Promise<number[] | undefined>;
 }

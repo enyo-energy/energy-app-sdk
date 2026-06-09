@@ -42,12 +42,12 @@ export interface EebusVapdClient extends EebusUseCaseClient {
 
     /**
      * Return the most recent consolidated PV telemetry the SDK has
-     * observed on this peer, without dispatching a wire read.
-     * Synchronous and side-effect-free.
+     * observed on this peer, without dispatching a wire read. Resolves
+     * from the lib's cached snapshot — side-effect-free.
      *
-     * Returns `undefined` until the first inbound notify has landed.
+     * Resolves to `undefined` until the first inbound notify has landed.
      */
-    getLastTelemetry: () => EebusVapdTelemetry | undefined;
+    getLastTelemetry: () => Promise<EebusVapdTelemetry | undefined>;
 
     /**
      * Subscribe to consolidated PV telemetry updates.

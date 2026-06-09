@@ -93,16 +93,17 @@ export interface EebusMpcClient extends EebusUseCaseClient {
 
     /**
      * Return the most recent reading the SDK has observed on this peer
-     * without dispatching a wire read. Synchronous and side-effect-free.
+     * without dispatching a wire read. Resolves from the lib's cached
+     * snapshot — side-effect-free.
      *
-     * Returns `undefined` until the first `measurementListData` notify
-     * lands after attach (the SPINE binding is in progress, or the peer
-     * has not pushed any sample yet). Once populated, the snapshot
-     * tracks every subsequent notify — callers do not need to combine
-     * this with a manual {@link onReading} subscription unless they
-     * want push-style delivery.
+     * Resolves to `undefined` until the first `measurementListData`
+     * notify lands after attach (the SPINE binding is in progress, or
+     * the peer has not pushed any sample yet). Once populated, the
+     * snapshot tracks every subsequent notify — callers do not need to
+     * combine this with a manual {@link onReading} subscription unless
+     * they want push-style delivery.
      */
-    getLastReading: () => EebusMpcReading | undefined;
+    getLastReading: () => Promise<EebusMpcReading | undefined>;
 
     /**
      * Subscribe to updates whenever the controllable system publishes new telemetry.
@@ -130,15 +131,15 @@ export interface EebusMpcClient extends EebusUseCaseClient {
 
     /**
      * Resolve the descriptor for a Measurement slot on the peer, using
-     * the SDK's cached `measurementDescriptionListData`. Synchronous;
-     * does not hit the wire.
+     * the SDK's cached `measurementDescriptionListData`. Resolves from
+     * the cached snapshot; does not hit the wire.
      *
-     * Returns the matching descriptor, or `undefined` when no slot on
-     * the resolved entity satisfies the requested
+     * Resolves to the matching descriptor, or `undefined` when no slot
+     * on the resolved entity satisfies the requested
      * {@link FindMpcMeasurementOptions.scope} (and, when supplied,
      * {@link FindMpcMeasurementOptions.commodity}). On peers that
      * advertise several matching slots the resolver returns the first
      * one in description-list order.
      */
-    findMeasurement: (opts: FindMpcMeasurementOptions) => EebusMpcMeasurementDescriptor | undefined;
+    findMeasurement: (opts: FindMpcMeasurementOptions) => Promise<EebusMpcMeasurementDescriptor | undefined>;
 }

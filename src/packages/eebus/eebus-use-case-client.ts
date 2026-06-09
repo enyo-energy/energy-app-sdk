@@ -43,22 +43,26 @@ export interface EebusUseCaseReadiness {
  * readiness state so a consumer can answer "is this peer ready for me to
  * use this use case yet?" without firing any wire traffic.
  *
- * The probe is synchronous and side-effect-free: it neither triggers nor
- * waits for the handshake. Call it from a render path, an event handler,
- * or a polling loop without worrying about cost.
+ * The probe is side-effect-free: it neither triggers nor waits for the
+ * handshake — the returned promise resolves from the lib's cached state.
+ * The async signature is preserved for symmetry with the rest of the
+ * SDK surface (every other use-case method returns a promise) and to
+ * keep IPC bridges in consumer packages from having to special-case
+ * this one method.
  */
 export interface EebusUseCaseClient {
     /**
      * Probe the lib's cached readiness state for this use-case client.
      *
-     * Returns `{ ready: true }` once the peer is fully bound and
-     * subscribed. Returns `{ ready: false, reason }` while any
+     * Resolves to `{ ready: true }` once the peer is fully bound and
+     * subscribed. Resolves to `{ ready: false, reason }` while any
      * precondition is outstanding — {@link EebusUseCaseReadiness.reason}
      * carries the lib-published explanation so callers can distinguish
      * "peer is offline" from "peer does not support this use case" from
      * "binding is still in flight".
      *
-     * Synchronous and side-effect-free. Safe to call from hot paths.
+     * Side-effect-free and cached — resolves immediately. Safe to call
+     * from hot paths.
      */
-    ready: () => EebusUseCaseReadiness;
+    ready: () => Promise<EebusUseCaseReadiness>;
 }

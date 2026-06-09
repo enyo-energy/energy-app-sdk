@@ -73,24 +73,25 @@ export interface EebusCevcClient extends EebusUseCaseClient {
 
     /**
      * Return the most recent time-series charging plan the SDK has
-     * observed on this peer, without dispatching a wire read.
-     * Synchronous and side-effect-free.
+     * observed on this peer, without dispatching a wire read. Resolves
+     * from the lib's cached snapshot — side-effect-free.
      *
-     * Returns `undefined` until the first plan notify has landed, and
-     * will keep returning `undefined` on peers that do not implement
-     * `TimeSeries` until that client lands in `@enyo-energy/eebus`.
+     * Resolves to `undefined` until the first plan notify has landed,
+     * and will keep resolving to `undefined` on peers that do not
+     * implement `TimeSeries` until that client lands in
+     * `@enyo-energy/eebus`.
      */
-    getLastTimeSeriesPlan: () => EebusCevcChargingPlan | undefined;
+    getLastTimeSeriesPlan: () => Promise<EebusCevcChargingPlan | undefined>;
 
     /**
      * Return the most recent incentive table the SDK has observed on
-     * this peer, without dispatching a wire read. Synchronous and
-     * side-effect-free.
+     * this peer, without dispatching a wire read. Resolves from the
+     * lib's cached snapshot — side-effect-free.
      *
-     * Returns `undefined` until the first `incentiveTableData` notify
-     * has landed.
+     * Resolves to `undefined` until the first `incentiveTableData`
+     * notify has landed.
      */
-    getLastIncentiveTable: () => EebusOhpcfIncentiveTable | undefined;
+    getLastIncentiveTable: () => Promise<EebusOhpcfIncentiveTable | undefined>;
 
     /**
      * Subscribe to plan-state updates published by the EV (e.g. revised
