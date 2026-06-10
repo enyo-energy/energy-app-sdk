@@ -36,6 +36,7 @@ import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
+import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -373,6 +374,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useConfigurationManager(): EnergyAppConfigurationManager {
         return this.energyAppSdk.useConfigurationManager();
+    }
+
+    /**
+     * Gets the Appliance Energy-Manager Forecast API for publishing
+     * forecasted command plans per appliance (charger, battery,
+     * heatpump). The publisher must hold the `EnergyManager` permission.
+     * @returns The Appliance Energy-Manager Forecast API instance
+     */
+    public useApplianceEnergyManagerForecast(): EnergyAppApplianceEnergyManagerForecast {
+        return this.energyAppSdk.useApplianceEnergyManagerForecast();
     }
 
     /**

@@ -34,6 +34,7 @@ import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
+import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -132,4 +133,6 @@ export interface EnyoEnergyAppSdk {
     useGridConnectionPoint: () => EnergyAppGridConnectionPoint;
     /** Get the Configuration Manager API for registering internal (non user-facing) package configurations with change notifications */
     useConfigurationManager: () => EnergyAppConfigurationManager;
+    /** Get the Appliance Energy-Manager Forecast API for publishing forecasted command plans per appliance (charger, battery, heatpump) */
+    useApplianceEnergyManagerForecast: () => EnergyAppApplianceEnergyManagerForecast;
 }

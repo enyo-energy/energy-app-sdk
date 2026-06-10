@@ -1,7 +1,7 @@
 import {EnergyAppApplianceTypeEnum} from "../energy-app-appliance-type.enum.js";
 import {EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
-import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
+import {EnyoChargeModeEnum, EnyoDataBusMessageEnum} from "./enyo-data-bus-value.js";
 import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
 
 // ─── Price table types ────────────────────────────────────
@@ -552,4 +552,238 @@ export interface EnyoDiagnosticsControlPlan {
     totalGridExportKwh: number;
     /** Total estimated savings in EUR. */
     totalEstimatedSavingsEur?: number;
+}
+
+// ─── Energy-manager cycle diagnostics ───────────────────────────────────────
+//
+// Operational telemetry for the energy manager's planning loop. One
+// `EnyoEnergyManagerCycleDiagnostics` is published per cycle via
+// `EnergyAppDiagnostics.publishCycleDiagnostics` and answers the four
+// real ops questions:
+//   liveness            — outcome + timestamps
+//   latency             — durations
+//   throughput & success — commands issued + acknowledgements
+//   failure modes       — issues
+//
+// The shape is deliberately separate from `EnyoDiagnosticsControlPlan`
+// (which describes *what* the EM decided to do, published via
+// `EnergyAppEnergyManager.publishForecast`) — this surface describes
+// *how the EM's planning loop performed*.
+
+/**
+ * Outcome of a single energy-manager planning cycle.
+ *
+ * - `Completed` — the cycle ran end-to-end and dispatched its plan.
+ * - `Skipped` — the cycle was intentionally short-circuited (e.g. nothing
+ *   to do, prerequisites missing). `outcomeReason` should explain.
+ * - `Failed` — the cycle aborted because of an unrecoverable error.
+ *   `outcomeReason` should explain.
+ */
+export enum EnyoEnergyManagerCycleOutcomeEnum {
+    /** Cycle ran end-to-end and dispatched its plan. */
+    Completed = 'completed',
+    /** Cycle was intentionally short-circuited; `outcomeReason` explains why. */
+    Skipped = 'skipped',
+    /** Cycle aborted because of an unrecoverable error; `outcomeReason` explains. */
+    Failed = 'failed',
+}
+
+/**
+ * The discrete phases an energy-manager cycle progresses through. Each
+ * phase's wall-clock duration is reported in
+ * {@link EnyoEnergyManagerPhaseDuration}.
+ */
+export enum EnyoEnergyManagerCyclePhaseEnum {
+    /** Snapshot the current state of appliances, grid, and tariffs. */
+    LoadCurrentState = 'load-current-state',
+    /** Fetch / refresh all forecasts needed by the optimizer. */
+    FetchForecasts = 'fetch-forecasts',
+    /** Run the optimization / planning step. */
+    Optimize = 'optimize',
+    /** Translate the plan into data-bus commands and dispatch them. */
+    DispatchCommands = 'dispatch-commands',
+    /** Publish the resulting control plan / forecasts to subscribers. */
+    Publish = 'publish',
+}
+
+/**
+ * Identifies which forecaster a {@link EnyoEnergyManagerForecastUsage}
+ * entry refers to. Mirrors the forecaster accessors on
+ * `EnergyAppEnergyManager`.
+ */
+export enum EnyoEnergyManagerForecastTypeEnum {
+    /** PV production forecast. */
+    PvProduction = 'pv-production',
+    /** Battery state-of-charge trajectory forecast. */
+    Battery = 'battery',
+    /** Whole-home consumption forecast. */
+    HomeConsumption = 'home-consumption',
+    /** EV charging forecast. */
+    EvCharging = 'ev-charging',
+    /** Heatpump electrical consumption forecast. */
+    HeatpumpConsumption = 'heatpump-consumption',
+    /** Heatpump DHW (domestic-hot-water) temperature trajectory forecast. */
+    HeatpumpDhwTemperature = 'heatpump-dhw-temperature',
+}
+
+/**
+ * Severity of an {@link EnyoEnergyManagerIssue} encountered during a
+ * cycle.
+ *
+ * - `Warning` — the cycle continued; this is informational / degraded.
+ * - `Error` — the cycle aborted or had to drop work on the floor.
+ */
+export enum EnyoEnergyManagerIssueSeverityEnum {
+    /** Informational / degraded; the cycle continued. */
+    Warning = 'warning',
+    /** The cycle aborted or had to drop work on the floor. */
+    Error = 'error',
+}
+
+/**
+ * Wall-clock duration spent in one cycle phase.
+ */
+export interface EnyoEnergyManagerPhaseDuration {
+    /** Which phase this measurement belongs to. */
+    phase: EnyoEnergyManagerCyclePhaseEnum;
+    /** Wall-clock duration spent in the phase, in milliseconds. */
+    durationMs: number;
+}
+
+/**
+ * One forecaster call the cycle made — useful to spot which forecaster
+ * is slow or failing.
+ */
+export interface EnyoEnergyManagerForecastUsage {
+    /** Which forecaster was called. */
+    forecastType: EnyoEnergyManagerForecastTypeEnum;
+    /** Appliance the forecaster was scoped to, when applicable (e.g. per-battery). */
+    applianceId?: string;
+    /** Wall-clock duration of the forecaster call, in milliseconds. */
+    durationMs: number;
+    /** Whether the call succeeded. `false` should be paired with an entry in `issues`. */
+    ok: boolean;
+}
+
+/**
+ * Number of commands of a given data-bus message kind that the energy
+ * manager issued during the cycle.
+ */
+export interface EnyoEnergyManagerCommandCount {
+    /** Data-bus message kind issued (e.g. `EnyoDataBusMessageEnum.SetStorageScheduleV1`). */
+    messageType: EnyoDataBusMessageEnum;
+    /** How many commands of this type the cycle issued. Non-negative integer. */
+    count: number;
+}
+
+/**
+ * Aggregated acknowledgement outcomes (since the previous cycle) for a
+ * given data-bus message kind. Counts come from
+ * `EnyoDataBusCommandAcknowledgeV1.answer`.
+ *
+ * Reported per cycle as a *delta* — the counts cover acknowledgements
+ * received between the end of the previous cycle and this one — so
+ * dashboards can chart rejection rates aligned to cycle boundaries.
+ */
+export interface EnyoEnergyManagerCommandAcknowledgement {
+    /** Data-bus message kind these acks correspond to. */
+    messageType: EnyoDataBusMessageEnum;
+    /** Number of acks that came back `Accepted`. Non-negative integer. */
+    accepted: number;
+    /** Number of acks that came back `Rejected`. Non-negative integer. */
+    rejected: number;
+    /** Number of acks that came back `NotSupported`. Non-negative integer. */
+    notSupported: number;
+}
+
+/**
+ * Headcount of appliances the energy manager is currently planning for,
+ * broken down by appliance type.
+ */
+export interface EnyoEnergyManagerApplianceCount {
+    /** Which appliance type this count is for. */
+    applianceType: EnyoApplianceTypeEnum;
+    /** How many appliances of this type are under management. Non-negative integer. */
+    count: number;
+}
+
+/**
+ * A single problem encountered while running the cycle — a forecast
+ * fetch failure, a constraint violation, an appliance that had to be
+ * skipped, etc.
+ *
+ * `code` is a short, stable, kebab-case identifier (e.g.
+ * `'forecast-fetch-failed'`, `'no-storage-headroom'`) intended for
+ * grouping in dashboards / alerts; `message` is the human-readable
+ * detail. Implementations SHOULD cap the per-cycle list at a sensible
+ * upper bound (e.g. 50) to keep the payload small.
+ */
+export interface EnyoEnergyManagerIssue {
+    /** Severity — controls whether the issue is a warning or an error. */
+    severity: EnyoEnergyManagerIssueSeverityEnum;
+    /** Short, stable kebab-case identifier suitable for grouping in dashboards. */
+    code: string;
+    /** Human-readable detail. */
+    message: string;
+    /** Optional appliance the issue is scoped to. */
+    applianceId?: string;
+}
+
+/**
+ * Operational telemetry for one energy-manager cycle — published once
+ * per cycle (typically at the end of the cycle so timings are final)
+ * via `EnergyAppDiagnostics.publishCycleDiagnostics`.
+ *
+ * Intentionally complementary to `EnergyAppEnergyManager.publishForecast`:
+ * `publishForecast` ships the *plan* (what the EM decided to do);
+ * `publishCycleDiagnostics` ships the *health of the planning loop*
+ * (how long it took, what it dispatched, what went wrong).
+ */
+export interface EnyoEnergyManagerCycleDiagnostics {
+    /** ISO 8601 timestamp when the cycle started. */
+    cycleStartedAtIso: string;
+    /** ISO 8601 timestamp when the cycle completed. MUST be ≥ `cycleStartedAtIso`. */
+    cycleCompletedAtIso: string;
+    /** Overall cycle outcome. */
+    outcome: EnyoEnergyManagerCycleOutcomeEnum;
+    /** Required when `outcome` is `Skipped` or `Failed`; explains the reason. */
+    outcomeReason?: string;
+
+    /** Total wall-clock duration of the cycle, in milliseconds. Non-negative finite. */
+    totalDurationMs: number;
+    /**
+     * Per-phase wall-clock durations. May be a partial set when an early
+     * phase aborted the cycle. The sum of `phaseDurations[].durationMs`
+     * MUST NOT exceed `totalDurationMs`.
+     */
+    phaseDurations: EnyoEnergyManagerPhaseDuration[];
+
+    /** One entry per forecaster call the cycle performed. */
+    forecastsConsumed: EnyoEnergyManagerForecastUsage[];
+
+    /** Commands issued this cycle, aggregated by data-bus message kind. */
+    commandsIssued: EnyoEnergyManagerCommandCount[];
+    /**
+     * Acknowledgements received between the previous cycle and this one,
+     * aggregated by data-bus message kind. Reported as a per-cycle delta
+     * (NOT a running total) so dashboards can chart rejection rates
+     * aligned to cycle boundaries.
+     */
+    commandAcknowledgements: EnyoEnergyManagerCommandAcknowledgement[];
+
+    /** How many appliances of each type are currently under EM control. */
+    appliancesManaged: EnyoEnergyManagerApplianceCount[];
+    /**
+     * Length of the planning horizon the cycle actually produced a plan
+     * for, in minutes. `0` is allowed (e.g. when `outcome` is `Skipped`
+     * or `Failed`).
+     */
+    plannedHorizonMinutes: number;
+
+    /**
+     * Issues encountered while running this cycle. Bounded by the
+     * publisher — implementations SHOULD cap at a sensible upper bound
+     * (e.g. 50) to keep the payload small.
+     */
+    issues: EnyoEnergyManagerIssue[];
 }

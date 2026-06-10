@@ -49,6 +49,12 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [EvChargingForecast](#evchargingforecast)
   - [HeatpumpConsumptionForecast](#heatpumpconsumptionforecast)
   - [HeatpumpDhwTemperatureForecast](#heatpumpdhwtemperatureforecast)
+- [Appliance Energy-Manager Forecast](#appliance-energy-manager-forecast)
+  - [`useApplianceEnergyManagerForecast()`](#useapplianceenergymanagerforecast-energyappapplianceenergymanagerforecast)
+  - [ChargerForecast](#chargerforecast)
+  - [BatteryCommandForecast](#batterycommandforecast)
+  - [HeatpumpForecast](#heatpumpforecast)
+  - [Validators](#validators)
 - [Examples](#examples)
   - [Basic Energy App](#basic-energy-app)
   - [Device Integration](#device-integration)
@@ -130,6 +136,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Forecast EV charging demand | [`EvChargingForecast`](#evchargingforecast) |
 | Forecast heatpump electrical consumption | [`HeatpumpConsumptionForecast`](#heatpumpconsumptionforecast) |
 | Forecast heatpump DHW tank temperature | [`HeatpumpDhwTemperatureForecast`](#heatpumpdhwtemperatureforecast) |
+| Announce a charger / battery / heatpump command plan you **intend to apply** | [`useApplianceEnergyManagerForecast()`](#useapplianceenergymanagerforecast-energyappapplianceenergymanagerforecast) |
 | Talk to an EEBUS / SHIP / SPINE device | [`useEebus()`](#useeebus-energyappeebus) |
 | Speak MQTT (SDK broker or external) | [`useMqtt()`](#usemqtt-energyappmqtt) |
 | Scan or talk to Bluetooth LE peripherals | [`useBluetooth()`](#usebluetooth-energyappbluetooth) |
@@ -1897,6 +1904,183 @@ energyApp.onShutdown(async () => {
 ```
 
 > **Tip:** if your app needs more than one forecaster, prefer [`EnergyManagerEnergyApp`](#energymanagerenergyapp) — it manages construction, caching, and disposal for you.
+
+## Appliance Energy-Manager Forecast
+
+The [Forecasting](#forecasting) module above predicts what an appliance will **do** based on history. The Appliance Energy-Manager Forecast package goes the other way: it lets an energy-manager app declare what it **intends to command** each appliance to do over the upcoming horizon, plus the temperature trajectories its commands are expected to produce. Three appliance families are supported today — chargers, batteries, and heatpumps — and the heatpump payload can carry any combination of DHW boost, room pre-heating, buffer-tank boost, and a relative power-announcement schedule in one call.
+
+How the runtime fans these forecasts out to subscribers (data bus, RPC, …) is an internal implementation detail of the SDK runtime — apps just call `publish*` and the SDK takes care of the rest.
+
+**Required permission:** `EnergyManager`.
+
+### `useApplianceEnergyManagerForecast(): EnergyAppApplianceEnergyManagerForecast`
+
+```typescript
+const forecasts = energyApp.useApplianceEnergyManagerForecast();
+```
+
+| Method | Purpose |
+|---|---|
+| `publishChargerForecast(applianceId, forecast: ChargerForecast)` | Publish the planned phase / power schedule for a charger. |
+| `publishBatteryForecast(applianceId, forecast: BatteryCommandForecast)` | Publish the planned charge / discharge / auto cadence for a battery. |
+| `publishHeatpumpForecast(applianceId, forecast: HeatpumpForecast)` | Publish any combination of DHW boost / room pre-heating / buffer-tank boost / power-announcement schedule for a heatpump. |
+
+Every call validates the payload first and rejects with `ApplianceCommandForecastValidationError` if any invariant is broken — `publish*` never goes through the runtime with malformed data.
+
+Every forecast also accepts shared optional metadata via [`ApplianceForecastMetadata`](#validators):
+
+- `generatedAtIso?: string` — ISO 8601 generation timestamp. Stamped by the runtime when omitted.
+- `reason?: string` — free-form note (e.g. `"follow PV peak"`, `"§14a DR event"`).
+- `estimatedSavings?: ApplianceForecastEstimatedSavings` — see below.
+
+```typescript
+interface ApplianceForecastEstimatedSavings {
+    costSavings: number;            // positive = savings, negative = extra cost (in `currency`)
+    currency: string;               // ISO 4217 code
+    co2SavingsGrams?: number;
+    selfConsumptionGainWh?: number;
+    note?: string;                  // e.g. "vs. flat-tariff baseline"
+}
+```
+
+### ChargerForecast
+
+Relative phase / power schedule that mirrors an OCPP TxProfile but adds explicit `numberOfPhases` (1 / 2 / 3).
+
+```typescript
+import { ChargerForecast } from '@enyo-energy/energy-app-sdk';
+
+const forecast: ChargerForecast = {
+    relativeSchedule: [
+        // Right now: 11 kW across three phases
+        { seconds: 0,    powerW: 11_000, numberOfPhases: 3 },
+        // In 30 minutes: derate to 3.7 kW on one phase
+        { seconds: 1800, powerW:  3_700, numberOfPhases: 1 },
+        // In one hour: pause
+        { seconds: 3600, powerW:  0                       },
+    ],
+    estimatedSavings: { costSavings: 0.42, currency: 'EUR', co2SavingsGrams: 120 },
+    reason: 'follow PV peak',
+};
+
+await forecasts.publishChargerForecast('charger-1', forecast);
+```
+
+Per-entry invariants:
+
+- `seconds`: finite, non-negative; first entry `= 0`; subsequent entries strictly increasing.
+- `powerW`: finite, non-negative (`0` means "pause").
+- `numberOfPhases`: optional; if set, must be `1`, `2`, or `3`.
+
+### BatteryCommandForecast
+
+Relative `{seconds, mode, powerW}` schedule where `mode` is one of `'charge'`, `'discharge'`, or `'auto'`. `auto` returns control to the appliance and must always carry `powerW = 0`.
+
+The type is named `BatteryCommandForecast` to make the distinction with the existing [`BatteryForecast`](#batteryforecast) class (which forecasts state-of-charge from history) explicit.
+
+```typescript
+import {
+    BatteryCommandForecast,
+    BatteryCommandForecastModeEnum,
+} from '@enyo-energy/energy-app-sdk';
+
+const forecast: BatteryCommandForecast = {
+    relativeSchedule: [
+        { seconds: 0,    mode: BatteryCommandForecastModeEnum.Charge,    powerW: 3000 },
+        { seconds: 1800, mode: BatteryCommandForecastModeEnum.Discharge, powerW: 2500 },
+        { seconds: 3600, mode: BatteryCommandForecastModeEnum.Auto,      powerW: 0    },
+    ],
+    estimatedSavings: { costSavings: 0.18, currency: 'EUR' },
+};
+
+await forecasts.publishBatteryForecast('battery-1', forecast);
+```
+
+Per-entry invariants:
+
+- `seconds`: finite, non-negative; first entry `= 0`; subsequent entries strictly increasing.
+- `mode`: one of `charge` / `discharge` / `auto`.
+- `powerW`: finite, non-negative. **MUST be `0` when `mode === 'auto'`.**
+
+### HeatpumpForecast
+
+The heatpump payload can carry any combination of the four supported command families in one call — at least one must be present and non-empty. Each command family also accepts its own forecasted temperature trajectory so subscribers can reason about the plan and its expected outcome together.
+
+```typescript
+import { HeatpumpForecast } from '@enyo-energy/energy-app-sdk';
+
+const forecast: HeatpumpForecast = {
+    // ----- DHW boost -----
+    dhwBoosts: [
+        { startIso: '2026-06-10T13:00:00.000Z', endIso: '2026-06-10T15:00:00.000Z', targetTemperatureC: 60 },
+    ],
+    dhwTemperatureForecast: [
+        { timestampIso: '2026-06-10T12:00:00.000Z', temperatureC: 48 },
+        { timestampIso: '2026-06-10T13:00:00.000Z', temperatureC: 52 },
+        { timestampIso: '2026-06-10T15:00:00.000Z', temperatureC: 60 },
+    ],
+
+    // ----- Room pre-heating (per heating circuit) -----
+    roomPreHeatings: [
+        { startIso: '2026-06-10T05:00:00.000Z', endIso: '2026-06-10T07:00:00.000Z', targetTemperatureC: 22, circuitIndex: 0 },
+    ],
+    roomTemperatureForecast: [
+        { timestampIso: '2026-06-10T05:00:00.000Z', temperatureC: 19 },
+        { timestampIso: '2026-06-10T07:00:00.000Z', temperatureC: 22 },
+    ],
+
+    // ----- Buffer-tank boost -----
+    bufferTankBoosts: [
+        { startIso: '2026-06-10T13:00:00.000Z', endIso: '2026-06-10T14:00:00.000Z', targetTemperatureC: 55 },
+    ],
+    bufferTankTemperatureForecast: [
+        { timestampIso: '2026-06-10T13:00:00.000Z', temperatureC: 45 },
+        { timestampIso: '2026-06-10T14:00:00.000Z', temperatureC: 55 },
+    ],
+
+    // ----- Power-announcement schedule (relative) -----
+    powerAnnouncementSchedule: [
+        { seconds: 0,    powerW: 1500 },
+        { seconds: 1800, powerW: 3000 },
+        { seconds: 3600, powerW: 0    },
+    ],
+
+    estimatedSavings: { costSavings: 1.05, currency: 'EUR', co2SavingsGrams: 320 },
+    reason: 'soak PV during 13–15h window',
+};
+
+await forecasts.publishHeatpumpForecast('heatpump-1', forecast);
+```
+
+Per-family invariants:
+
+- **`dhwBoosts` / `bufferTankBoosts`** — each window must satisfy `startIso < endIso`, sorted ascending and non-overlapping, `targetTemperatureC ∈ [0, 100]`.
+- **`roomPreHeatings`** — same shape as the boost windows but `targetTemperatureC ∈ [0, 40]`. Non-overlap is enforced **per `circuitIndex`** so different heating circuits can pre-heat in parallel.
+- **`powerAnnouncementSchedule`** — relative schedule (seconds-since-effective), first entry at `seconds = 0`, strictly increasing thereafter; per-entry `powerW` finite and non-negative.
+- **Temperature trajectories** — strictly increasing `timestampIso`; `temperatureC ∈ [−50, 150]`.
+
+### Validators
+
+The validators that `publish*` runs internally are exported as standalone pure functions so apps can validate forecasts while building them — for instance, to surface user-facing errors in a planning UI before holding the forecast in state.
+
+```typescript
+import {
+    validateChargerForecast,
+    validateBatteryCommandForecast,
+    validateHeatpumpForecast,
+    ApplianceCommandForecastValidationError,
+} from '@enyo-energy/energy-app-sdk';
+
+try {
+    validateHeatpumpForecast(forecast);
+} catch (error) {
+    if (error instanceof ApplianceCommandForecastValidationError) {
+        // surface error.message — it names the offending field / index
+    }
+}
+```
+
+Granular helpers are exported alongside the top-level validators: `validateChargerSchedule`, `validateBatterySchedule`, `validateDhwBoostWindows`, `validateRoomPreHeatingWindows`, `validateBufferTankBoostWindows`, `validatePowerAnnouncementSchedule`, `validateTemperatureForecast`.
 
 ## Examples
 
