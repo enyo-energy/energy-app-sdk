@@ -10,6 +10,7 @@ import {
     HeatpumpForecast,
     HeatpumpForecastScheduleEntry,
 } from '../../../types/enyo-appliance-command-forecast.js';
+import {EnyoChargeModeEnum} from '../../../types/enyo-data-bus-value.js';
 import {
     ApplianceCommandForecastValidationError,
     validateBatteryCommandForecast,
@@ -315,6 +316,58 @@ describe('validateChargerForecast', () => {
             estimatedSavings: {costSavings: 0.42, currency: 'EUR', co2SavingsGrams: 120},
         };
         expect(() => validateChargerForecast(forecast)).not.toThrow();
+    });
+
+    it.each(Object.values(EnyoChargeModeEnum))(
+        'accepts a forecast with chargeMode=%s',
+        (mode) => {
+            const forecast: ChargerForecast = {
+                resolution: ApplianceForecastResolutionEnum.OneMinute,
+                relativeSchedule: [chargerEntry()],
+                chargeMode: mode,
+            };
+            expect(() => validateChargerForecast(forecast)).not.toThrow();
+        },
+    );
+
+    it.each([true, false])(
+        'accepts a forecast with chargeActive=%s',
+        (active) => {
+            const forecast: ChargerForecast = {
+                resolution: ApplianceForecastResolutionEnum.OneMinute,
+                relativeSchedule: [chargerEntry()],
+                chargeActive: active,
+            };
+            expect(() => validateChargerForecast(forecast)).not.toThrow();
+        },
+    );
+
+    it('accepts a forecast with both chargeMode and chargeActive set', () => {
+        const forecast: ChargerForecast = {
+            resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+            relativeSchedule: [chargerEntry()],
+            chargeMode: EnyoChargeModeEnum.CostOptimized,
+            chargeActive: true,
+        };
+        expect(() => validateChargerForecast(forecast)).not.toThrow();
+    });
+
+    it('rejects an unknown chargeMode', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [chargerEntry()],
+            chargeMode: 'bogus-mode' as unknown as EnyoChargeModeEnum,
+        } as ChargerForecast;
+        expect(() => validateChargerForecast(forecast)).toThrow(/chargeMode/);
+    });
+
+    it('rejects a non-boolean chargeActive', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [chargerEntry()],
+            chargeActive: 'yes' as unknown as boolean,
+        } as ChargerForecast;
+        expect(() => validateChargerForecast(forecast)).toThrow(/chargeActive/);
     });
 });
 

@@ -9,6 +9,7 @@ import {
     HeatpumpForecast,
     HeatpumpForecastScheduleEntry,
 } from '../../types/enyo-appliance-command-forecast.js';
+import {EnyoChargeModeEnum} from '../../types/enyo-data-bus-value.js';
 
 /**
  * Thrown when a forecast payload passed to one of the validators (or to
@@ -44,6 +45,17 @@ export function validateChargerForecast(forecast: ChargerForecast): void {
         );
     }
     validateMetadata(forecast);
+    if (forecast.chargeMode !== undefined) {
+        const allowedModes = new Set<string>(Object.values(EnyoChargeModeEnum));
+        if (!allowedModes.has(forecast.chargeMode)) {
+            throw new ApplianceCommandForecastValidationError(
+                `ChargerForecast.chargeMode is invalid: ${forecast.chargeMode}. Allowed values: ${Object.values(
+                    EnyoChargeModeEnum,
+                ).join(', ')}.`,
+            );
+        }
+    }
+    validateBooleanField(forecast.chargeActive, 'ChargerForecast.chargeActive');
     validateChargerSchedule(forecast.relativeSchedule, forecast.resolution);
 }
 

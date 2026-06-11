@@ -5,7 +5,10 @@
  * apply to its appliances over the upcoming horizon.
  *
  * Three appliance families are supported today:
- *  - **Chargers** — {@link ChargerForecast}: relative phase / power schedule.
+ *  - **Chargers** — {@link ChargerForecast}: relative phase / power schedule
+ *    plus optional {@link ChargerForecast.chargeMode} and
+ *    {@link ChargerForecast.chargeActive} flags describing the strategy the
+ *    plan was built for and whether a charging session is running.
  *  - **Batteries** — {@link BatteryCommandForecast}: either a relative
  *    direction / power schedule, or an explicit "auto" release that hands
  *    control back to the appliance's own logic. Mirrors the
@@ -25,6 +28,8 @@
  * The transport / fan-out is an internal detail of the runtime SDK and
  * not exposed to apps.
  */
+
+import {EnyoChargeModeEnum} from './enyo-data-bus-value.js';
 
 /**
  * Optional metadata describing the estimated savings of a forecasted
@@ -125,6 +130,30 @@ export interface ChargerForecast extends ApplianceForecastMetadata {
      * starting at `seconds = 0`. Must contain at least one entry.
      */
     relativeSchedule: ChargerForecastScheduleEntry[];
+    /**
+     * Charging strategy the plan was built for — `immediate`,
+     * `cost-optimized` or `price-limit`. Uses the same enum as
+     * {@link EnyoCharge.chargeMode} and the command-side
+     * {@link EnyoDataBusStartChargeV1} so the forecasted plan can be
+     * compared 1:1 with the command that will eventually be issued.
+     *
+     * Omit when the publisher does not declare a mode (e.g. an unmanaged
+     * baseline forecast); consumers should not infer a default.
+     */
+    chargeMode?: EnyoChargeModeEnum;
+    /**
+     * Whether a charging session is currently active on the appliance at
+     * the moment this forecast is published.
+     *
+     * - `true` — a session is running; subsequent `powerW = 0` entries
+     *   should be read as "pause while staying connected", not "stop".
+     * - `false` — no session is running; the schedule describes the plan
+     *   the publisher intends to apply once a session starts (or what
+     *   would have been applied had one been running).
+     * - omitted — the publisher cannot determine the session state;
+     *   consumers must not infer one.
+     */
+    chargeActive?: boolean;
 }
 
 // =============================================================================
