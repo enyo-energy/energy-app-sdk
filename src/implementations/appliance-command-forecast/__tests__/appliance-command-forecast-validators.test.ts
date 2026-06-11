@@ -164,6 +164,46 @@ describe('validateBatterySchedule', () => {
             ),
         ).not.toThrow();
     });
+
+    it('accepts an Idle entry with powerW=0 between charge and discharge', () => {
+        expect(() =>
+            validateBatterySchedule(
+                [
+                    batteryEntry({
+                        seconds: 0,
+                        direction: BatteryCommandForecastDirectionEnum.Charge,
+                        powerW: 3000,
+                    }),
+                    batteryEntry({
+                        seconds: 900,
+                        direction: BatteryCommandForecastDirectionEnum.Idle,
+                        powerW: 0,
+                    }),
+                    batteryEntry({
+                        seconds: 1800,
+                        direction: BatteryCommandForecastDirectionEnum.Discharge,
+                        powerW: 2500,
+                    }),
+                ],
+                ApplianceForecastResolutionEnum.FifteenMinutes,
+            ),
+        ).not.toThrow();
+    });
+
+    it('rejects an Idle entry with non-zero powerW', () => {
+        expect(() =>
+            validateBatterySchedule(
+                [
+                    batteryEntry({
+                        seconds: 0,
+                        direction: BatteryCommandForecastDirectionEnum.Idle,
+                        powerW: 500,
+                    }),
+                ],
+                ApplianceForecastResolutionEnum.OneMinute,
+            ),
+        ).toThrow(/idle/);
+    });
 });
 
 describe('validateHeatpumpSchedule', () => {

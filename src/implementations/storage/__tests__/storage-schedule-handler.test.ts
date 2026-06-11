@@ -248,6 +248,30 @@ describe('StorageScheduleHandler', () => {
         expect(handler.errorCalls).toHaveLength(0);
     });
 
+    it('accepts an Idle entry between Charge and Discharge and routes it through onChange', async () => {
+        await handler.applySchedule({
+            mode: EnyoStorageScheduleModeEnum.Schedule,
+            relativeSchedule: [
+                entry(0, 1500, EnyoStorageScheduleDirectionEnum.Charge),
+                entry(30, 0, EnyoStorageScheduleDirectionEnum.Idle),
+                entry(60, 2000, EnyoStorageScheduleDirectionEnum.Discharge),
+            ],
+        });
+
+        expect(handler.errorCalls).toHaveLength(0);
+        expect(handler.changeCalls).toHaveLength(1);
+        expect(handler.changeCalls[0].active.entry.direction).toBe(EnyoStorageScheduleDirectionEnum.Charge);
+
+        fakeInterval.advanceMs(31_000);
+        expect(handler.changeCalls).toHaveLength(2);
+        expect(handler.changeCalls[1].active.entry.direction).toBe(EnyoStorageScheduleDirectionEnum.Idle);
+        expect(handler.changeCalls[1].active.entry.powerW).toBe(0);
+
+        fakeInterval.advanceMs(30_000);
+        expect(handler.changeCalls).toHaveLength(3);
+        expect(handler.changeCalls[2].active.entry.direction).toBe(EnyoStorageScheduleDirectionEnum.Discharge);
+    });
+
     it('onInit throwing aborts install: onError fires, no onChange, nothing persisted', async () => {
         handler.initImpl = async () => {
             throw new Error('device offline');
@@ -379,6 +403,7 @@ describe('StorageScheduleHandler', () => {
         ['duplicate seconds', [entry(0, 100), entry(0, 200)]],
         ['unsorted', [entry(10, 100), entry(5, 200)]],
         ['negative seconds', [entry(-1, 100)]],
+        ['idle direction with non-zero power', [entry(0, 100, EnyoStorageScheduleDirectionEnum.Idle)]],
     ])('rejects invalid schedule from idle: %s', async (_label, bad) => {
         await handler.applySchedule({
             mode: EnyoStorageScheduleModeEnum.Schedule,

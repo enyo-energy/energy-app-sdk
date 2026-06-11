@@ -195,6 +195,12 @@ export enum BatteryCommandForecastDirectionEnum {
     Charge = 'charge',
     /** Power should flow from the battery into the home / grid (discharging). */
     Discharge = 'discharge',
+    /**
+     * No energy flow — the battery holds its current state-of-charge.
+     * Use to mark idle periods between charge / discharge entries. The
+     * entry's `powerW` must be `0`.
+     */
+    Idle = 'idle',
 }
 
 /**
@@ -215,9 +221,12 @@ export interface BatteryCommandForecastScheduleEntry {
     direction: BatteryCommandForecastDirectionEnum;
     /**
      * Target power in Watts. Always non-negative — direction is carried
-     * by {@link direction}, never by sign. A `powerW` of `0` means "hold
-     * at zero in the named direction" (effectively idle until the next
-     * entry).
+     * by {@link direction}, never by sign. A `powerW` of `0` together
+     * with a `Charge` or `Discharge` direction means "hold at zero in
+     * the named direction" (effectively idle until the next entry);
+     * prefer the explicit
+     * {@link BatteryCommandForecastDirectionEnum.Idle} direction for
+     * unambiguous idle slots, in which case `powerW` must also be `0`.
      */
     powerW: number;
 }

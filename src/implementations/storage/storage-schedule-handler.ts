@@ -540,8 +540,12 @@ export abstract class StorageScheduleHandler<TRegisters> {
                 return {ok: false, error: new Error(`relativeSchedule[${i}].powerW must be a non-negative finite number`)};
             }
             if (e.direction !== EnyoStorageScheduleDirectionEnum.Charge
-                && e.direction !== EnyoStorageScheduleDirectionEnum.Discharge) {
-                return {ok: false, error: new Error(`relativeSchedule[${i}].direction must be 'charge' or 'discharge'`)};
+                && e.direction !== EnyoStorageScheduleDirectionEnum.Discharge
+                && e.direction !== EnyoStorageScheduleDirectionEnum.Idle) {
+                return {ok: false, error: new Error(`relativeSchedule[${i}].direction must be 'charge', 'discharge' or 'idle'`)};
+            }
+            if (e.direction === EnyoStorageScheduleDirectionEnum.Idle && e.powerW !== 0) {
+                return {ok: false, error: new Error(`relativeSchedule[${i}].powerW must be 0 when direction is 'idle' (got ${e.powerW})`)};
             }
             previousSeconds = e.seconds;
         }

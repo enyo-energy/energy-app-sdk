@@ -1126,12 +1126,22 @@ export enum EnyoStorageScheduleModeEnum {
  * to keep schedule entries unambiguous on the wire: `powerW` is always
  * non-negative, and consumers never have to disambiguate `0` from
  * "direction-of-zero" or interpret sign conventions per integration.
+ *
+ * `Idle` is the explicit "no energy flow" marker — use it to insert
+ * idle slots between charge / discharge periods. An entry with
+ * `direction = Idle` must carry `powerW = 0`.
  */
 export enum EnyoStorageScheduleDirectionEnum {
     /** Power should flow from the grid into the battery (charging). */
     Charge = 'charge',
     /** Power should flow from the battery into the grid / home (discharging). */
     Discharge = 'discharge',
+    /**
+     * No energy flow — the battery holds its current state-of-charge.
+     * Use to mark idle periods between charge / discharge entries. The
+     * entry's `powerW` must be `0`.
+     */
+    Idle = 'idle',
 }
 
 /**
@@ -1151,15 +1161,19 @@ export interface EnyoStorageScheduleEntry {
     seconds: number;
     /**
      * Direction of energy flow for this setpoint
-     * ({@link EnyoStorageScheduleDirectionEnum.Charge} or
-     * {@link EnyoStorageScheduleDirectionEnum.Discharge}).
+     * ({@link EnyoStorageScheduleDirectionEnum.Charge},
+     * {@link EnyoStorageScheduleDirectionEnum.Discharge}, or
+     * {@link EnyoStorageScheduleDirectionEnum.Idle}).
      */
     direction: EnyoStorageScheduleDirectionEnum;
     /**
      * Target power for this setpoint in Watts. Always non-negative —
      * direction is carried by {@link direction}, never by sign. A
-     * `powerW` of `0` means "hold at zero in the named direction"
-     * (effectively idle until the next entry).
+     * `powerW` of `0` together with a `Charge` or `Discharge` direction
+     * means "hold at zero in the named direction" (effectively idle
+     * until the next entry); prefer the explicit
+     * {@link EnyoStorageScheduleDirectionEnum.Idle} direction for
+     * unambiguous idle slots, in which case `powerW` must also be `0`.
      */
     powerW: number;
 }

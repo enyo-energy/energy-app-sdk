@@ -165,6 +165,14 @@ export function validateBatterySchedule(
                 `relativeSchedule[${i}].direction is invalid: ${entry.direction}.`,
             );
         }
+        if (
+            entry.direction === BatteryCommandForecastDirectionEnum.Idle
+            && entry.powerW !== 0
+        ) {
+            throw new ApplianceCommandForecastValidationError(
+                `relativeSchedule[${i}].powerW must be 0 when direction is '${BatteryCommandForecastDirectionEnum.Idle}'; got ${entry.powerW}.`,
+            );
+        }
     }
     validateFirstEntryStartsAtZero(entries[0]!.seconds, 'relativeSchedule');
     validateSecondsMatchResolution(entries.map((e) => e.seconds), stepSeconds, 'relativeSchedule');
