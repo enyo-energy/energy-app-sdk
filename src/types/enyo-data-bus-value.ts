@@ -277,6 +277,12 @@ export interface EnyoDataBusMeterValuesUpdateV1 extends EnyoDataBusMessage {
     data: {
         /** Power from Grid (in Watt), negative: grid feed in, positive: grid consumption*/
         gridPowerW?: number;
+        /** Power on phase L1 (in Watt), negative: grid feed in, positive: grid consumption */
+        gridPowerPhase1W?: number;
+        /** Power on phase L2 (in Watt), negative: grid feed in, positive: grid consumption */
+        gridPowerPhase2W?: number;
+        /** Power on phase L3 (in Watt), negative: grid feed in, positive: grid consumption */
+        gridPowerPhase3W?: number;
         /** Grid Feed in (in Watt hours) */
         gridFeedInWh: number;
         /** Grid Consumption in (in Watt hours) */
