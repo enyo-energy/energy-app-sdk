@@ -53,15 +53,6 @@ export interface MpcClientOptions {
      * sluggish but functional — extend rather than disable.
      */
     descriptionReadTimeoutMs?: number;
-    /**
-     * When the internal description read fails (timeout or
-     * not-supported), fall back to extracting `scopeType` from each
-     * inbound notify (`acPowerTotal` → {@link EebusMpcReading.activePowerW},
-     * `acEnergyConsumed` → {@link EebusMpcReading.totalEnergyConsumedWh})
-     * so the client keeps emitting readings instead of going silent.
-     * Defaults to `true`.
-     */
-    fallbackToInlineScope?: boolean;
 }
 
 /**

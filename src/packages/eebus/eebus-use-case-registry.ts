@@ -89,13 +89,8 @@ export interface EebusUseCaseRegistry {
      * known). Without a hint the client picks the first server match the
      * SDK resolves.
      *
-     * The default options enable `fallbackToInlineScope`, so a single
-     * slow `measurementDescriptionListData` read on a flaky peer no
-     * longer silences the client — it falls back to extracting scope
-     * from inbound notifies.
-     *
      * @param ski Subject Key Identifier of the remote node
-     * @param options Optional address/timeout/fallback configuration
+     * @param options Optional address/timeout configuration
      */
     mpc: (ski: string, options?: MpcClientOptions) => EebusMpcClient;
 
