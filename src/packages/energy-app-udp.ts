@@ -4,6 +4,14 @@
 export interface UdpBindOptions {
     /** Bind port. 0 selects an ephemeral port. */
     port: number;
+    /**
+     * When `true`, sets `SO_REUSEADDR` on the underlying socket so multiple
+     * sockets may bind to the same address/port. Maps to the `reuseAddr`
+     * option of `node:dgram`'s `createSocket`.
+     *
+     * Defaults to `false`.
+     */
+    reuseAddr?: boolean;
 }
 
 /**

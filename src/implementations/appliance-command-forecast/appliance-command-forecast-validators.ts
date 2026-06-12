@@ -221,6 +221,7 @@ export function validateHeatpumpScheduleEntry(
     validateBooleanField(entry.dhwBoostActive, `${fieldName}.dhwBoostActive`);
     validateBooleanField(entry.roomPreHeatingActive, `${fieldName}.roomPreHeatingActive`);
     validateBooleanField(entry.bufferTankBoostActive, `${fieldName}.bufferTankBoostActive`);
+    validateBooleanField(entry.availablePowerActive, `${fieldName}.availablePowerActive`);
 }
 
 function validateMetadata(forecast: {

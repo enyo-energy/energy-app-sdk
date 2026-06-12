@@ -345,6 +345,18 @@ export interface HeatpumpForecastScheduleEntry {
      * tank up, `false` (or omitted) otherwise.
      */
     bufferTankBoostActive?: boolean;
+    /**
+     * Whether the publisher is announcing available power for this slot
+     * — `true` when the energy-manager decision for the slot is
+     * "available power", meaning {@link powerW} doubles as the
+     * available-power offer to the heatpump (the heatpump is free to
+     * consume up to that value), `false` (or omitted) otherwise.
+     *
+     * This flag is independent of the other `*Active` flags and may
+     * coexist with them when the publisher offers available power while
+     * a boost / pre-heating window is also planned.
+     */
+    availablePowerActive?: boolean;
 }
 
 /**
