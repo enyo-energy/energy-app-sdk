@@ -529,8 +529,20 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
     message: EnyoDataBusMessageEnum.AggregatedStateUpdateV1;
     clockId: string;
     data: {
+        /**
+         * ID of the primary meter appliance whose readings the aggregated grid
+         * power values are derived from. Omitted when no primary meter is
+         * configured.
+         */
+        primaryMeterApplianceId?: string;
         /** Total grid power from all appliances (in Watt). Negative: grid feed in, positive: grid consumption */
         gridPowerW?: number;
+        /** Grid power on phase L1 (in Watt). Negative: grid feed in, positive: grid consumption */
+        gridPowerPhase1W?: number;
+        /** Grid power on phase L2 (in Watt). Negative: grid feed in, positive: grid consumption */
+        gridPowerPhase2W?: number;
+        /** Grid power on phase L3 (in Watt). Negative: grid feed in, positive: grid consumption */
+        gridPowerPhase3W?: number;
         gridConsumptionW?: number;
         gridFeedInW?: number;
         homeConsumptionW?: number;
