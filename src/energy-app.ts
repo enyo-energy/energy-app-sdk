@@ -37,6 +37,7 @@ import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
+import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -384,6 +385,17 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useApplianceEnergyManagerForecast(): EnergyAppApplianceEnergyManagerForecast {
         return this.energyAppSdk.useApplianceEnergyManagerForecast();
+    }
+
+    /**
+     * Gets the Battery API for retrieving the current runtime state of each
+     * battery storage (state of charge, stored kWh, average price per kWh,
+     * optional solar share). Read-only; query by appliance ID or list all
+     * storages.
+     * @returns The Battery API instance
+     */
+    public useBatteries(): EnergyAppBattery {
+        return this.energyAppSdk.useBatteries();
     }
 
     /**

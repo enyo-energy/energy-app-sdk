@@ -35,6 +35,7 @@ import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
+import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -135,4 +136,6 @@ export interface EnyoEnergyAppSdk {
     useConfigurationManager: () => EnergyAppConfigurationManager;
     /** Get the Appliance Energy-Manager Forecast API for publishing forecasted command plans per appliance (charger, battery, heatpump) */
     useApplianceEnergyManagerForecast: () => EnergyAppApplianceEnergyManagerForecast;
+    /** Get the Battery API for retrieving the current runtime state of each battery storage (SoC, stored kWh, average price per kWh, optional solar share) */
+    useBatteries: () => EnergyAppBattery;
 }

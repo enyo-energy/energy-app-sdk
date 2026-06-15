@@ -87,3 +87,6 @@ export * from './packages/energy-app-appliance-energy-manager-forecast.js';
 export * from './implementations/appliance-command-forecast/appliance-command-forecast-validators.js';
 
 export * from './implementations/energy-manager-diagnostics/energy-manager-diagnostics-validators.js';
+
+export * from './types/enyo-battery-state.js';
+export * from './packages/energy-app-battery.js';

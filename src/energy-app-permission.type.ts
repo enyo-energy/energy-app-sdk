@@ -31,6 +31,7 @@ export type EnergyAppPermissionType =
     | 'PvSystemUse'
     | 'InverterControlCommands'
     | 'BatteryControlCommands'
+    | 'BatteryStorageState'
     | 'ChargerControlCommands'
     | 'ModbusRtu'
     | 'EnergyPrices'
@@ -80,6 +81,7 @@ export enum EnergyAppPermissionTypeEnum {
     PvSystemUse = 'PvSystemUse',
     InverterControlCommands = 'InverterControlCommands',
     BatteryControlCommands = 'BatteryControlCommands',
+    BatteryStorageState = 'BatteryStorageState',
     ChargerControlCommands = 'ChargerControlCommands',
     EebusDeviceManagement = 'EebusDeviceManagement',
     EebusDataAccess = 'EebusDataAccess',
