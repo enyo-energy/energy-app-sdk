@@ -786,12 +786,17 @@ export interface EebusCevcAck {
  * OPEV use case. OPEV is an *obligation*: the EVSE MUST respect the
  * limit (it is grid-safety driven, not optimisation driven).
  *
- * Phase count is determined by the EVSE — single-phase wallboxes report
- * length 1, three-phase wallboxes length 3.
+ * Single-phase EVSEs populate only `a`; three-phase EVSEs populate `a`,
+ * `b`, and `c`. Phases the EVSE does not carry are left absent rather
+ * than implied by array length.
  */
 export interface EebusOpevLimit {
-    /** Per-phase current limits in Amperes (length 1 or 3). */
-    perPhaseA: number[];
+    /**
+     * Per-phase current limits in Amperes, keyed by phase label. Each
+     * phase is independently optional — omit phases the EVSE does not
+     * carry.
+     */
+    currentLimitByPhase: {a?: number; b?: number; c?: number};
     /** Whether the limit is currently active. */
     isActive: boolean;
     /**
@@ -825,8 +830,12 @@ export interface EebusOpevAck {
  * (obligation vs recommendation), as with LPC vs LPP.
  */
 export interface EebusOscevLimit {
-    /** Per-phase recommended current limits in Amperes (length 1 or 3). */
-    perPhaseA: number[];
+    /**
+     * Per-phase recommended current limits in Amperes, keyed by phase
+     * label. Each phase is independently optional — omit phases the EVSE
+     * does not carry.
+     */
+    currentLimitByPhase: {a?: number; b?: number; c?: number};
     /** Whether the recommendation is currently active. */
     isActive: boolean;
     /** Duration in seconds; omit or `0` for indefinite. */
