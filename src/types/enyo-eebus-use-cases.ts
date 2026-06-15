@@ -218,12 +218,22 @@ export interface EebusMgcpReading {
     timestamp: Date;
     /** Total active power in Watts. Positive = import, negative = export. */
     activePowerW: number;
-    /** Optional per-phase active power in Watts (length 1 or 3) */
-    activePowerPerPhaseW?: number[];
-    /** Optional per-phase voltage in Volts */
-    voltagePerPhaseV?: number[];
-    /** Optional per-phase current in Amperes */
-    currentPerPhaseA?: number[];
+    /**
+     * Optional per-phase active power in Watts, keyed by phase label.
+     * Each phase is independently optional — single-phase peers populate
+     * only `a`, three-phase peers populate `a`, `b`, and `c`.
+     */
+    activePowerByPhase?: {a?: number; b?: number; c?: number};
+    /**
+     * Optional per-phase voltage in Volts, keyed by phase label. Each
+     * phase is independently optional.
+     */
+    voltageByPhase?: {a?: number; b?: number; c?: number};
+    /**
+     * Optional per-phase current in Amperes, keyed by phase label. Each
+     * phase is independently optional.
+     */
+    currentByPhase?: {a?: number; b?: number; c?: number};
     /** Optional grid frequency in Hertz */
     frequencyHz?: number;
     /** Cumulative energy imported from the grid in Watt-hours */
@@ -244,10 +254,17 @@ export interface EebusMpcReading {
     timestamp: Date;
     /** Active power consumption in Watts */
     activePowerW: number;
-    /** Optional per-phase active power in Watts (length 1 or 3) */
-    activePowerPerPhaseW?: number[];
-    /** Optional per-phase current in Amperes */
-    currentPerPhaseA?: number[];
+    /**
+     * Optional per-phase active power in Watts, keyed by phase label.
+     * Each phase is independently optional — single-phase peers populate
+     * only `a`, three-phase peers populate `a`, `b`, and `c`.
+     */
+    activePowerByPhase?: {a?: number; b?: number; c?: number};
+    /**
+     * Optional per-phase current in Amperes, keyed by phase label. Each
+     * phase is independently optional.
+     */
+    currentByPhase?: {a?: number; b?: number; c?: number};
     /** Cumulative energy consumed in Watt-hours */
     totalEnergyConsumedWh?: number;
 }
@@ -685,12 +702,22 @@ export interface EebusEvcemReading {
     timestamp: Date;
     /** Total active charging power in Watts. */
     activePowerW: number;
-    /** Optional per-phase active power in Watts (length 1 or 3). */
-    activePowerPerPhaseW?: number[];
-    /** Optional per-phase current in Amperes (length 1 or 3). */
-    currentPerPhaseA?: number[];
-    /** Optional per-phase voltage in Volts (length 1 or 3). */
-    voltagePerPhaseV?: number[];
+    /**
+     * Optional per-phase active power in Watts, keyed by phase label.
+     * Each phase is independently optional — single-phase EVSEs populate
+     * only `a`, three-phase EVSEs populate `a`, `b`, and `c`.
+     */
+    activePowerByPhase?: {a?: number; b?: number; c?: number};
+    /**
+     * Optional per-phase current in Amperes, keyed by phase label. Each
+     * phase is independently optional.
+     */
+    currentByPhase?: {a?: number; b?: number; c?: number};
+    /**
+     * Optional per-phase voltage in Volts, keyed by phase label. Each
+     * phase is independently optional.
+     */
+    voltageByPhase?: {a?: number; b?: number; c?: number};
     /** Cumulative energy charged since session start, in Watt-hours. */
     totalEnergyChargedWh?: number;
 }

@@ -80,4 +80,10 @@ export interface EnyoChargerApplianceMetadata {
     cableLocked?: boolean;
     /** Current charging power limit in kilowatts */
     currentChargingLimitKw?: number;
+    /**
+     * Hardware maximum charging power the charger can deliver, in
+     * kilowatts. Derived from the device's nameplate / capability
+     * report; treat as a physical ceiling that the EMS cannot exceed.
+     */
+    maxChargingPowerKw?: number;
 }
