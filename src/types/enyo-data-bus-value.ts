@@ -213,7 +213,8 @@ export enum EnyoDataBusMessageEnum {
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
     StartAirConditioningV1 = 'StartAirConditioningV1',
     StopAirConditioningV1 = 'StopAirConditioningV1',
-    VehicleSocUpdateV1 = 'VehicleSocUpdateV1'
+    VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
+    EnergyAppStartedV1 = 'EnergyAppStartedV1'
 }
 
 export type EnyoDataBusMessageResolution = '1s' | '10s' | '30s' | '1m' | '15m' | '1h' | '1d' | 'dynamic';
@@ -418,6 +419,45 @@ export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
          * to report.
          */
         errorCodes?: EnyoApplianceErrorCode[];
+    };
+}
+
+/**
+ * Message emitted when an energy app package finishes startup and is now
+ * actively driving its appliances. Carries the running package's identity
+ * plus the full set of appliance ids it has registered against, so
+ * consumers can correlate subsequent activity to this package instance
+ * and learn which appliances are now under its influence.
+ *
+ * Broadcast (no `target`) — anyone observing the data bus may listen.
+ * The base {@link EnyoDataBusMessage.applianceId} field is intentionally
+ * left unset; this message scopes to *all* affected appliances via
+ * `data.applianceIds` rather than a single one.
+ */
+export interface EnyoDataBusEnergyAppStartedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.EnergyAppStartedV1;
+    data: {
+        /**
+         * Cloud-deployment id of the started package. Matches
+         * {@link EnyoDataBusMessageTarget.cloudPackageId} so consumers
+         * can address replies back at this package instance.
+         */
+        cloudPackageId: string;
+        /**
+         * Package slug from the started package's
+         * {@link EnergyAppPackageDefinition.packageName}. Stable across
+         * deployments of the same package, suitable for grouping
+         * activity by package implementation rather than by instance.
+         */
+        packageName: string;
+        /**
+         * Ids of every appliance this package has registered against —
+         * the appliances whose lifecycle is now influenced by the
+         * running app. Empty array is legal (the package started but
+         * has not yet resolved any appliances).
+         */
+        applianceIds: string[];
     };
 }
 
