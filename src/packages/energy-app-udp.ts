@@ -9,9 +9,37 @@ export interface UdpBindOptions {
      * sockets may bind to the same address/port. Maps to the `reuseAddr`
      * option of `node:dgram`'s `createSocket`.
      *
+     * Particularly useful in combination with {@link multicastGroups} so
+     * that multiple processes on the same host can receive the same
+     * multicast stream.
+     *
      * Defaults to `false`.
      */
     reuseAddr?: boolean;
+    /**
+     * IPv4 multicast group addresses to join after the socket is bound.
+     *
+     * Each entry must be a dotted-quad IPv4 address in the multicast range
+     * `224.0.0.0/4` (i.e. first octet 224–239). The runtime joins every
+     * listed group on the socket once the `listening` event fires; if any
+     * join fails or any entry is not a valid multicast address, the socket
+     * is closed and {@link EnergyAppUdp.bind} rejects with
+     * {@link EnergyAppUdpBindError}.
+     *
+     * Typical use: SMA Speedwire receivers join `239.12.255.254`.
+     *
+     * Defaults to `undefined` (no multicast membership — unicast bind only).
+     */
+    multicastGroups?: string[];
+    /**
+     * Optional local interface address (IPv4 dotted-quad) to bind the
+     * multicast membership(s) to. When omitted, the operating system
+     * selects an interface — usually the one carrying the default route.
+     *
+     * Only meaningful in combination with {@link multicastGroups}. Most
+     * callers should leave this `undefined`.
+     */
+    multicastInterface?: string;
 }
 
 /**
@@ -86,6 +114,33 @@ export interface EnergyAppUdpSocket {
      *          its `close` event.
      */
     close(): Promise<void>;
+
+    /**
+     * Join an additional IPv4 multicast group on this already-bound socket.
+     *
+     * The address must be a dotted-quad in the multicast range
+     * `224.0.0.0/4`. Implementations forward to the underlying
+     * `dgram.Socket.addMembership` call.
+     *
+     * @param group - IPv4 multicast group address to join.
+     * @param interfaceAddress - Optional local interface (IPv4 dotted-quad)
+     *                           to bind the membership to. When omitted,
+     *                           the operating system selects an interface.
+     * @throws If the address is not a valid multicast address, the socket
+     *         has been closed, or the underlying join fails.
+     */
+    addMembership(group: string, interfaceAddress?: string): void;
+
+    /**
+     * Leave a previously joined IPv4 multicast group.
+     *
+     * @param group - IPv4 multicast group address to leave.
+     * @param interfaceAddress - Optional local interface (IPv4 dotted-quad)
+     *                           the membership was originally bound to.
+     * @throws If the address is not a valid multicast address, the socket
+     *         has been closed, or no matching membership exists.
+     */
+    dropMembership(group: string, interfaceAddress?: string): void;
 }
 
 /**
@@ -105,17 +160,58 @@ export interface EnergyAppUdpSocket {
  * socket.off(handlerId);
  * await socket.close();
  * ```
+ *
+ * @example Multicast receiver (SMA Speedwire)
+ * ```typescript
+ * const udp = energyApp.useUdp();
+ * const socket = await udp.bind({
+ *     port: 9522,
+ *     reuseAddr: true,
+ *     multicastGroups: ['239.12.255.254'],
+ * });
+ * socket.onMessage((msg) => {
+ *     // Inbound SMA Speedwire datagram on 239.12.255.254:9522
+ * });
+ * ```
  */
 export interface EnergyAppUdp {
     /**
      * Bind a UDP socket on the requested host/port.
      *
      * Resolves once the underlying socket has emitted its `listening` event.
+     * When {@link UdpBindOptions.multicastGroups} is provided, the runtime
+     * also joins each listed group before the returned promise resolves.
      *
      * @param options - Bind configuration (see {@link UdpBindOptions}).
      * @returns A bound socket ready to send and receive datagrams.
      * @throws {EnergyAppUdpBindError} If the requested port is already in use
-     *         (EADDRINUSE). Other errors propagate as their original Error.
+     *         (EADDRINUSE), any entry in {@link UdpBindOptions.multicastGroups}
+     *         is not a valid IPv4 multicast address, or joining a requested
+     *         group fails. Other errors propagate as their original Error.
      */
     bind(options: UdpBindOptions): Promise<EnergyAppUdpSocket>;
+}
+
+/**
+ * Thrown by {@link EnergyAppUdp.bind} when the underlying socket cannot be
+ * bound — for example `EADDRINUSE`, an invalid multicast group address
+ * supplied via {@link UdpBindOptions.multicastGroups}, or a failure to join
+ * one of the requested groups after the socket starts listening.
+ *
+ * Implementations should wrap the originating `Error` and preserve its
+ * `message` so callers can `instanceof`-check this class while still
+ * surfacing the root cause in logs.
+ */
+export class EnergyAppUdpBindError extends Error {
+    /**
+     * Create a new `EnergyAppUdpBindError`.
+     *
+     * @param message - Human-readable description of the bind failure. Should
+     *                  include the root cause (e.g. the originating `Error`'s
+     *                  `message`) so it is preserved for logging.
+     */
+    constructor(message: string) {
+        super(message);
+        this.name = 'EnergyAppUdpBindError';
+    }
 }
