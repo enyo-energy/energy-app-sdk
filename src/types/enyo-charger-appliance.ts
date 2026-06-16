@@ -69,6 +69,13 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
     ThreeToOnePhaseSwitch = 'ThreeToOnePhaseSwitch'
 }
 
+/**
+ * Phase configurations a charger can operate in.
+ * - `1`: single-phase charging
+ * - `3`: three-phase charging
+ */
+export type EnyoChargerAppliancePhase = 1 | 3;
+
 export interface EnyoChargerApplianceMetadata {
     availableFeatures: EnyoChargerApplianceAvailableFeaturesEnum[];
     status: EnyoChargerApplianceStatusEnum;
@@ -86,4 +93,14 @@ export interface EnyoChargerApplianceMetadata {
      * report; treat as a physical ceiling that the EMS cannot exceed.
      */
     maxChargingPowerKw?: number;
+    /**
+     * Phase configurations the charger supports. Each value indicates
+     * a phase mode the hardware can operate in:
+     * - `[1]`: only single-phase charging supported
+     * - `[3]`: only three-phase charging supported
+     * - `[1, 3]`: both modes supported (the charger can switch between
+     *   single- and three-phase; typically paired with the
+     *   `ThreeToOnePhaseSwitch` feature)
+     */
+    availablePhases?: EnyoChargerAppliancePhase[];
 }
