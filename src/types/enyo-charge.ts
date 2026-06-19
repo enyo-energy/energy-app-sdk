@@ -88,6 +88,28 @@ export interface EnyoChargeScheduleEntry {
     limitAmpere: number;
 }
 
+/**
+ * Default charging preference applied to charging sessions when no
+ * per-session mode is explicitly provided.
+ */
+export interface EnyoDefaultChargeMode {
+    /** The default charging mode (e.g. immediate, cost-optimized, price-limit) */
+    chargeMode: EnyoChargeModeEnum;
+    /**
+     * Optional target completion time as a wall-clock time in the
+     * accompanying {@link EnyoDefaultChargeMode.timezone} (e.g. `"07:30"`).
+     * When set, optimized modes plan the session to finish by this time.
+     */
+    completeAtTime?: string;
+    /**
+     * IANA timezone the {@link EnyoDefaultChargeMode.completeAtTime} is
+     * expressed in (e.g. `"Europe/Berlin"`). Should be provided whenever
+     * `completeAtTime` is set so the wall-clock time can be resolved
+     * unambiguously.
+     */
+    timezone?: string;
+}
+
 export interface EnyoChargeFilter {
     /** Filter by specific appliance ID */
     applianceId?: string;

@@ -17,6 +17,7 @@ import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
+import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -39,6 +40,50 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     GridOperatorPowerLimitationActive = 'grid-operator-power-limitation-active',
     /** Command issued because a grid operator power limitation is inactive */
     GridOperatorPowerLimitationInactive = 'grid-operator-power-limitation-inactive',
+    /** Command issued because the battery state of charge is low */
+    BatterySoCLow = 'battery-soc-low',
+    /** Command issued because the battery state of charge is high */
+    BatterySoCHigh = 'battery-soc-high',
+    /** Command issued to follow the planned EV charging schedule */
+    EvChargingSchedule = 'ev-charging-schedule',
+    /** Command issued as part of a planned/scheduled optimization */
+    ScheduledOptimization = 'scheduled-optimization',
+    /** Command issued because the user explicitly requested it */
+    UserRequest = 'user-request',
+    /** Command issued to protect the device (e.g. overheating or safety limit) */
+    DeviceProtection = 'device-protection',
+    /** Command issued because home consumption is high */
+    HomeConsumptionHigh = 'home-consumption-high',
+    /** Command issued to optimize self-consumption */
+    SelfConsumptionOptimization = 'self-consumption-optimization',
+}
+
+/**
+ * Coarse, machine-readable grouping of why a data bus command was issued.
+ * Intended for filtering, iconography, and analytics. The human-readable,
+ * end-user explanation lives in {@link EnyoDataBusCommandReason.translation}.
+ */
+export enum EnyoDataBusCommandReasonCategoryEnum {
+    /** Driven by the electricity price (cheap/expensive). */
+    EnergyPrice = 'energy-price',
+    /** Driven by available/unavailable PV surplus. */
+    PvSurplus = 'pv-surplus',
+    /** Driven by battery capacity or state of charge. */
+    BatteryState = 'battery-state',
+    /** Driven by a grid operator power limitation. */
+    GridLimitation = 'grid-limitation',
+    /** Driven by following a planned schedule. */
+    Schedule = 'schedule',
+    /** Driven by an explicit user request. */
+    UserRequest = 'user-request',
+    /** Driven by device protection / safety (e.g. overheating). */
+    DeviceProtection = 'device-protection',
+    /** Driven by a temperature condition (e.g. heatpump thermal control). */
+    Temperature = 'temperature',
+    /** Driven by self-consumption optimization. */
+    SelfConsumptionOptimization = 'self-consumption-optimization',
+    /** Any reason not covered by the categories above. */
+    Other = 'other',
 }
 
 /**
@@ -48,6 +93,10 @@ export enum EnyoDataBusCommandReasonTypeEnum {
 export interface EnyoDataBusCommandReason {
     /** The reason type indicating why this command was issued */
     type: EnyoDataBusCommandReasonTypeEnum;
+    /** Coarse category for grouping, iconography, and analytics */
+    category?: EnyoDataBusCommandReasonCategoryEnum;
+    /** Per-language, end-user-facing explanation of this reason */
+    translation?: EnyoPackageConfigurationTranslatedValue[];
     /** Electricity price per kWh that triggered this command */
     electricityPricePerKwh?: number;
     /** Currency of the electricity price */
@@ -58,6 +107,10 @@ export interface EnyoDataBusCommandReason {
     powerW?: number;
     /** Relevant energy in Watt hours */
     powerWh?: number;
+    /** Relevant temperature in Celsius (e.g. heatpump-driven reasons) */
+    temperatureC?: number;
+    /** Relevant state of charge as a percentage (battery-driven reasons) */
+    socPercent?: number;
 }
 
 export enum EnyoBatteryStateEnum {
@@ -141,6 +194,16 @@ export enum EnyoChargeModeEnum {
     CostOptimized = 'cost-optimized',
     /** Optimize charging schedule for a maximum price limit, for example 7 ct grid or pv production */
     PriceLimit = 'price-limit',
+}
+
+/**
+ * Identifies who initiated a charging session.
+ */
+export enum EnyoChargeInitiatorEnum {
+    /** Session was started from the enyo app (remote/user-driven start) */
+    App = 'app',
+    /** Session was started directly at the charger (e.g. plug-and-charge or local autostart) */
+    Charger = 'charger',
 }
 
 export interface EnyoAggregatedStateApplianceValues {
@@ -473,6 +536,8 @@ export interface EnyoDataBusChargingStartedV1 extends EnyoDataBusMessage {
         transactionId: string;
         /** used charging card */
         chargingCardId?: string;
+        /** Who initiated the charging session — the enyo app or the charger itself */
+        initiator: EnyoChargeInitiatorEnum;
         /** The charge mode of the started charge. If initiated by wallbox, use either user settings or immediate as default */
         chargeMode: EnyoChargeModeEnum;
         /** ISO timestamp for target completion time (optional) */
