@@ -318,10 +318,6 @@ export class ApplianceManager {
         // listener (which may fire on a later microtask).
         await this.primeCacheFromSdk(applianceId);
 
-        if (this.config.enableLogging) {
-            console.debug(`${existingApplianceId ? 'Updated' : 'Created'} appliance ${applianceId} of type ${appliance.type}`);
-        }
-
         return applianceId;
     }
 
@@ -385,9 +381,6 @@ export class ApplianceManager {
         const updatedListenerId = applianceService.listenForApplianceUpdated(
             (appliance: EnyoAppliance) => {
                 if (this.disposed) return;
-                if (this.config.enableLogging) {
-                    console.debug(`Appliance updated event received for ${appliance.id}`);
-                }
                 this.updateCache(appliance);
             },
         );
@@ -396,9 +389,6 @@ export class ApplianceManager {
         const removedListenerId = applianceService.listenForApplianceRemoved(
             (applianceId: string) => {
                 if (this.disposed) return;
-                if (this.config.enableLogging) {
-                    console.debug(`Appliance removed event received for ${applianceId}`);
-                }
                 this.removeFromCache(applianceId);
             },
         );
@@ -591,9 +581,6 @@ export class ApplianceManager {
         };
         await this.energyApp.useAppliances().save(updated, applianceId);
         await this.primeCacheFromSdk(applianceId);
-        if (this.config.enableLogging) {
-            console.debug(`Updated appliance ${applianceId} state to ${state}`);
-        }
     }
 
     /**
@@ -616,9 +603,6 @@ export class ApplianceManager {
         const updated = this.mergeApplianceData(appliance, attributes);
         await this.energyApp.useAppliances().save(updated, applianceId);
         await this.primeCacheFromSdk(applianceId);
-        if (this.config.enableLogging) {
-            console.debug(`Updated appliance ${applianceId}`);
-        }
     }
 
     /**
@@ -644,9 +628,6 @@ export class ApplianceManager {
     async removeAppliance(applianceId: string): Promise<void> {
         this.throwIfDisposed();
         await this.energyApp.useAppliances().removeById(applianceId);
-        if (this.config.enableLogging) {
-            console.debug(`Removed appliance ${applianceId}`);
-        }
     }
 
     /**
@@ -735,9 +716,6 @@ export class ApplianceManager {
             }
         }
 
-        if (this.config.enableLogging) {
-            console.debug(`Bulk update completed: ${succeeded.length} succeeded, ${failed.length} failed`);
-        }
         return {succeeded, failed};
     }
 
@@ -764,9 +742,6 @@ export class ApplianceManager {
     ): Promise<void> {
         this.throwIfDisposed();
         this.config.identifierStrategy = strategy;
-        if (this.config.enableLogging) {
-            console.debug(`Changed identifier strategy to: ${strategy.name}`);
-        }
         if (rebuildCache) {
             await this.refreshCache();
             return;
@@ -805,9 +780,6 @@ export class ApplianceManager {
         this.listenerIds = [];
         this.clearCache();
 
-        if (this.config.enableLogging) {
-            console.debug('ApplianceManager disposed');
-        }
     }
 
     /**

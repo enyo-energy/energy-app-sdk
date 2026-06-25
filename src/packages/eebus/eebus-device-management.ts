@@ -6,6 +6,16 @@ import {
 } from '../../types/enyo-eebus.js';
 
 /**
+ * Options controlling how an active SHIP connection is established via
+ * {@link EebusDeviceManagement.connect}.
+ */
+export interface EebusConnectOptions {
+    /** Advertised heartbeat timeout (seconds, sent as `PT{n}S`) passed to
+     *  `EebusService.connect` for the gateway. Defaults to **4** (PT4S). */
+    heartbeatTimeoutSeconds?: number;
+}
+
+/**
  * SHIP-level device lifecycle management for EEbus devices.
  *
  * Handles discovery, pairing (trust establishment), connection control, and
@@ -19,7 +29,7 @@ import {
  *
  * const discovered = await eebus.devices.getDiscoveredDevices();
  * const device = await eebus.devices.pairDevice(discovered[0].ski);
- * await eebus.devices.connect(device.ski);
+ * await eebus.devices.connect(device.ski, {heartbeatTimeoutSeconds: 4});
  *
  * const listenerId = eebus.devices.listenForConnectionStatusChange((ski, status) => {
  *   console.log(`${ski} → ${status}`);
@@ -59,8 +69,10 @@ export interface EebusDeviceManagement {
      * Establish an active SHIP connection to an already-paired device.
      * The device must have been previously paired via {@link pairDevice}.
      * @param ski Subject Key Identifier of the device to connect to
+     * @param options Connection options, e.g. the advertised heartbeat timeout.
+     *                See {@link EebusConnectOptions}.
      */
-    connect: (ski: string) => Promise<void>;
+    connect: (ski: string, options: EebusConnectOptions) => Promise<void>;
 
     /**
      * Safely disconnect from a currently connected device.

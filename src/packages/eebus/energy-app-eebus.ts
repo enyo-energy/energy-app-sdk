@@ -4,7 +4,7 @@ import {EebusIdentityService} from './eebus-identity-service.js';
 import {EebusSpineLowLevel} from './eebus-spine-low-level.js';
 import {EebusUseCaseRegistry} from './eebus-use-case-registry.js';
 
-export {EebusDeviceManagement} from './eebus-device-management.js';
+export {EebusDeviceManagement, EebusConnectOptions} from './eebus-device-management.js';
 export {
     EebusFeatureCatalog,
     EebusFeatureAddressMatch,
@@ -59,7 +59,7 @@ export {EebusVapdClient, VapdClientOptions} from './eebus-vapd-client.js';
  * // 1. SHIP — pair and connect
  * const [discovered] = await eebus.devices.getDiscoveredDevices();
  * const device = await eebus.devices.pairDevice(discovered.ski);
- * await eebus.devices.connect(device.ski);
+ * await eebus.devices.connect(device.ski, {heartbeatTimeoutSeconds: 4});
  *
  * // 2. NID — read identity and watch for changes
  * const identity = await eebus.identity.get(device.ski);
