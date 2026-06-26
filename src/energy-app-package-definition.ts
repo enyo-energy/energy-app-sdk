@@ -160,7 +160,6 @@ export interface EnergyAppPackagePermission {
 
 /**
  * A specific device model supported by an Energy App package.
- * Used inside {@link EnergyAppPackageCompatibilityVendor.models} to enumerate
  * the concrete models the package has been verified to work with.
  */
 export interface EnergyAppPackageCompatibilityModel {
@@ -188,11 +187,6 @@ export interface EnergyAppPackageCompatibilityModel {
 export interface EnergyAppPackageCompatibilityVendor {
     /** Human-readable vendor name (e.g. "SolarEdge", "Fronius") */
     vendorName: string;
-    /**
-     * Optional vendor logo path, mirroring the package-level `logo` field.
-     * Useful when the host wants to render a vendor list in the store.
-     */
-    logo?: string;
     /** Models from this vendor that the package supports */
     models: EnergyAppPackageCompatibilityModel[];
 }
@@ -224,13 +218,13 @@ export interface EnergyAppPackageDefinition {
     /** If the energy app should be visible in the enyo store. Default is true*/
     showInStore?: boolean;
     /**
-     * Optional declaration of vendors and models this package is compatible with.
+     * declaration of vendors and models this package is compatible with.
      * Each entry pairs a vendor with the concrete models the package supports,
      * allowing the enyo Store and onboarding flows to surface accurate
      * compatibility information to users. Omit when the package targets a
      * single vendor implicitly or has no fixed compatibility surface.
      */
-    compatibility?: EnergyAppPackageCompatibilityVendor[];
+    compatibility: EnergyAppPackageCompatibilityVendor[];
 }
 
 /**
