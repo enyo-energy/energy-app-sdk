@@ -1,6 +1,7 @@
 export * from './energy-app.js';
 export * from './energy-app-appliance-type.enum.js';
 export * from './energy-app-package-definition.js';
+export * from './energy-app-model-feature.enum.js';
 export * from './version.js';
 export * from './implementations/ocpp/ocpp16.js';
 export * from './implementations/ocpp/ocpp201.js';

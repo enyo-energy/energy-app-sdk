@@ -1,5 +1,6 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 import {getSdkVersion} from "./version.js";
+import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -177,6 +178,13 @@ export interface EnergyAppPackageCompatibilityModel {
     minimumFirmwareVersion?: string;
     /** Optional internal note explaining model-specific caveats or limitations */
     internalComment?: string;
+    /**
+     * Important capabilities this specific model supports (e.g. charging the
+     * battery from grid, limiting the charge, or forcing a heat pump DHW boost).
+     * Lets the enyo Store and onboarding flows surface accurate, model-level
+     * feature information.
+     */
+    features: EnergyAppModelFeatureEnum[];
 }
 
 /**
