@@ -91,3 +91,5 @@ export * from './implementations/energy-manager-diagnostics/energy-manager-diagn
 
 export * from './types/enyo-battery-state.js';
 export * from './packages/energy-app-battery.js';
+
+export * from './types/enyo-fetch.js';

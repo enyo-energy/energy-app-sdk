@@ -36,6 +36,7 @@ import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connectio
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
+import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
     Launching = 'launching',
@@ -62,8 +63,8 @@ export interface EnyoEnergyAppSdk {
     isSystemOnline: () => boolean;
     /** Register a listener that gets called when the network status changes */
     onNetworkStatusChanged: (listener: (online: boolean) => void | Promise<void>) => string;
-    /** Get the fetch API for HTTP requests */
-    useFetch: () => typeof fetch;
+    /** Get the fetch API for HTTP requests, optionally configured with TLS options */
+    useFetch: (options?: UseFetchOptions) => typeof fetch;
     /** Get the interval management API */
     useInterval: () => EnergyAppInterval;
     /** Get the Modbus communication API */

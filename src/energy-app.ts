@@ -38,6 +38,7 @@ import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connectio
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
+import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
  * Concrete implementation of {@link EnyoEnergyAppSdk} that delegates every call
@@ -103,8 +104,14 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         });
     }
 
-    public useFetch(): typeof fetch {
-        return this.energyAppSdk.useFetch();
+    /**
+     * Returns a `fetch` implementation provided by the runtime.
+     * @param options - Optional configuration (e.g. {@link TlsClientOptions} for mutual TLS).
+     *   When `options.tls` is set the runtime binds a TLS-configured dispatcher to the fetch.
+     * @returns A `fetch` function that still passes through the runtime allow-list.
+     */
+    public useFetch(options?: UseFetchOptions): typeof fetch {
+        return this.energyAppSdk.useFetch(options);
     }
 
     public useInterval(): EnergyAppInterval {
