@@ -176,6 +176,13 @@ export class ApplianceManager {
      * Note: the merge is one level deep. Nested objects inside a metadata sub-object
      * are replaced, not merged.
      *
+     * Update contract: an omitted optional field leaves the stored value unchanged.
+     * For the {@link MERGEABLE_METADATA_KEYS} this is enforced by the per-key merge
+     * below; for the other optional top-level fields (`availableFeatures`,
+     * `cloudPackageId`) the caller-facing {@link createOrUpdateAppliance} drops the
+     * key when the value is `undefined` so this spread cannot overwrite it. To clear
+     * or replace such a field, pass an explicit value (e.g. an empty array `[]`).
+     *
      * @param existing The existing appliance data
      * @param update The partial update data to merge
      * @returns The merged appliance data (without `id`)
@@ -296,8 +303,14 @@ export class ApplianceManager {
             inverter: appliance.inverter,
             temperatureSensor: appliance.temperatureSensor,
             airConditioning: appliance.airConditioning,
-            cloudPackageId: appliance.cloudPackageId,
-            availableFeatures: appliance.availableFeatures
+            // Conditionally spread the two optional top-level fields that are NOT
+            // covered by MERGEABLE_METADATA_KEYS. If they were always materialized
+            // as explicit keys, an omitted (undefined) value would clobber the
+            // stored value during mergeApplianceData's `{...existing, ...update}`
+            // spread on an update. `!== undefined` keeps an explicit `[]` (clear)
+            // while dropping omitted fields so the existing value is preserved.
+            ...(appliance.cloudPackageId !== undefined && {cloudPackageId: appliance.cloudPackageId}),
+            ...(appliance.availableFeatures !== undefined && {availableFeatures: appliance.availableFeatures}),
         };
 
         let applianceData = newApplianceData;

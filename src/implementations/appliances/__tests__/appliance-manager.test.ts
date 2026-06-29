@@ -2,6 +2,7 @@ import {describe, expect, it, vi} from 'vitest';
 import type {EnergyApp} from '../../../energy-app.js';
 import {
     type EnyoAppliance,
+    EnyoApplianceAvailableFeaturesEnum,
     EnyoApplianceConnectionType,
     EnyoApplianceStateEnum,
     EnyoApplianceTypeEnum,
@@ -338,6 +339,57 @@ describe('ApplianceManager', () => {
                 state: EnyoApplianceStateEnum.Offline,
                 connectionType: EnyoApplianceConnectionType.Connector,
             });
+
+            manager.dispose();
+        });
+
+        it('preserves stored availableFeatures when an update omits the field', async () => {
+            const existing = makeAppliance('existing-1', {
+                availableFeatures: [EnyoApplianceAvailableFeaturesEnum.LimitPowerConsumption],
+            }, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // makeConfig does not set availableFeatures — a metadata-only update.
+            await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.availableFeatures).toEqual([
+                EnyoApplianceAvailableFeaturesEnum.LimitPowerConsumption,
+            ]);
+
+            manager.dispose();
+        });
+
+        it('clears availableFeatures when an update passes an explicit empty array', async () => {
+            const existing = makeAppliance('existing-1', {
+                availableFeatures: [EnyoApplianceAvailableFeaturesEnum.LimitPowerConsumption],
+            }, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.createOrUpdateAppliance({...makeConfig('SN-1'), availableFeatures: []});
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.availableFeatures).toEqual([]);
+
+            manager.dispose();
+        });
+
+        it('preserves stored cloudPackageId when an update omits it, and replaces it when supplied', async () => {
+            const existing = makeAppliance('existing-1', {cloudPackageId: 'pkg-1'}, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // Omit cloudPackageId — must be preserved.
+            await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+            let saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.cloudPackageId).toBe('pkg-1');
+
+            // Supply a new value — must replace.
+            await manager.createOrUpdateAppliance({...makeConfig('SN-1'), cloudPackageId: 'pkg-2'});
+            saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.cloudPackageId).toBe('pkg-2');
 
             manager.dispose();
         });
