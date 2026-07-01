@@ -190,7 +190,7 @@ export class ApplianceManager {
      * @param update The partial update data to merge
      * @returns The merged appliance data (without `id`)
      */
-    private mergeApplianceData(
+    protected mergeApplianceData(
         existing: EnyoAppliance,
         update: Partial<Omit<PartialEnyoAppliance, 'id'>>,
     ): Omit<EnyoAppliance, 'id'> {
