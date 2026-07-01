@@ -5,6 +5,8 @@
 export enum EnyoHeatingRodApplianceAvailableFeaturesEnum {
     /** If the heating rod reports electrical power values (e.g. consumption in watts) */
     Power = 'Power',
+    /** If the heating rod supports available power announcements */
+    AvailablePowerAnnouncement = 'AvailablePowerAnnouncement',
 }
 
 /**

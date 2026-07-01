@@ -272,6 +272,7 @@ export enum EnyoDataBusMessageEnum {
     ClearChargingProfilesV1 = 'ClearChargingProfilesV1',
     HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1',
     HeatpumpAvailablePowerAnnouncementV1 = 'HeatpumpAvailablePowerAnnouncementV1',
+    HeatingRodAvailablePowerAnnouncementV1 = 'HeatingRodAvailablePowerAnnouncementV1',
     AirConditioningValuesUpdateV1 = 'AirConditioningValuesUpdateV1',
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
     StartAirConditioningV1 = 'StartAirConditioningV1',
@@ -1683,6 +1684,23 @@ export interface EnyoDataBusHeatpumpAvailablePowerAnnouncementV1 extends EnyoDat
     applianceId: string;
     data: {
         /** Available power for the heatpump to use (in Watt) */
+        powerW: number;
+        /** Optional reason why this announcement was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Data bus message announcing available power for a heating rod appliance.
+ * Used to inform the heating rod about how much power is available for consumption.
+ */
+export interface EnyoDataBusHeatingRodAvailablePowerAnnouncementV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatingRodAvailablePowerAnnouncementV1;
+    /** ID of the heating rod appliance */
+    applianceId: string;
+    data: {
+        /** Available power for the heating rod to use (in Watt) */
         powerW: number;
         /** Optional reason why this announcement was issued */
         reason?: EnyoDataBusCommandReason;
