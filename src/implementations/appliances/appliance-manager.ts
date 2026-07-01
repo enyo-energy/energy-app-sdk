@@ -16,6 +16,7 @@ import type {EnyoInverterApplianceMetadata} from "../../types/enyo-inverter-appl
 import type {EnyoMeterAppliance} from "../../types/enyo-meter-appliance.js";
 import type {EnyoTemperatureSensorApplianceMetadata} from "../../types/enyo-temperature-sensor-appliance.js";
 import type {EnyoAirConditioningApplianceMetadata} from "../../types/enyo-air-conditioning-appliance.js";
+import type {EnyoHeatingRodApplianceMetadata} from "../../types/enyo-heating-rod-appliance.js";
 import {IdentifierStrategy} from "./identifier-strategies.js";
 
 /**
@@ -91,6 +92,7 @@ export interface ApplianceConfig {
     battery?: EnyoBatteryApplianceMetadata;
     temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
     airConditioning?: EnyoAirConditioningApplianceMetadata;
+    heatingRod?: EnyoHeatingRodApplianceMetadata;
     availableFeatures?: EnyoApplianceAvailableFeaturesEnum[];
     /**
      * Optional identifier of the cloud-deployed energy app package that manages
@@ -138,6 +140,7 @@ const MERGEABLE_METADATA_KEYS = [
     'meter',
     'temperatureSensor',
     'airConditioning',
+    'heatingRod',
 ] as const;
 
 /**
@@ -187,7 +190,7 @@ export class ApplianceManager {
      * @param update The partial update data to merge
      * @returns The merged appliance data (without `id`)
      */
-    private mergeApplianceData(
+    protected mergeApplianceData(
         existing: EnyoAppliance,
         update: Partial<Omit<PartialEnyoAppliance, 'id'>>,
     ): Omit<EnyoAppliance, 'id'> {
@@ -303,6 +306,7 @@ export class ApplianceManager {
             inverter: appliance.inverter,
             temperatureSensor: appliance.temperatureSensor,
             airConditioning: appliance.airConditioning,
+            heatingRod: appliance.heatingRod,
             // Conditionally spread the two optional top-level fields that are NOT
             // covered by MERGEABLE_METADATA_KEYS. If they were always materialized
             // as explicit keys, an omitted (undefined) value would clobber the
@@ -836,6 +840,8 @@ export interface PartialEnyoAppliance {
     temperatureSensor?: Partial<EnyoTemperatureSensorApplianceMetadata>;
     /** Optional Metadata of the Appliance if of type AirConditioning */
     airConditioning?: Partial<EnyoAirConditioningApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type HeatingRod */
+    heatingRod?: Partial<EnyoHeatingRodApplianceMetadata>;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
     /**

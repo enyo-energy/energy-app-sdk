@@ -8,6 +8,10 @@ import {
     EnyoApplianceTypeEnum,
 } from '../../../types/enyo-appliance.js';
 import {
+    EnyoHeatingRodApplianceAvailableFeaturesEnum,
+    EnyoHeatingRodApplianceModeEnum,
+} from '../../../types/enyo-heating-rod-appliance.js';
+import {
     type ApplianceConfig,
     ApplianceManager,
     ApplianceManagerDisposedError,
@@ -212,7 +216,7 @@ describe('ApplianceManager', () => {
             const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
 
             // Move the appliance to a new serial number via an SDK-fired update.
-            const renamed = {...a, metadata: {...a.metadata, serialNumber: 'SN-new'}};
+            const renamed = {...a, metadata: {...a.metadata!, serialNumber: 'SN-new'}};
             await sdk.emitUpdated(renamed);
 
             await expect(manager.findByIdentifier('SN-new')).resolves.toEqual([renamed]);
@@ -393,6 +397,67 @@ describe('ApplianceManager', () => {
 
             manager.dispose();
         });
+
+        it('shallow-merges heatingRod metadata when patching only a subset', async () => {
+            const a = makeAppliance('appl-1', {
+                type: EnyoApplianceTypeEnum.HeatingRod,
+                heatingRod: {
+                    availableFeatures: [EnyoHeatingRodApplianceAvailableFeaturesEnum.Power],
+                    mode: EnyoHeatingRodApplianceModeEnum.Idle,
+                    ratedPowerW: 3000,
+                    heatpumpApplianceId: 'hp-1',
+                },
+            }, 'SN-1');
+            const sdk = createAppliancesFake([a]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // Patch only the mode — the other heatingRod fields must survive.
+            await manager.updateAppliance('appl-1', {
+                heatingRod: {
+                    availableFeatures: [EnyoHeatingRodApplianceAvailableFeaturesEnum.Power],
+                    mode: EnyoHeatingRodApplianceModeEnum.Heating,
+                },
+            });
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatingRod).toEqual({
+                availableFeatures: [EnyoHeatingRodApplianceAvailableFeaturesEnum.Power],
+                mode: EnyoHeatingRodApplianceModeEnum.Heating,
+                ratedPowerW: 3000,
+                heatpumpApplianceId: 'hp-1',
+            });
+
+            manager.dispose();
+        });
+
+        it('preserves stored heatingRod metadata when createOrUpdateAppliance omits it', async () => {
+            const existing = makeAppliance('existing-1', {
+                type: EnyoApplianceTypeEnum.HeatingRod,
+                heatingRod: {
+                    availableFeatures: [
+                        EnyoHeatingRodApplianceAvailableFeaturesEnum.AvailablePowerAnnouncement,
+                    ],
+                    mode: EnyoHeatingRodApplianceModeEnum.Idle,
+                    ratedPowerW: 4500,
+                },
+            }, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // makeConfig does not set heatingRod — a metadata-only update must not clear it.
+            await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatingRod).toEqual({
+                availableFeatures: [
+                    EnyoHeatingRodApplianceAvailableFeaturesEnum.AvailablePowerAnnouncement,
+                ],
+                mode: EnyoHeatingRodApplianceModeEnum.Idle,
+                ratedPowerW: 4500,
+            });
+
+            manager.dispose();
+        });
     });
 
     describe('setAppliancesStateByIdentifier', () => {
@@ -438,7 +503,7 @@ describe('ApplianceManager', () => {
             // Cache read should already show the new state — without us having
             // to call emitUpdated to simulate the listener.
             const [cached] = await manager.findByIdentifier('SN-1');
-            expect(cached.metadata.state).toBe(EnyoApplianceStateEnum.Offline);
+            expect(cached.metadata?.state).toBe(EnyoApplianceStateEnum.Offline);
 
             manager.dispose();
         });
@@ -451,11 +516,11 @@ describe('ApplianceManager', () => {
             await manager.updateApplianceState(
                 'appl-1',
                 EnyoApplianceConnectionType.Connector,
-                EnyoApplianceStateEnum.Error,
+                EnyoApplianceStateEnum.ConfigurationRequired,
             );
 
             const [cached] = await manager.findByIdentifier('SN-1');
-            expect(cached.metadata.state).toBe(EnyoApplianceStateEnum.Error);
+            expect(cached.metadata?.state).toBe(EnyoApplianceStateEnum.ConfigurationRequired);
 
             manager.dispose();
         });
@@ -467,14 +532,14 @@ describe('ApplianceManager', () => {
             const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
 
             await manager.bulkUpdate([
-                {applianceId: 'appl-1', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
-                {applianceId: 'appl-2', data: {metadata: {state: EnyoApplianceStateEnum.Error}}},
+                {applianceId: 'appl-1', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'appl-2', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.ConfigurationRequired}}},
             ]);
 
             const [a1] = await manager.findByIdentifier('SN-1');
             const [a2] = await manager.findByIdentifier('SN-2');
-            expect(a1.metadata.state).toBe(EnyoApplianceStateEnum.Offline);
-            expect(a2.metadata.state).toBe(EnyoApplianceStateEnum.Error);
+            expect(a1.metadata?.state).toBe(EnyoApplianceStateEnum.Offline);
+            expect(a2.metadata?.state).toBe(EnyoApplianceStateEnum.ConfigurationRequired);
 
             manager.dispose();
         });
@@ -489,8 +554,8 @@ describe('ApplianceManager', () => {
 
             sdk.save.mockClear();
             const result = await manager.bulkUpdate([
-                {applianceId: 'appl-1', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
-                {applianceId: 'appl-2', data: {metadata: {state: EnyoApplianceStateEnum.Error}}},
+                {applianceId: 'appl-1', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'appl-2', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.ConfigurationRequired}}},
             ]);
 
             // Return-shape contract.
@@ -503,8 +568,8 @@ describe('ApplianceManager', () => {
             const savesByApplianceId = new Map(
                 sdk.save.mock.calls.map(([data, id]) => [id, data as Omit<EnyoAppliance, 'id'>]),
             );
-            expect(savesByApplianceId.get('appl-1')?.metadata.state).toBe(EnyoApplianceStateEnum.Offline);
-            expect(savesByApplianceId.get('appl-2')?.metadata.state).toBe(EnyoApplianceStateEnum.Error);
+            expect(savesByApplianceId.get('appl-1')?.metadata?.state).toBe(EnyoApplianceStateEnum.Offline);
+            expect(savesByApplianceId.get('appl-2')?.metadata?.state).toBe(EnyoApplianceStateEnum.ConfigurationRequired);
 
             manager.dispose();
         });
@@ -516,8 +581,8 @@ describe('ApplianceManager', () => {
 
             sdk.save.mockClear();
             const result = await manager.bulkUpdate([
-                {applianceId: 'appl-1', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
-                {applianceId: 'does-not-exist', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'appl-1', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'does-not-exist', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
             ]);
 
             expect(result.succeeded).toEqual(['appl-1']);
@@ -543,9 +608,9 @@ describe('ApplianceManager', () => {
             });
 
             const result = await manager.bulkUpdate([
-                {applianceId: 'appl-1', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
-                {applianceId: 'appl-2', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
-                {applianceId: 'appl-3', data: {metadata: {state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'appl-1', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'appl-2', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
+                {applianceId: 'appl-3', data: {metadata: {connectionType: EnyoApplianceConnectionType.Connector, state: EnyoApplianceStateEnum.Offline}}},
             ]);
 
             expect(result.succeeded).toEqual(['appl-1', 'appl-3']);
@@ -716,5 +781,43 @@ describe('InMemoryApplianceManager disposal contract', () => {
             .rejects.toThrow(ApplianceManagerDisposedError);
         await expect(manager.refreshCache())
             .rejects.toThrow(ApplianceManagerDisposedError);
+    });
+
+    it('preserves type-specific and top-level fields when an update omits them', async () => {
+        const manager = makeInMemoryManager();
+
+        // Seed a HeatingRod appliance carrying type-specific metadata plus the two
+        // non-mergeable top-level fields (availableFeatures, cloudPackageId).
+        const id = await manager.createOrUpdateAppliance({
+            ...makeConfig('SN-1'),
+            type: EnyoApplianceTypeEnum.HeatingRod,
+            heatingRod: {
+                availableFeatures: [
+                    EnyoHeatingRodApplianceAvailableFeaturesEnum.AvailablePowerAnnouncement,
+                ],
+                mode: EnyoHeatingRodApplianceModeEnum.Idle,
+                ratedPowerW: 4500,
+            },
+            availableFeatures: [EnyoApplianceAvailableFeaturesEnum.LimitPowerConsumption],
+            cloudPackageId: 'pkg-1',
+        });
+
+        // A metadata-only update for the same appliance (matched by serial number)
+        // must not drop the previously stored fields.
+        const updatedId = await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+        expect(updatedId).toBe(id);
+
+        const stored = await manager.getApplianceById(id);
+        expect(stored?.heatingRod).toEqual({
+            availableFeatures: [
+                EnyoHeatingRodApplianceAvailableFeaturesEnum.AvailablePowerAnnouncement,
+            ],
+            mode: EnyoHeatingRodApplianceModeEnum.Idle,
+            ratedPowerW: 4500,
+        });
+        expect(stored?.availableFeatures).toEqual([EnyoApplianceAvailableFeaturesEnum.LimitPowerConsumption]);
+        expect(stored?.cloudPackageId).toBe('pkg-1');
+
+        manager.dispose();
     });
 });

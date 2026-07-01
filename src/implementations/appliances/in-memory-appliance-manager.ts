@@ -68,10 +68,12 @@ export class InMemoryApplianceManager extends ApplianceManager {
             ...appliance.metadata
         };
 
-        // Build appliance data
-        const applianceId = existingAppliance?.id || randomUUID();
-        const applianceData: EnyoAppliance = {
-            id: applianceId,
+        // Build the incoming appliance data covering every ApplianceConfig field.
+        // The two optional top-level fields that are NOT shallow-merged by
+        // mergeApplianceData (`cloudPackageId`, `availableFeatures`) are only
+        // materialized when provided so an omitted value cannot clobber the stored
+        // one during an update; pass an explicit value (e.g. `[]`) to clear them.
+        const newApplianceData: Omit<EnyoAppliance, 'id'> = {
             name: appliance.name,
             type: appliance.type,
             networkDeviceIds,
@@ -82,7 +84,19 @@ export class InMemoryApplianceManager extends ApplianceManager {
             battery: appliance.battery,
             charger: appliance.charger,
             inverter: appliance.inverter,
+            temperatureSensor: appliance.temperatureSensor,
+            airConditioning: appliance.airConditioning,
+            heatingRod: appliance.heatingRod,
+            ...(appliance.cloudPackageId !== undefined && {cloudPackageId: appliance.cloudPackageId}),
+            ...(appliance.availableFeatures !== undefined && {availableFeatures: appliance.availableFeatures}),
         };
+
+        // On update, merge onto the stored appliance so type-specific metadata and
+        // top-level fields that were not supplied in this call are preserved.
+        const applianceId = existingAppliance?.id || randomUUID();
+        const applianceData: EnyoAppliance = existingAppliance
+            ? {...this.mergeApplianceData(existingAppliance, newApplianceData), id: applianceId}
+            : {id: applianceId, ...newApplianceData};
 
         // Save to memory store
         this.memoryStore.set(applianceId, applianceData);
