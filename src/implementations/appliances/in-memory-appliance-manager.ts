@@ -82,6 +82,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
             battery: appliance.battery,
             charger: appliance.charger,
             inverter: appliance.inverter,
+            heatingRod: appliance.heatingRod,
         };
 
         // Save to memory store
