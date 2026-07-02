@@ -4,7 +4,8 @@ export enum EnyoNetworkDeviceDetectedAtEnum {
     Hostname = 'hostname',
     Modbus = 'modbus',
     Http = 'http',
-    Mdns = 'mdns'
+    Mdns = 'mdns',
+    Udp = 'udp'
 }
 
 /**

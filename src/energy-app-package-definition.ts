@@ -110,6 +110,47 @@ export interface EnergyAppPackageOptionsDeviceDetectionMqtt {
 }
 
 /**
+ * Optional device detection configuration for UDP broadcast probing.
+ * The host broadcasts the probe message on the local network and matches a
+ * JSON field in each response against the expected values to identify the
+ * device.
+ *
+ * @example
+ * // Detect Marstek Venus batteries answering on port 30000:
+ * {
+ *   port: 30000,
+ *   message: { id: 0, method: 'Marstek.GetDevice', params: { ble_mac: '0' } },
+ *   field: 'src',
+ *   operation: 'startsWith',
+ *   matchingValues: ['VenusC'],
+ * }
+ */
+export interface EnergyAppPackageOptionsDeviceDetectionUdp {
+    /**
+     * Destination UDP port the device listens on. The probe is broadcast to
+     * this port (e.g. 30000 for Marstek Venus); responses are read from the
+     * datagrams the device sends back. Required — a UDP broadcast always needs
+     * a destination port.
+     */
+    port: number;
+    /**
+     * The probe message to broadcast. Provide a JSON-serializable object
+     * (sent as its JSON string) or a raw string payload.
+     */
+    message: Record<string, unknown> | string;
+    /**
+     * JSON field path in the response to match against. Supports dot notation
+     * for nested keys (e.g. `'src'` or `'result.device'`). If omitted, the
+     * entire response payload is matched.
+     */
+    field?: string;
+    /** The matching operation to perform on the response field value */
+    operation: 'eq' | 'startsWith';
+    /** Values to match the response field value against */
+    matchingValues: string[];
+}
+
+/**
  * Optional device detection configuration
  */
 export interface EnergyAppPackageOptionsDeviceDetection {
@@ -120,6 +161,7 @@ export interface EnergyAppPackageOptionsDeviceDetection {
     eebus?: EnergyAppPackageOptionsDeviceDetectionEebus[];
     mqtt?: EnergyAppPackageOptionsDeviceDetectionMqtt[];
     mdns?: EnergyAppPackageOptionsDeviceDetectionMdns[];
+    udp?: EnergyAppPackageOptionsDeviceDetectionUdp[];
 }
 
 /**
