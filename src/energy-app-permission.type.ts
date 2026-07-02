@@ -43,7 +43,8 @@ export type EnergyAppPermissionType =
     | 'Bluetooth'
     | 'Wifi'
     | 'ChildProcess'
-    | 'Udp';
+    | 'Udp'
+    | 'ProvidedFiles';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -90,5 +91,6 @@ export enum EnergyAppPermissionTypeEnum {
     Bluetooth = 'Bluetooth',
     Wifi = 'Wifi',
     ChildProcess = 'ChildProcess',
-    Udp = 'Udp'
+    Udp = 'Udp',
+    ProvidedFiles = 'ProvidedFiles'
 }
