@@ -17,6 +17,7 @@ export enum EnergyAppPackageCategory {
     StaticElectricityTariff = 'static-electricity-tariff',
     TemperatureSensor = 'temperature-sensor',
     SmartPlug = 'smart-plug',
+    HeatingRod = 'heating-rod',
     Other = 'other',
 }
 

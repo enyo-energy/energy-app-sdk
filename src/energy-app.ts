@@ -38,6 +38,7 @@ import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connectio
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
+import {EnergyAppFile} from "./packages/energy-app-file.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -403,6 +404,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useBatteries(): EnergyAppBattery {
         return this.energyAppSdk.useBatteries();
+    }
+
+    /**
+     * Gets the File API for providing user-facing files.
+     * Files are registered with a translated display name and optional
+     * translated explanation; their content (base64 + MIME type + concrete
+     * file name) is produced on demand by the registered handler when the user
+     * chooses to store the file.
+     * @returns The File API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `ProvidedFiles`
+     *         permission is not granted.
+     */
+    public useFiles(): EnergyAppFile {
+        return this.energyAppSdk.useFiles();
     }
 
     /**

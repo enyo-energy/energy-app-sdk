@@ -94,3 +94,6 @@ export * from './types/enyo-battery-state.js';
 export * from './packages/energy-app-battery.js';
 
 export * from './types/enyo-fetch.js';
+
+export * from './types/enyo-file.js';
+export * from './packages/energy-app-file.js';

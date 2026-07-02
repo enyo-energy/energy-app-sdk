@@ -36,6 +36,7 @@ import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connectio
 import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration-manager.js";
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
+import {EnergyAppFile} from "./packages/energy-app-file.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -139,4 +140,6 @@ export interface EnyoEnergyAppSdk {
     useApplianceEnergyManagerForecast: () => EnergyAppApplianceEnergyManagerForecast;
     /** Get the Battery API for retrieving the current runtime state of each battery storage (SoC, stored kWh, average price per kWh, optional solar share) */
     useBatteries: () => EnergyAppBattery;
+    /** Get the File API for providing user-facing files whose translated names/explanations are shown by the host and whose content is produced on demand when the user stores them */
+    useFiles: () => EnergyAppFile;
 }

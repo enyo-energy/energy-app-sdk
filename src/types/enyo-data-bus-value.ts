@@ -369,6 +369,8 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
             operationMode: EnyoHeatpumpApplianceModeEnum;
             /** current power consumption in W */
             powerW?: number;
+            /** Cumulative energy meter reading of the heatpump in Wh (meter value)*/
+            meterValueWh?: number;
             /** Power consumption for heating in Wh (meter value)*/
             powerConsumptionHeatingWh?: number;
             /** Power consumption for domestic hot water in Wh (meter value)*/
