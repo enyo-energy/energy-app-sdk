@@ -26,9 +26,11 @@ export interface EnergyAppSettings {
      * This will remove the setting regardless of whether it's for an appliance or the package.
      *
      * @param settingName - The unique name of the setting to remove
+     * @param applianceId - Optional appliance ID. If provided, only the setting scoped to that
+     *   specific appliance is removed. If omitted, the setting is removed regardless of scope.
      * @returns Promise that resolves when the setting is successfully removed
      */
-    removeSettingConfig(settingName: string): Promise<void>;
+    removeSettingConfig(settingName: string, applianceId?: string): Promise<void>;
 
     /**
      * Updates the value of an existing setting.
