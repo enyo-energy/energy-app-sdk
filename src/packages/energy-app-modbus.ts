@@ -12,6 +12,27 @@ export interface ModbusOptions {
     unitId?: number;
     /** Whether to use TLS/SSL for the Modbus connection. Defaults to false (plain Modbus TCP). Set to true to enable Modbus Security (TLS, typically port 802). */
     useTls?: boolean;
+    /**
+     * PEM-encoded client certificate (or Buffer) presented for mutual-TLS Modbus Security
+     * connections. Only used when {@link useTls} is true.
+     */
+    cert?: string | Buffer;
+    /**
+     * PEM-encoded private key (or Buffer) matching {@link cert} for mutual-TLS connections.
+     * Only used when {@link useTls} is true.
+     */
+    key?: string | Buffer;
+    /**
+     * Trusted CA certificate(s) — a PEM string/Buffer, or an array of them — used to verify the
+     * server's certificate. Only used when {@link useTls} is true.
+     */
+    ca?: string | Buffer | Array<string | Buffer>;
+    /**
+     * Whether to reject a TLS connection whose server certificate cannot be verified against
+     * {@link ca}. When omitted, the transport's default verification behaviour is used. Only
+     * used when {@link useTls} is true.
+     */
+    rejectUnauthorized?: boolean;
 }
 
 /**
