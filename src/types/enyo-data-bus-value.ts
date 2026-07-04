@@ -4,6 +4,7 @@ import {
     EnyoApplianceStatusEnum,
     EnyoApplianceTypeEnum
 } from "./enyo-appliance.js";
+import type {EnyoAutomationTriggerData} from "./enyo-automation.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
@@ -15,7 +16,7 @@ import {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
-import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
+import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
 import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
 
@@ -245,6 +246,7 @@ export enum EnyoDataBusMessageEnum {
     EvChargingForecastV1 = 'EvChargingForecastV1',
     HeatpumpConsumptionForecastV1 = 'HeatpumpConsumptionForecastV1',
     HeatpumpDhwTemperatureForecastV1 = 'HeatpumpDhwTemperatureForecastV1',
+    AutomationTriggerV1 = 'AutomationTriggerV1',
     /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} instead. The schedule message subsumes start/stop/limit commands by carrying a sequence of `{seconds, direction, powerW}` setpoints. */
     StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
     /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} with `mode: 'auto'` (or a schedule that returns control to the appliance) instead. */
@@ -277,6 +279,7 @@ export enum EnyoDataBusMessageEnum {
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
     StartAirConditioningV1 = 'StartAirConditioningV1',
     StopAirConditioningV1 = 'StopAirConditioningV1',
+    ChangeAirConditioningOptimizationModeV1 = 'ChangeAirConditioningOptimizationModeV1',
     VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
 }
@@ -1101,6 +1104,25 @@ export interface EnyoDataBusHeatpumpDhwTemperatureForecastV1 extends EnyoDataBus
 }
 
 /**
+ * Message carrying the live state of a user-configured automation's trigger.
+ * Published by the `EnergyManager` app that owns the trigger whenever the
+ * condition changes (e.g. PV surplus crosses the configured threshold).
+ * Consumers subscribe via {@link EnyoDataBusMessageEnum.AutomationTriggerV1}.
+ */
+export interface EnyoDataBusAutomationTriggerV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.AutomationTriggerV1;
+    /** Id of the automation this trigger state applies to. */
+    automationId: string;
+    data: {
+        /** Whether the trigger condition is currently met. */
+        active: boolean;
+        /** Trigger-type-specific metadata (e.g. surplusW / thresholdW for PV surplus). */
+        trigger: EnyoAutomationTriggerData;
+    };
+}
+
+/**
  * Command message to start charging a storage/battery from the grid.
  * Instructs the battery system to begin drawing power from the grid up to the specified limit.
  *
@@ -1724,6 +1746,8 @@ export interface EnyoDataBusAirConditioningValuesV1 extends EnyoDataBusMessage {
             operationMode: EnyoAirConditioningApplianceModeEnum;
             /** Current power consumption in Watts */
             powerW?: number;
+            /** Cumulative energy consumed by the air conditioning unit in Watt-hours */
+            meterValueWh?: number;
         };
     };
 }
@@ -1781,6 +1805,25 @@ export interface EnyoDataBusStopAirConditioningV1 extends EnyoDataBusMessage {
     data: {
         /** The operating mode to stop (Heating or Cooling) */
         mode: EnyoAirConditioningApplianceModeEnum;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to change the energy-optimization mode of an air conditioning
+ * appliance (e.g. between PV surplus and boost). This controls how the unit is
+ * driven with respect to available energy, independent of its physical
+ * operating mode.
+ */
+export interface EnyoDataBusChangeAirConditioningOptimizationModeV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ChangeAirConditioningOptimizationModeV1;
+    /** ID of the air conditioning appliance whose optimization mode should change */
+    applianceId: string;
+    data: {
+        /** The optimization mode to switch to (e.g. PV surplus, boost) */
+        optimizationMode: EnyoAirConditioningOptimizationModeEnum;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };

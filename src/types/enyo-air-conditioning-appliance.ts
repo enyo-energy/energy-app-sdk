@@ -9,6 +9,18 @@ export enum EnyoAirConditioningApplianceAvailableFeaturesEnum {
 }
 
 /**
+ * Energy-optimization modes for an air conditioning appliance. These control how
+ * the appliance is driven with respect to available energy, independent of the
+ * physical {@link EnyoAirConditioningApplianceModeEnum operating mode}.
+ */
+export enum EnyoAirConditioningOptimizationModeEnum {
+    /** Run the air conditioning unit to consume available PV surplus. */
+    PvSurplus = 'PvSurplus',
+    /** Force the air conditioning unit to run at full power for maximum comfort, regardless of surplus. */
+    Boost = 'Boost',
+}
+
+/**
  * Operating modes for an air conditioning appliance.
  */
 export enum EnyoAirConditioningApplianceModeEnum {
@@ -36,10 +48,12 @@ export interface EnyoAirConditioningApplianceRoom {
  * Contains available features, current operating mode, and configured rooms.
  */
 export interface EnyoAirConditioningApplianceMetadata {
-    /** List of features supported by this air conditioning unit */
+    /** List of features supported by this air conditioning unit (e.g. Cooling, Heating) */
     availableFeatures: EnyoAirConditioningApplianceAvailableFeaturesEnum[];
     /** Current operating mode of the air conditioning unit */
     mode?: EnyoAirConditioningApplianceModeEnum;
+    /** Current energy-optimization mode of the air conditioning unit (e.g. PV surplus, boost) */
+    optimizationMode?: EnyoAirConditioningOptimizationModeEnum;
     /** Rooms served by this air conditioning unit (0 to n) */
     rooms?: EnyoAirConditioningApplianceRoom[];
 }

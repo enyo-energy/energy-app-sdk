@@ -1,4 +1,5 @@
 import {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
+import type {EnyoAutomationActionTypeEnum} from "./enyo-automation.js";
 import {EnyoChargerApplianceMetadata} from "./enyo-charger-appliance.js";
 import {EnyoHeatpumpApplianceMetadata} from "./enyo-heatpump-appliance.js";
 import {EnyoBatteryApplianceMetadata} from "./enyo-battery-appliance.js";
@@ -248,6 +249,15 @@ export interface EnyoAppliance {
      * metadata (e.g. `charger.availableFeatures`).
      */
     availableFeatures?: EnyoApplianceAvailableFeaturesEnum[];
+    /**
+     * Automation action types this appliance can be the target of. Set by the
+     * owning app when it {@link save}s the appliance — e.g. a Shelly SmartPlug
+     * channel supporting on/off switching lists
+     * {@link EnyoAutomationActionTypeEnum.SmartPlugSwitch}. The automation UI
+     * offers only appliances whose list includes the action type the user
+     * selected.
+     */
+    supportedAutomationActions?: EnyoAutomationActionTypeEnum[];
     /** Optional Metadata of the Appliance */
     metadata?: EnyoApplianceMetadata;
     /** Topology Information of the appliance */

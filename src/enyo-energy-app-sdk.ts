@@ -37,6 +37,7 @@ import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 import {EnergyAppFile} from "./packages/energy-app-file.js";
+import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -56,6 +57,8 @@ export enum EnergyAppStateEnum {
 export interface EnyoEnergyAppSdk {
     /** Register a callback that gets called when the package is initialized */
     register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>) => void;
+    /** health check - returns the current date to check if alive */
+    healthcheck: () => Date;
     /** Register a callback that gets called when the system is shutting down */
     onShutdown: (callback: () => void | Promise<void>) => void;
     /** Update the state of the Energy App. Default state set is launching*/
@@ -142,4 +145,6 @@ export interface EnyoEnergyAppSdk {
     useBatteries: () => EnergyAppBattery;
     /** Get the File API for providing user-facing files whose translated names/explanations are shown by the host and whose content is produced on demand when the user stores them */
     useFiles: () => EnergyAppFile;
+    /** Get the Automation API for reading user-configured automations and (with EnergyManager permission) registering triggers, reporting trigger state, and publishing automation forecasts */
+    useAutomations: () => EnergyAppAutomation;
 }

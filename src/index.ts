@@ -97,3 +97,7 @@ export * from './types/enyo-fetch.js';
 
 export * from './types/enyo-file.js';
 export * from './packages/energy-app-file.js';
+
+export * from './types/enyo-automation.js';
+export * from './packages/energy-app-automation.js';
+export * from './implementations/automation/automation-validators.js';

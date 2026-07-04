@@ -39,6 +39,7 @@ import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 import {EnergyAppFile} from "./packages/energy-app-file.js";
+import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -72,6 +73,10 @@ export class EnergyApp implements EnyoEnergyAppSdk {
             // @ts-ignore
             this.energyAppSdk = energyAppSdkInstance;
         }
+    }
+
+    public healthcheck() {
+        return new Date()
     }
 
     public isSystemOnline(): boolean {
@@ -418,6 +423,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useFiles(): EnergyAppFile {
         return this.energyAppSdk.useFiles();
+    }
+
+    /**
+     * Gets the Automation API for reading user-configured automations and
+     * listening for their creation, update and removal. Apps holding the
+     * `EnergyManager` permission can additionally register trigger types,
+     * report live trigger state, and publish automation forecasts.
+     * @returns The Automation API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the required permission
+     *         (`Automation` for reads, `EnergyManager` for provider methods) is
+     *         not granted.
+     */
+    public useAutomations(): EnergyAppAutomation {
+        return this.energyAppSdk.useAutomations();
     }
 
     /**

@@ -55,6 +55,14 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [BatteryCommandForecast](#batterycommandforecast)
   - [HeatpumpForecast](#heatpumpforecast)
   - [Validators](#validators)
+- [Automations](#automations)
+  - [The model](#-the-model)
+  - [Guide: Energy Manager apps](#-guide-energy-manager-apps)
+  - [Guide: regular energy apps (smart plugs like Shelly)](#-guide-regular-energy-apps-smart-plugs-like-shelly)
+  - [End-to-end: pool pump on solar](#-end-to-end-pool-pump-on-solar)
+  - [Mandatory vs Flexible (current limitation)](#-mandatory-vs-flexible-current-limitation)
+  - [Permissions](#-permissions)
+  - [Validators](#-validators)
 - [Examples](#examples)
   - [Basic Energy App](#basic-energy-app)
   - [Device Integration](#device-integration)
@@ -2081,6 +2089,213 @@ try {
 ```
 
 Granular helpers are exported alongside the top-level validators: `validateChargerSchedule`, `validateBatterySchedule`, `validateDhwBoostWindows`, `validateRoomPreHeatingWindows`, `validateBufferTankBoostWindows`, `validatePowerAnnouncementSchedule`, `validateTemperatureForecast`.
+
+## Automations
+
+Automations let the end-user wire up simple **"when a trigger is active, do one or more actions"** rules — for example *"when PV surplus is above 2000 W, switch my pool pump for at least 10 minutes."* They are composed by the user in the platform UI from building blocks that energy apps contribute:
+
+- An **Energy Manager app** *registers the trigger types* it can evaluate and publishes the live trigger state (and, optionally, a forecast).
+- A **regular energy app** (e.g. a Shelly smart-plug integration) *declares which of its appliances can be an action target* and *executes the switching* when the trigger fires.
+- The **user** creates the concrete automation in the app; energy apps only **read and observe** automations through the SDK — there is no `create()` on the SDK (authoring lives in the platform).
+
+Access the API via `useAutomations()`:
+
+```typescript
+const automations = sdk.useAutomations();
+```
+
+### 🧩 The model
+
+An `EnyoAutomation` is `{ id, name, enabled, trigger, actions[] }`. The pieces:
+
+| Concept | Type | Values / fields |
+| --- | --- | --- |
+| **Trigger** | `EnyoAutomationTriggerTypeEnum` | `PvSurplusThreshold` → `{ thresholdW }` (activate above, deactivate below) |
+| **Action — smart plug** | `EnyoAutomationActionTypeEnum.SmartPlugSwitch` | `{ applianceId, minDurationMinutes }` — `minDurationMinutes` is `5…360` in steps of `5` |
+| **Action — MQTT** | `EnyoAutomationActionTypeEnum.Mqtt` | `{ topic, payloadTemplate, updateChargingPvSurplus, publishOptions? }` |
+| **Scheduling** | `EnyoAutomationSchedulingModeEnum` | `Mandatory` (run exactly while active) or `Flexible` (Energy Manager may choose whether/when within the active window) |
+| **Target kind** | `EnyoAutomationTargetKindEnum` | `Load` (consumes power — counts in the energy balance) or `Signal` (control signal only) |
+
+The **MQTT** `payloadTemplate` is JSON that may embed the placeholders in `EnyoAutomationMqttPlaceholderEnum` — `{{state}}` (`on`/`off`), `{{surplusW}}`, `{{timestampIso}}`, `{{automationId}}` — which the platform substitutes before publishing.
+
+Two things travel over the **data bus** vs. the **API**:
+
+- **Trigger state** is the data-bus message `AutomationTriggerV1` (`EnyoDataBusAutomationTriggerV1`): `{ automationId, data: { active, trigger } }`, where `trigger` is the per-type `EnyoAutomationTriggerData` (for PV surplus: `{ triggerType, surplusW, thresholdW }`).
+- The **forecast** is a method — `publishAutomationForecast()` — not a data-bus message.
+
+### ⚡ Guide: Energy Manager apps
+
+Requires the **`EnergyManager`** permission (to register triggers / publish forecasts) and **`SendDataBusValues`** (to emit the trigger message).
+
+**1. Register the trigger type once, at startup.** Registration is by enum value only — all user-facing wording is handled by the UI.
+
+```typescript
+import {EnergyApp, EnyoAutomationTriggerTypeEnum} from '@enyo-energy/energy-app-sdk';
+
+const sdk = new EnergyApp();
+const automations = sdk.useAutomations();
+
+sdk.register(async () => {
+    await automations.registerTrigger(EnyoAutomationTriggerTypeEnum.PvSurplusThreshold);
+});
+```
+
+**2. Evaluate the condition and publish trigger state.** Watch the aggregated PV surplus and, for every automation that uses your trigger, publish an `AutomationTriggerV1` message whenever it crosses the user-configured `thresholdW`.
+
+Message-type identifiers are the `EnyoDataBusMessageEnum` values passed as strings, the same convention used everywhere else in the data-bus API.
+
+```typescript
+import {EnyoAutomationTriggerTypeEnum} from '@enyo-energy/energy-app-sdk';
+
+const dataBus = sdk.useDataBus();
+
+dataBus.listenForMessages(['AggregatedStateUpdateV1'], (message: any) => {
+    // gridFeedInW is the surplus fed to the grid (or derive from -gridPowerW when negative)
+    const surplusW = message.data?.gridFeedInW ?? 0;
+
+    for (const automation of currentAutomations) {
+        if (automation.trigger.type !== EnyoAutomationTriggerTypeEnum.PvSurplusThreshold) continue;
+        const thresholdW = automation.trigger.thresholdW;
+        const active = surplusW > thresholdW;
+
+        dataBus.sendMessage([{
+            type: 'message',
+            message: 'AutomationTriggerV1',
+            automationId: automation.id,
+            data: {
+                active,
+                trigger: {
+                    triggerType: EnyoAutomationTriggerTypeEnum.PvSurplusThreshold,
+                    surplusW,
+                    thresholdW,
+                },
+            },
+        }]);
+    }
+});
+```
+
+> Debounce/hysteresis (e.g. only emit on a real transition, add a deactivate margin) is the Energy Manager's responsibility — send a message when the `active` state actually changes, not on every tick.
+
+**3. (Optional) Publish a forecast.** Combine your PV-surplus forecast with each automation's threshold to predict the windows where the trigger will be active, so the system can plan ahead. The forecast marks occupied windows only (no watts).
+
+```typescript
+await automations.publishAutomationForecast({
+    automationId: 'pool-pump',
+    resolution: '15m',
+    entries: [
+        { timestampIso: '2026-07-04T10:00:00.000Z', active: true, mandatory: false, hasLoad: true },
+        { timestampIso: '2026-07-04T10:15:00.000Z', active: true, mandatory: false, hasLoad: true },
+        { timestampIso: '2026-07-04T10:30:00.000Z', active: false },
+    ],
+});
+```
+
+### 🔌 Guide: regular energy apps (smart plugs like Shelly)
+
+Requires the **`Automation`** permission (to read/observe automations) plus whatever your device needs to switch (e.g. network device access, Modbus, or `RestrictedInternetAccess` for a Shelly HTTP call).
+
+**1. Advertise which appliances can be an action target.** When you register (or update) an appliance, set `supportedAutomationActions`. The automation UI then offers this appliance only for the action types it lists. A three-channel Shelly registers three `SmartPlug` appliances, one per channel.
+
+```typescript
+import {EnyoApplianceTypeEnum, EnyoAutomationActionTypeEnum} from '@enyo-energy/energy-app-sdk';
+
+await sdk.useAppliances().save(
+    {
+        name: [{language: 'en', name: 'Pool pump'}],
+        type: EnyoApplianceTypeEnum.SmartPlug,
+        networkDeviceIds: [shellyDeviceId],
+        supportedAutomationActions: [EnyoAutomationActionTypeEnum.SmartPlugSwitch],
+    },
+    'shelly-pool-ch0',
+);
+```
+
+**2. Learn which automations target your appliances.** Fetch on startup and keep in sync with the listeners. Each listener returns an id you can pass to `removeListener()`.
+
+```typescript
+const automations = sdk.useAutomations();
+
+let mine = (await automations.list()).filter(hasSmartPlugActionForMyAppliances);
+
+automations.listenForAutomationCreated((a) => { /* add if it targets my appliance */ });
+automations.listenForAutomationUpdated((a) => { /* replace */ });
+automations.listenForAutomationRemoved((automationId) => { /* drop + switch off */ });
+```
+
+**3. Switch on the trigger message.** Subscribe to `AutomationTriggerV1`, resolve the automation's `SmartPlugSwitch` action to one of your appliances, and drive the relay. Honor `minDurationMinutes` locally (keep it on for at least that long after switching on).
+
+```typescript
+import {EnyoAutomationActionTypeEnum} from '@enyo-energy/energy-app-sdk';
+
+sdk.useDataBus().listenForMessages(['AutomationTriggerV1'], async (message: any) => {
+    const {automationId, data} = message; // data: { active, trigger }
+    const automation = mine.find((a) => a.id === automationId);
+    if (!automation) return;
+
+    for (const action of automation.actions) {
+        if (action.type !== EnyoAutomationActionTypeEnum.SmartPlugSwitch) continue;
+        if (data.active) {
+            await switchOn(action.applianceId);
+            scheduleMinRuntimeGuard(action.applianceId, action.minDurationMinutes);
+        } else if (minRuntimeElapsed(action.applianceId)) {
+            await switchOff(action.applianceId);
+        }
+    }
+});
+```
+
+### 🅿️ End-to-end: pool pump on solar
+
+The user's automation object (authored in the app) for *"when PV surplus > 2000 W, run the pool pump for at least 10 minutes, Energy Manager may choose the timing":*
+
+```typescript
+const automation = {
+    id: 'pool-pump',
+    name: 'Pool pump on solar',
+    enabled: true,
+    trigger: {type: EnyoAutomationTriggerTypeEnum.PvSurplusThreshold, thresholdW: 2000},
+    actions: [{
+        id: 'switch-pump',
+        type: EnyoAutomationActionTypeEnum.SmartPlugSwitch,
+        applianceId: 'shelly-pool-ch0',
+        minDurationMinutes: 10,
+        schedulingMode: EnyoAutomationSchedulingModeEnum.Flexible,
+        targetKind: EnyoAutomationTargetKindEnum.Load,
+    }],
+};
+```
+
+The **Energy Manager** publishes `AutomationTriggerV1` as the surplus crosses 2000 W; the **Shelly app** receives it and switches `shelly-pool-ch0`, keeping it on for ≥ 10 minutes.
+
+### ⏳ Mandatory vs Flexible (current limitation)
+
+- **`Mandatory`** works fully today: the device app reacts directly to the `AutomationTriggerV1` `active` flag (on when `true`, off when `false` once the minimum runtime has elapsed).
+- **`Flexible`** lets the Energy Manager decide *whether and when* to actually run the action inside the active window. That decision does **not yet** have a dedicated Energy-Manager→device dispatch message — `AutomationTriggerV1` only reports that the *condition* holds. Until a dispatch message (planned: `AutomationActionCommandV1`, carrying `automationId`, `actionId`, `command`, and a run duration) is added, a device app treats `Flexible` like `Mandatory` and self-enforces `minDurationMinutes`.
+
+### 🔐 Permissions
+
+| Capability | Permission |
+| --- | --- |
+| `list` / `getById` / `listenFor*` automations | `Automation` |
+| `registerTrigger` / `deregisterTrigger` / `publishAutomationForecast` | `EnergyManager` |
+| Emit the `AutomationTriggerV1` data-bus message | `SendDataBusValues` |
+
+### ✅ Validators
+
+`validateAutomation`, `validateAutomationTriggerData`, and `validateAutomationForecast` are exported as pure functions (throwing `AutomationValidationError`, whose message names the offending field) so you can validate before persisting or publishing.
+
+```typescript
+import {validateAutomation, AutomationValidationError} from '@enyo-energy/energy-app-sdk';
+
+try {
+    validateAutomation(automation, knownSmartPlugApplianceIds);
+} catch (error) {
+    if (error instanceof AutomationValidationError) {
+        // surface error.message
+    }
+}
+```
 
 ## Examples
 
