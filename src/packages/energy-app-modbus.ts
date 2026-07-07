@@ -33,6 +33,20 @@ export interface ModbusOptions {
      * used when {@link useTls} is true.
      */
     rejectUnauthorized?: boolean;
+    /**
+     * When `true`, requests are not run in parallel on this connection: consecutive Modbus
+     * requests (reads and writes) are serialized through an internal operation chain and run
+     * sequentially in call order, so a chain of messages cannot be interleaved with requests from
+     * concurrent callers. Use this when a sequence of register operations must be applied
+     * atomically relative to each other. Defaults to `false` (requests may execute concurrently).
+     */
+    noParallelRequests?: boolean;
+    /**
+     * Optional delay, in milliseconds, to wait between two consecutive requests. Only applies when
+     * {@link noParallelRequests} is `true`; ignored otherwise. Useful for devices that need a short
+     * recovery gap between messages. Defaults to `0` (no delay).
+     */
+    waitBetweenMessagesMs?: number;
 }
 
 /**

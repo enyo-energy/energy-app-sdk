@@ -12,6 +12,21 @@ export interface ModbusRtuOptions {
     parity?: 'none' | 'even' | 'odd';
     /** Connection timeout in milliseconds */
     timeout?: number;
+    /**
+     * When `true`, requests are not run in parallel on this connection: consecutive requests
+     * ({@link EnergyAppModbusRtuInstance.readRegisters} / {@link EnergyAppModbusRtuInstance.writeRegisters})
+     * are serialized through an internal operation chain and run sequentially in call order, so a
+     * chain of messages cannot be interleaved with requests from concurrent callers. This is
+     * especially relevant on RTU, where the serial line is half-duplex and shared across every
+     * slave ID on the bus. Defaults to `false` (requests may execute concurrently).
+     */
+    noParallelRequests?: boolean;
+    /**
+     * Optional delay, in milliseconds, to wait between two consecutive requests. Only applies when
+     * {@link noParallelRequests} is `true`; ignored otherwise. A short inter-message gap is often
+     * required by slower RTU slaves to avoid dropped frames. Defaults to `0` (no delay).
+     */
+    waitBetweenMessagesMs?: number;
 }
 
 /**

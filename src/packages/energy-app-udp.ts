@@ -40,6 +40,20 @@ export interface UdpBindOptions {
      * callers should leave this `undefined`.
      */
     multicastInterface?: string;
+    /**
+     * When `true`, sends are not run in parallel on this socket: consecutive
+     * {@link EnergyAppUdpSocket.send} calls are serialized through an internal operation chain and
+     * run sequentially in call order, so a chain of datagrams cannot be interleaved with sends
+     * from concurrent callers. Use this when a request/response exchange requires a strict send
+     * ordering. Defaults to `false` (sends may execute concurrently).
+     */
+    noParallelRequests?: boolean;
+    /**
+     * Optional delay, in milliseconds, to wait between two consecutive sends. Only applies when
+     * {@link noParallelRequests} is `true`; ignored otherwise. Useful for peers that need a short
+     * gap between datagrams. Defaults to `0` (no delay).
+     */
+    waitBetweenMessagesMs?: number;
 }
 
 /**
