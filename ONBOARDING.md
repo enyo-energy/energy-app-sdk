@@ -179,6 +179,10 @@ The listener receives an `EnyoOnboardingStepSubmission` with:
 The listener must return a Promise resolving to `EnyoOnboardingStepResponse`:
 - `{ state: 'success' }` - Step completed successfully
 - `{ state: 'error', errorMessage: [...] }` - Validation failed with translated message
+- `{ state: 'success', goToAuthentication: true }` - Step completed successfully and the host
+  should route the user to the pending authentication request (created earlier via
+  `requestAuthentication`). Typically used on the final step. This is fire-and-forget — the guide
+  still completes regardless of the authentication outcome.
 
 ### respondToStepSubmission
 
@@ -297,6 +301,8 @@ completeOnboarding(applianceId?: string): Promise<void>
 │  10. Package calls completeOnboarding()                         │
 │  11. Package calls updateEnergyAppState(Running)                │
 │  12. App exits onboarding, package operates normally            │
+│      └── Optional: final step returns goToAuthentication: true  │
+│          to route the user to a pending authentication request  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -390,6 +396,47 @@ export function init(sdk: EnyoEnergyAppSdk) {
 
       return { state: 'success' };
     });
+  });
+}
+```
+
+### Requiring Authentication After Onboarding
+
+Set up an authentication request during initialization, then route the user to it from the final
+step's response using `goToAuthentication: true`. The guide completes normally; the host presents
+the authentication request afterward, and its result is handled by `listenForAuthenticationResponse`.
+
+```typescript
+import { EnyoEnergyAppSdk, EnergyAppStateEnum } from 'connect-ems-api';
+import { EnyoAuthenticationStateEnum } from 'connect-ems-api/types/enyo-authentication';
+
+export function setupCloudOnboarding(sdk: EnyoEnergyAppSdk) {
+  const onboarding = sdk.useOnboarding();
+  const auth = sdk.useAuthentication();
+
+  // Create the authentication request up front.
+  auth.requestAuthentication({
+    authenticationType: 'oauth',
+    oneTimeAuthentication: true,
+    oauth: {
+      description: [{ language: 'en', value: 'Sign in to your cloud account.' }]
+    }
+  });
+
+  // Store the credentials / mark the account authenticated when the user finishes auth.
+  auth.listenForAuthenticationResponse(async (response) => {
+    // ...persist tokens from response.oauth...
+    return { state: EnyoAuthenticationStateEnum.Authenticated };
+  });
+
+  onboarding.listenForStepSubmission(async (submission) => {
+    if (submission.stepName === 'finish') {
+      await onboarding.completeOnboarding(submission.guideName);
+      sdk.updateEnergyAppState(EnergyAppStateEnum.Running);
+      // Route the user to the authentication request created above.
+      return { state: 'success', goToAuthentication: true };
+    }
+    return { state: 'success' };
   });
 }
 ```
@@ -663,6 +710,13 @@ interface EnyoOnboardingStepResponse {
   state: 'success' | 'error';
   /** Optional translated error message if state is 'error' */
   errorMessage?: EnyoOnboardingTranslatedContent[];
+  /**
+   * When true on a successful response, routes the user to the pending authentication
+   * request (created separately via `requestAuthentication`) after this step completes.
+   * Typically set on the final step. Fire-and-forget: the guide completes regardless of
+   * the authentication outcome. Ignored when `state` is 'error'.
+   */
+  goToAuthentication?: boolean;
 }
 ```
 

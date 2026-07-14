@@ -289,7 +289,9 @@ export type EnyoDataBusMessageResolution = '1s' | '10s' | '30s' | '1m' | '15m' |
 /**
  * Optional addressing information for a {@link EnyoDataBusMessage}. When omitted
  * the message is broadcast to all subscribers; when set, the message is only
- * delivered to packages that match the specified target.
+ * delivered to packages that match the specified target. Broadcasting of an
+ * untargeted message can additionally be suppressed by setting
+ * {@link EnyoDataBusMessage.broadcast} to `false`.
  *
  * Exactly one of {@link cloudPackageId} or {@link categories} should be provided.
  * When both are set, consumers should treat them as an AND (the receiving package
@@ -327,6 +329,15 @@ export interface EnyoDataBusMessage {
      * {@link EnyoDataBusMessageTarget} for matching semantics.
      */
     target?: EnyoDataBusMessageTarget;
+    /**
+     * Whether this message may be broadcast to all subscribers on the bus.
+     * Defaults to `true` when omitted (the message is eligible for broadcast).
+     * Set to `false` to prevent the message from fanning out to all subscribers —
+     * for example when it should only reach the recipients named by {@link target}.
+     * This flag is independent of {@link target}: `target` narrows delivery, while
+     * `broadcast` controls whether an untargeted message reaches every subscriber.
+     */
+    broadcast?: boolean;
     data: object;
 }
 

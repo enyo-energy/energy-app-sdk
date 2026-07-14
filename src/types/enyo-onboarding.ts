@@ -276,6 +276,16 @@ export interface EnyoOnboardingStepResponse {
     state: 'success' | 'error';
     /** Optional translated error message if state is 'error' */
     errorMessage?: EnyoOnboardingTranslatedContent[];
+    /**
+     * When true on a successful step response, instructs the host to route the user to the
+     * pending authentication request after this step completes. Typically set on the final step
+     * of a guide so the user is sent to authenticate (e.g. sign in to a cloud service) once
+     * onboarding finishes. The authentication request itself must have been created separately
+     * via `EnergyAppAuthentication.requestAuthentication`, and its result is handled through
+     * `listenForAuthenticationResponse`. This is fire-and-forget — the guide completes regardless
+     * of the authentication outcome. Ignored when `state` is 'error'.
+     */
+    goToAuthentication?: boolean;
 }
 
 /**
