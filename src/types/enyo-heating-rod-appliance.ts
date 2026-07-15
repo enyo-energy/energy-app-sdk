@@ -31,6 +31,8 @@ export interface EnyoHeatingRodApplianceMetadata {
     mode?: EnyoHeatingRodApplianceModeEnum;
     /** Rated electrical power of the heating rod in watts */
     ratedPowerW?: number;
+    /** the target temperature of this heating rod. Might be different than the target of the heatpump */
+    targetTemperatureC: number;
     /**
      * Optional identifier of the heat pump appliance this heating rod is
      * associated with. References the `id` of an EnyoAppliance of type Heatpump.
