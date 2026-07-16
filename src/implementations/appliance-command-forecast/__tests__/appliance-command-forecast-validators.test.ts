@@ -7,6 +7,8 @@ import {
     BatteryCommandForecastScheduleEntry,
     ChargerForecast,
     ChargerForecastScheduleEntry,
+    HeatingRodForecast,
+    HeatingRodForecastScheduleEntry,
     HeatpumpForecast,
     HeatpumpForecastScheduleEntry,
 } from '../../../types/enyo-appliance-command-forecast.js';
@@ -17,6 +19,7 @@ import {
     validateBatterySchedule,
     validateChargerForecast,
     validateChargerSchedule,
+    validateHeatingRodForecast,
     validateHeatpumpForecast,
     validateHeatpumpSchedule,
     validateHeatpumpScheduleEntry,
@@ -42,6 +45,12 @@ function batteryEntry(
 function heatpumpEntry(
     overrides: Partial<HeatpumpForecastScheduleEntry> = {},
 ): HeatpumpForecastScheduleEntry {
+    return {seconds: 0, ...overrides};
+}
+
+function heatingRodEntry(
+    overrides: Partial<HeatingRodForecastScheduleEntry> = {},
+): HeatingRodForecastScheduleEntry {
     return {seconds: 0, ...overrides};
 }
 
@@ -544,5 +553,70 @@ describe('validateHeatpumpForecast', () => {
             ],
         };
         expect(() => validateHeatpumpForecast(forecast)).toThrow(/dhwTemperatureC/);
+    });
+});
+
+describe('validateHeatingRodForecast', () => {
+    it('rejects a forecast with no schedule', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+        } as HeatingRodForecast;
+        expect(() => validateHeatingRodForecast(forecast)).toThrow(
+            /must contain at least one entry/,
+        );
+    });
+
+    it('accepts a forecast that carries only the forecasted temperature', () => {
+        const forecast: HeatingRodForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                heatingRodEntry({seconds: 0, temperatureC: 55}),
+                heatingRodEntry({seconds: 60, temperatureC: 60}),
+            ],
+        };
+        expect(() => validateHeatingRodForecast(forecast)).not.toThrow();
+    });
+
+    it('accepts a forecast that mixes temperature, heating flag, available power, and savings', () => {
+        const forecast: HeatingRodForecast = {
+            resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+            relativeSchedule: [
+                heatingRodEntry({
+                    seconds: 0,
+                    powerW: 2000,
+                    temperatureC: 55,
+                    heatingActive: true,
+                    availablePowerActive: true,
+                }),
+                heatingRodEntry({
+                    seconds: 900,
+                    powerW: 0,
+                    temperatureC: 58,
+                    heatingActive: false,
+                }),
+            ],
+            estimatedSavings: {costSavings: 0.35, currency: 'EUR'},
+        };
+        expect(() => validateHeatingRodForecast(forecast)).not.toThrow();
+    });
+
+    it('propagates per-entry temperature range errors', () => {
+        const forecast: HeatingRodForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                heatingRodEntry({seconds: 0, temperatureC: 9999}),
+            ],
+        };
+        expect(() => validateHeatingRodForecast(forecast)).toThrow(/temperatureC/);
+    });
+
+    it('rejects a negative available-power value', () => {
+        const forecast: HeatingRodForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                heatingRodEntry({seconds: 0, powerW: -100}),
+            ],
+        };
+        expect(() => validateHeatingRodForecast(forecast)).toThrow(/powerW/);
     });
 });

@@ -382,3 +382,85 @@ export interface HeatpumpForecast extends ApplianceForecastMetadata {
      */
     relativeSchedule: HeatpumpForecastScheduleEntry[];
 }
+
+// =============================================================================
+// Heating rod
+// =============================================================================
+
+/**
+ * One entry of a heating rod's relative schedule.
+ *
+ * The entry packs every per-slot piece of information the energy-manager
+ * forecast carries for a heating rod (immersion element): the forecasted
+ * target temperature, the planned heating flag, and the available-power
+ * announcement. The setpoint becomes active {@link seconds} after the
+ * forecast becomes effective and stays active until the next entry's
+ * `seconds` is reached.
+ *
+ * Every field other than {@link seconds} is optional — an entry may
+ * describe only the temperature, only the flag, only power, or any
+ * combination. A field that is omitted carries no information for that
+ * slot (it is **not** "set to zero / false"); the previous entry's value
+ * should be treated as still in effect.
+ */
+export interface HeatingRodForecastScheduleEntry {
+    /**
+     * Seconds from the moment the forecast becomes effective at which
+     * this entry becomes active. `0` for the first entry; subsequent
+     * entries must be strictly increasing.
+     */
+    seconds: number;
+    /**
+     * Planned available electrical power in Watts the energy manager
+     * intends to make available to the heating rod during this slot. The
+     * heating rod is free to consume up to this value — and free to
+     * consume less if it cannot use it all. Non-negative when present.
+     */
+    powerW?: number;
+    /**
+     * Forecasted target temperature in °C at this slot (the temperature
+     * the heating rod is driving its tank / buffer toward). Plausible
+     * range: [-50, 150].
+     */
+    temperatureC?: number;
+    /**
+     * Whether the heating rod is planned to be actively heating during
+     * this slot — `true` while the publisher intends to drive the tank
+     * up, `false` (or omitted) otherwise.
+     */
+    heatingActive?: boolean;
+    /**
+     * Whether the publisher is announcing available power for this slot
+     * — `true` when the energy-manager decision for the slot is
+     * "available power", meaning {@link powerW} doubles as the
+     * available-power offer to the heating rod (the heating rod is free
+     * to consume up to that value), `false` (or omitted) otherwise.
+     *
+     * This flag is independent of {@link heatingActive} and may coexist
+     * with it when the publisher offers available power while a heating
+     * window is also planned.
+     */
+    availablePowerActive?: boolean;
+}
+
+/**
+ * Forecasted command plan for a heating rod appliance, published via
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishHeatingRodForecast}.
+ *
+ * A heating rod forecast is a **single** relative schedule whose entries
+ * carry every per-slot piece of information at once (forecasted target
+ * temperature, heating flag, available-power announcement). One entry per
+ * slot keeps the temperature trajectory and the heating decisions aligned
+ * by construction.
+ *
+ * The schedule must be sorted ascending by `seconds` and start at
+ * `seconds = 0` so the appliance has an authoritative "right now" entry.
+ */
+export interface HeatingRodForecast extends ApplianceForecastMetadata {
+    /**
+     * Relative schedule of forecast entries. Sorted ascending by
+     * `seconds`, starting at `seconds = 0`. Must contain at least one
+     * entry.
+     */
+    relativeSchedule: HeatingRodForecastScheduleEntry[];
+}

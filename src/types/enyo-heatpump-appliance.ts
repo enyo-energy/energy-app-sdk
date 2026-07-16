@@ -15,12 +15,23 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     Power = 'Power',
     /** If the heatpump is ready for calibration (i.e. has all prerequisites in place to start a calibration run) */
     ReadyForCalibration = 'ReadyForCalibration',
+    /** If the heatpump supports cooling (reversible heatpump) */
+    Cooling = 'Cooling',
 }
 
+/**
+ * The current operating state of a heatpump.
+ */
 export enum EnyoHeatpumpApplianceModeEnum {
+    /** The heatpump is idle (not actively heating, cooling, or producing hot water) */
     Idle = 'Idle',
+    /** The heatpump is actively heating */
     Heating = 'Heating',
+    /** The heatpump is actively cooling (reversible heatpumps only) */
+    Cooling = 'Cooling',
+    /** The heatpump is actively producing domestic hot water */
     DomesticHotWater = 'DomesticHotWater',
+    /** The heatpump is running in emergency operation */
     EmergencyOperation = 'EmergencyOperation',
 }
 
@@ -57,7 +68,10 @@ export interface EnyoHeatpumpApplianceCompressor {
 
 export interface EnyoHeatpumpApplianceHeatingCircuit {
     index: number;
+    /** Target room temperature setpoint when heating (in °C) */
     targetRoomTemperatureC?: number;
+    /** Target room temperature setpoint when cooling (in °C). Only meaningful for cooling-capable heatpumps. */
+    targetCoolingRoomTemperatureC?: number;
 }
 
 export interface EnyoHeatpumpApplianceMetadata {

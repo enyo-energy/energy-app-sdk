@@ -12,6 +12,11 @@ import {
     EnyoHeatingRodApplianceModeEnum,
 } from '../../../types/enyo-heating-rod-appliance.js';
 import {
+    EnyoHeatpumpApplianceAvailableFeaturesEnum,
+    EnyoHeatpumpApplianceModeEnum,
+} from '../../../types/enyo-heatpump-appliance.js';
+import type {EnyoApplianceCreatedFilter} from '../../../packages/energy-app-appliance.js';
+import {
     type ApplianceConfig,
     ApplianceManager,
     ApplianceManagerDisposedError,
@@ -28,15 +33,22 @@ type AppliancesFake = {
     removeById: ReturnType<typeof vi.fn>;
     listenForApplianceUpdated: ReturnType<typeof vi.fn>;
     listenForApplianceRemoved: ReturnType<typeof vi.fn>;
+    listenForApplianceCreated: ReturnType<typeof vi.fn>;
     removeListener: ReturnType<typeof vi.fn>;
     emitUpdated: (appliance: EnyoAppliance) => Promise<void>;
     emitRemoved: (id: string) => Promise<void>;
+    emitCreated: (appliance: EnyoAppliance) => Promise<void>;
 };
 
 function createAppliancesFake(seed: EnyoAppliance[] = []): AppliancesFake {
     const store = new Map(seed.map(a => [a.id, structuredClone(a)]));
     const updatedListeners: { id: string; fn: (a: EnyoAppliance) => void | Promise<void> }[] = [];
     const removedListeners: { id: string; fn: (id: string) => void | Promise<void> }[] = [];
+    const createdListeners: {
+        id: string;
+        fn: (a: EnyoAppliance) => void | Promise<void>;
+        filter?: EnyoApplianceCreatedFilter;
+    }[] = [];
     let nextId = seed.length + 1;
     let listenerCounter = 0;
 
@@ -65,8 +77,13 @@ function createAppliancesFake(seed: EnyoAppliance[] = []): AppliancesFake {
             removedListeners.push({id, fn});
             return id;
         }),
+        listenForApplianceCreated: vi.fn((fn, filter?: EnyoApplianceCreatedFilter) => {
+            const id = `crt-${++listenerCounter}`;
+            createdListeners.push({id, fn, filter});
+            return id;
+        }),
         removeListener: vi.fn((id: string) => {
-            for (const arr of [updatedListeners, removedListeners]) {
+            for (const arr of [updatedListeners, removedListeners, createdListeners]) {
                 const idx = arr.findIndex(l => l.id === id);
                 if (idx >= 0) arr.splice(idx, 1);
             }
@@ -79,6 +96,17 @@ function createAppliancesFake(seed: EnyoAppliance[] = []): AppliancesFake {
         emitRemoved: async (id) => {
             store.delete(id);
             for (const {fn} of [...removedListeners]) await fn(id);
+        },
+        emitCreated: async (appliance) => {
+            // Mirror the SDK behaviour: the store reflects the new appliance,
+            // then each listener whose filter matches is invoked. The fake
+            // applies the `types` category filter; `scope` is a host-side
+            // concern and is not simulated here.
+            store.set(appliance.id, structuredClone(appliance));
+            for (const {fn, filter} of [...createdListeners]) {
+                if (filter?.types && !filter.types.includes(appliance.type)) continue;
+                await fn(appliance);
+            }
         },
     };
 }
@@ -457,6 +485,113 @@ describe('ApplianceManager', () => {
             });
 
             manager.dispose();
+        });
+
+        it('preserves stored heatpump cooling metadata when createOrUpdateAppliance omits it', async () => {
+            const existing = makeAppliance('existing-1', {
+                type: EnyoApplianceTypeEnum.Heatpump,
+                heatpump: {
+                    availableFeatures: [EnyoHeatpumpApplianceAvailableFeaturesEnum.Cooling],
+                    mode: EnyoHeatpumpApplianceModeEnum.Cooling,
+                    heatingCircuits: [
+                        {index: 0, targetRoomTemperatureC: 21, targetCoolingRoomTemperatureC: 24},
+                    ],
+                },
+            }, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // makeConfig does not set heatpump — a metadata-only update must not clear it.
+            await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump).toEqual({
+                availableFeatures: [EnyoHeatpumpApplianceAvailableFeaturesEnum.Cooling],
+                mode: EnyoHeatpumpApplianceModeEnum.Cooling,
+                heatingCircuits: [
+                    {index: 0, targetRoomTemperatureC: 21, targetCoolingRoomTemperatureC: 24},
+                ],
+            });
+
+            manager.dispose();
+        });
+    });
+
+    describe('onApplianceCreated', () => {
+        it('fires for newly-created appliances', async () => {
+            const sdk = createAppliancesFake([]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            const created: EnyoAppliance[] = [];
+            manager.onApplianceCreated(a => {
+                created.push(a);
+            });
+
+            await sdk.emitCreated(makeAppliance('new-1', {}, 'SN-NEW'));
+
+            expect(created).toHaveLength(1);
+            expect(created[0]!.id).toBe('new-1');
+
+            manager.dispose();
+        });
+
+        it('only fires for appliances whose category is in the types filter', async () => {
+            const sdk = createAppliancesFake([]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            const seen: string[] = [];
+            manager.onApplianceCreated(a => {
+                seen.push(a.id);
+            }, {types: [EnyoApplianceTypeEnum.Heatpump]});
+
+            await sdk.emitCreated(makeAppliance('hp-1', {type: EnyoApplianceTypeEnum.Heatpump}, 'SN-HP'));
+            await sdk.emitCreated(makeAppliance('inv-1', {type: EnyoApplianceTypeEnum.Inverter}, 'SN-INV'));
+
+            expect(seen).toEqual(['hp-1']);
+
+            manager.dispose();
+        });
+
+        it('stops firing after the returned unsubscribe function is called', async () => {
+            const sdk = createAppliancesFake([]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            let count = 0;
+            const unsubscribe = manager.onApplianceCreated(() => {
+                count++;
+            });
+
+            await sdk.emitCreated(makeAppliance('new-1', {}, 'SN-1'));
+            unsubscribe();
+            await sdk.emitCreated(makeAppliance('new-2', {}, 'SN-2'));
+
+            expect(count).toBe(1);
+            expect(sdk.removeListener).toHaveBeenCalledTimes(1);
+
+            manager.dispose();
+        });
+
+        it('removes a still-active created listener on dispose', async () => {
+            const sdk = createAppliancesFake([]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            let count = 0;
+            manager.onApplianceCreated(() => {
+                count++;
+            });
+
+            manager.dispose();
+            await sdk.emitCreated(makeAppliance('new-1', {}, 'SN-1'));
+
+            expect(count).toBe(0);
+        });
+
+        it('throws when called after dispose', async () => {
+            const sdk = createAppliancesFake([]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+            manager.dispose();
+
+            expect(() => manager.onApplianceCreated(() => {})).toThrow(ApplianceManagerDisposedError);
         });
     });
 

@@ -9,6 +9,7 @@ import {
     EnyoApplianceTopology,
     EnyoApplianceTypeEnum
 } from "../../types/enyo-appliance.js";
+import type {EnyoApplianceCreatedFilter} from "../../packages/energy-app-appliance.js";
 import type {EnyoChargerApplianceMetadata} from "../../types/enyo-charger-appliance.js";
 import type {EnyoHeatpumpApplianceMetadata} from "../../types/enyo-heatpump-appliance.js";
 import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-appliance.js";
@@ -410,6 +411,39 @@ export class ApplianceManager {
             },
         );
         this.listenerIds.push(removedListenerId);
+    }
+
+    /**
+     * Subscribes to newly-created appliances. Fires only when an appliance is
+     * first created, not on subsequent updates. The optional
+     * {@link EnyoApplianceCreatedFilter filter} controls scope (own package,
+     * all appliances, or only externally-created) and category — `scope: 'all'`
+     * and `scope: 'external'` require the `AllAppliances` permission.
+     *
+     * @param listener - Invoked with each newly-created appliance
+     * @param filter - Optional scope/category filter; defaults to `{ scope: 'own' }`
+     * @returns An unsubscribe function. Any still-active subscription is also
+     *          cleaned up automatically on {@link dispose}.
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    onApplianceCreated(
+        listener: (appliance: EnyoAppliance) => void | Promise<void>,
+        filter?: EnyoApplianceCreatedFilter,
+    ): () => void {
+        this.throwIfDisposed();
+        const applianceService = this.energyApp.useAppliances();
+        const listenerId = applianceService.listenForApplianceCreated(
+            (appliance: EnyoAppliance) => {
+                if (this.disposed) return;
+                return listener(appliance);
+            },
+            filter,
+        );
+        this.listenerIds.push(listenerId);
+        return () => {
+            applianceService.removeListener(listenerId);
+            this.listenerIds = this.listenerIds.filter(id => id !== listenerId);
+        };
     }
 
     /**

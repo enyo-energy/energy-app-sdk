@@ -6,6 +6,8 @@ import {
     BatteryCommandForecastScheduleEntry,
     ChargerForecast,
     ChargerForecastScheduleEntry,
+    HeatingRodForecast,
+    HeatingRodForecastScheduleEntry,
     HeatpumpForecast,
     HeatpumpForecastScheduleEntry,
 } from '../../types/enyo-appliance-command-forecast.js';
@@ -221,6 +223,61 @@ export function validateHeatpumpScheduleEntry(
     validateBooleanField(entry.dhwBoostActive, `${fieldName}.dhwBoostActive`);
     validateBooleanField(entry.roomPreHeatingActive, `${fieldName}.roomPreHeatingActive`);
     validateBooleanField(entry.bufferTankBoostActive, `${fieldName}.bufferTankBoostActive`);
+    validateBooleanField(entry.availablePowerActive, `${fieldName}.availablePowerActive`);
+}
+
+/**
+ * Validates a {@link HeatingRodForecast}. Throws on the first violation —
+ * the error message names the offending field / index.
+ *
+ * The forecast carries a single relative schedule; every entry is
+ * validated by {@link validateHeatingRodScheduleEntry}.
+ */
+export function validateHeatingRodForecast(forecast: HeatingRodForecast): void {
+    if (!forecast || typeof forecast !== 'object') {
+        throw new ApplianceCommandForecastValidationError(
+            'HeatingRodForecast must be an object.',
+        );
+    }
+    validateMetadata(forecast);
+    validateHeatingRodSchedule(forecast.relativeSchedule, forecast.resolution);
+}
+
+/**
+ * Validates a heating rod relative schedule (the schedule used by
+ * {@link HeatingRodForecast.relativeSchedule}). Enforces that the
+ * schedule is non-empty, starts at `seconds = 0`, has entries spaced by
+ * exactly `resolution`, and that every per-entry value falls in the
+ * plausible range documented on {@link HeatingRodForecastScheduleEntry}.
+ */
+export function validateHeatingRodSchedule(
+    entries: HeatingRodForecastScheduleEntry[],
+    resolution: ApplianceForecastResolutionEnum,
+): void {
+    const stepSeconds = resolveResolutionSeconds(resolution);
+    validateNonEmptySchedule(entries, 'relativeSchedule');
+    for (let i = 0; i < entries.length; i++) {
+        validateHeatingRodScheduleEntry(entries[i]!, `relativeSchedule[${i}]`);
+    }
+    validateFirstEntryStartsAtZero(entries[0]!.seconds, 'relativeSchedule');
+    validateSecondsMatchResolution(entries.map((e) => e.seconds), stepSeconds, 'relativeSchedule');
+}
+
+/**
+ * Validates a single {@link HeatingRodForecastScheduleEntry}. Used by
+ * {@link validateHeatingRodSchedule} and exposed for callers that build
+ * entries incrementally.
+ */
+export function validateHeatingRodScheduleEntry(
+    entry: HeatingRodForecastScheduleEntry,
+    fieldName: string,
+): void {
+    validateSecondsField(entry.seconds, `${fieldName}.seconds`);
+    if (entry.powerW !== undefined) {
+        validatePowerW(entry.powerW, `${fieldName}.powerW`);
+    }
+    validateTemperatureField(entry.temperatureC, `${fieldName}.temperatureC`);
+    validateBooleanField(entry.heatingActive, `${fieldName}.heatingActive`);
     validateBooleanField(entry.availablePowerActive, `${fieldName}.availablePowerActive`);
 }
 

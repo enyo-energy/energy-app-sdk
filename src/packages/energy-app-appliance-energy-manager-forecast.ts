@@ -1,6 +1,7 @@
 import {
     BatteryCommandForecast,
     ChargerForecast,
+    HeatingRodForecast,
     HeatpumpForecast,
 } from '../types/enyo-appliance-command-forecast.js';
 
@@ -21,6 +22,10 @@ import {
  *    carry the forecasted DHW / room / buffer-tank temperatures together
  *    with planned boost / pre-heating flags and the available-power
  *    announcement at each slot ({@link HeatpumpForecast}).
+ *  - **Heating rods** — a single relative schedule whose entries carry
+ *    the forecasted target temperature together with the planned heating
+ *    flag and the available-power announcement at each slot
+ *    ({@link HeatingRodForecast}).
  *
  * Every forecast optionally carries
  * {@link ApplianceForecastEstimatedSavings} so downstream consumers can
@@ -97,5 +102,25 @@ export interface EnergyAppApplianceEnergyManagerForecast {
     publishHeatpumpForecast(
         applianceId: string,
         forecast: HeatpumpForecast,
+    ): Promise<void>;
+
+    /**
+     * Publishes the command-plan forecast for a heating rod (immersion
+     * element). The forecast carries a single relative schedule whose
+     * entries pack the forecasted target temperature together with the
+     * planned heating flag and the available-power announcement at each
+     * slot.
+     *
+     * Validates {@link forecast} against the invariants documented on
+     * {@link HeatingRodForecast}.
+     *
+     * @param applianceId - The heating rod appliance the forecast applies to.
+     * @param forecast - The command-plan forecast and its metadata.
+     * @throws {ApplianceCommandForecastValidationError} If the forecast
+     *   is malformed.
+     */
+    publishHeatingRodForecast(
+        applianceId: string,
+        forecast: HeatingRodForecast,
     ): Promise<void>;
 }
