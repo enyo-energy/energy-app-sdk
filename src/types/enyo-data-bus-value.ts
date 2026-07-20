@@ -665,6 +665,12 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
         gridPowerPhase2W?: number;
         /** Grid power on phase L3 (in Watt). Negative: grid feed in, positive: grid consumption */
         gridPowerPhase3W?: number;
+        /**
+         * Time resolution of the aggregated grid power values (e.g. the sampling
+         * interval the `gridPowerW` / `gridPowerPhaseXW` values were measured at).
+         * Use `'dynamic'` when the values are forwarded as events occur.
+         */
+        gridPowerResolution: EnyoDataBusMessageResolution;
         gridConsumptionW?: number;
         gridFeedInW?: number;
         homeConsumptionW?: number;
