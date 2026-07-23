@@ -47,6 +47,12 @@ export interface ModbusOptions {
      * recovery gap between messages. Defaults to `0` (no delay).
      */
     waitBetweenMessagesMs?: number;
+    /** Per-operation (read/write) deadline in ms before the socket is recycled. Default 5000. */
+    readTimeoutMs?: number;
+    /** Recycle a socket that looks open but had no successful op within this window. Default 30000; 0 disables. */
+    staleSocketMs?: number;
+    /** TCP keepalive idle interval in ms on the live socket, so a dead peer surfaces fast. Default 10000; 0 disables. */
+    keepAliveMs?: number;
 }
 
 /**
