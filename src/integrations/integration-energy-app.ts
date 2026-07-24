@@ -2,6 +2,7 @@ import {EnergyApp} from "../energy-app.js";
 import {
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusCommandAcknowledgeV1,
+    EnyoDataBusGridOperatorPowerLimitationExecutedV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
     EnyoDataBusMessage,
     EnyoDataBusMessageEnum
@@ -223,6 +224,33 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
             }
         };
         this.useDataBus().sendMessage([ack]);
+    }
+
+    /**
+     * Publishes a `GridOperatorPowerLimitationExecutedV1` announcement reporting
+     * the grid operator power limitation the given appliance actually executed.
+     * Call this after applying a `GridOperatorPowerLimitationV1` command locally,
+     * so the energy manager, analytics and UI can observe the concrete cap that
+     * was enforced, when it ends and for how long.
+     *
+     * @param applianceId - The appliance that executed the limitation.
+     * @param data - The applied limitation (watts), end timestamp, duration
+     *   (seconds), and optional command correlation id / reason.
+     */
+    public publishGridOperatorPowerLimitationExecuted(
+        applianceId: string,
+        data: EnyoDataBusGridOperatorPowerLimitationExecutedV1['data']
+    ): void {
+        const msg: EnyoDataBusGridOperatorPowerLimitationExecutedV1 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.GridOperatorPowerLimitationExecutedV1,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            data
+        };
+        this.useDataBus().sendMessage([msg]);
     }
 
     /**

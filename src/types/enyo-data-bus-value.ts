@@ -114,6 +114,41 @@ export interface EnyoDataBusCommandReason {
     socPercent?: number;
 }
 
+/**
+ * Whether a grid operator power limitation caps power drawn from the grid
+ * (consumption) or power fed into the grid (production).
+ */
+export enum EnyoGridOperatorLimitTypeEnum {
+    /** Limitation of power drawn from the grid (§14a EnWG consumption cap, EEBUS LPC) */
+    Consumption = 'consumption',
+    /** Limitation of power fed into the grid (feed-in / production cap, EEBUS LPP) */
+    Production = 'production',
+}
+
+/**
+ * Snapshot of the grid operator power limitation (§14a EnWG) an appliance is
+ * currently applying. Embedded as an optional field in appliance value-update
+ * messages (inverter, heatpump, battery, air conditioning, charging) so
+ * consumers can observe the active cap alongside live measurements, and reused
+ * as the payload of {@link EnyoDataBusGridOperatorPowerLimitationExecutedV1}.
+ * Omit the containing field entirely when no limitation is currently applied.
+ */
+export interface EnyoGridOperatorLimit {
+    /** Whether this caps grid consumption or grid production (feed-in) */
+    type: EnyoGridOperatorLimitTypeEnum;
+    /** The actual active power limitation the appliance applied, in watts */
+    appliedLimitationW: number;
+    /** ISO 8601 timestamp when the applied limitation ends */
+    endTimestampIso: string;
+    /** Duration the limitation is applied for, in seconds */
+    durationSeconds: number;
+    /**
+     * Optional ID of the triggering `GridOperatorPowerLimitationV1` message,
+     * for correlation with the originating command.
+     */
+    commandMessageId?: string;
+}
+
 export enum EnyoBatteryStateEnum {
     Off = 'off',
     Empty = 'empty',
@@ -268,6 +303,7 @@ export enum EnyoDataBusMessageEnum {
     MaxDischargePowerChangedV1 = 'MaxDischargePowerChangedV1',
     GridOperatorPowerLimitationV1 = 'GridOperatorPowerLimitationV1',
     GridOperatorPowerProductionLimitationV1 = 'GridOperatorPowerProductionLimitationV1',
+    GridOperatorPowerLimitationExecutedV1 = 'GridOperatorPowerLimitationExecutedV1',
     ResetChargerV1 = 'ResetChargerV1',
     RebootChargerV1 = 'RebootChargerV1',
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
@@ -394,6 +430,8 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
             /** Power generation for domestic hot water in Wh (meter value)*/
             heatGenerationDomesticHotWaterWh?: number;
         };
+        /** Grid operator power limitation currently applied by the heatpump, if any */
+        gridOperatorLimit?: EnyoGridOperatorLimit;
     }
 }
 
@@ -410,6 +448,8 @@ export interface EnyoDataBusBatteryValuesUpdateV1 extends EnyoDataBusMessage {
         dcStringInputPowerW?: number;
         /** Battery State of Charge. Value between 0 and 100 */
         batterySoC: number;
+        /** Grid operator power limitation currently applied by the battery, if any */
+        gridOperatorLimit?: EnyoGridOperatorLimit;
     }
 }
 
@@ -454,6 +494,8 @@ export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
         meterValueWh?: number;
         /** DC String values. Please only provide active strings */
         strings?: EnyoDataBusInverterValuesV1String[];
+        /** Grid operator power limitation currently applied by the inverter, if any */
+        gridOperatorLimit?: EnyoGridOperatorLimit;
     }
 }
 
@@ -592,6 +634,8 @@ export interface EnyoDataBusChargingMeterValuesV1 extends EnyoDataBusMessage {
         energyDeliveredWh: number;
         /** Context indicating when this meter value was taken */
         context: EnyoChargingMeterValueContext;
+        /** Grid operator power limitation currently applied by the charger, if any */
+        gridOperatorLimit?: EnyoGridOperatorLimit;
     };
 }
 
@@ -1602,6 +1646,24 @@ export interface EnyoDataBusGridOperatorPowerProductionLimitationV1 extends Enyo
 }
 
 /**
+ * Announcement message published by an appliance reporting the grid operator
+ * power limitation it actually executed. Sent in response to a
+ * `GridOperatorPowerLimitationV1` command (§14a EnWG) once the appliance has
+ * applied the limit locally. Lets the energy manager, analytics and UI observe
+ * the concrete cap that was enforced, when it ends and for how long.
+ */
+export interface EnyoDataBusGridOperatorPowerLimitationExecutedV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.GridOperatorPowerLimitationExecutedV1;
+    /** ID of the appliance that executed the limitation */
+    applianceId: string;
+    data: EnyoGridOperatorLimit & {
+        /** Optional reason why this limitation was executed */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
  * Command message to reset a charger appliance.
  * Sends a reset command to the specified charger, which performs a soft reset
  * restoring the charger to its initial configuration without a full power cycle.
@@ -1766,6 +1828,8 @@ export interface EnyoDataBusAirConditioningValuesV1 extends EnyoDataBusMessage {
             /** Cumulative energy consumed by the air conditioning unit in Watt-hours */
             meterValueWh?: number;
         };
+        /** Grid operator power limitation currently applied by the air conditioning unit, if any */
+        gridOperatorLimit?: EnyoGridOperatorLimit;
     };
 }
 
