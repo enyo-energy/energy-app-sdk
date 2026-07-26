@@ -16,6 +16,24 @@ export interface EnergyAppCharge {
     /** Find the currently active charge by appliance ID and transaction ID */
     findActiveChargeByTransactionId: (applianceId: string, transactionId: string) => Promise<EnyoCharge | null>;
     /**
+     * Adds an additional transaction ID to the currently active charging
+     * session of an appliance.
+     *
+     * A single physical charging session can span multiple OCPP
+     * transactions (e.g. after a short interruption or re-authorization).
+     * Use this to associate a newly started transaction with the charge
+     * that is already active for the given appliance. The transaction ID is
+     * appended to {@link EnyoCharge.additionalTransactionIds}.
+     *
+     * **Required permission:** `EnergyManager`.
+     *
+     * @param applianceId - The appliance (charger) whose active charge should be updated.
+     * @param transactionId - The additional transaction ID to associate with the active charge.
+     * @returns Promise that resolves once the transaction ID has been added.
+     *          Resolves without effect if no active charge exists for the appliance.
+     */
+    addTransactionIdToActiveCharge: (applianceId: string, transactionId: string) => Promise<void>;
+    /**
      * Sets the default charging mode for a specific appliance, optionally
      * with a target completion time and its timezone.
      *

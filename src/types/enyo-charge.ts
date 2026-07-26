@@ -41,6 +41,15 @@ export interface EnyoCharge {
     id: string;
     /** Transaction ID for the charging session */
     transactionId: string;
+    /**
+     * Additional transaction IDs associated with this charging session.
+     *
+     * A single physical charging session can span multiple OCPP
+     * transactions (e.g. after a short interruption or re-authorization).
+     * These supplementary transaction IDs are tracked here in addition to
+     * the primary {@link EnyoCharge.transactionId}.
+     */
+    additionalTransactionIds?: string[];
     /** ID of the appliance (charger) handling this session */
     applianceId: string;
     /** ID of the charging card used for this session */
