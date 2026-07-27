@@ -1,7 +1,10 @@
 import {
     EnyoAuthenticateState,
     EnyoAuthentication,
-    EnyoAuthenticationResponse, EnyoOauthAuthenticationStart, EnyoOauthAuthenticationRedirectUrlResponse
+    EnyoAuthenticationResponse,
+    EnyoAuthenticationStateEnum,
+    EnyoOauthAuthenticationStart,
+    EnyoOauthAuthenticationRedirectUrlResponse
 } from "../types/enyo-authentication.js";
 
 /**
@@ -53,6 +56,25 @@ export interface EnergyAppAuthentication {
      * @returns Promise that resolves to the current authentication state
      */
     getAuthenticationState(): Promise<EnyoAuthenticateState>;
+
+    /**
+     * Manually sets the current authentication state.
+     *
+     * Use this when the package manages authentication on its own instead of (or in addition to)
+     * the standard {@link EnergyAppAuthentication.requestAuthentication} / {@link EnergyAppAuthentication.listenForAuthenticationResponse}
+     * flow — for example when validating a stored session on startup, after refreshing a token,
+     * or when reacting to an external authentication event. The provided state is persisted by the
+     * host and becomes the value returned by {@link EnergyAppAuthentication.getAuthenticationState}.
+     *
+     * Setting the state to {@link EnyoAuthenticationStateEnum.Unauthenticated} does not trigger the
+     * registered sign-out listeners; use {@link EnergyAppAuthentication.signOut} for an explicit,
+     * listener-notifying sign-out.
+     *
+     * @param state - The authentication state to apply, including the desired {@link EnyoAuthenticationStateEnum},
+     * and optionally the account/user name and the request ID that produced it
+     * @returns Promise that resolves once the state has been applied by the host
+     */
+    setAuthenticationState(state: EnyoAuthenticateState): Promise<void>;
 
     /**
      * Signs the user out and updates the authentication state.
