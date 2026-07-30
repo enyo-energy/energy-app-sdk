@@ -50,4 +50,21 @@ export interface EnyoBatteryApplianceMetadata {
     /** Currently active discharge power limit in Watts (if any) */
     activeDischargeLimitW?: number;
     features?: EnyoBatteryFeature[];
+    /**
+     * Whether the energy manager is allowed to actively control (steer) this
+     * battery. When `false`, the battery is treated as read-only/monitor-only
+     * and the EMS must not issue control commands to it. When omitted,
+     * consumers should fall back to their configured default behaviour.
+     */
+    controlAllowed?: boolean;
+    /**
+     * Minimum state of charge the battery should be kept at, as a percentage
+     * (0–100). The EMS should not discharge the battery below this value.
+     */
+    minSoC?: number;
+    /**
+     * Maximum state of charge the battery should be charged to, as a percentage
+     * (0–100). The EMS should not charge the battery above this value.
+     */
+    maxSoC?: number;
 }

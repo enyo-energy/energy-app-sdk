@@ -38,4 +38,12 @@ export interface EnyoHeatingRodApplianceMetadata {
      * associated with. References the `id` of an EnyoAppliance of type Heatpump.
      */
     heatpumpApplianceId?: string;
+    /**
+     * Whether the energy manager is allowed to actively control (steer) this
+     * heating rod. When `false`, the heating rod is treated as
+     * read-only/monitor-only and the EMS must not issue control commands to it.
+     * When omitted, consumers should fall back to their configured default
+     * behaviour.
+     */
+    controlAllowed?: boolean;
 }

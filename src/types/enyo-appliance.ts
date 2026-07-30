@@ -186,6 +186,7 @@ export interface EnyoApplianceMetadata {
     firmwareVersion?: string;
     hostname?: string;
     ipAddress?: string;
+    /** Connection state */
     state?: EnyoApplianceStateEnum;
     /** Health status of the appliance (e.g. healthy or faulted) */
     status?: EnyoApplianceStatusEnum;

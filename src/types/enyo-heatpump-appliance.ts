@@ -48,11 +48,40 @@ export enum EnyoHeatpumpApplianceConnectionTypeEnum {
     Api = 'api',
 }
 
+/**
+ * Additional heating devices that can be attached to / combined with a
+ * heatpump installation.
+ */
+export enum EnyoHeatpumpApplianceAdditionalDeviceEnum {
+    /** An electric heating rod (immersion heater) is present in the installation */
+    HeatingRod = 'HeatingRod',
+    /** A solar thermal system is present in the installation */
+    SolarThermal = 'SolarThermal',
+}
+
+/**
+ * The type of heat emitter connected to a heating circuit. Influences the
+ * flow temperatures the circuit operates at (floor heating typically runs at
+ * lower temperatures than radiators).
+ */
+export enum EnyoHeatpumpApplianceHeatingCircuitTypeEnum {
+    /** The heating circuit supplies radiators */
+    Radiators = 'Radiators',
+    /** The heating circuit supplies underfloor (floor) heating */
+    FloorHeating = 'FloorHeating',
+}
+
 export interface EnyoHeatpumpApplianceDomesticHotWater {
     index: number;
     tankSizeLiter?: number;
     targetTemperatureC: number;
     hysteresisK?: number;
+    /**
+     * Maximum temperature (in °C) the domestic hot water tank may be heated to.
+     * Acts as an upper bound the EMS must not exceed (e.g. when overheating the
+     * tank to store surplus energy).
+     */
+    maxTemperatureC?: number;
 }
 
 export interface EnyoHeatpumpApplianceBufferTank {
@@ -72,6 +101,10 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
     targetRoomTemperatureC?: number;
     /** Target room temperature setpoint when cooling (in °C). Only meaningful for cooling-capable heatpumps. */
     targetCoolingRoomTemperatureC?: number;
+    /** Type of heat emitter connected to this circuit (e.g. radiators or floor heating) */
+    type?: EnyoHeatpumpApplianceHeatingCircuitTypeEnum;
+    /** Optional custom name for the heating circuit, defined by the user (e.g. "Ground floor") */
+    customName?: string;
 }
 
 export interface EnyoHeatpumpApplianceMetadata {
@@ -88,4 +121,16 @@ export interface EnyoHeatpumpApplianceMetadata {
      * states, while an API connection typically allows direct read/write.
      */
     connectionType?: EnyoHeatpumpApplianceConnectionTypeEnum;
+    /**
+     * Whether the energy manager is allowed to actively control (steer) this
+     * heatpump. When `false`, the heatpump is treated as read-only/monitor-only
+     * and the EMS must not issue control commands to it. When omitted,
+     * consumers should fall back to their configured default behaviour.
+     */
+    controlAllowed?: boolean;
+    /**
+     * Additional heating devices present in the installation alongside the
+     * heatpump (e.g. a heating rod or a solar thermal system).
+     */
+    additionalDevices?: EnyoHeatpumpApplianceAdditionalDeviceEnum[];
 }

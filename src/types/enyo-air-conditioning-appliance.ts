@@ -56,4 +56,12 @@ export interface EnyoAirConditioningApplianceMetadata {
     optimizationMode?: EnyoAirConditioningOptimizationModeEnum;
     /** Rooms served by this air conditioning unit (0 to n) */
     rooms?: EnyoAirConditioningApplianceRoom[];
+    /**
+     * Whether the energy manager is allowed to actively control (steer) this
+     * air conditioning unit. When `false`, the unit is treated as
+     * read-only/monitor-only and the EMS must not issue control commands to it.
+     * When omitted, consumers should fall back to their configured default
+     * behaviour.
+     */
+    controlAllowed?: boolean;
 }

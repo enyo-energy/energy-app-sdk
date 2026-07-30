@@ -1,3 +1,5 @@
+import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
+
 export enum EnyoChargerApplianceStatusEnum {
     Available = 'Available',
     Occupied = 'Occupied',
@@ -103,4 +105,24 @@ export interface EnyoChargerApplianceMetadata {
      *   `ThreeToOnePhaseSwitch` feature)
      */
     availablePhases?: EnyoChargerAppliancePhase[];
+    /**
+     * Whether the energy manager is allowed to actively control (steer) this
+     * charger. When `false`, the charger is treated as read-only/monitor-only
+     * and the EMS must not issue control commands to it. When omitted,
+     * consumers should fall back to their configured default behaviour.
+     */
+    controlAllowed?: boolean;
+    /**
+     * Default charge mode to apply for charging sessions on this charger when
+     * no explicit mode is selected by the user. References the shared
+     * {@link EnyoChargeModeEnum} (e.g. immediate, cost-optimized, price-limit).
+     */
+    defaultChargeMode?: EnyoChargeModeEnum;
+    /**
+     * Whether home/site batteries should be blocked from discharging while this
+     * charger is actively charging. When `true`, the EMS should prevent battery
+     * discharge during a charging session so the vehicle is charged from PV or
+     * grid rather than from stored battery energy.
+     */
+    blockBatteriesOnCharging?: boolean;
 }
