@@ -6,6 +6,7 @@ import {
     EnyoDataBusGridOperatorPowerLimitationV1,
     EnyoDataBusMaxDischargePowerChangedV1,
     EnyoDataBusMessageEnum,
+    EnyoDataBusSetStorageControlV2,
     EnyoDataBusSetStorageScheduleV1
 } from "../types/enyo-data-bus-value.js";
 
@@ -16,6 +17,8 @@ import {
  *  - `SetStorageScheduleV1` — full storage control plan (mode + relative
  *    schedule of direction/power setpoints). Replaces the legacy
  *    start/stop/limit message family.
+ *  - `SetStorageControlV2` — single-setpoint control (mode + direction/power),
+ *    the immediate-control counterpart to the schedule message.
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  */
 export abstract class StorageIntegrationEnergyApp extends IntegrationEnergyApp {
@@ -35,6 +38,10 @@ export abstract class StorageIntegrationEnergyApp extends IntegrationEnergyApp {
             EnyoDataBusMessageEnum.SetStorageScheduleV1,
             (m) => this.handleSetStorageSchedule(m)
         );
+        this.registerCommandHandler<EnyoDataBusSetStorageControlV2>(
+            EnyoDataBusMessageEnum.SetStorageControlV2,
+            (m) => this.handleSetStorageControl(m)
+        );
     }
 
     /**
@@ -51,6 +58,25 @@ export abstract class StorageIntegrationEnergyApp extends IntegrationEnergyApp {
      */
     protected abstract handleSetStorageSchedule(
         message: EnyoDataBusSetStorageScheduleV1
+    ): Promise<IntegrationCommandResponse>;
+
+    /**
+     * Handles a `SetStorageControlV2` command — apply a single-setpoint control
+     * plan to the battery appliance.
+     *
+     * When `data.mode` is `'auto'` the integration should release the appliance
+     * back to its own logic. When `data.mode` is `'controlled'` the integration
+     * should apply `data.control`: an explicit `direction` (`'charge'`,
+     * `'discharge'`, or `'hold'`) with a non-negative `powerW` setpoint
+     * (`0` for `'hold'`), held until a new command arrives.
+     *
+     * @param message - The V2 storage control command.
+     * @returns `Accepted` when the battery will apply the setpoint, `Rejected`
+     *   if it cannot, `NotSupported` if the integration does not support direct
+     *   control.
+     */
+    protected abstract handleSetStorageControl(
+        message: EnyoDataBusSetStorageControlV2
     ): Promise<IntegrationCommandResponse>;
 
     /**

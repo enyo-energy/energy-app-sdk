@@ -7,7 +7,8 @@ import {
     EnyoDataBusHeatpumpOverheatingV1,
     EnyoDataBusHeatpumpTemperaturesV1,
     EnyoDataBusHeatpumpValuesV1,
-    EnyoDataBusMessageEnum
+    EnyoDataBusMessageEnum,
+    EnyoDataBusSetHeatpumpAvailablePowerV2
 } from "../types/enyo-data-bus-value.js";
 
 /**
@@ -63,6 +64,10 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
             EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1,
             (msg) => this.handleHeatpumpAvailablePowerAnnouncement(msg)
         );
+        this.registerCommandHandler<EnyoDataBusSetHeatpumpAvailablePowerV2>(
+            EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2,
+            (msg) => this.handleSetHeatpumpAvailablePower(msg)
+        );
     }
 
     /**
@@ -89,9 +94,29 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      * @returns `Accepted` when the heatpump will adjust to the announced
      *   power, `Rejected` if it cannot, `NotSupported` if the integration does
      *   not support power announcements.
+     * @deprecated Implement {@link handleSetHeatpumpAvailablePower} instead. This
+     *   handler remains for the deprecated
+     *   {@link EnyoDataBusHeatpumpAvailablePowerAnnouncementV1} during the
+     *   transition window.
      */
     protected abstract handleHeatpumpAvailablePowerAnnouncement(
         message: EnyoDataBusHeatpumpAvailablePowerAnnouncementV1
+    ): Promise<IntegrationCommandResponse>;
+
+    /**
+     * Handles a `SetHeatpumpAvailablePowerV2` command. Implementers use the
+     * announced power (`message.data.powerW`) to scale the heatpump's
+     * consumption to fit the available envelope, optionally taking the
+     * `purpose` (e.g. DHW boost, pre-heating) and `powerSources` (PV / battery /
+     * grid) context into account.
+     *
+     * @param message - The V2 available-power command.
+     * @returns `Accepted` when the heatpump will adjust to the announced
+     *   power, `Rejected` if it cannot, `NotSupported` if the integration does
+     *   not support power announcements.
+     */
+    protected abstract handleSetHeatpumpAvailablePower(
+        message: EnyoDataBusSetHeatpumpAvailablePowerV2
     ): Promise<IntegrationCommandResponse>;
 
     /**

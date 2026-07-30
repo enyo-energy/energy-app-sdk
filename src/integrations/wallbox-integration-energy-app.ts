@@ -17,6 +17,7 @@ import {
     EnyoDataBusRequestChargerLogsV1,
     EnyoDataBusResetChargerV1,
     EnyoDataBusResumeChargingV1,
+    EnyoDataBusSetChargerAvailablePowerV2,
     EnyoDataBusSetChargingScheduleV1,
     EnyoDataBusStartChargeV1,
     EnyoDataBusStopChargeV1
@@ -72,6 +73,10 @@ export abstract class WallboxIntegrationEnergyApp extends IntegrationEnergyApp {
         this.registerCommandHandler<EnyoDataBusChangeChargingPowerV1>(
             EnyoDataBusMessageEnum.ChangeChargingPowerV1,
             (m) => this.handleChangeChargingPower(m)
+        );
+        this.registerCommandHandler<EnyoDataBusSetChargerAvailablePowerV2>(
+            EnyoDataBusMessageEnum.SetChargerAvailablePowerV2,
+            (m) => this.handleSetChargerAvailablePower(m)
         );
         this.registerCommandHandler<EnyoDataBusSetChargingScheduleV1>(
             EnyoDataBusMessageEnum.SetChargingScheduleV1,
@@ -132,9 +137,27 @@ export abstract class WallboxIntegrationEnergyApp extends IntegrationEnergyApp {
     /**
      * Handles a `ChangeChargingPowerV1` command — adjust the cap on the
      * current session.
+     *
+     * @deprecated Implement {@link handleSetChargerAvailablePower} instead; the
+     *   V2 command carries the envelope in Watts. This handler remains for the
+     *   deprecated {@link EnyoDataBusChangeChargingPowerV1} during the
+     *   transition window.
      */
     protected abstract handleChangeChargingPower(
         message: EnyoDataBusChangeChargingPowerV1
+    ): Promise<IntegrationCommandResponse>;
+
+    /**
+     * Handles a `SetChargerAvailablePowerV2` command — apply the announced
+     * available/max active-power envelope (in Watts) to the charger. The
+     * charger must not draw more than `message.data.powerW`.
+     *
+     * @param message - The available-power command.
+     * @returns `Accepted` when the charger will honor the envelope, `Rejected`
+     *   if it cannot, `NotSupported` if power limitation is not supported.
+     */
+    protected abstract handleSetChargerAvailablePower(
+        message: EnyoDataBusSetChargerAvailablePowerV2
     ): Promise<IntegrationCommandResponse>;
 
     /**

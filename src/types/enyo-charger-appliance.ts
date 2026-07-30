@@ -17,6 +17,26 @@ export enum EnyoChargerApplianceAuthorizationModeEnum {
 }
 
 /**
+ * When a charger reports the {@link EnyoChargerApplianceStatusEnum.Suspended}
+ * status, this indicates which side of the charging session caused the
+ * suspension. Mirrors the OCPP distinction between the `SuspendedEVSE` and
+ * `SuspendedEV` status notifications:
+ *
+ * - `Evse` — the charging station (EVSE) is not delivering energy to the EV
+ *   (e.g. the EMS/backend paused it, load management, or the station is
+ *   waiting). The vehicle is ready but the station is holding.
+ * - `Ev` — the electric vehicle is not taking energy (e.g. the vehicle's
+ *   battery is full or the EV itself paused charging). The station is ready
+ *   but the vehicle is holding.
+ */
+export enum EnyoChargerApplianceSuspendedReasonEnum {
+    /** Charging suspended by the charging station / EVSE (OCPP `SuspendedEVSE`) */
+    Evse = 'evse',
+    /** Charging suspended by the electric vehicle (OCPP `SuspendedEV`) */
+    Ev = 'ev',
+}
+
+/**
  * Represents a single OCPP configuration entry from the charger.
  */
 export interface EnyoChargerApplianceOcppConfigurationEntry {
@@ -81,6 +101,15 @@ export type EnyoChargerAppliancePhase = 1 | 3;
 export interface EnyoChargerApplianceMetadata {
     availableFeatures: EnyoChargerApplianceAvailableFeaturesEnum[];
     status: EnyoChargerApplianceStatusEnum;
+    /**
+     * Detailed cause of a suspended charging session. Only meaningful while the
+     * charger's {@link EnyoChargerApplianceMetadata.status} is
+     * {@link EnyoChargerApplianceStatusEnum.Suspended}; distinguishes an
+     * EVSE-side suspension (OCPP `SuspendedEVSE`) from an EV-side suspension
+     * (OCPP `SuspendedEV`). Omit when the charger is not suspended or the cause
+     * is unknown.
+     */
+    suspendedReason?: EnyoChargerApplianceSuspendedReasonEnum;
     /** ISO Timestamp of the last heartbeat */
     lastHeartbeatAtIso?: string;
     ocpp?: EnyoChargerApplianceOcppMetadata;

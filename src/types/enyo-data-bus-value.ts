@@ -7,7 +7,7 @@ import {
 import type {EnyoAutomationTriggerData} from "./enyo-automation.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
-import {EnyoChargerApplianceStatusEnum} from "./enyo-charger-appliance.js";
+import {EnyoChargerApplianceStatusEnum, EnyoChargerApplianceSuspendedReasonEnum} from "./enyo-charger-appliance.js";
 import {
     PreviewChargingSchedule,
     PreviewChargingScheduleCostComparison,
@@ -264,6 +264,7 @@ export enum EnyoDataBusMessageEnum {
     StartChargingFailedV1 = 'StartChargingFailedV1',
     PauseChargingV1 = 'PauseChargingV1',
     ResumeChargingV1 = 'ResumeChargingV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetChargerAvailablePowerV2} instead, which carries an available/max power envelope in Watts. */
     ChangeChargingPowerV1 = 'ChangeChargingPowerV1',
     ChangeChargeModeV1 = 'ChangeChargeModeV1',
     SetChargingScheduleV1 = 'SetChargingScheduleV1',
@@ -309,7 +310,9 @@ export enum EnyoDataBusMessageEnum {
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
     ClearChargingProfilesV1 = 'ClearChargingProfilesV1',
     HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2} instead, which adds purpose and power-source context. */
     HeatpumpAvailablePowerAnnouncementV1 = 'HeatpumpAvailablePowerAnnouncementV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetHeatingRodAvailablePowerV2} instead. */
     HeatingRodAvailablePowerAnnouncementV1 = 'HeatingRodAvailablePowerAnnouncementV1',
     AirConditioningValuesUpdateV1 = 'AirConditioningValuesUpdateV1',
     AirConditioningTemperaturesUpdateV1 = 'AirConditioningTemperaturesUpdateV1',
@@ -317,6 +320,14 @@ export enum EnyoDataBusMessageEnum {
     StopAirConditioningV1 = 'StopAirConditioningV1',
     ChangeAirConditioningOptimizationModeV1 = 'ChangeAirConditioningOptimizationModeV1',
     VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
+    /** V2 control command: announce the available/max power (W) envelope to a charger. Supersedes {@link EnyoDataBusMessageEnum.ChangeChargingPowerV1}. */
+    SetChargerAvailablePowerV2 = 'SetChargerAvailablePowerV2',
+    /** V2 control command: announce the available/max power (W) envelope to a heatpump, with purpose and power-source context. Supersedes {@link EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1}. */
+    SetHeatpumpAvailablePowerV2 = 'SetHeatpumpAvailablePowerV2',
+    /** V2 control command: announce the available/max power (W) envelope to a heating rod. Supersedes {@link EnyoDataBusMessageEnum.HeatingRodAvailablePowerAnnouncementV1}. */
+    SetHeatingRodAvailablePowerV2 = 'SetHeatingRodAvailablePowerV2',
+    /** V2 control command: prescribe a single-setpoint control (mode + direction + power) to a battery/storage appliance. */
+    SetStorageControlV2 = 'SetStorageControlV2',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
 }
 
@@ -761,6 +772,11 @@ export interface EnyoDataBusResumeChargingV1 extends EnyoDataBusMessage {
     };
 }
 
+/**
+ * @deprecated Use {@link EnyoDataBusSetChargerAvailablePowerV2} instead, which
+ * carries the available/max power envelope in Watts (`powerW`) rather than
+ * kilowatts.
+ */
 export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.ChangeChargingPowerV1;
@@ -770,6 +786,44 @@ export interface EnyoDataBusChangeChargingPowerV1 extends EnyoDataBusMessage {
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };
+}
+
+/**
+ * Shared payload for the V2 "available/max power" command family
+ * ({@link EnyoDataBusSetChargerAvailablePowerV2},
+ * {@link EnyoDataBusSetHeatingRodAvailablePowerV2}, and — extended with
+ * additional context — {@link EnyoDataBusSetHeatpumpAvailablePowerV2}).
+ *
+ * The energy manager tells the appliance the active-power envelope it may draw;
+ * the appliance is free to consume up to (but not more than) `powerW`.
+ */
+export interface EnyoAvailablePowerCommandData {
+    /**
+     * Available / maximum active power the appliance may draw, in Watts.
+     * Must be non-negative. The appliance must not exceed this envelope.
+     */
+    powerW: number;
+    /** Optional reason why this command was issued */
+    reason?: EnyoDataBusCommandReason;
+}
+
+/**
+ * V2 command announcing the available / maximum active-power envelope (in
+ * Watts) a charger may draw. Supersedes the deprecated
+ * {@link EnyoDataBusChangeChargingPowerV1}, which carried the limit in
+ * kilowatts.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's
+ * `id` to indicate whether the envelope was accepted, rejected, or is not
+ * supported.
+ */
+export interface EnyoDataBusSetChargerAvailablePowerV2 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetChargerAvailablePowerV2;
+    /** ID of the charger appliance this power envelope applies to */
+    applianceId: string;
+    data: EnyoAvailablePowerCommandData;
 }
 
 /**
@@ -922,6 +976,14 @@ export interface EnyoDataBusChargerStatusChangedV1 extends EnyoDataBusMessage {
         status: EnyoChargerApplianceStatusEnum;
         /** Connector ID on the charge point (optional, for multi-connector chargers) */
         connectorId?: number;
+        /**
+         * Detailed cause of the suspension. Only meaningful when
+         * {@link status} is {@link EnyoChargerApplianceStatusEnum.Suspended};
+         * distinguishes an EVSE-side suspension (OCPP `SuspendedEVSE`) from an
+         * EV-side suspension (OCPP `SuspendedEV`). Omit when the charger is not
+         * suspended or the cause is unknown.
+         */
+        suspendedReason?: EnyoChargerApplianceSuspendedReasonEnum;
     };
 }
 
@@ -1442,6 +1504,86 @@ export interface EnyoDataBusSetStorageScheduleV1 extends EnyoDataBusMessage {
 }
 
 /**
+ * Control mode carried by {@link EnyoDataBusSetStorageControlV2}.
+ *
+ * - `Controlled` — the energy manager prescribes an explicit direction and
+ *   power setpoint (see {@link EnyoDataBusSetStorageControlV2.data.control}).
+ * - `Auto` — control is handed back to the battery's own logic; no setpoint is
+ *   prescribed.
+ */
+export enum EnyoStorageControlModeEnum {
+    /** The EMS prescribes direction + power via the `control` field. */
+    Controlled = 'controlled',
+    /** Hand control back to the battery's own logic. */
+    Auto = 'auto',
+}
+
+/**
+ * Direction of energy flow for a {@link EnyoDataBusSetStorageControlV2} setpoint.
+ *
+ * Direction is encoded explicitly (rather than via a signed `powerW`) so the
+ * setpoint is unambiguous on the wire: `powerW` is always non-negative.
+ */
+export enum EnyoStorageControlDirectionEnum {
+    /** Power should flow into the battery (charging). */
+    Charge = 'charge',
+    /** Power should flow out of the battery (discharging). */
+    Discharge = 'discharge',
+    /**
+     * The battery should hold its current state-of-charge (no energy flow).
+     * The accompanying `powerW` must be `0`.
+     */
+    Hold = 'hold',
+}
+
+/**
+ * V2 command prescribing a single-setpoint control plan for a battery/storage
+ * appliance — the immediate-control counterpart to the horizon-based
+ * {@link EnyoDataBusSetStorageScheduleV1} (which remains available for
+ * multi-setpoint plans).
+ *
+ * When {@link data.mode} is {@link EnyoStorageControlModeEnum.Auto} the battery
+ * regains full control of its own logic and {@link data.control} is omitted.
+ * When `mode` is {@link EnyoStorageControlModeEnum.Controlled} the appliance
+ * must apply the prescribed {@link data.control} direction and power until a
+ * new command arrives.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's
+ * `id`.
+ */
+export interface EnyoDataBusSetStorageControlV2 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetStorageControlV2;
+    /** ID of the battery/storage appliance the control applies to. */
+    applianceId: string;
+    data: {
+        /**
+         * Control mode. `Controlled` prescribes {@link control}; `Auto`
+         * releases the appliance back to its own logic.
+         */
+        mode: EnyoStorageControlModeEnum;
+        /**
+         * The prescribed setpoint. Present only when {@link mode} is
+         * {@link EnyoStorageControlModeEnum.Controlled}; omitted for
+         * {@link EnyoStorageControlModeEnum.Auto}.
+         */
+        control?: {
+            /** Direction of energy flow (charge / discharge / hold). */
+            direction: EnyoStorageControlDirectionEnum;
+            /**
+             * Target power in Watts. Always non-negative — direction is carried
+             * by {@link direction}, never by sign. Must be `0` when
+             * {@link direction} is {@link EnyoStorageControlDirectionEnum.Hold}.
+             */
+            powerW: number;
+        };
+        /** Optional reason why this command was issued. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
  * Command message to set or reset the inverter's grid feed-in power limit.
  * When a limit is set, the inverter will not feed more than the specified power into the grid.
  * When set to null, the feed-in limit is removed and the inverter returns to default behavior.
@@ -1780,6 +1922,10 @@ export interface EnyoDataBusHeatpumpOverheatingV1 extends EnyoDataBusMessage {
  * Data bus message announcing available power for a heatpump appliance.
  * Used to inform the heatpump about how much power is available for consumption.
  */
+/**
+ * @deprecated Use {@link EnyoDataBusSetHeatpumpAvailablePowerV2} instead, which
+ * adds optional purpose and power-source context to the announced envelope.
+ */
 export interface EnyoDataBusHeatpumpAvailablePowerAnnouncementV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1;
@@ -1794,8 +1940,84 @@ export interface EnyoDataBusHeatpumpAvailablePowerAnnouncementV1 extends EnyoDat
 }
 
 /**
+ * The intended purpose a heatpump should apply an announced available-power
+ * envelope to. Lets the appliance decide how to spend the granted power (e.g.
+ * boost domestic hot water vs. pre-heat the building).
+ */
+export enum EnyoHeatpumpControlPurposeEnum {
+    /** Use the power for normal space (room) heating */
+    RoomHeating = 'room-heating',
+    /** Use the power to boost the domestic hot water tank */
+    DomesticHotWaterBoost = 'domestic-hot-water-boost',
+    /** Use the power to pre-heat ahead of an anticipated demand or price rise */
+    PreHeating = 'pre-heating',
+    /** Use the power to charge a heating buffer tank */
+    BufferTankCharge = 'buffer-tank-charge',
+    /** Use the power for space cooling (reversible heatpumps) */
+    Cooling = 'cooling',
+}
+
+/**
+ * Where an announced available-power envelope is expected to originate from.
+ * Used to give appliances (and analytics) insight into whether the granted
+ * power is PV surplus, battery discharge, or grid import.
+ */
+export enum EnyoPowerSourceEnum {
+    /** Power originates from PV production surplus */
+    Pv = 'pv',
+    /** Power originates from battery discharge */
+    Battery = 'battery',
+    /** Power originates from grid import */
+    Grid = 'grid',
+}
+
+/**
+ * Per-source breakdown of an announced available-power envelope. The sum of all
+ * shares' {@link powerW} should equal the command's total `powerW`.
+ */
+export interface EnyoPowerSourceShare {
+    /** The source this share of power comes from */
+    source: EnyoPowerSourceEnum;
+    /** The amount of power attributed to this source, in Watts (non-negative) */
+    powerW: number;
+}
+
+/**
+ * V2 command announcing the available / maximum active-power envelope (in
+ * Watts) a heatpump may draw, together with optional context describing what
+ * the power should be used for ({@link EnyoHeatpumpControlPurposeEnum}) and
+ * where it comes from ({@link EnyoPowerSourceShare}). Supersedes the deprecated
+ * {@link EnyoDataBusHeatpumpAvailablePowerAnnouncementV1}.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's
+ * `id`.
+ */
+export interface EnyoDataBusSetHeatpumpAvailablePowerV2 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2;
+    /** ID of the heatpump appliance this power envelope applies to */
+    applianceId: string;
+    data: EnyoAvailablePowerCommandData & {
+        /**
+         * What the heatpump should use the announced power for (e.g. DHW boost,
+         * pre-heating). Advisory — the appliance may still apply its own logic.
+         */
+        purpose?: EnyoHeatpumpControlPurposeEnum;
+        /**
+         * Optional breakdown of the announced envelope by source (PV / battery /
+         * grid). When present, the shares should sum to {@link data.powerW}.
+         */
+        powerSources?: EnyoPowerSourceShare[];
+    };
+}
+
+/**
  * Data bus message announcing available power for a heating rod appliance.
  * Used to inform the heating rod about how much power is available for consumption.
+ */
+/**
+ * @deprecated Use {@link EnyoDataBusSetHeatingRodAvailablePowerV2} instead.
  */
 export interface EnyoDataBusHeatingRodAvailablePowerAnnouncementV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1808,6 +2030,23 @@ export interface EnyoDataBusHeatingRodAvailablePowerAnnouncementV1 extends EnyoD
         /** Optional reason why this announcement was issued */
         reason?: EnyoDataBusCommandReason;
     };
+}
+
+/**
+ * V2 command announcing the available / maximum active-power envelope (in
+ * Watts) a heating rod may draw. Supersedes the deprecated
+ * {@link EnyoDataBusHeatingRodAvailablePowerAnnouncementV1}.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's
+ * `id`.
+ */
+export interface EnyoDataBusSetHeatingRodAvailablePowerV2 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetHeatingRodAvailablePowerV2;
+    /** ID of the heating rod appliance this power envelope applies to */
+    applianceId: string;
+    data: EnyoAvailablePowerCommandData;
 }
 
 /**
