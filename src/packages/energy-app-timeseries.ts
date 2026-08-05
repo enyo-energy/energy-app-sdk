@@ -158,10 +158,17 @@ export interface EnergyAppTimeseries {
 
     /**
      * Retrieves home consumption timeseries data aggregated in time buckets.
-     * Returns total power consumed by the home (all appliances combined).
+     *
+     * Every bucket carries the consumption twice: `homeConsumptionW` / `Wh` is
+     * the household base load with the managed appliances (heatpump, air
+     * conditioning, EV charging, …) excluded, while
+     * `homeConsumptionWithAppliancesW` / `Wh` includes them. The same split
+     * applies to the response totals. The `WithAppliances` fields are optional
+     * and only present when the platform can attribute appliance-level
+     * consumption for the queried range.
      *
      * @param request - The query parameters including date range and optional appliance filter
-     * @returns Promise resolving to home consumption entries with total consumption
+     * @returns Promise resolving to home consumption entries with both totals
      *
      * @example
      * ```typescript
@@ -169,7 +176,8 @@ export interface EnergyAppTimeseries {
      *     startDateIso: '2024-01-01T00:00:00Z',
      *     endDateIso: '2024-01-02T00:00:00Z'
      * });
-     * console.log(`Total home consumption: ${response.totalHomeConsumptionWh} Wh`);
+     * console.log(`Base load: ${response.totalHomeConsumptionWh} Wh`);
+     * console.log(`Incl. appliances: ${response.totalHomeConsumptionWithAppliancesWh ?? response.totalHomeConsumptionWh} Wh`);
      * ```
      */
     getHomeConsumptionTimeseries(request: HomeConsumptionTimeseriesRequest): Promise<HomeConsumptionTimeseriesResponse>;

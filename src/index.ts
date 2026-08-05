@@ -49,6 +49,7 @@ export * from './packages/energy-app-mqtt.js'
 export * from './types/enyo-bluetooth.js'
 export * from './packages/energy-app-bluetooth.js'
 export * from './types/enyo-diagnostics.js'
+export * from './types/enyo-flexibility-announcement.js'
 export * from './packages/energy-app-diagnostics.js'
 export * from './types/enyo-learning-phase.js'
 export * from './packages/energy-app-learning-phase.js'
@@ -71,6 +72,7 @@ export * from './types/enyo-retry-manager.js'
 export * from './implementations/retry/backoff.js'
 export * from './implementations/retry/retry-manager.js'
 export * from './implementations/retry/retry-errors.js'
+export * from './energy-app-permission.type.js';
 
 export * from './integrations/integration-types.js';
 export * from './integrations/integration-energy-app.js';

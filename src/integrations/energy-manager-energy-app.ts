@@ -13,6 +13,11 @@ import {
     HeatpumpDhwTemperatureForecast,
     HeatpumpDhwTemperatureForecastConfig,
 } from '../implementations/forecasts/heatpump-dhw-temperature-forecast.js';
+import {AirConditioningConsumptionForecast} from '../implementations/forecasts/air-conditioning-consumption-forecast.js';
+import {
+    AirConditioningRoomTemperatureForecast,
+    AirConditioningRoomTemperatureForecastConfig,
+} from '../implementations/forecasts/air-conditioning-room-temperature-forecast.js';
 
 /**
  * Constructor options for {@link EnergyManagerEnergyApp}.
@@ -65,6 +70,9 @@ export class EnergyManagerEnergyApp extends EnergyApp {
     private readonly evChargingForecasts = new Map<string, EvChargingForecast>();
     private readonly heatpumpConsumptionForecasts = new Map<string, HeatpumpConsumptionForecast>();
     private readonly heatpumpDhwTemperatureForecasts = new Map<string, HeatpumpDhwTemperatureForecast>();
+    private readonly airConditioningConsumptionForecasts = new Map<string, AirConditioningConsumptionForecast>();
+    private readonly airConditioningRoomTemperatureForecasts =
+        new Map<string, AirConditioningRoomTemperatureForecast>();
     private homeConsumptionForecast: HomeConsumptionForecast | undefined;
 
     /**
@@ -212,6 +220,50 @@ export class EnergyManagerEnergyApp extends EnergyApp {
     }
 
     /**
+     * Returns (and lazily registers) an air conditioning electrical-consumption
+     * forecaster.
+     *
+     * @param applianceId - Air conditioning appliance ID.
+     * @param config - Optional config overrides (merged with the manager-level default).
+     */
+    public async getAirConditioningConsumptionForecast(
+        applianceId: string,
+        config?: ForecastConfig,
+    ): Promise<AirConditioningConsumptionForecast> {
+        const existing = this.airConditioningConsumptionForecasts.get(applianceId);
+        if (existing) return existing;
+        const forecast = new AirConditioningConsumptionForecast(this, applianceId, {
+            source: this.source,
+            config: this.mergeConfig(config),
+        });
+        await forecast.initialize();
+        this.airConditioningConsumptionForecasts.set(applianceId, forecast);
+        return forecast;
+    }
+
+    /**
+     * Returns (and lazily registers) an air conditioning room-temperature
+     * forecaster.
+     *
+     * @param applianceId - Air conditioning appliance ID.
+     * @param config - Optional config overrides (merged with the manager-level default).
+     */
+    public async getAirConditioningRoomTemperatureForecast(
+        applianceId: string,
+        config?: AirConditioningRoomTemperatureForecastConfig,
+    ): Promise<AirConditioningRoomTemperatureForecast> {
+        const existing = this.airConditioningRoomTemperatureForecasts.get(applianceId);
+        if (existing) return existing;
+        const forecast = new AirConditioningRoomTemperatureForecast(this, applianceId, {
+            source: this.source,
+            config: this.mergeRoomConfig(config),
+        });
+        await forecast.initialize();
+        this.airConditioningRoomTemperatureForecasts.set(applianceId, forecast);
+        return forecast;
+    }
+
+    /**
      * Disposes every registered forecaster, detaching data-bus listeners and
      * freeing in-memory history. Safe to call multiple times.
      */
@@ -221,6 +273,8 @@ export class EnergyManagerEnergyApp extends EnergyApp {
         for (const f of this.evChargingForecasts.values()) f.dispose();
         for (const f of this.heatpumpConsumptionForecasts.values()) f.dispose();
         for (const f of this.heatpumpDhwTemperatureForecasts.values()) f.dispose();
+        for (const f of this.airConditioningConsumptionForecasts.values()) f.dispose();
+        for (const f of this.airConditioningRoomTemperatureForecasts.values()) f.dispose();
         this.homeConsumptionForecast?.dispose();
 
         this.pvForecasts.clear();
@@ -228,6 +282,8 @@ export class EnergyManagerEnergyApp extends EnergyApp {
         this.evChargingForecasts.clear();
         this.heatpumpConsumptionForecasts.clear();
         this.heatpumpDhwTemperatureForecasts.clear();
+        this.airConditioningConsumptionForecasts.clear();
+        this.airConditioningRoomTemperatureForecasts.clear();
         this.homeConsumptionForecast = undefined;
     }
 
@@ -246,6 +302,13 @@ export class EnergyManagerEnergyApp extends EnergyApp {
     private mergeDhwConfig(
         override: HeatpumpDhwTemperatureForecastConfig | undefined,
     ): HeatpumpDhwTemperatureForecastConfig | undefined {
+        if (!this.defaultConfig && !override) return undefined;
+        return {...(this.defaultConfig ?? {}), ...(override ?? {})};
+    }
+
+    private mergeRoomConfig(
+        override: AirConditioningRoomTemperatureForecastConfig | undefined,
+    ): AirConditioningRoomTemperatureForecastConfig | undefined {
         if (!this.defaultConfig && !override) return undefined;
         return {...(this.defaultConfig ?? {}), ...(override ?? {})};
     }

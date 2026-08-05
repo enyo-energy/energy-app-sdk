@@ -282,6 +282,8 @@ export enum EnyoDataBusMessageEnum {
     EvChargingForecastV1 = 'EvChargingForecastV1',
     HeatpumpConsumptionForecastV1 = 'HeatpumpConsumptionForecastV1',
     HeatpumpDhwTemperatureForecastV1 = 'HeatpumpDhwTemperatureForecastV1',
+    AirConditioningConsumptionForecastV1 = 'AirConditioningConsumptionForecastV1',
+    AirConditioningRoomTemperatureForecastV1 = 'AirConditioningRoomTemperatureForecastV1',
     AutomationTriggerV1 = 'AutomationTriggerV1',
     /** @deprecated Use {@link EnyoDataBusMessageEnum.SetStorageScheduleV1} instead. The schedule message subsumes start/stop/limit commands by carrying a sequence of `{seconds, direction, powerW}` setpoints. */
     StartStorageGridChargeV1 = 'StartStorageGridChargeV1',
@@ -1121,6 +1123,29 @@ export interface EnyoHeatpumpDhwTemperatureForecastDataPoint {
 }
 
 /**
+ * A single data point in an air conditioning consumption forecast, containing
+ * power and energy values.
+ */
+export interface EnyoAirConditioningConsumptionForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted air conditioning consumption power in Watts */
+    powerW: number;
+    /** Forecasted air conditioning consumption energy in Watt hours for this interval */
+    powerWh: number;
+}
+
+/**
+ * A single data point in an air conditioning room temperature forecast.
+ */
+export interface EnyoAirConditioningRoomTemperatureForecastDataPoint {
+    /** ISO 8601 timestamp for this forecast data point */
+    timestampIso: string;
+    /** Forecasted room temperature in Celsius */
+    temperatureC: number;
+}
+
+/**
  * Message for delivering PV production forecast data.
  * Contains forecasted power and energy values at the specified resolution.
  * Can be sent for a specific PV appliance or as a total across all PV systems.
@@ -1223,6 +1248,48 @@ export interface EnyoDataBusHeatpumpDhwTemperatureForecastV1 extends EnyoDataBus
         resolution: EnyoForecastResolution;
         /** Array of forecast data points */
         entries: EnyoHeatpumpDhwTemperatureForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering air conditioning electrical consumption forecast data.
+ * Contains forecasted power and energy values at the specified resolution.
+ * Always sent for a specific air conditioning appliance.
+ */
+export interface EnyoDataBusAirConditioningConsumptionForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.AirConditioningConsumptionForecastV1;
+    /** ID of the air conditioning appliance this forecast applies to */
+    applianceId: string;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /** Array of forecast data points */
+        entries: EnyoAirConditioningConsumptionForecastDataPoint[];
+    };
+}
+
+/**
+ * Message for delivering air conditioning room temperature forecast data.
+ * Contains forecasted temperature values at the specified resolution, either
+ * for a single room or averaged across all rooms served by the appliance.
+ * Always sent for a specific air conditioning appliance.
+ */
+export interface EnyoDataBusAirConditioningRoomTemperatureForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.AirConditioningRoomTemperatureForecastV1;
+    /** ID of the air conditioning appliance this forecast applies to */
+    applianceId: string;
+    data: {
+        /** Resolution of the forecast data points */
+        resolution: EnyoForecastResolution;
+        /**
+         * Zero-based index of the room this forecast applies to. Omitted when
+         * the forecast averages across all rooms of the appliance.
+         */
+        roomIndex?: number;
+        /** Array of forecast data points */
+        entries: EnyoAirConditioningRoomTemperatureForecastDataPoint[];
     };
 }
 

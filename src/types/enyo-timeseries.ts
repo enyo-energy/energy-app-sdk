@@ -294,10 +294,35 @@ export interface GridPowerTimeseriesResponse extends TimeseriesResponseBase {
  * Represents the total energy consumed by the home (all appliances combined).
  */
 export interface HomeConsumptionTimeseriesEntry extends TimeseriesEntryBase {
-    /** Time-weighted average home consumption power in Watts for this bucket */
+    /**
+     * Time-weighted average home consumption power in Watts for this bucket,
+     * excluding the managed appliances (heatpump, air conditioning, EV
+     * charging, …). This is the household base load.
+     */
     homeConsumptionW: number;
-    /** Cumulative home consumption energy in Watt-hours for this bucket */
+    /**
+     * Cumulative home consumption energy in Watt-hours for this bucket,
+     * excluding the managed appliances.
+     */
     homeConsumptionWh: number;
+    /**
+     * Time-weighted average home consumption power in Watts for this bucket,
+     * including the managed appliances — i.e. everything the home drew.
+     *
+     * Optional: only populated when the platform can attribute appliance-level
+     * consumption for this bucket. Fall back to {@link homeConsumptionW} when
+     * absent.
+     */
+    homeConsumptionWithAppliancesW?: number;
+    /**
+     * Cumulative home consumption energy in Watt-hours for this bucket,
+     * including the managed appliances.
+     *
+     * Optional: only populated when the platform can attribute appliance-level
+     * consumption for this bucket. Fall back to {@link homeConsumptionWh} when
+     * absent.
+     */
+    homeConsumptionWithAppliancesWh?: number;
 }
 
 /**
@@ -307,12 +332,29 @@ export interface HomeConsumptionTimeseriesRequest extends TimeseriesRequestBase 
 
 /**
  * Response containing home consumption timeseries data.
+ *
+ * Consumption is reported twice per bucket: once as the household base load
+ * (managed appliances excluded) and once including the managed appliances.
+ * Subtracting the two yields the share of the home's draw that is under
+ * energy-management control.
  */
 export interface HomeConsumptionTimeseriesResponse extends TimeseriesResponseBase {
     /** Array of home consumption entries, one per time bucket */
     entries: HomeConsumptionTimeseriesEntry[];
-    /** Total home consumption energy in Watt-hours across all buckets */
+    /**
+     * Total home consumption energy in Watt-hours across all buckets,
+     * excluding the managed appliances.
+     */
     totalHomeConsumptionWh: number;
+    /**
+     * Total home consumption energy in Watt-hours across all buckets,
+     * including the managed appliances.
+     *
+     * Optional: only populated when the platform can attribute appliance-level
+     * consumption across the queried range. Fall back to
+     * {@link totalHomeConsumptionWh} when absent.
+     */
+    totalHomeConsumptionWithAppliancesWh?: number;
 }
 
 /**

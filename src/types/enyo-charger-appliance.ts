@@ -125,6 +125,19 @@ export interface EnyoChargerApplianceMetadata {
      */
     maxChargingPowerKw?: number;
     /**
+     * Granularity, in Amperes, at which the charging current limit can be set
+     * on this charger. Any current limit the EMS issues should be a multiple of
+     * this step.
+     *
+     * Most chargers accept whole Amperes (`1`), which is the default when the
+     * field is omitted. Chargers with finer-grained control report a smaller
+     * step — typically `0.1` — allowing the EMS to track a PV surplus far more
+     * precisely instead of rounding to the next full Ampere.
+     *
+     * @default 1
+     */
+    ampereStep?: number;
+    /**
      * Phase configurations the charger supports. Each value indicates
      * a phase mode the hardware can operate in:
      * - `[1]`: only single-phase charging supported
