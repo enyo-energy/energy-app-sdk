@@ -256,6 +256,14 @@ const packageDef = defineEnergyAppPackage({
                 registerSize: 2,
                 type: 'string',
                 matchingValues: ['SolarMax', 'SMA']
+            }],
+            mdns: [{
+                // The Envoy advertises under a vendor-specific service type; without
+                // `serviceType` the host never browses it and this rule can't fire.
+                serviceType: '_enphase-envoy._tcp.local',
+                key: 'serialnum',
+                operation: 'startsWith',
+                matchingValues: ['1224']
             }]
         }
     }

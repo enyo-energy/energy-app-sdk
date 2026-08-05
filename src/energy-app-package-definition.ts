@@ -94,6 +94,26 @@ export interface EnergyAppPackageOptionsDeviceDetectionMdns {
     operation: 'eq' | 'startsWith';
     /** Values to match the TXT record value against */
     matchingValues: string[];
+    /**
+     * The DNS-SD service type the device advertises itself under, including the
+     * `.local` suffix — e.g. `'_enphase-envoy._tcp.local'`.
+     *
+     * The host browses a small built-in set of common service types
+     * (`_http._tcp`, `_https._tcp`, `_device-info._tcp`, `_modbus._tcp`). Devices
+     * advertising a vendor-specific type are invisible to that set, so their TXT
+     * records never reach detection. Declaring the type here adds it to the
+     * host's browse set — no host firmware update needed.
+     *
+     * When set, this rule only matches TXT records advertised by a service of
+     * this exact type. When omitted, the rule matches TXT records from any
+     * browsed service on the device (previous behaviour, unchanged).
+     *
+     * Find a device's type with `avahi-browse -a -t` (Linux) or
+     * `dns-sd -B _services._dns-sd._udp` (macOS).
+     *
+     * @example '_enphase-envoy._tcp.local'
+     */
+    serviceType?: string;
 }
 
 /**
