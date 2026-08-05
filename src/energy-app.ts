@@ -40,6 +40,7 @@ import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-app
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 import {EnergyAppFile} from "./packages/energy-app-file.js";
 import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
+import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -437,6 +438,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useAutomations(): EnergyAppAutomation {
         return this.energyAppSdk.useAutomations();
+    }
+
+    /**
+     * Gets the Savings API for publishing day-scoped savings reports and reading
+     * them back. An energy manager app settles a finished day by replaying its
+     * measured environment against an uncontrolled simulation and publishes both
+     * worlds here; the platform stores the days and owns every aggregation above
+     * them (month, year, lifetime).
+     * @returns The Savings API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Savings` permission is
+     *         not granted.
+     */
+    public useSavings(): EnergyAppSavings {
+        return this.energyAppSdk.useSavings();
     }
 
     /**

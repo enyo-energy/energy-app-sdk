@@ -45,7 +45,8 @@ export type EnergyAppPermissionType =
     | 'ChildProcess'
     | 'Udp'
     | 'ProvidedFiles'
-    | 'Automation';
+    | 'Automation'
+    | 'Savings';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -94,5 +95,6 @@ export enum EnergyAppPermissionTypeEnum {
     ChildProcess = 'ChildProcess',
     Udp = 'Udp',
     ProvidedFiles = 'ProvidedFiles',
-    Automation = 'Automation'
+    Automation = 'Automation',
+    Savings = 'Savings'
 }

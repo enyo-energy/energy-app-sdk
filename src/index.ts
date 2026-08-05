@@ -91,6 +91,8 @@ export * from './implementations/forecasts/home-consumption-forecast.js';
 export * from './implementations/forecasts/ev-charging-forecast.js';
 export * from './implementations/forecasts/heatpump-consumption-forecast.js';
 export * from './implementations/forecasts/heatpump-dhw-temperature-forecast.js';
+export * from './implementations/forecasts/air-conditioning-consumption-forecast.js';
+export * from './implementations/forecasts/air-conditioning-room-temperature-forecast.js';
 
 export * from './types/enyo-appliance-command-forecast.js';
 export * from './packages/energy-app-appliance-energy-manager-forecast.js';
@@ -105,6 +107,9 @@ export * from './types/enyo-fetch.js';
 
 export * from './types/enyo-file.js';
 export * from './packages/energy-app-file.js';
+
+export * from './types/enyo-savings.js';
+export * from './packages/energy-app-savings.js';
 
 export * from './types/enyo-automation.js';
 export * from './packages/energy-app-automation.js';

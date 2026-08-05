@@ -38,6 +38,7 @@ import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-app
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 import {EnergyAppFile} from "./packages/energy-app-file.js";
 import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
+import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -147,4 +148,6 @@ export interface EnyoEnergyAppSdk {
     useFiles: () => EnergyAppFile;
     /** Get the Automation API for reading user-configured automations and (with EnergyManager permission) registering triggers, reporting trigger state, and publishing automation forecasts */
     useAutomations: () => EnergyAppAutomation;
+    /** Get the Savings API for publishing day-scoped savings reports and reading back which days were already reported */
+    useSavings: () => EnergyAppSavings;
 }
