@@ -46,7 +46,8 @@ export type EnergyAppPermissionType =
     | 'Udp'
     | 'ProvidedFiles'
     | 'Automation'
-    | 'Savings';
+    | 'Savings'
+    | 'FirmwareRegistry';
 
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
@@ -96,5 +97,6 @@ export enum EnergyAppPermissionTypeEnum {
     Udp = 'Udp',
     ProvidedFiles = 'ProvidedFiles',
     Automation = 'Automation',
-    Savings = 'Savings'
+    Savings = 'Savings',
+    FirmwareRegistry = 'FirmwareRegistry'
 }

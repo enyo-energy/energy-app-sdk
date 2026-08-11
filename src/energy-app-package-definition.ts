@@ -1,6 +1,7 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 import {getSdkVersion} from "./version.js";
 import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
+import type {EnyoFileTranslation} from "./types/enyo-file.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -236,7 +237,12 @@ export interface EnergyAppPackageCompatibilityModel {
     displayName?: string;
     /**
      * Optional minimum firmware version the package supports for this model.
-     * Free-form string compared lexicographically by hosts that need it.
+     *
+     * A free-form, vendor-defined string used for display and internal
+     * documentation only. It is **not** an ordering primitive: firmware versions
+     * are opaque and are never parsed or compared by the SDK or the host. To
+     * express which firmware can be updated to which, declare the explicit
+     * upgrade graph in {@link EnergyAppPackageDefinition.firmware} instead.
      */
     minimumFirmwareVersion?: string;
     /** Optional internal note explaining model-specific caveats or limitations */
@@ -260,6 +266,137 @@ export interface EnergyAppPackageCompatibilityVendor {
     vendorName: string;
     /** Models from this vendor that the package supports */
     models: EnergyAppPackageCompatibilityModel[];
+}
+
+/**
+ * How the firmware registry decides which image a device should install next.
+ *
+ * - `'latest'` — every device is offered the **last declared** firmware entry
+ *   that applies to its model, whatever version it currently runs. Since
+ *   firmware versions are opaque strings and cannot be ordered, "latest" means
+ *   last in the `firmware` array — declaration order *is* the order. Use this
+ *   for devices that accept any image directly; `installForFirmwareVersion` is
+ *   ignored.
+ * - `'dependent'` — the update order is the explicit graph declared through
+ *   {@link EnergyAppPackageFirmwareFile.installForFirmwareVersion}: each image
+ *   names the versions it can be installed on top of, and the registry walks
+ *   that graph one hop at a time. Use this for devices that must be stepped
+ *   through intermediate versions.
+ */
+export type EnergyAppPackageFirmwareMode = 'latest' | 'dependent';
+
+/**
+ * Enum form of {@link EnergyAppPackageFirmwareMode} for use in package
+ * definitions.
+ */
+export enum EnergyAppPackageFirmwareModeEnum {
+    /** Always offer the last declared firmware entry for the device's model. */
+    Latest = 'latest',
+    /** Follow the explicit `installForFirmwareVersion` upgrade graph. */
+    Dependent = 'dependent',
+}
+
+/**
+ * A firmware image published together with an Energy App package.
+ *
+ * The file is declared here by its local `path`; the enyo CLI uploads it during
+ * `enyo release`, replacing the path with a registry reference, so the released
+ * package tarball never carries the bytes. At runtime the app reaches the
+ * uploaded image through {@link EnergyAppFirmwareRegistry}.
+ *
+ * **Firmware versions are opaque strings.** `firmwareVersion` is whatever the
+ * vendor calls it — `'2.4.1'`, `'2024-11-rc3'`, `'A7F2'` — and is never parsed,
+ * ordered or compared beyond exact string equality. Nothing can therefore be
+ * derived from the string itself, which is why the order comes from
+ * {@link EnergyAppPackageDefinition.firmwareMode}: declaration order under
+ * `'latest'`, or the explicit {@link installForFirmwareVersion} edges under
+ * `'dependent'`.
+ *
+ * Under `'dependent'`, chains, branches and merges all fall out of that one
+ * field: three entries each naming their predecessor form a chain; two entries
+ * naming the same predecessor for different models form a branch; one entry
+ * naming several predecessors collapses old versions into a single image.
+ *
+ * Validate the declaration with `validateFirmwareRegistry()` before releasing —
+ * an ambiguous or cyclic graph has no correct resolution and is rejected rather
+ * than silently resolved.
+ *
+ * @example
+ * ```typescript
+ * // firmwareMode: 'dependent' — stepped through intermediate versions
+ * firmware: [
+ *     defineFirmwareFile({
+ *         fileId: 'ac22-baseline',
+ *         path: './firmware/ac22-2024-11-rc3.bin',
+ *         firmwareVersion: '2024-11-rc3',
+ *         modelNames: ['AC-22-Pro'],
+ *         fallbackForUnknownVersion: true
+ *     }),
+ *     defineFirmwareFile({
+ *         fileId: 'ac22-hotfix-a',
+ *         path: './firmware/ac22-hotfix-a.bin',
+ *         firmwareVersion: 'hotfix-a',
+ *         installForFirmwareVersion: ['2024-11-rc3'],
+ *         modelNames: ['AC-22-Pro']
+ *     })
+ * ]
+ * ```
+ */
+export interface EnergyAppPackageFirmwareFile {
+    /**
+     * Stable, app-chosen identifier for this firmware image. Used as the lookup
+     * key at runtime and must be unique within the package.
+     */
+    fileId: string;
+    /**
+     * Path to the firmware file relative to the package root, e.g.
+     * `'./firmware/wallbox-2.4.1.bin'`. Resolved and uploaded by the enyo CLI on
+     * release; the published definition carries a registry reference instead.
+     */
+    path: string;
+    /**
+     * The firmware version this file installs. An opaque, vendor-defined string
+     * that is only ever equality-matched — never parsed or ordered.
+     */
+    firmwareVersion: string;
+    /**
+     * The versions this image is installed for — the incoming edges of this node
+     * in the upgrade graph. Each string is matched by exact equality against the
+     * version a device reports as currently installed; when it matches, this
+     * image is the device's next step.
+     *
+     * Only meaningful when {@link EnergyAppPackageDefinition.firmwareMode} is
+     * `'dependent'`; ignored under `'latest'`.
+     *
+     * Omit (or leave empty) for a root entry: one that heads a chain and is
+     * never offered as an update to a known version.
+     */
+    installForFirmwareVersion?: string[];
+    /**
+     * When true, this image is offered to devices whose reported version matches
+     * no declared node — a recovery or baseline image. At most one entry per
+     * model may set this.
+     *
+     * Only meaningful under `firmwareMode: 'dependent'`; ignored under
+     * `'latest'`, where every unrecognised version already receives the last
+     * declared image.
+     */
+    fallbackForUnknownVersion?: boolean;
+    /**
+     * Optional vendor this firmware belongs to. Should match a `vendorName` from
+     * {@link EnergyAppPackageDefinition.compatibility}.
+     */
+    vendorName?: string;
+    /**
+     * Optional models this firmware applies to. Scopes graph resolution: an
+     * update is only offered to a device whose model is listed here. Omit when
+     * the image applies to every model the package supports.
+     */
+    modelNames?: string[];
+    /** Optional translated release notes shown in the host UI. */
+    releaseNotes?: EnyoFileTranslation[];
+    /** Optional internal note explaining this image; never shown to users. */
+    internalComment?: string;
 }
 
 /**
@@ -296,6 +433,26 @@ export interface EnergyAppPackageDefinition {
      * single vendor implicitly or has no fixed compatibility surface.
      */
     compatibility: EnergyAppPackageCompatibilityVendor[];
+    /**
+     * Firmware images shipped with this package, declared as local file paths
+     * and uploaded by the enyo CLI on release.
+     *
+     * The app reaches them at runtime through
+     * {@link EnergyAppFirmwareRegistry}; how the next image is chosen is set by
+     * {@link firmwareMode}. Requires the `FirmwareRegistry` permission. Omit for
+     * packages that do not distribute firmware.
+     */
+    firmware?: EnergyAppPackageFirmwareFile[];
+    /**
+     * How the registry picks the next image for a device. Defaults to
+     * `'latest'`, which always offers the last declared entry for the device's
+     * model. Set to `'dependent'` when devices must be stepped through
+     * intermediate versions — the order is then taken from each entry's
+     * `installForFirmwareVersion` edges.
+     *
+     * Only relevant when {@link firmware} is declared.
+     */
+    firmwareMode?: EnergyAppPackageFirmwareMode;
 }
 
 /**

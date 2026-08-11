@@ -108,6 +108,15 @@ export * from './types/enyo-fetch.js';
 export * from './types/enyo-file.js';
 export * from './packages/energy-app-file.js';
 
+export * from './types/enyo-firmware-registry.js';
+export * from './packages/energy-app-firmware-registry.js';
+export * from './implementations/firmware/define-firmware-file.js';
+export * from './implementations/firmware/firmware-validators.js';
+
+export * from './types/enyo-device-test.js';
+export * from './packages/energy-app-device-test.js';
+export * from './implementations/device-test/device-test-validators.js';
+
 export * from './types/enyo-savings.js';
 export * from './packages/energy-app-savings.js';
 

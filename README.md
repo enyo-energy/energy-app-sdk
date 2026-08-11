@@ -32,6 +32,12 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [NetworkAccessGuard](#networkaccessguard)
   - [NetworkDeviceManager](#networkdevicemanager)
   - [Startup pattern](#startup-pattern)
+- [Firmware Update Registry](#firmware-update-registry)
+  - [Declaring firmware](#declaring-firmware)
+  - [Firmware modes](#firmware-modes)
+  - [Resolving the next version](#resolving-the-next-version)
+  - [Downloading a file](#downloading-a-file)
+  - [Validating the graph](#validating-the-graph)
 - [Retry Framework](#retry-framework)
 - [Device Integrations](#device-integrations)
   - [IntegrationEnergyApp (Base Class)](#integrationenergyapp-base-class)
@@ -49,6 +55,8 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [EvChargingForecast](#evchargingforecast)
   - [HeatpumpConsumptionForecast](#heatpumpconsumptionforecast)
   - [HeatpumpDhwTemperatureForecast](#heatpumpdhwtemperatureforecast)
+  - [AirConditioningConsumptionForecast](#airconditioningconsumptionforecast)
+  - [AirConditioningRoomTemperatureForecast](#airconditioningroomtemperatureforecast)
 - [Appliance Energy-Manager Forecast](#appliance-energy-manager-forecast)
   - [`useApplianceEnergyManagerForecast()`](#useapplianceenergymanagerforecast-energyappapplianceenergymanagerforecast)
   - [ChargerForecast](#chargerforecast)
@@ -144,6 +152,8 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Forecast EV charging demand | [`EvChargingForecast`](#evchargingforecast) |
 | Forecast heatpump electrical consumption | [`HeatpumpConsumptionForecast`](#heatpumpconsumptionforecast) |
 | Forecast heatpump DHW tank temperature | [`HeatpumpDhwTemperatureForecast`](#heatpumpdhwtemperatureforecast) |
+| Forecast air conditioning electrical consumption | [`AirConditioningConsumptionForecast`](#airconditioningconsumptionforecast) |
+| Forecast air conditioning room temperature | [`AirConditioningRoomTemperatureForecast`](#airconditioningroomtemperatureforecast) |
 | Announce a charger / battery / heatpump command plan you **intend to apply** | [`useApplianceEnergyManagerForecast()`](#useapplianceenergymanagerforecast-energyappapplianceenergymanagerforecast) |
 | Talk to an EEBUS / SHIP / SPINE device | [`useEebus()`](#useeebus-energyappeebus) |
 | Speak MQTT (SDK broker or external) | [`useMqtt()`](#usemqtt-energyappmqtt) |
@@ -342,6 +352,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`PvForecastRegister`** / **`PvForecastUse`**: Publish / consume PV forecasts
 - **`DynamicPriceForecastRegister`** / **`DynamicPriceForecastUse`**: Publish / consume dynamic-price forecasts
 - **`PvSystemRegister`** / **`PvSystemUse`**: Register / read PV system configuration
+- **`Savings`**: Publish and read back day-scoped savings reports
 
 #### Site & Identity Permissions
 
@@ -463,6 +474,66 @@ const inverters = await networkDevices.search({
 // Get device details
 const deviceInfo = await networkDevices.getDeviceInfo(device.id);
 ```
+
+#### `useDeviceTest(): EnergyAppDeviceTest`
+
+Answer the host's "is this device yours, and did it yield appliances?" question.
+
+Every other device API points outward — you scan, or you get notified, and you decide what to do next. This one is inverted: the host has detected a device it cannot identify on its own and calls **into** your app. Register one handler; it is used by the onboarding v2 `device-test` action, by background auto-detection, and by user-triggered re-tests (see `request.origin`).
+
+```typescript
+await energyApp.useDeviceTest().registerDeviceTestHandler(async (request) => {
+    const devices: EnyoDeviceTestDeviceResult[] = [];
+    const appliances: EnyoDeviceTestApplianceResult[] = [];
+
+    for (const device of request.devices) {
+        const identity = await readVendorRegisters(device);       // your protocol
+        if (!identity) {
+            devices.push({networkDeviceId: device.id, outcome: EnyoDeviceTestOutcomeEnum.NotSupported});
+            continue;
+        }
+
+        const existing = await findApplianceForSerial(identity.serialNumber);
+        const applianceId = await energyApp.useAppliances().save(buildAppliance(device, identity), existing?.id);
+
+        appliances.push({
+            applianceId,
+            applianceType: EnyoApplianceTypeEnum.Inverter,
+            disposition: existing
+                ? EnyoDeviceTestApplianceDispositionEnum.Updated
+                : EnyoDeviceTestApplianceDispositionEnum.Created,
+            networkDeviceId: device.id
+        });
+        devices.push({
+            networkDeviceId: device.id,
+            outcome: existing
+                ? EnyoDeviceTestOutcomeEnum.AppliancesAlreadyExisted
+                : EnyoDeviceTestOutcomeEnum.AppliancesCreated,
+            vendor: identity.vendor,
+            model: identity.model,
+            serialNumber: identity.serialNumber
+        });
+    }
+
+    return {
+        requestId: request.requestId,
+        outcome: aggregateDeviceTestOutcome(devices),
+        devices,
+        appliances
+    };
+});
+```
+
+Rules worth respecting:
+
+- **The host owns the clock.** `request.timeoutMs` is your budget; the host stops waiting when it expires and treats the run as `failed`. Your handler is *not* told, so bound socket timeouts and retries to fit and never leave connections open past the point where an answer could matter.
+- **One handler per package.** Registering again replaces the previous one. Register during startup — a request arriving before registration is answered `failed`, which in a guided run means the installer sees the failure branch.
+- **Answer for every device.** A twelve-device scan needs twelve verdicts; "three are mine, one needs a password, eight are the neighbour's printer" is the normal case.
+- **`created` vs `already-existed` are different answers.** Both are successes, but the guide branches differently — one is "set up", the other "already set up".
+- **Derive the aggregate with `aggregateDeviceTestOutcome()`.** Success dominates a sibling device's failure, and actionable outcomes outrank unactionable ones; hand-rolling that precedence is where the bugs are.
+- **No permission is needed to register**, but the work inside needs `NetworkDeviceAccess` to reach a device and `Appliance` to create one. Without them, answer `access-not-granted` rather than throwing.
+
+Validate a result during development with `validateDeviceTestResult(result, request)` — it catches contradictions like `appliances-created` with no created appliance, which would otherwise route an installer to a success screen for appliances that do not exist.
 
 #### `useModbus(): EnergyAppModbus`
 
@@ -1116,6 +1187,66 @@ diag.energyManagerDiagnostics(
 );
 ```
 
+#### `useSavings(): EnergyAppSavings`
+
+Publish what the energy management saved the customer on a finished day, and read back which days were already reported.
+
+The app settles a day by replaying its **measured** environment through a simulation of the same house running **uncontrolled**, and pricing both worlds against the tariff that actually applied. Publishing is an upsert keyed by `dayIso` + `method`, so a day may be recomputed after a backfill or a bugfix. The platform stores days and owns every aggregation above them (month, year, lifetime) — and excludes `Low` confidence days from those rollups.
+
+```typescript
+const savings = energyApp.useSavings();
+
+// On boot: which days still need settling?
+const { missingDayIsos } = await savings.getDailySavings({
+    startDayIso: '2026-07-01',
+    endDayIso: '2026-07-31'
+});
+
+for (const dayIso of missingDayIsos) {
+    await savings.publishDailySavings({
+        schemaVersion: 1,
+        dayIso,
+        timeZone: 'Europe/Berlin',
+        dayStartUtcMs: startOfLocalDayUtcMs(dayIso),
+        dayEndUtcMs: endOfLocalDayUtcMs(dayIso),   // 23 or 25 h on DST days
+        method: EnyoSavingsMethodEnum.Settled,
+        computedAtIso: new Date().toISOString(),
+        calculatorVersion: '3.2.0',
+        confidence: EnyoSavingsConfidenceEnum.High,
+        confidenceIssues: [],
+        costs: {
+            currency: EnyoCurrencyEnum.EUR,
+            optimizedCost: 1.42,
+            baselineCost: 3.07,
+            savings: 1.65,
+            savingsFromSelfConsumption: 1.12,
+            savingsFromArbitrage: 0.53
+        },
+        energy: { /* both worlds, Wh */ },
+        metrics: { /* both worlds */ },
+        attribution: [
+            { applianceType: EnergyAppApplianceTypeEnum.Charger, savings: 0.91, shiftedEnergyWh: 12400 }
+        ],
+        coverage: [
+            { series: 'pv', source: EnyoSavingsDataSourceEnum.Measured, expectedBuckets: 96, presentBuckets: 96 }
+        ],
+        assumptions: [
+            { key: 'battery.dischargeEfficiency', value: 0.95 }
+        ]
+    });
+}
+```
+
+Notes worth respecting when producing a report:
+
+- **Publish both worlds, never only the delta.** A lone savings number is unauditable and cannot be re-aggregated.
+- **Assumptions travel with the report.** The counterfactual rests on guesses; without them, changing a default silently rewrites history.
+- **`dayIso` is a local calendar date.** The IANA zone and the exact UTC bounds go alongside — anything assuming 96 buckets is wrong twice a year.
+- **Per-slot detail (`slots`) is opt-in.** Settlement is stateless, so the app can regenerate it on demand; only publish it for days under investigation.
+- **Units follow the platform:** energy in Wh, power in W, prices per kWh, currency as `EnyoCurrencyEnum`.
+
+Requires the `Savings` permission.
+
 ### Operational Utilities
 
 #### `useOnboarding(): EnergyAppOnboarding`
@@ -1563,6 +1694,160 @@ async function connectDevice(networkDeviceId: string) {
 
 This pattern matches the wiring used by real Sungrow / Fronius energy-app packages: one `NetworkDeviceManager` per package, `ensureAccess` before every connect, `withAccessGuard` around every poll, and a single `getDevices({ accessStatus: 'granted' })` pass at startup to cover the warm-restart case.
 
+## Firmware Update Registry
+
+Ship firmware images with your package and hand them to devices at runtime. You declare the files by local path in the package definition, the enyo CLI uploads them during `enyo release`, and the app reaches them through `energyApp.useFirmwareRegistry()`. The release tarball never carries the bytes.
+
+Requires the `FirmwareRegistry` permission.
+
+**Firmware versions are opaque strings.** A version is whatever the vendor calls it — `2.4.1`, `2024-11-rc3`, `A7F2` — and is never parsed, ordered, or compared beyond exact equality. Nothing can be derived from the string itself, so the update order is declared rather than computed. `firmwareMode` picks which form that takes.
+
+### Firmware modes
+
+| `firmwareMode` | Order comes from | Use when |
+|---|---|---|
+| `'latest'` *(default)* | **Declaration order** — the last entry declared for the device's model is always the one offered | Devices accept any image directly |
+| `'dependent'` | The explicit **`installForFirmwareVersion`** edges on each entry | Devices must be stepped through intermediate versions |
+
+### Declaring firmware
+
+`firmwareMode: 'latest'` — a plain list, last one wins:
+
+```typescript
+import { defineEnergyAppPackage, defineFirmwareFile, EnergyAppPackageFirmwareModeEnum, EnergyAppPermissionTypeEnum } from '@enyo-energy/energy-app-sdk';
+
+export default defineEnergyAppPackage({
+    version: '1',
+    packageName: 'acme-wallbox',
+    // ...
+    permissions: [EnergyAppPermissionTypeEnum.FirmwareRegistry],
+    firmwareMode: EnergyAppPackageFirmwareModeEnum.Latest,
+    firmware: [
+        defineFirmwareFile({
+            fileId: 'ac22-2024-11',
+            path: './firmware/ac22-2024-11.bin',
+            firmwareVersion: '2024-11-rc3',
+            modelNames: ['AC-22-Pro']
+        }),
+        defineFirmwareFile({
+            fileId: 'ac22-current',
+            path: './firmware/ac22-current.bin',
+            firmwareVersion: 'A7F2',
+            modelNames: ['AC-22-Pro']
+        })
+        // ↑ last declared for AC-22-Pro — every AC-22-Pro is offered this one
+    ]
+});
+```
+
+`firmwareMode: 'dependent'` — each entry declares the versions it installs *for*:
+
+```typescript
+firmwareMode: EnergyAppPackageFirmwareModeEnum.Dependent,
+firmware: [
+    defineFirmwareFile({
+        fileId: 'ac22-baseline',
+        path: './firmware/ac22-2024-11-rc3.bin',
+        firmwareVersion: '2024-11-rc3',
+        modelNames: ['AC-22-Pro'],
+        // offered to devices whose reported version matches no declared entry
+        fallbackForUnknownVersion: true
+    }),
+    defineFirmwareFile({
+        fileId: 'ac22-hotfix-a',
+        path: './firmware/ac22-hotfix-a.bin',
+        firmwareVersion: 'A7F2',
+        installForFirmwareVersion: ['2024-11-rc3'],
+        modelNames: ['AC-22-Pro']
+    }),
+    defineFirmwareFile({
+        fileId: 'ac22-stable',
+        path: './firmware/ac22-stable.bin',
+        firmwareVersion: '1.0',
+        // collapses two old versions into one image
+        installForFirmwareVersion: ['A7F2', 'legacy-b'],
+        modelNames: ['AC-22-Pro'],
+        releaseNotes: [
+            { language: 'en', value: 'Fixes phase rotation detection.' },
+            { language: 'de', value: 'Behebt die Erkennung der Phasenlage.' }
+        ]
+    })
+]
+```
+
+`installForFirmwareVersion` is the whole graph. Three entries each naming their predecessor form a chain; two entries naming the same predecessor for *different* models form a branch; one entry naming several predecessors merges old versions into a single image. Omitting it makes an entry a root that is never offered as an update to a known version. Under `'latest'` the field is ignored (and the validator warns if you set it).
+
+`modelNames` scopes resolution in both modes — an entry without it applies to every model the package supports.
+
+### Resolving the next version
+
+```typescript
+const registry = energyApp.useFirmwareRegistry();
+
+const next = await registry.getNextFirmware(device.reportedVersion, { modelName: 'AC-22-Pro' });
+if (!next) {
+    // Already up to date — the normal outcome, not an error.
+    return;
+}
+console.log(`Update available: ${next.firmwareVersion} (${next.sizeBytes} bytes)`);
+```
+
+Under `'dependent'`, `getNextFirmware()` returns **one hop**, not the destination. After the device installs the image and reports its new version, call again to continue the chain — each step is verified on the device before the next is offered. When you need the whole chain up front:
+
+```typescript
+const path = await registry.getFirmwareUpdatePath(device.reportedVersion, { modelName: 'AC-22-Pro' });
+const totalMb = path.reduce((sum, file) => sum + file.sizeBytes, 0) / 1_000_000;
+console.log(`${path.length} updates pending, ${totalMb.toFixed(1)} MB total`);
+```
+
+Under `'latest'` there is no chain to walk: `getNextFirmware()` hands back the last declared entry for the model until the device runs it, and `getFirmwareUpdatePath()` never returns more than one entry.
+
+### Downloading a file
+
+Firmware images are large, so the bytes never cross the app/host boundary. Request a signed, time-limited URL instead — one that many wallboxes and inverters can fetch themselves:
+
+```typescript
+const download = await registry.requestDownloadUrl(next.fileId, { ttlSeconds: 900 });
+
+// Either hand the URL to the device...
+await device.installFirmwareFromUrl(download.url, download.sha256);
+
+// ...or stream it into the app.
+const response = await fetch(download.url);
+```
+
+Two rules:
+
+- **Request the URL at the moment of use.** It expires at `download.expiresAt` (epoch ms) and the storage backend then rejects it. Never cache or persist it.
+- **Always verify `sha256`** against the downloaded bytes before flashing.
+
+### Validating the graph
+
+An ambiguous or cyclic `'dependent'` graph has no correct resolution at runtime, so validate before releasing:
+
+```typescript
+import { validateFirmwareRegistry, assertValidFirmwareRegistry } from '@enyo-energy/energy-app-sdk';
+
+const result = validateFirmwareRegistry(packageDefinition);
+if (!result.ok) console.error(result.errors);
+console.warn(result.warnings);
+
+assertValidFirmwareRegistry(packageDefinition); // or throw on the first failure
+```
+
+Blocking errors in both modes: duplicate `fileId`s, two entries installing the same version for overlapping models, and declaring firmware without the `FirmwareRegistry` permission. Under `'dependent'` additionally: two entries installing for the same current version on overlapping models, cycles, an entry listing its own version in `installForFirmwareVersion`, and multiple fallbacks per model.
+
+Warnings: under `'latest'`, entries that declare `installForFirmwareVersion` or `fallbackForUnknownVersion` — both are ignored there, so declaring them usually means `'dependent'` was intended. Under `'dependent'`: a source version matching no declared entry — which is exactly how you attach a chain to firmware that shipped before this registry existed — and entries that are neither reachable nor a fallback. In both modes: models or vendors missing from `compatibility`.
+
+For local unit tests, `resolveNextFirmware()` and `resolveFirmwareUpdatePath()` run the same resolution the host performs, against a plain array of entries:
+
+```typescript
+resolveNextFirmware(definition.firmware ?? [], currentVersion, {
+    modelName: 'AC-22-Pro',
+    firmwareMode: definition.firmwareMode
+});
+```
+
 ## Retry Framework
 
 `RetryManager` centralises retry / backoff / circuit-breaker logic so polling loops don't have to reinvent it. Register one entry per logical operation, give it a `RetryPolicy`, and run attempts through `execute(id, fn)` — the manager handles attempt counting, exponential backoff, transition into `Open` after repeated failures, and recovery on the next success.
@@ -1752,6 +2037,8 @@ new EnergyManagerEnergyApp({
 - `getEvChargingForecast(applianceId, config?)`
 - `getHeatpumpConsumptionForecast(applianceId, config?)`
 - `getHeatpumpDhwTemperatureForecast(applianceId, config?)`
+- `getAirConditioningConsumptionForecast(applianceId, config?)`
+- `getAirConditioningRoomTemperatureForecast(applianceId, config?)`
 
 **Lifecycle**
 
@@ -1769,7 +2056,7 @@ const batteryForecast = battery.getForecast();
 
 ## Forecasting
 
-The forecasting module provides 24-hour predictions across the energy domains the SDK already understands (PV, battery, home consumption, EV charging, heatpump consumption, DHW temperature). Every forecaster follows the same lifecycle and shares the same configuration shape, so once you've used one you've used them all.
+The forecasting module provides 24-hour predictions across the energy domains the SDK already understands (PV, battery, home consumption, EV charging, heatpump consumption, DHW temperature, air conditioning consumption, air conditioning room temperature). Every forecaster follows the same lifecycle and shares the same configuration shape, so once you've used one you've used them all.
 
 ### ✨ Common pattern
 
@@ -1887,6 +2174,36 @@ new HeatpumpDhwTemperatureForecast(app, applianceId, {
 - **History default:** 7 days.
 - **Notable config:** `dhwTankIndex` selects a specific tank (zero-based); omit to average across all tanks.
 - **Live source:** heatpump temperature timeseries / live updates.
+
+### AirConditioningConsumptionForecast
+
+Forecasts the electrical consumption of an air conditioning appliance (cooling + heating combined).
+
+```typescript
+new AirConditioningConsumptionForecast(app, applianceId, { source: EnyoSourceEnum.Device, config? });
+```
+
+- **Output per slot:** `{ powerW: number; powerWh: number }`
+- **History default:** 14 days — AC load is weather-driven and bursty, so a wider window than the heatpump's 7 days gives a more stable per-slot profile.
+- **Live source:** `AirConditioningValuesUpdateV1`.
+- **Note:** `powerW` is optional on that message; updates without a power reading are ignored rather than counted as `0 W`, so an appliance that only reports its operation mode does not drag the forecast towards zero.
+- **Note:** like the heatpump forecaster, it does not adjust for forecasted weather; layer a correction on top if you need that.
+
+### AirConditioningRoomTemperatureForecast
+
+Forecasts the room temperature served by an air conditioning appliance — the input you need to plan pre-cooling on forecasted PV surplus.
+
+```typescript
+new AirConditioningRoomTemperatureForecast(app, applianceId, {
+    source: EnyoSourceEnum.Device,
+    config?: { roomIndex?: number, ...ForecastConfig }
+});
+```
+
+- **Output per slot:** `{ temperatureC: number }` (rounded to 0.1 °C).
+- **History default:** 7 days.
+- **Notable config:** `roomIndex` selects a specific room (zero-based); omit to average across all rooms. When set, it is echoed back on the published message's `data.roomIndex`.
+- **Live source:** `AirConditioningTemperaturesUpdateV1`.
 
 ### 🚀 Common usage example
 

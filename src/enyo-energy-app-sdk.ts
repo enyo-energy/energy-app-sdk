@@ -37,8 +37,10 @@ import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 import {EnergyAppFile} from "./packages/energy-app-file.js";
+import {EnergyAppFirmwareRegistry} from "./packages/energy-app-firmware-registry.js";
 import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {EnergyAppSavings} from "./packages/energy-app-savings.js";
+import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -146,8 +148,12 @@ export interface EnyoEnergyAppSdk {
     useBatteries: () => EnergyAppBattery;
     /** Get the File API for providing user-facing files whose translated names/explanations are shown by the host and whose content is produced on demand when the user stores them */
     useFiles: () => EnergyAppFile;
+    /** Get the Firmware Registry API for resolving the next firmware step for a device and requesting signed download URLs for the firmware images published with the package */
+    useFirmwareRegistry: () => EnergyAppFirmwareRegistry;
     /** Get the Automation API for reading user-configured automations and (with EnergyManager permission) registering triggers, reporting trigger state, and publishing automation forecasts */
     useAutomations: () => EnergyAppAutomation;
     /** Get the Savings API for publishing day-scoped savings reports and reading back which days were already reported */
     useSavings: () => EnergyAppSavings;
+    /** Get the Device Test API for answering the host's requests to test detected network devices and report whether appliances were found or created */
+    useDeviceTest: () => EnergyAppDeviceTest;
 }

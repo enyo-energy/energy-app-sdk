@@ -39,8 +39,10 @@ import {EnergyAppConfigurationManager} from "./packages/energy-app-configuration
 import {EnergyAppApplianceEnergyManagerForecast} from "./packages/energy-app-appliance-energy-manager-forecast.js";
 import {EnergyAppBattery} from "./packages/energy-app-battery.js";
 import {EnergyAppFile} from "./packages/energy-app-file.js";
+import {EnergyAppFirmwareRegistry} from "./packages/energy-app-firmware-registry.js";
 import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {EnergyAppSavings} from "./packages/energy-app-savings.js";
+import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -427,6 +429,24 @@ export class EnergyApp implements EnyoEnergyAppSdk {
     }
 
     /**
+     * Gets the Firmware Registry API for the firmware images published with this
+     * package.
+     *
+     * Firmware versions are opaque vendor strings, so the update order is
+     * declared explicitly in the package definition as an upgrade graph. Call
+     * `getNextFirmware(currentVersion)` to resolve the single next step for a
+     * device — it returns `undefined` when the device is already up to date —
+     * then `requestDownloadUrl()` for a signed, time-limited URL the device can
+     * fetch itself.
+     * @returns The Firmware Registry API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `FirmwareRegistry`
+     *         permission is not granted.
+     */
+    public useFirmwareRegistry(): EnergyAppFirmwareRegistry {
+        return this.energyAppSdk.useFirmwareRegistry();
+    }
+
+    /**
      * Gets the Automation API for reading user-configured automations and
      * listening for their creation, update and removal. Apps holding the
      * `EnergyManager` permission can additionally register trigger types,
@@ -452,6 +472,22 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useSavings(): EnergyAppSavings {
         return this.energyAppSdk.useSavings();
+    }
+
+    /**
+     * Gets the Device Test API for answering the host's requests to test
+     * detected network devices. The app registers one handler; the host calls it
+     * from an onboarding v2 `device-test` action, from background auto-detection,
+     * or from a user-triggered re-test, and branches on whether appliances were
+     * found or created.
+     *
+     * Available to every app — this API is not permission-gated, though reaching
+     * a device (`NetworkDeviceAccess`) and creating an appliance (`Appliance`)
+     * still are.
+     * @returns The Device Test API instance
+     */
+    public useDeviceTest(): EnergyAppDeviceTest {
+        return this.energyAppSdk.useDeviceTest();
     }
 
     /**
