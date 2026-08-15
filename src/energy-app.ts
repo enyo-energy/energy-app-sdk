@@ -43,6 +43,7 @@ import {EnergyAppFirmwareRegistry} from "./packages/energy-app-firmware-registry
 import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
+import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -488,6 +489,23 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useDeviceTest(): EnergyAppDeviceTest {
         return this.energyAppSdk.useDeviceTest();
+    }
+
+    /**
+     * Gets the EPEX SPOT Price API for reading the cleared day-ahead
+     * wholesale electricity prices that apply to this device.
+     *
+     * These are raw market prices — excluding grid fees, levies, taxes and
+     * supplier margin, and negative when supply outruns demand — intended for
+     * energy-manager decisions such as when to charge, when to run a flexible
+     * load, and when to curtail PV feed-in. For customer-billed pricing use
+     * {@link useElectricityPrices} instead.
+     * @returns The EPEX SPOT Price API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `EpexSpotPrices`
+     *         permission is not granted.
+     */
+    public useEpexSpotPrices(): EnergyAppEpexSpotPrice {
+        return this.energyAppSdk.useEpexSpotPrices();
     }
 
     /**

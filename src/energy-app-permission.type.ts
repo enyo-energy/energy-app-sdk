@@ -47,6 +47,7 @@ export type EnergyAppPermissionType =
     | 'ProvidedFiles'
     | 'Automation'
     | 'Savings'
+    | 'EpexSpotPrices'
     | 'FirmwareRegistry';
 
 export enum EnergyAppPermissionTypeEnum {
@@ -98,5 +99,6 @@ export enum EnergyAppPermissionTypeEnum {
     ProvidedFiles = 'ProvidedFiles',
     Automation = 'Automation',
     Savings = 'Savings',
+    EpexSpotPrices = 'EpexSpotPrices',
     FirmwareRegistry = 'FirmwareRegistry'
 }

@@ -41,6 +41,7 @@ import {EnergyAppFirmwareRegistry} from "./packages/energy-app-firmware-registry
 import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
+import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -156,4 +157,6 @@ export interface EnyoEnergyAppSdk {
     useSavings: () => EnergyAppSavings;
     /** Get the Device Test API for answering the host's requests to test detected network devices and report whether appliances were found or created */
     useDeviceTest: () => EnergyAppDeviceTest;
+    /** Get the EPEX SPOT Price API for reading the cleared day-ahead wholesale electricity prices that apply to this device */
+    useEpexSpotPrices: () => EnergyAppEpexSpotPrice;
 }

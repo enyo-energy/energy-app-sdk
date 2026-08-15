@@ -120,6 +120,9 @@ export * from './implementations/device-test/device-test-validators.js';
 export * from './types/enyo-savings.js';
 export * from './packages/energy-app-savings.js';
 
+export * from './types/enyo-epex-spot-price.js';
+export * from './packages/energy-app-epex-spot-price.js';
+
 export * from './types/enyo-automation.js';
 export * from './packages/energy-app-automation.js';
 export * from './implementations/automation/automation-validators.js';

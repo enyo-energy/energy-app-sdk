@@ -170,6 +170,22 @@ export enum EnyoInverterStateEnum {
     Standby = 'standby'
 }
 
+/**
+ * Operating state of a heating rod as reported on the data bus via
+ * {@link EnyoDataBusHeatingRodValuesV1}.
+ *
+ * This is the *observed* state of the element, not the configured mode: the
+ * appliance metadata's {@link EnyoHeatingRodApplianceModeEnum} describes how the
+ * heating rod is set up, while this enum says whether it is drawing power right
+ * now.
+ */
+export enum EnyoHeatingRodStateEnum {
+    /** The heating element is not energized and consumes (close to) no power */
+    Idle = 'idle',
+    /** The heating element is energized and heating */
+    Running = 'running'
+}
+
 export enum EnyoStringStateEnum {
     Off = 'off',
     Sleeping = 'sleeping',
@@ -258,6 +274,7 @@ export enum EnyoDataBusMessageEnum {
     ApplianceFlexibilityAnnouncementV1 = 'ApplianceFlexibilityAnnouncementV1',
     ApplianceStateUpdateV1 = 'ApplianceStateUpdateV1',
     HeatpumpValuesUpdateV1 = 'HeatpumpValuesUpdateV1',
+    HeatingRodValuesUpdateV1 = 'HeatingRodValuesUpdateV1',
     ChargingStartedV1 = 'ChargingStartedV1',
     ChargingMeterValuesUpdateV1 = 'ChargingMeterValuesUpdateV1',
     ChargingStoppedV1 = 'ChargingStoppedV1',
@@ -445,6 +462,35 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
         };
         /** Grid operator power limitation currently applied by the heatpump, if any */
         gridOperatorLimit?: EnyoGridOperatorLimit;
+    }
+}
+
+/**
+ * Live values of a heating rod (immersion / electric resistive heating
+ * element), published by the integration that owns the appliance.
+ *
+ * Send this whenever the power draw or the operating state changes, so an
+ * energy manager can account for the load and decide how much power to
+ * announce back via {@link EnyoDataBusSetHeatingRodAvailablePowerV2}.
+ */
+export interface EnyoDataBusHeatingRodValuesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatingRodValuesUpdateV1;
+    /** ID of the appliance that delivered these values */
+    applianceId: string;
+    data: {
+        /**
+         * Current electrical power consumption of the heating rod in Watt.
+         * Always positive (a heating rod only consumes). Omit when the
+         * integration cannot measure it — do not send `0` as a stand-in for
+         * "unknown", since a consumer cannot tell that apart from "off".
+         */
+        powerW?: number;
+        /**
+         * Current operating state of the heating element. Omit when the
+         * integration cannot determine it.
+         */
+        state?: EnyoHeatingRodStateEnum;
     }
 }
 

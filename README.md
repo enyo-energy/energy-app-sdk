@@ -167,6 +167,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Retrieve secrets from the developer org secret store | [`useSecretManager()`](#usesecretmanager-energyappsecretmanager) |
 | Submit energy-manager diagnostics | [`useDiagnostics()`](#usediagnostics-energyappdiagnostics) |
 | Register a weather / PV / dynamic-price forecast provider | [`useWeatherForecasting()`](#useweatherforecasting-energyappweatherforecasting) / [`usePvForecasting()`](#usepvforecasting-energyapppvforecasting) / [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast) |
+| Read EPEX SPOT wholesale prices (incl. negative-price windows) | [`useEpexSpotPrices()`](#useepexspotprices-energyappepexspotprice) |
 | Manage electricity tariffs (default tariff, price per kWh) | [`useElectricityTariff()`](#useelectricitytariff-energyappelectricitytariff) |
 | Register a PV system (kWp, DC strings, orientation) | [`usePvSystem()`](#usepvsystem-energyapppvsystem) |
 | Discover capabilities of the active energy manager | [`useEnergyManager()`](#useenergymanager-energyappenergymanager) |
@@ -353,6 +354,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`DynamicPriceForecastRegister`** / **`DynamicPriceForecastUse`**: Publish / consume dynamic-price forecasts
 - **`PvSystemRegister`** / **`PvSystemUse`**: Register / read PV system configuration
 - **`Savings`**: Publish and read back day-scoped savings reports
+- **`EpexSpotPrices`**: Read EPEX SPOT day-ahead wholesale market prices
 
 #### Site & Identity Permissions
 
@@ -1138,6 +1140,42 @@ dpf.onForecastPublished((forecast) => console.log('new forecast', forecast.forec
 ```
 
 Publishers need `DynamicPriceForecastRegister`; consumers need `DynamicPriceForecastUse`.
+
+#### `useEpexSpotPrices(): EnergyAppEpexSpotPrice`
+
+Read the EPEX SPOT day-ahead wholesale prices the host caches for this device, so an energy manager can decide when to charge, when to run a flexible load, and when to stop exporting PV.
+
+These are **raw market prices** — no grid fees, levies, taxes or supplier margin — and they go **negative** when supply outruns demand. For what the customer is billed use [`useElectricityPrices()`](#useelectricityprices-energyappenergyprices); for forecasts published by other apps use [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast).
+
+```typescript
+const epex = energyApp.useEpexSpotPrices();
+
+const now = await epex.getCurrentSpotPrice();
+if (now && now.pricePerKwh < 0) {
+    // feeding in costs money right now
+}
+
+const tomorrow = await epex.getSpotPrices({
+    fromIso: '2026-08-13T00:00:00Z',
+    untilIso: '2026-08-14T00:00:00Z'
+});
+
+// Pre-grouped runs of sub-zero periods — the shape curtailment logic wants.
+const windows = await epex.getNegativePriceWindows();
+
+// Tomorrow's auction clears around 14:00 CET; re-plan when it lands.
+epex.onSpotPricesUpdated(prices => scheduler.replan(prices.entries));
+```
+
+Notes worth respecting:
+
+- **Read `resolution`, don't assume it.** EPEX SPOT day-ahead moved to 15-minute periods in 2025, but older data is still hourly.
+- **The series may be shorter than you asked for.** Before the day-ahead auction clears (14:00 CET/CEST), only today exists — check the last entry's `endTimestampIso`.
+- **`retrievedAtIso` tells you how stale the cache is** after the device has been offline.
+- Prices come both as `pricePerMwh` (the exchange's own unit) and `pricePerKwh` (the SDK's convention).
+- Inverter appliances carry a `blockFeedInOnNegativePrices` flag in their metadata (`EnyoInverterApplianceMetadata`). It is configuration, not state: whoever controls the inverter is responsible for curtailing export to 0 W while the price is negative and lifting the curtailment afterwards.
+
+Requires the `EpexSpotPrices` permission.
 
 #### `usePvSystem(): EnergyAppPvSystem`
 
