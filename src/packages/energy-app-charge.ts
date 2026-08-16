@@ -1,4 +1,4 @@
-import {EnyoCharge, EnyoChargeFilter, EnyoDefaultChargeMode} from "../types/enyo-charge.js";
+import {EnyoCharge, EnyoChargeFilter, EnyoChargeStatus, EnyoDefaultChargeMode} from "../types/enyo-charge.js";
 
 /**
  * Interface for managing charging sessions in enyo packages.
@@ -53,4 +53,84 @@ export interface EnergyAppCharge {
      * @returns Promise resolving to the configured default charge mode
      */
     getDefaultChargeMode: (applianceId: string) => Promise<EnyoDefaultChargeMode>;
+    /**
+     * Listen for charging sessions that have just started.
+     *
+     * Fires once per session, when the charge is first created and enters
+     * {@link EnyoChargeStatus.Charging} — not on subsequent meter updates (use
+     * {@link listenForChargeUpdated} for those). The delivered charge carries the
+     * data known at start: `applianceId`, `transactionId`, `startTime` and
+     * `meterStartValueWh`; the totals are only meaningful once the session ends.
+     *
+     * Listeners receive sessions of every appliance the package can see — filter
+     * on {@link EnyoCharge.applianceId} when only one charger is of interest.
+     *
+     * @param listener - Callback invoked with the started charging session
+     * @returns A unique listener ID that can be used to remove the listener
+     *
+     * @example
+     * ```typescript
+     * const charge = energyApp.useCharge();
+     * const listenerId = charge.listenForChargeStarted(async (session) => {
+     *     console.log(`charging started on ${session.applianceId}`);
+     * });
+     * ```
+     */
+    listenForChargeStarted: (listener: (charge: EnyoCharge) => void | Promise<void>) => string;
+    /**
+     * Listen for charging sessions that have ended.
+     *
+     * Fires once per session, when it leaves {@link EnyoChargeStatus.Charging}
+     * for a terminal status. Check {@link EnyoCharge.status} to tell a session
+     * that {@link EnyoChargeStatus.Completed completed} from one that
+     * {@link EnyoChargeStatus.Failed failed} — both end a charge, and a listener
+     * that assumes success will mis-report faulted sessions.
+     *
+     * The delivered charge is the final record, including `endTime`,
+     * `meterEndValueWh` and `totalEnergyKwh`.
+     *
+     * @param listener - Callback invoked with the ended charging session
+     * @returns A unique listener ID that can be used to remove the listener
+     *
+     * @example
+     * ```typescript
+     * charge.listenForChargeStopped(async (session) => {
+     *     if (session.status === EnyoChargeStatus.Completed) {
+     *         console.log(`delivered ${session.totalEnergyKwh} kWh`);
+     *     }
+     * });
+     * ```
+     */
+    listenForChargeStopped: (listener: (charge: EnyoCharge) => void | Promise<void>) => string;
+    /**
+     * Listen for changes to a running charging session.
+     *
+     * Fires whenever an active charge is modified — new meter values, a changed
+     * {@link EnyoCharge.chargeMode}, an updated smart-charging
+     * {@link EnyoCharge.schedule}, or an additional transaction ID. It does NOT
+     * fire for the start and the end of a session; those have their own
+     * listeners, so a handler registered here never sees the same event twice.
+     *
+     * Meter updates can arrive at the charger's reporting interval (often every
+     * few seconds), so keep the callback cheap and do not persist on every call.
+     *
+     * @param listener - Callback invoked with the updated charging session
+     * @returns A unique listener ID that can be used to remove the listener
+     *
+     * @example
+     * ```typescript
+     * charge.listenForChargeUpdated(async (session) => {
+     *     const latest = session.meterValues?.at(-1);
+     *     console.log(`now at ${latest?.valueWh} Wh`);
+     * });
+     * ```
+     */
+    listenForChargeUpdated: (listener: (charge: EnyoCharge) => void | Promise<void>) => string;
+    /**
+     * Removes a previously registered listener.
+     *
+     * @param listenerId - The ID returned by {@link listenForChargeStarted},
+     *   {@link listenForChargeStopped} or {@link listenForChargeUpdated}
+     */
+    removeListener: (listenerId: string) => void;
 }

@@ -724,6 +724,37 @@ const sessions = await charging.getActiveSessions();
 await charging.stopCharge(sessionId);
 ```
 
+React to charging sessions as they happen:
+
+```typescript
+const charge = energyApp.useCharge();
+
+const startedId = charge.listenForChargeStarted((session) => {
+    console.log(`charging started on ${session.applianceId}`);
+});
+
+const updatedId = charge.listenForChargeUpdated((session) => {
+    const latest = session.meterValues?.at(-1);
+    console.log(`now at ${latest?.valueWh} Wh`);
+});
+
+const stoppedId = charge.listenForChargeStopped((session) => {
+    if (session.status === EnyoChargeStatus.Completed) {
+        console.log(`delivered ${session.totalEnergyKwh} kWh`);
+    }
+});
+
+// later
+charge.removeListener(startedId);
+```
+
+The three events are disjoint: `listenForChargeUpdated` fires only for changes to a
+*running* session (meter values, charge mode, smart-charging schedule, additional
+transaction IDs), never for the start or the end, so a handler never sees the same
+event twice. Check `session.status` in the stopped listener — `Completed` and
+`Failed` both end a charge. Meter updates can arrive every few seconds, so keep
+the update callback cheap.
+
 #### `useChargingCard(): EnergyAppChargingCard`
 
 Handle charging authentication:
