@@ -15,6 +15,10 @@ export interface EnyoOnboardingTranslatedContent {
  * Enum representing the lifecycle category of an onboarding guide.
  * Used to distinguish guides that perform different roles, e.g. initial
  * configuration of a package vs. adding or reconnecting a single device.
+ *
+ * @deprecated Superseded by the v2 graph model. Author guides with
+ * {@link EnyoOnboardingV2Guide} via `defineOnboardingGuideV2()`. v1 is retained
+ * for backward compatibility and will be removed in a future major.
  */
 export enum EnyoOnboardingGuideCategory {
     /** Initial package configuration — shown when EnergyAppStateEnum is 'configuration-required' */
@@ -27,6 +31,9 @@ export enum EnyoOnboardingGuideCategory {
 
 /**
  * Enum representing the type of content an onboarding section displays.
+ *
+ * @deprecated Part of the v1 onboarding model. Use the v2 graph model's typed
+ * blocks ({@link EnyoOnboardingV2Block}) via `defineOnboardingGuideV2()` instead.
  */
 export enum EnyoOnboardingSectionType {
     /** A heading section */
@@ -150,6 +157,9 @@ export interface EnyoOnboardingSectionBranch {
  * Represents a content section within an onboarding step.
  * Each section has a heading and content body, both with translations.
  * The `type` field determines which optional nested object is used.
+ *
+ * @deprecated Part of the v1 onboarding model. Use the v2 graph model's typed
+ * blocks ({@link EnyoOnboardingV2Block}) instead.
  */
 export interface EnyoOnboardingSection {
     /** The type of content this section displays */
@@ -209,6 +219,9 @@ export interface EnyoOnboardingStepBranching {
 /**
  * Represents a single step in the onboarding guide.
  * Each step can have an image, multiple content sections, and a next button.
+ *
+ * @deprecated Part of the v1 onboarding model. Use {@link EnyoOnboardingV2Step}
+ * (the v2 graph node) instead.
  */
 export interface EnyoOnboardingStep {
     /** Internal name/identifier for this step */
@@ -231,6 +244,13 @@ export interface EnyoOnboardingStep {
 /**
  * Represents a complete onboarding guide configuration.
  * Can be used for either package-level or appliance-specific onboarding.
+ *
+ * @deprecated Superseded by the v2 graph model. Author new guides with
+ * {@link EnyoOnboardingV2Guide} via `defineOnboardingGuideV2()` and validate them
+ * with `validateOnboardingGuideV2()`. Unlike this linear/name-routed model, v2 is
+ * a directed graph with typed blocks, explicit transitions, terminal exits
+ * (success / support / pause) and start-variant hand-offs. v1 remains supported
+ * for backward compatibility and will be removed in a future major.
  */
 export interface EnyoOnboardingGuide {
     /** Unique identifier for this guide, used in API methods */

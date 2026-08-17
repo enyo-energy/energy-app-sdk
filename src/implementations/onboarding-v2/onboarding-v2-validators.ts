@@ -1,0 +1,409 @@
+/**
+ * Client-side validator for the onboarding-guide **v2** graph model
+ * ({@link EnyoOnboardingV2Guide}). Mirrors the backend's strict check so an
+ * energy app can fail fast locally before publishing.
+ *
+ * `errors` block publishing; `warnings` are advisory (e.g. unreachable step, no
+ * path to success). Use {@link validateOnboardingGuideV2} for the non-throwing
+ * result, or {@link assertValidOnboardingGuideV2} to throw on the first failure.
+ */
+
+import {
+    EnyoOnboardingV2ActionKind,
+    EnyoOnboardingV2BlockType,
+    EnyoOnboardingV2InputValueType,
+    EnyoOnboardingV2TargetType,
+    EnyoOnboardingV2TransitionSourceKind,
+} from '../../types/enyo-onboarding-v2.js';
+import type {
+    EnyoOnboardingV2Guide,
+    EnyoOnboardingV2Step,
+    EnyoOnboardingV2Transition,
+} from '../../types/enyo-onboarding-v2.js';
+import {EnyoDeviceTestOutcomeEnum} from '../../types/enyo-device-test.js';
+
+/**
+ * Thrown by {@link assertValidOnboardingGuideV2} when a guide fails validation.
+ * The message lists every blocking error so callers can surface them directly.
+ */
+export class OnboardingV2ValidationError extends Error {
+    /** The individual blocking errors that caused the failure. */
+    public readonly errors: string[];
+
+    /**
+     * @param errors - The blocking validation errors.
+     */
+    constructor(errors: string[]) {
+        super(`Invalid onboarding guide (v2):\n- ${errors.join('\n- ')}`);
+        this.name = 'OnboardingV2ValidationError';
+        this.errors = errors;
+    }
+}
+
+/** The outcome of validating a v2 guide. */
+export interface OnboardingV2ValidationResult {
+    /** True when there are no blocking `errors` (warnings are still allowed). */
+    ok: boolean;
+    /** Blocking problems — these must be fixed before publishing. */
+    errors: string[];
+    /** Advisory problems — allowed, but usually worth fixing. */
+    warnings: string[];
+}
+
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Structural + plausibility validation of a v2 guide graph. `errors` block
+ * publishing; `warnings` are advisory (e.g. unreachable step, no path to
+ * success).
+ *
+ * @param guide - The v2 guide to validate.
+ * @returns The {@link OnboardingV2ValidationResult}.
+ */
+export function validateOnboardingGuideV2(
+    guide: EnyoOnboardingV2Guide,
+): OnboardingV2ValidationResult {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (!guide.steps?.length) {
+        return {ok: false, errors: ['`steps` must be a non-empty array.'], warnings};
+    }
+
+    const stepIds = new Set<string>();
+    const stepNames = new Set<string>();
+    for (const [i, step] of guide.steps.entries()) {
+        const at = `steps[${i}] (${step.name || '?'})`;
+        if (!step.id) errors.push(`${at}: id is required.`);
+        else if (stepIds.has(step.id)) errors.push(`${at}: duplicate id "${step.id}".`);
+        else stepIds.add(step.id);
+
+        if (!step.name || !SLUG_RE.test(step.name)) {
+            errors.push(`${at}: name must be a kebab-case slug.`);
+        } else if (stepNames.has(step.name)) {
+            errors.push(`${at}: duplicate internal name "${step.name}".`);
+        } else {
+            stepNames.add(step.name);
+        }
+        if (!step.title?.length) warnings.push(`${at}: empty title.`);
+        if (!step.blocks?.length) warnings.push(`${at}: no content blocks.`);
+
+        validateActionBlocks(step, at, errors, warnings);
+        validateLinkBlocks(step, at, errors, warnings);
+        validateInputBlocks(step, at, errors, warnings);
+    }
+
+    if (!guide.startStepId || !stepIds.has(guide.startStepId)) {
+        errors.push('`startStepId` must reference an existing step.');
+    }
+
+    let hasSuccess = false;
+    for (const [i, step] of guide.steps.entries()) {
+        const at = `steps[${i}] (${step.name})`;
+        const required = requiredHandleKeys(step);
+        const wired = new Set<string>();
+
+        for (const t of step.transitions ?? []) {
+            const key = sourceKey(t.source);
+            if (!required.has(key)) errors.push(`${at}: transition source "${key}" matches no option/outcome.`);
+            if (wired.has(key)) errors.push(`${at}: source "${key}" wired more than once.`);
+            wired.add(key);
+
+            const tg = t.target;
+            if (tg.type === EnyoOnboardingV2TargetType.Success) hasSuccess = true;
+            else if (tg.type === EnyoOnboardingV2TargetType.Step && !stepIds.has(tg.stepId)) {
+                errors.push(`${at}: transition targets missing step "${tg.stepId}".`);
+            } else if (
+                tg.type === EnyoOnboardingV2TargetType.Pause &&
+                tg.resumeStepName &&
+                !stepNames.has(tg.resumeStepName)
+            ) {
+                errors.push(`${at}: pause resumeStepName "${tg.resumeStepName}" is unknown.`);
+            } else if (
+                tg.type === EnyoOnboardingV2TargetType.StartVariant &&
+                tg.variant === guide.startVariant
+            ) {
+                warnings.push(`${at}: links to the guide's own start variant.`);
+            }
+        }
+        for (const key of required) {
+            if (!wired.has(key)) errors.push(`${at}: routing handle "${key}" has no transition (dead branch).`);
+        }
+    }
+
+    // reachability
+    if (guide.startStepId && stepIds.has(guide.startStepId)) {
+        const reachable = reachableFrom(guide, guide.startStepId);
+        for (const step of guide.steps) {
+            if (!reachable.has(step.id)) warnings.push(`step "${step.name}" is unreachable from the start.`);
+        }
+    }
+    if (!hasSuccess) warnings.push('No branch reaches a `success` exit.');
+
+    return {ok: errors.length === 0, errors, warnings};
+}
+
+/**
+ * Like {@link validateOnboardingGuideV2}, but throws
+ * {@link OnboardingV2ValidationError} when there are blocking errors. Warnings
+ * never throw; the validated guide is returned on success for chaining.
+ *
+ * @param guide - The v2 guide to validate.
+ * @returns The same guide when it has no blocking errors.
+ * @throws {OnboardingV2ValidationError} When validation produces any error.
+ */
+export function assertValidOnboardingGuideV2(
+    guide: EnyoOnboardingV2Guide,
+): EnyoOnboardingV2Guide {
+    const {ok, errors} = validateOnboardingGuideV2(guide);
+    if (!ok) throw new OnboardingV2ValidationError(errors);
+    return guide;
+}
+
+/** Every {@link EnyoDeviceTestOutcomeEnum} value, for outcome-value checks. */
+const DEVICE_TEST_OUTCOMES: ReadonlySet<string> = new Set(Object.values(EnyoDeviceTestOutcomeEnum));
+
+/**
+ * Validates the action blocks of a step.
+ *
+ * A `device-test` block is checked more strictly than the other action kinds
+ * because its outcomes are not free-form: they are the verdicts the energy app's
+ * {@link EnyoDeviceTestHandler} can return, so an unknown `value` is an outcome
+ * that can never fire and a missing `failed` is an installer stranded on a step
+ * with no exit the moment anything goes wrong.
+ */
+function validateActionBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    for (const block of step.blocks ?? []) {
+        if (block.type !== EnyoOnboardingV2BlockType.Action) continue;
+
+        if (block.action !== EnyoOnboardingV2ActionKind.DeviceTest) {
+            if (block.deviceSelection) {
+                warnings.push(
+                    `${at}: block "${block.id}" sets deviceSelection but is not a device-test action; it is ignored.`,
+                );
+            }
+            continue;
+        }
+
+        const values = new Set<string>();
+        for (const outcome of block.outcomes ?? []) {
+            if (!DEVICE_TEST_OUTCOMES.has(outcome.value)) {
+                errors.push(
+                    `${at}: device-test block "${block.id}" has outcome value "${outcome.value}", which is not an EnyoDeviceTestOutcomeEnum member.`,
+                );
+            } else if (values.has(outcome.value)) {
+                errors.push(
+                    `${at}: device-test block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
+                );
+            }
+            values.add(outcome.value);
+        }
+
+        if (!values.has(EnyoDeviceTestOutcomeEnum.Failed)) {
+            errors.push(
+                `${at}: device-test block "${block.id}" has no "${EnyoDeviceTestOutcomeEnum.Failed}" outcome; every breakdown lands there, so the installer would have no exit.`,
+            );
+        }
+        for (const outcome of DEVICE_TEST_OUTCOMES) {
+            if (!values.has(outcome)) {
+                warnings.push(
+                    `${at}: device-test block "${block.id}" does not handle outcome "${outcome}".`,
+                );
+            }
+        }
+    }
+}
+
+/** An absolute `http(s)` URL — the only scheme a link block may carry. */
+const HTTP_URL_RE = /^https?:\/\/\S+$/i;
+
+/**
+ * Validates the link blocks of a step.
+ *
+ * The scheme check is **security-relevant, not cosmetic**: the installer app
+ * renders a link block as a tap target, so this keeps `javascript:`, `data:` and
+ * `file:` payloads out of it. connect-core enforces the identical rule
+ * server-side and the app re-checks before opening — three gates, deliberately.
+ * Do not relax it to a generic "looks like a URL" test.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateLinkBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    for (const block of step.blocks ?? []) {
+        if (block.type !== EnyoOnboardingV2BlockType.Link) continue;
+
+        if (!block.url?.trim()) {
+            errors.push(`${at}: link block "${block.id}" has no url.`);
+        } else if (!HTTP_URL_RE.test(block.url.trim())) {
+            errors.push(
+                `${at}: link block "${block.id}" url must be an absolute http(s) URL.`,
+            );
+        }
+        if (!block.label?.length) {
+            warnings.push(
+                `${at}: link block "${block.id}" has no label — the raw URL is shown instead.`,
+            );
+        }
+    }
+}
+
+/** Every valid {@link EnyoOnboardingV2InputValueType} value. */
+const INPUT_VALUE_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoOnboardingV2InputValueType));
+
+/** Outcome values the host treats as "the check succeeded". */
+const POSITIVE_INPUT_OUTCOMES: ReadonlySet<string> = new Set(['reachable', 'success', 'found']);
+
+/**
+ * The {@link EnyoDeviceTestOutcomeEnum} verdicts that collapse onto a positive
+ * input outcome; every other verdict collapses onto a negative one.
+ */
+const POSITIVE_DEVICE_TEST_OUTCOMES: ReadonlySet<string> = new Set([
+    EnyoDeviceTestOutcomeEnum.AppliancesCreated,
+    EnyoDeviceTestOutcomeEnum.AppliancesAlreadyExisted,
+    EnyoDeviceTestOutcomeEnum.DeviceConfirmedNoAppliance,
+]);
+
+/** True when `value` routes a successful check (exact verdict or binary key). */
+function isPositiveInputOutcomeValue(value: string): boolean {
+    return POSITIVE_INPUT_OUTCOMES.has(value) || POSITIVE_DEVICE_TEST_OUTCOMES.has(value);
+}
+
+/**
+ * Validates the input blocks of a step.
+ *
+ * An {@link EnyoOnboardingV2InputValueType.IpAddress} block is checked more
+ * strictly than the other value types because it is the only one the host
+ * actually runs a check for: a one-sided outcome set there is a step the
+ * installer can enter and never leave, so both "no positive" and "no negative"
+ * are errors rather than warnings. Unlike a device test there is no `failed`
+ * verdict the host can fall back to.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateInputBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    for (const block of step.blocks ?? []) {
+        if (block.type !== EnyoOnboardingV2BlockType.Input) continue;
+
+        if (!INPUT_VALUE_TYPES.has(block.valueType)) {
+            errors.push(
+                `${at}: input block "${block.id}" has an unknown valueType "${block.valueType}".`,
+            );
+        }
+        if (!block.label?.length) errors.push(`${at}: input block "${block.id}" has no label.`);
+        if (!block.submitLabel?.length) {
+            errors.push(`${at}: input block "${block.id}" has no submitLabel.`);
+        }
+
+        const outcomes = block.outcomes ?? [];
+        if (outcomes.length < 2) {
+            errors.push(`${at}: input block "${block.id}" needs at least 2 outcomes.`);
+        }
+
+        const ids = new Set<string>();
+        const values = new Set<string>();
+        for (const outcome of outcomes) {
+            if (ids.has(outcome.id)) {
+                errors.push(
+                    `${at}: input block "${block.id}" has a duplicate outcome id "${outcome.id}".`,
+                );
+            }
+            ids.add(outcome.id);
+
+            if (values.has(outcome.value)) {
+                errors.push(
+                    `${at}: input block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
+                );
+            }
+            values.add(outcome.value);
+        }
+
+        if (block.valueType === EnyoOnboardingV2InputValueType.IpAddress) {
+            if (![...values].some(isPositiveInputOutcomeValue)) {
+                errors.push(
+                    `${at}: input block "${block.id}" has no outcome for a successful check — ` +
+                        `wire "reachable" (or an EnyoDeviceTestOutcomeEnum success member).`,
+                );
+            }
+            if (![...values].some((v) => !isPositiveInputOutcomeValue(v))) {
+                errors.push(
+                    `${at}: input block "${block.id}" has no outcome for a failed check — ` +
+                        `the installer would be stranded when the device does not answer.`,
+                );
+            }
+        } else if (outcomes.length > 1) {
+            warnings.push(
+                `${at}: input block "${block.id}" has valueType "${block.valueType}", which runs no check — ` +
+                    `only the positive outcome can ever fire, so its other ${outcomes.length - 1} outcome(s) are dead branches.`,
+            );
+        }
+    }
+}
+
+/**
+ * The set of routing-handle keys a step must wire exactly once: one per
+ * choice option / action outcome / input outcome, or the single `continue`
+ * handle when the step has no interactive block.
+ *
+ * A `Link` block contributes nothing — it is passive content.
+ */
+function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
+    const keys = new Set<string>();
+    for (const b of step.blocks ?? []) {
+        if (b.type === EnyoOnboardingV2BlockType.Choice) {
+            for (const o of b.options) keys.add(`choice:${b.id}:${o.id}`);
+        } else if (
+            b.type === EnyoOnboardingV2BlockType.Action ||
+            b.type === EnyoOnboardingV2BlockType.Input
+        ) {
+            for (const o of b.outcomes) keys.add(`outcome:${b.id}:${o.id}`);
+        }
+    }
+    if (keys.size === 0) keys.add('continue');
+    return keys;
+}
+
+/** The canonical handle key for a transition source. */
+function sourceKey(s: EnyoOnboardingV2Transition['source']): string {
+    if (s.kind === EnyoOnboardingV2TransitionSourceKind.Continue) return 'continue';
+    if (s.kind === EnyoOnboardingV2TransitionSourceKind.Choice) return `choice:${s.blockId}:${s.optionId}`;
+    return `outcome:${s.blockId}:${s.outcomeId}`;
+}
+
+/** Breadth-first set of step ids reachable from `startId` via `step` targets. */
+function reachableFrom(guide: EnyoOnboardingV2Guide, startId: string): Set<string> {
+    const byId = new Map(guide.steps.map((s) => [s.id, s]));
+    const seen = new Set<string>();
+    const queue = [startId];
+    while (queue.length) {
+        const id = queue.shift()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        for (const t of byId.get(id)?.transitions ?? []) {
+            if (t.target.type === EnyoOnboardingV2TargetType.Step && !seen.has(t.target.stepId)) {
+                queue.push(t.target.stepId);
+            }
+        }
+    }
+    return seen;
+}

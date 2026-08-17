@@ -1,5 +1,12 @@
 # Onboarding Flow Documentation
 
+> **Deprecation notice.** Everything described below is the **v1** onboarding
+> model (`EnyoOnboardingGuide`, linear steps + sections, name-string routing). It
+> is **deprecated** in favour of the **v2 graph model** — see
+> [v2 (graph model)](#v2-graph-model) at the end of this document. v1 stays
+> supported for backward compatibility and will be removed in a future major;
+> author new guides with `defineOnboardingGuideV2()`.
+
 This document describes how the onboarding flow works in the Energy App SDK. The onboarding system provides a guided multi-step configuration experience for users when an app or appliance requires initial setup.
 
 ## Overview
@@ -755,3 +762,130 @@ enum EnyoApplianceStateEnum {
   ConfigurationRequired = 'configuration-required',
 }
 ```
+
+## v2 (graph model)
+
+The v2 model replaces v1's linear list of steps with a **directed graph**. It is
+the authoring format used by the onboarding-guide editor, the runtime guide
+executor, and the guide-authoring tooling.
+
+### How v2 differs from v1
+
+| | v1 (`EnyoOnboardingGuide`) | v2 (`EnyoOnboardingV2Guide`) |
+|---|---|---|
+| Structure | ordered `steps[]` | graph of `steps[]` reached via transitions |
+| Step content | `sections[]` (heading/text/password/…) | typed `blocks[]` (text/headline/bullets/image/hint/dynamic/choice/action) |
+| Routing | name-string routing (`branches.routes` → `targetStepName`) | explicit `transitions[]`: a source **handle** → a `target` |
+| Exits | implicit (last step / complete) | explicit terminals: `success` \| `support` \| `pause` |
+| Cross-flow | — | `start-variant` hand-off between a vendor/model's flows |
+| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup`) |
+
+Both models are **multilingual**: every author-facing string is an
+`EnyoOnboardingTranslatedContent[]` (de/en). v2 reuses that v1 primitive.
+
+### Authoring a v2 guide
+
+Use `defineOnboardingGuideV2()` with the `onboardingV2Block`, `onboardingV2Target`
+and `on*V2` transition factories, then validate with
+`validateOnboardingGuideV2()` (or `assertValidOnboardingGuideV2()`, which throws).
+
+```typescript
+import {
+  defineOnboardingGuideV2,
+  EnyoOnboardingV2ActionKind,
+  EnyoOnboardingV2StartVariant,
+  onboardingV2Block,
+  onboardingV2Target,
+  onOutcomeV2,
+  validateOnboardingGuideV2,
+} from '@enyo-energy/energy-app-sdk';
+
+const t = (de: string, en: string) => [
+  {language: 'de' as const, value: de},
+  {language: 'en' as const, value: en},
+];
+
+const guide = defineOnboardingGuideV2({
+  title: t('Wechselrichter finden', 'Find the inverter'),
+  startVariant: EnyoOnboardingV2StartVariant.DeviceNotFound,
+  startStepId: 'scan',
+  steps: [
+    {
+      id: 'scan',
+      name: 'scan',
+      title: t('Netzwerk scannen', 'Scan the network'),
+      blocks: [
+        onboardingV2Block.text('intro', t('Wir suchen das Gerät …', 'Searching for the device …')),
+        onboardingV2Block.action('do-scan', EnyoOnboardingV2ActionKind.NetworkScan, t('Scannen', 'Scan'), [
+          {id: 'found', value: 'found', label: t('Gefunden', 'Found')},
+          {id: 'missing', value: 'not-found', label: t('Nicht gefunden', 'Not found')},
+        ]),
+      ],
+      transitions: [
+        onOutcomeV2('do-scan', 'found', onboardingV2Target.success()),
+        onOutcomeV2('do-scan', 'missing', onboardingV2Target.support()),
+      ],
+    },
+  ],
+});
+
+const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
+```
+
+### Content blocks
+
+| Block | Factory | Purpose |
+|---|---|---|
+| `text` / `headline` | `onboardingV2Block.text` / `.headline` | prose / sub-heading |
+| `bullets` | `onboardingV2Block.bullets` | bulleted list (each bullet translated) |
+| `image` | `onboardingV2Block.image` | image + optional caption |
+| `hint` | `onboardingV2Block.hint` | callout (`important` \| `info` \| `warning`) |
+| `dynamic` | `onboardingV2Block.dynamic` | runtime-resolved value (`ocpp-url` \| `device-ip`) |
+| `choice` | `onboardingV2Block.choice` | single-select decision; each option is a routing handle |
+| `action` | `onboardingV2Block.action` | host capability (`network-scan` \| `connection-check` \| `device-test`); each outcome is a routing handle |
+| `action` (device test) | `onboardingV2Block.deviceTest` | hand detected devices to the energy app and branch on whether appliances were found or created |
+
+`choice` and `action` are the graph's **decision points**: every option/outcome
+must be wired by exactly one transition (`onOptionV2` / `onOutcomeV2`); a step with
+no decision block is wired by a single `onContinueV2`. The validator enforces this
+along with unique ids/slugs, resolvable targets, and reachability warnings.
+
+### Testing devices from a guide (`device-test`)
+
+`network-scan` finds a box at an IP. It cannot tell you whether that box is *your*
+inverter — only the energy app knows the register map, the auth handshake and the
+model fingerprint — and it cannot create the appliance. That is what the
+`device-test` action is for: the host hands the detected devices to the app's
+registered handler (`useDeviceTest()`, see the SDK README) and branches on the
+verdict.
+
+Its outcome `value`s are **not free-form**: they must be members of
+`EnyoDeviceTestOutcomeEnum`, because they are exactly what the handler can return.
+
+```typescript
+onboardingV2Block.deviceTest(
+  'probe',
+  t('Gerät prüfen', 'Test the device'),
+  [
+    {id: 'created', value: EnyoDeviceTestOutcomeEnum.AppliancesCreated, label: t('Eingerichtet', 'Set up')},
+    {id: 'known',   value: EnyoDeviceTestOutcomeEnum.AppliancesAlreadyExisted, label: t('Bereits bekannt', 'Already known')},
+    {id: 'auth',    value: EnyoDeviceTestOutcomeEnum.AuthenticationRequired, label: t('Passwort nötig', 'Password needed')},
+    {id: 'failed',  value: EnyoDeviceTestOutcomeEnum.Failed, label: t('Fehlgeschlagen', 'Failed')},
+  ],
+  EnyoOnboardingV2DeviceSelection.Detected,
+)
+```
+
+`deviceSelection` decides which devices are passed along: `detected` (everything
+the preceding `network-scan` turned up, the default), `current` (the single device
+the run is bound to), or `user-selected` (the installer picks first).
+
+The validator adds three rules on top of the normal wiring checks:
+
+- every outcome `value` must be an `EnyoDeviceTestOutcomeEnum` member — an unknown
+  value is a branch that can never fire;
+- `failed` **must** be wired. Every breakdown lands there, including a handler the
+  host gave up waiting for, so a guide without it strands the installer on a step
+  with no exit;
+- each outcome the block does not handle is reported as a warning, so dropping one
+  is a decision rather than an oversight.

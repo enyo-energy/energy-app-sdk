@@ -6,6 +6,12 @@ export enum EnyoAirConditioningApplianceAvailableFeaturesEnum {
     Cooling = 'Cooling',
     /** If the air conditioning unit supports heating */
     Heating = 'Heating',
+    /** If the air conditioning unit reports electrical power values (e.g. consumption in watts) */
+    Power = 'Power',
+    /** If the air conditioning unit's electrical power draw can be steered (e.g. limited to a target in watts) */
+    PowerControllable = 'PowerControllable',
+    /** If the air conditioning unit's target room temperature can be set */
+    TemperatureControllable = 'TemperatureControllable',
 }
 
 /**

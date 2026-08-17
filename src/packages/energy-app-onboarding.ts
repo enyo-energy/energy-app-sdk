@@ -11,6 +11,12 @@ import {
  * Provides methods to create, manage, and navigate through onboarding flows
  * for both package-level and appliance-specific configuration.
  * Supports multiple parallel guides identified by their unique guideName.
+ *
+ * @deprecated This runtime surface operates on the v1 {@link EnyoOnboardingGuide}
+ * model. New guides should be authored with the v2 graph model
+ * ({@link EnyoOnboardingV2Guide} / `defineOnboardingGuideV2()`); a v2 runtime
+ * method (`saveOnboardingGuideV2`) will be added in a follow-up task. v1 remains
+ * supported for backward compatibility.
  */
 export interface EnergyAppOnboarding {
     /**
@@ -30,6 +36,9 @@ export interface EnergyAppOnboarding {
      *   steps: [...]
      * });
      * ```
+     *
+     * @deprecated Saves a v1 {@link EnyoOnboardingGuide}. A v2 equivalent
+     * (`saveOnboardingGuideV2`) accepting {@link EnyoOnboardingV2Guide} is planned.
      */
     saveOnboardingGuide(guide: EnyoOnboardingGuide): Promise<void>;
 
@@ -47,6 +56,9 @@ export interface EnergyAppOnboarding {
      * Returns an array of all guides that have been saved and not yet removed.
      *
      * @returns Promise that resolves to an array of all active onboarding guides
+     *
+     * @deprecated Returns v1 {@link EnyoOnboardingGuide}s. Prefer the v2 graph
+     * model for new guides.
      */
     getAllOnboardingGuides(): Promise<EnyoOnboardingGuide[]>;
 
@@ -64,6 +76,9 @@ export interface EnergyAppOnboarding {
      *   EnyoOnboardingGuideCategory.ReconnectDevice
      * );
      * ```
+     *
+     * @deprecated Returns v1 {@link EnyoOnboardingGuide}s. Prefer the v2 graph
+     * model for new guides.
      */
     getGuidesByCategory(category: EnyoOnboardingGuideCategory): Promise<EnyoOnboardingGuide[]>;
 

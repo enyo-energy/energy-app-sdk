@@ -7,6 +7,16 @@ export enum EnyoHeatingRodApplianceAvailableFeaturesEnum {
     Power = 'Power',
     /** If the heating rod supports available power announcements */
     AvailablePowerAnnouncement = 'AvailablePowerAnnouncement',
+    /**
+     * If the heating rod has a domestic hot water temperature sensor, i.e. it
+     * reports the measured DHW tank temperature rather than only its own
+     * operating state.
+     *
+     * Without this feature {@link EnyoHeatingRodApplianceMetadata.targetTemperatureC}
+     * is a setpoint the appliance cannot verify — consumers should not expect a
+     * measured temperature to compare it against.
+     */
+    DomesticHotWaterSensor = 'DomesticHotWaterSensor',
 }
 
 /**
