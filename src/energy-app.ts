@@ -27,6 +27,7 @@ import {EnergyAppDynamicPriceForecast} from "./packages/energy-app-dynamic-price
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
+import {EnergyAppModbusServer} from "./packages/energy-app-modbus-server.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
@@ -288,6 +289,23 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useModbusRtu(): EnergyAppModbusRtu {
         return this.energyAppSdk.useModbusRtu();
+    }
+
+    /**
+     * Gets the Modbus server API for serving your app's data to Modbus clients.
+     *
+     * The inverse of {@link EnergyApp.useModbus}: the hub itself answers Modbus
+     * requests, and this app supplies the values behind individual registers by
+     * registering them with read/write handlers. The listener is host-owned and
+     * shared with every other installed app, so address ranges are
+     * first-come-first-served across apps.
+     *
+     * Requires the `ModbusServer` permission.
+     *
+     * @returns The Modbus server API instance
+     */
+    public useModbusServer(): EnergyAppModbusServer {
+        return this.energyAppSdk.useModbusServer();
     }
 
     /**

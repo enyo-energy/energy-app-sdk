@@ -25,6 +25,7 @@ import {EnergyAppDynamicPriceForecast} from "./packages/energy-app-dynamic-price
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
 import {EnergyAppSequenceGenerator} from "./packages/energy-app-sequence-generator.js";
 import {EnergyAppModbusRtu} from "./packages/energy-app-modbus-rtu.js";
+import {EnergyAppModbusServer} from "./packages/energy-app-modbus-server.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
@@ -125,6 +126,8 @@ export interface EnyoEnergyAppSdk {
     useSequenceGenerator: () => EnergyAppSequenceGenerator;
     /** Get the Modbus RTU serial communication API */
     useModbusRtu: () => EnergyAppModbusRtu;
+    /** Get the Modbus server API for serving registers to Modbus clients */
+    useModbusServer: () => EnergyAppModbusServer;
     /** Get the EEbus SHIP/SPINE communication API for device pairing, data access, and power management */
     useEebus: () => EnergyAppEebus;
     /** Get the MQTT communication API for connecting to internal or external MQTT brokers */

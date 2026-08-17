@@ -75,6 +75,7 @@ export enum EnergyAppPermissionTypeEnum {
     EnergyManager = 'EnergyManager',
     ElectricityTariff = 'ElectricityTariff',
     ModbusRtu = 'ModbusRtu',
+    ModbusServer = 'ModbusServer',
     EnergyPrices = 'EnergyPrices',
     WeatherForecastRegister = 'WeatherForecastRegister',
     WeatherForecastUse = 'WeatherForecastUse',
