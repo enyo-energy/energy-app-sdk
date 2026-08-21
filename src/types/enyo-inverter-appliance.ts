@@ -44,4 +44,17 @@ export interface EnyoInverterApplianceMetadata {
      * `undefined` means "not configured" and should be treated as `false`.
      */
     blockFeedInOnNegativePrices?: boolean;
+    /**
+     * Whether the energy manager may actively steer this inverter (e.g. curtail
+     * production). When omitted, consumers fall back to their configured
+     * default behaviour — same contract as the SDK's own `controlAllowed`.
+     */
+    controlAllowed?: boolean;
+    /**
+     * Peak power of the PV modules attached to this inverter, in Watt-peak, as
+     * stated on the Anlagenpass. Distinct from `maxPvProductionW`, which is
+     * what the inverter itself can put out on the AC side; together with
+     * `moduleGroups` it also gives the power of a single module.
+     */
+    installedPeakPowerWp?: number;
 }
