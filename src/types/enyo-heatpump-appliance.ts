@@ -3,6 +3,8 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     DomesticHotWater = 'DomesticHotWater',
     /** If the heatpump has a heating rod*/
     HeatingRod = 'HeatingRod',
+    /** If the heating rod of the heatpump can be actively controlled (steered) by the energy manager */
+    HeatingRodControllable = 'HeatingRodControllable',
     /** If the heatpump supports room overheating via heating circuits */
     RoomOverheating = 'RoomOverheating',
     /** If the heatpump supports buffer tank overheating */
@@ -57,6 +59,18 @@ export enum EnyoHeatpumpApplianceAdditionalDeviceEnum {
     HeatingRod = 'HeatingRod',
     /** A solar thermal system is present in the installation */
     SolarThermal = 'SolarThermal',
+}
+
+/**
+ * Describes how the heating rod of a heatpump installation is used.
+ * Consumers (UI, energy manager) use this to decide whether the heating rod is
+ * the sole heat source or only assists the compressor.
+ */
+export enum EnyoHeatpumpApplianceHeatingRodUsageEnum {
+    /** The heating rod is the only heat source used (no compressor support) */
+    OnlyHeatingRot = 'OnlyHeatingRot',
+    /** The heating rod is used in addition to the compressor to further increase the temperature */
+    HeatingRodForTemperatureIncrease = 'HeatingRodForTemperatureIncrease',
 }
 
 /**
@@ -133,4 +147,11 @@ export interface EnyoHeatpumpApplianceMetadata {
      * heatpump (e.g. a heating rod or a solar thermal system).
      */
     additionalDevices?: EnyoHeatpumpApplianceAdditionalDeviceEnum[];
+    /**
+     * How the heating rod of the installation is used (e.g. as the only heat
+     * source or only to further increase the temperature on top of the
+     * compressor). Only meaningful if the heatpump has a heating rod
+     * (see {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingRod}).
+     */
+    heatingRodUsage?: EnyoHeatpumpApplianceHeatingRodUsageEnum;
 }

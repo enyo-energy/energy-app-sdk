@@ -164,14 +164,52 @@ export interface EnyoFlexibilityAnnouncementContext {
     heatpumpTargetType?: EnyoFlexibilityHeatpumpTargetTypeEnum;
     /** For air-conditioning announcements: what the flexibility is aimed at. */
     airConditioningTargetType?: EnyoFlexibilityAirConditioningTargetTypeEnum;
+    /**
+     * For storage announcements: the round-trip cost of cycling the battery, in
+     * EUR per kWh. The floor a discharge has to beat to be worth licensing.
+     */
+    storageCycleCostEurPerKwh?: number;
+    /**
+     * For storage announcements: the physical discharge floor, in Watts. Signed —
+     * negative means discharge, so this is the most negative power the storage can
+     * physically reach.
+     */
+    storageMinPowerW?: number;
+    /** For storage announcements: the physical charge ceiling, in Watts. */
+    storageMaxPowerW?: number;
+    /** For storage announcements: usable capacity of the storage, in Wh. */
+    storageCapacityWh?: number;
+    /**
+     * For storage announcements: the discharge power we will actually command, in
+     * Watts. May be well inside {@link storageMinPowerW} — today it is `0`, i.e. we
+     * license discharge without commanding it.
+     */
+    storageCommandableDischargeW?: number;
+    /**
+     * For storage announcements: whether the storage accepts an explicit
+     * `Discharge 0` command, i.e. can be told to hold rather than only being left
+     * alone.
+     */
+    storageCanHold?: boolean;
 }
 
 // ─── Category announcements ─────────────────────────────────
 
 /** Fields shared by every category-scoped flexibility announcement. */
 export interface EnyoCategoryFlexibilityAnnouncementBase {
+    /**
+     * What this announcement IS, stable across cycles — e.g. `storage:peak-requirement`.
+     * A category speaks with several at once and (category, type) does not tell them
+     * apart. REQUIRED: a positional identity changes whenever a neighbour appears.
+     */
+    id: string;
     /** The appliance category this demand aggregates (e.g. `Charger`). */
     category: EnyoApplianceTypeEnum;
+    /**
+     * The appliance this announcement speaks for, when a category announces per
+     * appliance rather than as one aggregate. Absent = the whole category.
+     */
+    applianceId?: string;
     /** Optional extra context for the decision maker; absent for most announcements. */
     context?: EnyoFlexibilityAnnouncementContext;
 }
@@ -186,6 +224,12 @@ export interface EnyoCategoryRequiredKwhTargetAnnouncement extends EnyoCategoryF
         kwh: number;
         /** Power band the delivery may use. */
         power: EnyoFlexibilityPowerBand;
+        /**
+         * Price ceiling, when the requirement is economic rather than absolute.
+         * Present on the wire today; without it every economic requirement looked
+         * like a MUST-RUN in diagnostics.
+         */
+        priceLimitEuroCent?: number;
     };
 }
 
@@ -279,10 +323,13 @@ export enum EnyoCategoryFlexibilityGrantStatusEnum {
  * A grant is deliberately flatter than the announcement it answers: the decision
  * maker replies with one allocation — a window, a power envelope, and (for the
  * energy-target and discharge variants) an amount of energy — regardless of which
- * announcement variant produced it. Pairing is by `category` +
- * `flexibilityAnnouncementType`, which is unique within a single publish.
+ * announcement variant produced it. Pairing is by `announcementId` — the `id` of
+ * the announcement being answered — which stays stable across cycles and tells
+ * apart the several announcements one category may speak with at once.
  */
 export interface EnyoCategoryFlexibilityGrant {
+    /** The `id` of the announcement this answers. */
+    announcementId: string;
     /** The appliance category this allocation is for (e.g. `Charger`). */
     category: EnyoApplianceTypeEnum;
     /** Which announcement variant this grant answers. */
@@ -328,14 +375,13 @@ export interface EnyoCategoryFlexibilityDiagnostics {
     /** ISO 8601 timestamp when this snapshot was taken. */
     generatedAtIso: string;
     /**
-     * The flexibility the managers announced, one entry per
-     * (category, announcement variant).
+     * The flexibility the managers announced, one entry per announcement `id`.
      */
     announced: EnyoCategoryFlexibilityAnnouncement[];
     /**
      * What the decision maker granted in answer to `announced`. Every entry SHOULD
-     * pair with an `announced` entry by `category` + `flexibilityAnnouncementType`;
-     * an announcement with no matching grant means the decision had not been taken
+     * pair with an `announced` entry by `announcementId`; an announcement with no
+     * matching grant means the decision had not been taken
      * yet when the snapshot was produced.
      */
     granted: EnyoCategoryFlexibilityGrant[];

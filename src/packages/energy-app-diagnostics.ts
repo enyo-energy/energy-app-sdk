@@ -100,6 +100,7 @@ export interface EnergyAppDiagnostics {
      *     generatedAtIso: new Date().toISOString(),
      *     announced: [
      *         {
+     *             id: 'charger:flexible-kwh',
      *             category: EnyoApplianceTypeEnum.Charger,
      *             flexibilityAnnouncementType:
      *                 EnyoFlexibilityAnnouncementTypeEnum.FlexibleKwhTarget,
@@ -112,6 +113,8 @@ export interface EnergyAppDiagnostics {
      *             },
      *         },
      *         {
+     *             id: 'storage:flexible-discharge',
+     *             applianceId: 'battery-1',
      *             category: EnyoApplianceTypeEnum.Storage,
      *             flexibilityAnnouncementType:
      *                 EnyoFlexibilityAnnouncementTypeEnum.FlexibleDischarge,
@@ -126,6 +129,7 @@ export interface EnergyAppDiagnostics {
      *     ],
      *     granted: [
      *         {
+     *             announcementId: 'charger:flexible-kwh',
      *             category: EnyoApplianceTypeEnum.Charger,
      *             flexibilityAnnouncementType:
      *                 EnyoFlexibilityAnnouncementTypeEnum.FlexibleKwhTarget,
@@ -136,6 +140,7 @@ export interface EnergyAppDiagnostics {
      *             reason: 'grid connection point limit',
      *         },
      *         {
+     *             announcementId: 'storage:flexible-discharge',
      *             category: EnyoApplianceTypeEnum.Storage,
      *             flexibilityAnnouncementType:
      *                 EnyoFlexibilityAnnouncementTypeEnum.FlexibleDischarge,
