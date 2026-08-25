@@ -33,6 +33,15 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     PvSurplusAvailable = 'pv-surplus-available',
     /** Command issued because PV surplus is unavailable */
     PvSurplusUnavailable = 'pv-surplus-unavailable',
+    /**
+     * Command issued because PV surplus exists but is allocated to another
+     * appliance. Belongs to the
+     * {@link EnyoDataBusCommandReasonCategoryEnum.PvSurplus} category. Set
+     * {@link EnyoDataBusCommandReason.inFavourOfApplianceType} so the
+     * end-user text can name the appliance that got the surplus instead of
+     * saying "elsewhere".
+     */
+    PvSurplusAllocatedElsewhere = 'pv-surplus-allocated-elsewhere',
     /** Command issued because battery capacity is available */
     BatteryCapacityAvailable = 'battery-capacity-available',
     /** Command issued because battery capacity is unavailable */
@@ -112,6 +121,16 @@ export interface EnyoDataBusCommandReason {
     temperatureC?: number;
     /** Relevant state of charge as a percentage (battery-driven reasons) */
     socPercent?: number;
+    /**
+     * The appliance category the decision was made in favour of.
+     *
+     * Set on reasons that describe a trade-off between appliances — most
+     * notably
+     * {@link EnyoDataBusCommandReasonTypeEnum.PvSurplusAllocatedElsewhere} —
+     * so the end-user text can name the winning appliance (e.g. "the battery")
+     * rather than saying "elsewhere".
+     */
+    inFavourOfApplianceType?: EnyoApplianceTypeEnum;
 }
 
 /**

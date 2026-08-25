@@ -757,17 +757,32 @@ the update callback cheap.
 
 #### `useChargingCard(): EnergyAppChargingCard`
 
-Handle charging authentication:
+Read registered charging cards and pair new RFID cards:
 
 ```typescript
 const chargingCards = energyApp.useChargingCard();
 
-// Validate charging card
-const isValid = await chargingCards.validateCard('RFID-12345');
+// List all registered charging cards
+const cards = await chargingCards.list();
 
-// Get card information
-const cardInfo = await chargingCards.getCardInfo('RFID-12345');
+// Get a single card
+const card = await chargingCards.getById('card-id');
+
+// Handle pairing requests coming from the app
+const listenerId = chargingCards.listenForPairingStarted(async (request) => {
+    // Put the reader into pairing mode and wait for a card to be presented.
+    // Resolve with the RFID read from the card - the host assigns it to
+    // request.chargingCardId and clears its pendingRegistration flag.
+    return await charger.enterPairingMode(request.applianceId, request.timeoutMs);
+});
+
+chargingCards.removeListener(listenerId);
 ```
+
+Reject the promise returned by the pairing listener when no card was presented or
+the charger refused to enter pairing mode - the host then reports the attempt as
+failed and leaves the card pending. A package managing several chargers should
+check `request.applianceId` and reject requests for appliances it does not own.
 
 ### User Features
 
