@@ -776,9 +776,9 @@ executor, and the guide-authoring tooling.
 | Structure | ordered `steps[]` | graph of `steps[]` reached via transitions |
 | Step content | `sections[]` (heading/text/password/…) | typed `blocks[]` (text/headline/bullets/image/hint/dynamic/choice/action) |
 | Routing | name-string routing (`branches.routes` → `targetStepName`) | explicit `transitions[]`: a source **handle** → a `target` |
-| Exits | implicit (last step / complete) | explicit terminals: `success` \| `support` \| `pause` |
+| Exits | implicit (last step / complete) | explicit terminals: `success` \| `support` \| `pause` (incl. the `enyo-todo` hand-off) |
 | Cross-flow | — | `start-variant` hand-off between a vendor/model's flows |
-| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup`) |
+| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup`) + `requiresNetworkScan` |
 
 Both models are **multilingual**: every author-facing string is an
 `EnyoOnboardingTranslatedContent[]` (de/en). v2 reuses that v1 primitive.
@@ -844,8 +844,12 @@ const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 | `choice` | `onboardingV2Block.choice` | single-select decision; each option is a routing handle |
 | `action` | `onboardingV2Block.action` | host capability (`network-scan` \| `connection-check` \| `device-test`); each outcome is a routing handle |
 | `action` (device test) | `onboardingV2Block.deviceTest` | hand detected devices to the energy app and branch on whether appliances were found or created |
+| `action` (OCPP) | `onboardingV2Block.ocppConnect` | wait for an OCPP charger to dial into enyo's CSMS; branches `connected` \| `timeout` |
+| `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
+| `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
+| `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
 
-`choice` and `action` are the graph's **decision points**: every option/outcome
+`choice`, `action`, `input` and `auth` are the graph's **decision points**: every option/outcome
 must be wired by exactly one transition (`onOptionV2` / `onOutcomeV2`); a step with
 no decision block is wired by a single `onContinueV2`. The validator enforces this
 along with unique ids/slugs, resolvable targets, and reachability warnings.
@@ -889,3 +893,105 @@ The validator adds three rules on top of the normal wiring checks:
   with no exit;
 - each outcome the block does not handle is reported as a warning, so dropping one
   is a decision rather than an oversight.
+
+### Exits: success, support, and "enyo übernimmt"
+
+A run leaves the graph through a `target` that is not a step:
+
+| Target | Factory | Meaning |
+|---|---|---|
+| `success` | `onboardingV2Target.success()` | onboarding succeeded; hand back to the app |
+| `support` | `onboardingV2Target.support(reason?)` | escalate to enyo support |
+| `pause` (`enyo-todo`) | `onboardingV2Target.enyoTakeover()` | **enyo übernimmt** — the installer is done, enyo finishes the setup |
+| `pause` (other reasons) | `onboardingV2Target.pause(reason, resumeStepName?)` | park the run, resumable |
+| `start-variant` | `onboardingV2Target.variant(v)` | jump into another start variant's flow |
+
+`enyo-todo` still travels on the wire as a `pause` reason — nothing migrates — but
+it is **a terminal exit alongside `success` and `support`**, not a park: the app
+renders the takeover screen instead of bouncing to the cockpit, and there is
+nothing for the installer to resume (a `resumeStepName` on it is warned about and
+ignored).
+
+The validator counts it accordingly: a guide completes if any branch reaches
+`success` **or** the `enyo-todo` hand-off. A guide that legitimately ends in a
+hand-off no longer draws a "can never complete" warning, so there is never a
+reason to author a fake success path to silence one.
+
+`support` takes an optional `reason` — a short internal key such as
+`firmware-too-old`, never shown to the installer — so a hand-off can say what
+failed:
+
+```typescript
+onOutcomeV2('probe', 'failed', onboardingV2Target.support('device-unreachable-after-retry'))
+```
+
+### Signing into the energy app (`auth`)
+
+An OAuth app (Solarweb, iSolarCloud, …) sees nothing until the installer signs
+into the vendor account. The `authentication-required` device-test outcome cannot
+serve as that login — it *routes to* a credentials step, it cannot *be* one. The
+`auth` block is the login itself.
+
+```typescript
+onboardingV2Block.auth(
+  'login',
+  t('Bei Solarweb anmelden', 'Sign in to Solarweb'),
+  {id: 'ok', label: t('Angemeldet', 'Signed in')},
+  {help: t('Zugangsdaten des Anlagenbetreibers nutzen.', "Use the plant owner's credentials.")},
+)
+// transitions: [onOutcomeV2('login', 'ok', onboardingV2Target.step('pick-plant'))]
+```
+
+It exposes exactly **one** handle, and it means "the login succeeded". The
+**server** decides when that fires — only a backend-confirmed session for this app
+and installation releases the step — so a client cannot skip past it, and there is
+no failure branch to author: a failed attempt simply keeps the installer on the
+step to retry.
+
+The validator requires the handle to be wired, allows at most one `auth` block per
+step, and warns when another decision block sits next to it, since that would
+offer a way past a gate the client is not allowed to skip.
+
+### Waiting for an OCPP charger (`ocpp-connect`)
+
+An OCPP wallbox is never on the LAN to be found, so `network-scan` is not a
+substitute — it searches for something that is not there and then frames the
+result as a failure. `ocpp-connect` searches nothing: the installer enters the
+dynamic OCPP URL (`onboardingV2Block.dynamic(..., EnyoOnboardingV2DynamicKind.OcppUrl)`)
+in the charger's own configuration, and this block waits for the charger to dial
+into enyo's CSMS.
+
+```typescript
+onboardingV2Block.ocppConnect('await-ocpp', t('Auf Verbindung warten', 'Wait for the connection'), [
+  {id: 'up',   value: EnyoOnboardingV2OcppConnectOutcome.Connected, label: t('Verbunden', 'Connected')},
+  {id: 'none', value: EnyoOnboardingV2OcppConnectOutcome.Timeout,   label: t('Keine Verbindung', 'No connection')},
+])
+```
+
+Outcome `value`s are closed over `EnyoOnboardingV2OcppConnectOutcome`, and **both**
+must be wired: a charger that never calls home — wrong URL typed, no coverage in
+the garage — is the common case, and a guide without a `timeout` branch strands
+the installer on a spinner.
+
+### Skipping the host's network scan (`requiresNetworkScan`)
+
+`requiresNetworkScan` defaults to `true`: before entering the guide, the host scans
+the local network and frames what follows around what it found. That is right for a
+LAN device and wrong for one that is never there — an OCPP wallbox, a cloud-only
+inverter. Setting it to `false` means *don't search, start here*: the run opens at
+`startStepId` instead of spending ~20 s on a scan that must fail and showing "we
+couldn't find your device".
+
+```typescript
+defineOnboardingGuideV2({
+  title: t('Wallbox über OCPP', 'Wallbox via OCPP'),
+  startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+  requiresNetworkScan: false,
+  startStepId: 'enter-url',
+  steps: [/* … */],
+});
+```
+
+A guide that opts out has no scan results to work with, so `deviceSelection:
+'detected'` has nothing to select from — the validator warns about that
+combination unless the guide runs its own `network-scan` action first.

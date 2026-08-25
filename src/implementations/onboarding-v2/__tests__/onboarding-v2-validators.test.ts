@@ -6,6 +6,7 @@ import {
     EnyoOnboardingV2ChoiceLayout,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2InputValueType,
+    EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2StartVariant,
     type EnyoOnboardingV2Guide,
@@ -536,6 +537,261 @@ describe('input blocks', () => {
             ]),
         );
         expect(warnings.some((w) => w.includes('which runs no check'))).toBe(true);
+    });
+});
+
+describe('enyo-takeover exit', () => {
+    /**
+     * A guide whose only exits are the given targets, reached from a two-option
+     * choice — so "does the guide complete?" is the only thing under test.
+     */
+    function guideEndingIn(...targets: ReturnType<typeof onboardingV2Target.support>[]): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Übergabe', 'Hand-off'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'hand-off',
+                    title: t('Ende', 'End'),
+                    blocks: [
+                        onboardingV2Block.choice('c1', [
+                            {id: 'a', label: t('A', 'A')},
+                            {id: 'b', label: t('B', 'B')},
+                        ]),
+                    ],
+                    transitions: [
+                        onOptionV2('c1', 'a', targets[0]!),
+                        onOptionV2('c1', 'b', targets[1]!),
+                    ],
+                },
+            ],
+        });
+    }
+
+    it('treats the enyo-todo hand-off as a completing exit', () => {
+        const result = validateOnboardingGuideV2(
+            guideEndingIn(onboardingV2Target.enyoTakeover(), onboardingV2Target.support()),
+        );
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('completing exit'))).toBe(false);
+    });
+
+    it('still warns when nothing completes the run', () => {
+        const result = validateOnboardingGuideV2(
+            guideEndingIn(
+                onboardingV2Target.support(),
+                onboardingV2Target.pause(EnyoOnboardingV2PauseReason.InstallerContacted),
+            ),
+        );
+        expect(result.warnings.some((w) => w.includes('completing exit'))).toBe(true);
+    });
+
+    it('warns that a resumeStepName on an enyo-todo hand-off is ignored', () => {
+        const result = validateOnboardingGuideV2(
+            guideEndingIn(
+                onboardingV2Target.pause(EnyoOnboardingV2PauseReason.EnyoTodo, 'hand-off'),
+                onboardingV2Target.success(),
+            ),
+        );
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('resumeStepName'))).toBe(true);
+    });
+
+    it('carries a support reason through the target factory', () => {
+        expect(onboardingV2Target.support('firmware-too-old')).toEqual({
+            type: 'support',
+            reason: 'firmware-too-old',
+        });
+    });
+});
+
+describe('auth blocks', () => {
+    /** A guide whose single step is a login routed to success. */
+    function loginGuide(): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Anmeldung', 'Sign-in'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 's1',
+            requiresNetworkScan: false,
+            steps: [
+                {
+                    id: 's1',
+                    name: 'login',
+                    title: t('Anmelden', 'Sign in'),
+                    blocks: [
+                        onboardingV2Block.auth(
+                            'a1',
+                            t('Bei Solarweb anmelden', 'Sign in to Solarweb'),
+                            {id: 'ok', label: t('Angemeldet', 'Signed in')},
+                            {help: t('Konto des Betreibers', "Operator's account")},
+                        ),
+                    ],
+                    transitions: [onOutcomeV2('a1', 'ok', onboardingV2Target.success())],
+                },
+            ],
+        });
+    }
+
+    it('accepts a login step wired through its single success handle', () => {
+        const result = validateOnboardingGuideV2(loginGuide());
+        expect(result.ok).toBe(true);
+        expect(result.errors).toEqual([]);
+    });
+
+    it('requires the success handle to be wired', () => {
+        const guide = loginGuide();
+        guide.steps[0]!.transitions = [];
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('outcome:a1:ok'))).toBe(true);
+    });
+
+    it('rejects a second auth block in the same step', () => {
+        const guide = loginGuide();
+        guide.steps[0]!.blocks.push(
+            onboardingV2Block.auth('a2', t('Nochmal', 'Again'), {id: 'ok2', label: t('OK', 'OK')}),
+        );
+        guide.steps[0]!.transitions.push(onOutcomeV2('a2', 'ok2', onboardingV2Target.success()));
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('at most one login'))).toBe(true);
+    });
+
+    it('warns when another decision block offers a way past the login', () => {
+        const guide = loginGuide();
+        guide.steps[0]!.blocks.push(
+            onboardingV2Block.choice('c1', [
+                {id: 'skip', label: t('Überspringen', 'Skip')},
+                {id: 'stay', label: t('Bleiben', 'Stay')},
+            ]),
+        );
+        guide.steps[0]!.transitions.push(
+            onOptionV2('c1', 'skip', onboardingV2Target.success()),
+            onOptionV2('c1', 'stay', onboardingV2Target.support()),
+        );
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.warnings.some((w) => w.includes('way past a login'))).toBe(true);
+    });
+});
+
+describe('ocpp-connect action blocks', () => {
+    /** A guide whose single step is an ocpp-connect block wiring `values`. */
+    function ocppGuide(...values: string[]): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Wallbox verbinden', 'Connect the wallbox'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 's1',
+            requiresNetworkScan: false,
+            steps: [
+                {
+                    id: 's1',
+                    name: 'await-ocpp',
+                    title: t('Warten', 'Waiting'),
+                    blocks: [
+                        onboardingV2Block.ocppConnect(
+                            'o1',
+                            t('Verbindung abwarten', 'Wait for the connection'),
+                            values.map((value, i) => ({id: `h${i}`, value, label: t(value, value)})),
+                        ),
+                    ],
+                    transitions: values.map((_, i) =>
+                        onOutcomeV2('o1', `h${i}`, i === 0 ? onboardingV2Target.success() : onboardingV2Target.support()),
+                    ),
+                },
+            ],
+        });
+    }
+
+    it('accepts both outcomes wired', () => {
+        const result = validateOnboardingGuideV2(
+            ocppGuide(
+                EnyoOnboardingV2OcppConnectOutcome.Connected,
+                EnyoOnboardingV2OcppConnectOutcome.Timeout,
+            ),
+        );
+        expect(result.ok).toBe(true);
+        expect(result.errors).toEqual([]);
+    });
+
+    it('rejects a missing timeout branch', () => {
+        const result = validateOnboardingGuideV2(
+            ocppGuide(EnyoOnboardingV2OcppConnectOutcome.Connected),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('"timeout" outcome'))).toBe(true);
+    });
+
+    it('rejects an outcome value outside the enum', () => {
+        const result = validateOnboardingGuideV2(
+            ocppGuide('connected', 'timeout', 'maybe'),
+        );
+        expect(result.ok).toBe(false);
+        expect(
+            result.errors.some((e) => e.includes('EnyoOnboardingV2OcppConnectOutcome')),
+        ).toBe(true);
+    });
+});
+
+describe('requiresNetworkScan', () => {
+    it('warns when a scan-free guide device-tests detected devices', () => {
+        const guide = defineOnboardingGuideV2({
+            title: t('Ohne Scan', 'No scan'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 's1',
+            requiresNetworkScan: false,
+            steps: [
+                {
+                    id: 's1',
+                    name: 'probe',
+                    title: t('Prüfen', 'Probe'),
+                    blocks: [
+                        onboardingV2Block.deviceTest(
+                            'd1',
+                            t('Prüfen', 'Probe'),
+                            [
+                                {
+                                    id: 'ok',
+                                    value: EnyoDeviceTestOutcomeEnum.AppliancesCreated,
+                                    label: t('OK', 'OK'),
+                                },
+                                {id: 'no', value: EnyoDeviceTestOutcomeEnum.Failed, label: t('Fehler', 'Failed')},
+                            ],
+                            EnyoOnboardingV2DeviceSelection.Detected,
+                        ),
+                    ],
+                    transitions: [
+                        onOutcomeV2('d1', 'ok', onboardingV2Target.success()),
+                        onOutcomeV2('d1', 'no', onboardingV2Target.support()),
+                    ],
+                },
+            ],
+        });
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('requiresNetworkScan'))).toBe(true);
+    });
+
+    it('stays quiet for a scan-free guide that does not depend on detected devices', () => {
+        const result = validateOnboardingGuideV2(
+            defineOnboardingGuideV2({
+                title: t('Ohne Scan', 'No scan'),
+                startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+                startStepId: 's1',
+                requiresNetworkScan: false,
+                steps: [
+                    {
+                        id: 's1',
+                        name: 'done',
+                        title: t('Fertig', 'Done'),
+                        blocks: [onboardingV2Block.text('b1', t('Fertig', 'Done'))],
+                        transitions: [onContinueV2(onboardingV2Target.success())],
+                    },
+                ],
+            }),
+        );
+        expect(result.warnings.some((w) => w.includes('requiresNetworkScan'))).toBe(false);
     });
 });
 

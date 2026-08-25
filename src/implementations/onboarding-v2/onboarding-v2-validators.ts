@@ -4,18 +4,28 @@
  * energy app can fail fast locally before publishing.
  *
  * `errors` block publishing; `warnings` are advisory (e.g. unreachable step, no
- * path to success). Use {@link validateOnboardingGuideV2} for the non-throwing
- * result, or {@link assertValidOnboardingGuideV2} to throw on the first failure.
+ * path to a completing exit). Use {@link validateOnboardingGuideV2} for the
+ * non-throwing result, or {@link assertValidOnboardingGuideV2} to throw on the
+ * first failure.
+ *
+ * A run completes either through a `success` target **or** through the
+ * "enyo übernimmt" hand-off (`pause` with reason
+ * {@link EnyoOnboardingV2PauseReason.EnyoTodo}) — both count, so a guide that
+ * legitimately ends in a hand-off is not nagged about a missing success path.
  */
 
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2BlockType,
+    EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2InputValueType,
+    EnyoOnboardingV2OcppConnectOutcome,
+    EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2TargetType,
     EnyoOnboardingV2TransitionSourceKind,
 } from '../../types/enyo-onboarding-v2.js';
 import type {
+    EnyoOnboardingV2ActionBlock,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2Step,
     EnyoOnboardingV2Transition,
@@ -54,8 +64,8 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
  * Structural + plausibility validation of a v2 guide graph. `errors` block
- * publishing; `warnings` are advisory (e.g. unreachable step, no path to
- * success).
+ * publishing; `warnings` are advisory (e.g. unreachable step, no path to a
+ * completing exit — `success` or the `enyo-todo` hand-off).
  *
  * @param guide - The v2 guide to validate.
  * @returns The {@link OnboardingV2ValidationResult}.
@@ -91,13 +101,14 @@ export function validateOnboardingGuideV2(
         validateActionBlocks(step, at, errors, warnings);
         validateLinkBlocks(step, at, errors, warnings);
         validateInputBlocks(step, at, errors, warnings);
+        validateAuthBlocks(step, at, errors, warnings);
     }
 
     if (!guide.startStepId || !stepIds.has(guide.startStepId)) {
         errors.push('`startStepId` must reference an existing step.');
     }
 
-    let hasSuccess = false;
+    let hasCompletingExit = false;
     for (const [i, step] of guide.steps.entries()) {
         const at = `steps[${i}] (${step.name})`;
         const required = requiredHandleKeys(step);
@@ -110,15 +121,24 @@ export function validateOnboardingGuideV2(
             wired.add(key);
 
             const tg = t.target;
-            if (tg.type === EnyoOnboardingV2TargetType.Success) hasSuccess = true;
+            if (tg.type === EnyoOnboardingV2TargetType.Success) hasCompletingExit = true;
             else if (tg.type === EnyoOnboardingV2TargetType.Step && !stepIds.has(tg.stepId)) {
                 errors.push(`${at}: transition targets missing step "${tg.stepId}".`);
-            } else if (
-                tg.type === EnyoOnboardingV2TargetType.Pause &&
-                tg.resumeStepName &&
-                !stepNames.has(tg.resumeStepName)
-            ) {
-                errors.push(`${at}: pause resumeStepName "${tg.resumeStepName}" is unknown.`);
+            } else if (tg.type === EnyoOnboardingV2TargetType.Pause) {
+                // "enyo übernimmt" is a terminal hand-off, not a park: it completes
+                // the run for the installer, so it satisfies the completion check
+                // and has nothing to resume at.
+                if (tg.reason === EnyoOnboardingV2PauseReason.EnyoTodo) {
+                    hasCompletingExit = true;
+                    if (tg.resumeStepName) {
+                        warnings.push(
+                            `${at}: pause reason "${EnyoOnboardingV2PauseReason.EnyoTodo}" is a hand-off to enyo, ` +
+                                `not a resumable park — resumeStepName "${tg.resumeStepName}" is ignored.`,
+                        );
+                    }
+                } else if (tg.resumeStepName && !stepNames.has(tg.resumeStepName)) {
+                    errors.push(`${at}: pause resumeStepName "${tg.resumeStepName}" is unknown.`);
+                }
             } else if (
                 tg.type === EnyoOnboardingV2TargetType.StartVariant &&
                 tg.variant === guide.startVariant
@@ -138,7 +158,14 @@ export function validateOnboardingGuideV2(
             if (!reachable.has(step.id)) warnings.push(`step "${step.name}" is unreachable from the start.`);
         }
     }
-    if (!hasSuccess) warnings.push('No branch reaches a `success` exit.');
+    if (!hasCompletingExit) {
+        warnings.push(
+            'No branch reaches a completing exit — wire a `success` target, or a `pause` with reason ' +
+                `"${EnyoOnboardingV2PauseReason.EnyoTodo}" when enyo takes the setup over.`,
+        );
+    }
+
+    validateNetworkScanFlag(guide, warnings);
 
     return {ok: errors.length === 0, errors, warnings};
 }
@@ -186,6 +213,9 @@ function validateActionBlocks(
                 warnings.push(
                     `${at}: block "${block.id}" sets deviceSelection but is not a device-test action; it is ignored.`,
                 );
+            }
+            if (block.action === EnyoOnboardingV2ActionKind.OcppConnect) {
+                validateOcppConnectOutcomes(block, at, errors);
             }
             continue;
         }
@@ -360,6 +390,148 @@ function validateInputBlocks(
     }
 }
 
+/** Every {@link EnyoOnboardingV2OcppConnectOutcome} value. */
+const OCPP_CONNECT_OUTCOMES: ReadonlySet<string> = new Set(
+    Object.values(EnyoOnboardingV2OcppConnectOutcome),
+);
+
+/**
+ * Validates the outcomes of an {@link EnyoOnboardingV2ActionKind.OcppConnect}
+ * block.
+ *
+ * The block waits for the charger to dial into our CSMS; it can only ever report
+ * that the connection arrived or that it did not, so its outcome `value`s are
+ * closed over {@link EnyoOnboardingV2OcppConnectOutcome}. Both must be wired: a
+ * charger that never calls home — wrong URL typed, no mobile coverage in the
+ * garage — is the *common* case, and a guide without a `timeout` branch strands
+ * the installer on a spinner.
+ *
+ * @param block - The ocpp-connect action block being checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ */
+function validateOcppConnectOutcomes(
+    block: EnyoOnboardingV2ActionBlock,
+    at: string,
+    errors: string[],
+): void {
+    const values = new Set<string>();
+    for (const outcome of block.outcomes ?? []) {
+        if (!OCPP_CONNECT_OUTCOMES.has(outcome.value)) {
+            errors.push(
+                `${at}: ocpp-connect block "${block.id}" has outcome value "${outcome.value}", which is not an EnyoOnboardingV2OcppConnectOutcome member.`,
+            );
+        } else if (values.has(outcome.value)) {
+            errors.push(
+                `${at}: ocpp-connect block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
+            );
+        }
+        values.add(outcome.value);
+    }
+    for (const required of OCPP_CONNECT_OUTCOMES) {
+        if (!values.has(required)) {
+            errors.push(
+                `${at}: ocpp-connect block "${block.id}" has no "${required}" outcome; both results must be routed.`,
+            );
+        }
+    }
+}
+
+/**
+ * Validates the auth blocks of a step.
+ *
+ * An auth block has exactly one handle, and the **server** decides when it
+ * fires — there is no failure branch to author, because a failed login keeps the
+ * installer on the step to retry. So the checks are about the handle existing and
+ * being routable at all, and about the step not pretending the login is optional:
+ * a second decision block next to it would offer a way past a gate the client is
+ * not allowed to skip.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateAuthBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const authBlocks = (step.blocks ?? []).filter(
+        (b) => b.type === EnyoOnboardingV2BlockType.Auth,
+    );
+
+    for (const block of authBlocks) {
+        if (!block.label?.length) errors.push(`${at}: auth block "${block.id}" has no label.`);
+        if (!block.outcome?.id) {
+            errors.push(
+                `${at}: auth block "${block.id}" has no outcome id — its success handle cannot be routed.`,
+            );
+        }
+        if (!block.outcome?.label?.length) {
+            warnings.push(`${at}: auth block "${block.id}" outcome has no label.`);
+        }
+    }
+
+    if (authBlocks.length > 1) {
+        errors.push(`${at}: more than one auth block; a step can hold at most one login.`);
+    }
+    if (authBlocks.length === 1) {
+        const others = (step.blocks ?? []).filter(
+            (b) =>
+                b.type === EnyoOnboardingV2BlockType.Choice ||
+                b.type === EnyoOnboardingV2BlockType.Action ||
+                b.type === EnyoOnboardingV2BlockType.Input,
+        );
+        if (others.length) {
+            warnings.push(
+                `${at}: auth block "${authBlocks[0]!.id}" shares the step with ${others.length} other decision block(s) — ` +
+                    'those give the installer a way past a login the server gates.',
+            );
+        }
+    }
+}
+
+/**
+ * Checks {@link EnyoOnboardingV2Guide.requiresNetworkScan} against what the guide
+ * actually does.
+ *
+ * Opting out means "don't search, start here" — right for a device that is never
+ * on the LAN (an OCPP wallbox), wrong if the guide then relies on scan results.
+ * Both mismatches are warnings, not errors: the flag describes the host's
+ * behaviour before the guide runs, and an author may have a reason.
+ *
+ * @param guide - The guide being validated.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateNetworkScanFlag(guide: EnyoOnboardingV2Guide, warnings: string[]): void {
+    if (guide.requiresNetworkScan !== false) return;
+
+    const blocks = guide.steps.flatMap((s) => s.blocks ?? []);
+    const scansItself = blocks.some(
+        (b) =>
+            b.type === EnyoOnboardingV2BlockType.Action &&
+            b.action === EnyoOnboardingV2ActionKind.NetworkScan,
+    );
+    if (scansItself) return;
+
+    const dependsOnDetected = blocks.some(
+        (b) =>
+            b.type === EnyoOnboardingV2BlockType.Action &&
+            b.action === EnyoOnboardingV2ActionKind.DeviceTest &&
+            (b.deviceSelection ?? EnyoOnboardingV2DeviceSelection.Detected) !==
+                EnyoOnboardingV2DeviceSelection.Current,
+    );
+    if (dependsOnDetected) {
+        warnings.push(
+            'requiresNetworkScan is false, but a device-test block selects from detected devices — ' +
+                'nothing was scanned, so it has nothing to test. Use deviceSelection "current", or run a ' +
+                'network-scan action inside the guide.',
+        );
+    }
+}
+
 /**
  * The set of routing-handle keys a step must wire exactly once: one per
  * choice option / action outcome / input outcome, or the single `continue`
@@ -377,6 +549,8 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             b.type === EnyoOnboardingV2BlockType.Input
         ) {
             for (const o of b.outcomes) keys.add(`outcome:${b.id}:${o.id}`);
+        } else if (b.type === EnyoOnboardingV2BlockType.Auth && b.outcome?.id) {
+            keys.add(`outcome:${b.id}:${b.outcome.id}`);
         }
     }
     if (keys.size === 0) keys.add('continue');

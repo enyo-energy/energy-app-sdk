@@ -16,11 +16,13 @@ import {
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2ChoiceLayout,
     EnyoOnboardingV2DeviceSelection,
+    EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2TargetType,
     EnyoOnboardingV2TransitionSourceKind,
 } from '../../types/enyo-onboarding-v2.js';
 import type {
     EnyoOnboardingV2ActionOutcome,
+    EnyoOnboardingV2AuthOutcome,
     EnyoOnboardingV2Block,
     EnyoOnboardingV2ChoiceOption,
     EnyoOnboardingV2DynamicKind,
@@ -28,7 +30,6 @@ import type {
     EnyoOnboardingV2HintVariant,
     EnyoOnboardingV2InputOutcome,
     EnyoOnboardingV2InputValueType,
-    EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2StartVariant,
     EnyoOnboardingV2Target,
     EnyoOnboardingV2Transition,
@@ -181,6 +182,61 @@ export const onboardingV2Block = {
         deviceSelection,
     }),
     /**
+     * An OCPP-connect action block: wait for the charger to dial into enyo's
+     * CSMS after the installer has entered the dynamic OCPP URL in it.
+     *
+     * A convenience wrapper over {@link onboardingV2Block.action} that pins the
+     * action kind. Nothing is searched — an OCPP wallbox is never on the LAN, so
+     * {@link EnyoOnboardingV2ActionKind.NetworkScan} is not a substitute. Pair it
+     * with an {@link onboardingV2Block.dynamic} `ocpp-url` block on the same or a
+     * preceding step.
+     *
+     * Outcome `value`s must be {@link EnyoOnboardingV2OcppConnectOutcome} members
+     * and both must be wired — the validator enforces that, since a charger that
+     * never calls home is the common case.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param label - Translated trigger button text (de/en).
+     * @param outcomes - The `connected` / `timeout` results; each is a routing handle.
+     */
+    ocppConnect: (
+        id: string,
+        label: EnyoOnboardingTranslatedContent[],
+        outcomes: EnyoOnboardingV2ActionOutcome[],
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Action,
+        action: EnyoOnboardingV2ActionKind.OcppConnect,
+        label,
+        outcomes,
+    }),
+    /**
+     * An auth block: the installer signs into the energy app's own account
+     * system (OAuth / vendor portal).
+     *
+     * Exactly one routing handle, and it means "the login succeeded". The server
+     * decides when it fires, so the installer cannot skip it; there is no failure
+     * branch to author — a failed attempt simply keeps them on the step. Route
+     * the handle with {@link onOutcomeV2}, passing `outcome.id`.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param label - Translated sign-in button text (de/en).
+     * @param outcome - The single success handle (`{id, label}`).
+     * @param opts - Optional translated `help` naming the account that is needed.
+     */
+    auth: (
+        id: string,
+        label: EnyoOnboardingTranslatedContent[],
+        outcome: EnyoOnboardingV2AuthOutcome,
+        opts?: {help?: EnyoOnboardingTranslatedContent[]},
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Auth,
+        label,
+        outcome,
+        help: opts?.help,
+    }),
+    /**
      * A link block: a fixed URL the installer opens or copies.
      *
      * Passive content — it produces no routing handle, so a step whose only
@@ -255,10 +311,23 @@ export const onboardingV2Target = {
     step: (stepId: string): EnyoOnboardingV2Target => ({type: EnyoOnboardingV2TargetType.Step, stepId}),
     /** Exit: onboarding succeeded (hand back to the app). */
     success: (): EnyoOnboardingV2Target => ({type: EnyoOnboardingV2TargetType.Success}),
-    /** Exit: escalate to enyo support. */
-    support: (): EnyoOnboardingV2Target => ({type: EnyoOnboardingV2TargetType.Support}),
+    /**
+     * Exit: escalate to enyo support.
+     * @param reason - Optional short internal key describing what failed, e.g.
+     * `firmware-too-old`. Never shown to the installer; it travels with the
+     * hand-off so support knows why it arrived.
+     */
+    support: (reason?: string): EnyoOnboardingV2Target => ({
+        type: EnyoOnboardingV2TargetType.Support,
+        reason,
+    }),
     /**
      * Exit: pause the run (resumable) with a reason.
+     *
+     * For {@link EnyoOnboardingV2PauseReason.EnyoTodo} prefer
+     * {@link onboardingV2Target.enyoTakeover} — that reason is a terminal
+     * hand-off, not a park, and `resumeStepName` does not apply to it.
+     *
      * @param reason - Why the run is parked.
      * @param resumeStepName - Optional step `name` to resume at.
      */
@@ -266,6 +335,19 @@ export const onboardingV2Target = {
         reason: EnyoOnboardingV2PauseReason,
         resumeStepName?: string,
     ): EnyoOnboardingV2Target => ({type: EnyoOnboardingV2TargetType.Pause, reason, resumeStepName}),
+    /**
+     * Exit: **enyo übernimmt** — the installer is done and enyo finishes the
+     * setup. A terminal exit alongside `success` and `support`: the app shows the
+     * takeover screen rather than returning to the cockpit.
+     *
+     * Emits the unchanged wire shape (`pause` with reason `enyo-todo`), and
+     * counts as a completing exit for {@link validateOnboardingGuideV2} — a guide
+     * that only ends here needs no `success` branch.
+     */
+    enyoTakeover: (): EnyoOnboardingV2Target => ({
+        type: EnyoOnboardingV2TargetType.Pause,
+        reason: EnyoOnboardingV2PauseReason.EnyoTodo,
+    }),
     /**
      * Jump into another start variant's flow for the same vendor/model.
      * @param variant - The start variant to hand off to.

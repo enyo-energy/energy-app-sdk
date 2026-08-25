@@ -7,8 +7,8 @@
  * name-string routing, v2 is a **directed graph**: an energy app defines a guide
  * as a set of named steps connected by explicit {@link EnyoOnboardingV2Transition}s.
  * The installer walks it, branching on choices and device checks, and leaves through
- * one of three exits (success / paused / support) — or jumps into another start
- * variant's flow.
+ * one of its exits (success / enyo takeover / paused / support) — or jumps into
+ * another start variant's flow.
  *
  * Every author-facing string is an {@link EnyoOnboardingTranslatedContent} array
  * (de/en), reusing the v1 translation primitive so the two models stay consistent.
@@ -41,9 +41,26 @@ export enum EnyoOnboardingV2StartVariant {
     ManualSetup = 'manual-setup',
 }
 
-/** Why an onboarding run was parked; drives how it's picked back up. */
+/**
+ * Why an onboarding run left the flow through a {@link EnyoOnboardingV2TargetType.Pause}
+ * target. The reason is not a footnote — it decides what the installer sees next
+ * and how (or whether) the run is picked back up.
+ */
 export enum EnyoOnboardingV2PauseReason {
-    /** enyo needs to solve something before the installer can continue. */
+    /**
+     * **enyo übernimmt** — a full hand-off, not a park.
+     *
+     * Despite living under `pause` on the wire (unchanged for compatibility),
+     * this is a **terminal exit alongside `success` and `support`**: the
+     * installer is done, enyo finishes the setup, and the app renders the
+     * takeover screen instead of returning to the cockpit. Nothing is scheduled
+     * for the installer to resume, so `resumeStepName` is meaningless here.
+     *
+     * A guide whose only end is this hand-off is complete and correct;
+     * {@link validateOnboardingGuideV2} treats it as a completing exit and does
+     * **not** warn about a missing `success` path. Never invent a fake success
+     * branch to silence a warning — there is none to silence.
+     */
     EnyoTodo = 'enyo-todo',
     /** The installer was contacted and follow-up is pending. */
     InstallerContacted = 'installer-contacted',
@@ -87,6 +104,31 @@ export enum EnyoOnboardingV2ActionKind {
      * which devices are passed along.
      */
     DeviceTest = 'device-test',
+    /**
+     * Wait for an OCPP charger to dial into enyo's CSMS.
+     *
+     * Searches nothing: an OCPP wallbox is never on the LAN to be found, so
+     * {@link NetworkScan} is not a substitute. The installer enters the dynamic
+     * OCPP URL (see {@link EnyoOnboardingV2DynamicKind.OcppUrl}) in the
+     * charger's own configuration; this block then waits for the resulting
+     * inbound connection and branches on whether it arrived.
+     *
+     * Outcome `value`s MUST be {@link EnyoOnboardingV2OcppConnectOutcome}
+     * members, and both of them must be wired — a charger that never calls home
+     * is the common case, not an edge case.
+     */
+    OcppConnect = 'ocpp-connect',
+}
+
+/**
+ * The possible results of an {@link EnyoOnboardingV2ActionKind.OcppConnect}
+ * block. Deliberately binary: either the charger reached our CSMS or it did not.
+ */
+export enum EnyoOnboardingV2OcppConnectOutcome {
+    /** The charger opened an OCPP connection to enyo's CSMS. */
+    Connected = 'connected',
+    /** No connection arrived within the host's waiting window. */
+    Timeout = 'timeout',
 }
 
 /**
@@ -145,6 +187,7 @@ export enum EnyoOnboardingV2BlockType {
     Action = 'action',
     Link = 'link',
     Input = 'input',
+    Auth = 'auth',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -374,6 +417,56 @@ export interface EnyoOnboardingV2InputBlock extends EnyoOnboardingV2BlockBase {
     outcomes: EnyoOnboardingV2InputOutcome[];
 }
 
+/**
+ * The single routing handle of an {@link EnyoOnboardingV2AuthBlock}.
+ *
+ * There is exactly one, and it means "the login succeeded" — the block has no
+ * failure branch by design: an installer who cannot log in stays on the step and
+ * retries.
+ */
+export interface EnyoOnboardingV2AuthOutcome {
+    /** Stable id, unique within the block; referenced by a transition. */
+    id: string;
+    /** Translated display label for the successful login (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+}
+
+/**
+ * The installer logs into the energy app's own account system — the OAuth /
+ * vendor-portal sign-in an app like Solarweb or iSolarCloud needs before it can
+ * see any device.
+ *
+ * This is not a device test with an
+ * {@link EnyoDeviceTestOutcomeEnum.AuthenticationRequired} verdict: that outcome
+ * *routes to* a credentials step, it cannot *be* the login. An auth block is the
+ * login itself, which is what lets an OAuth app author its own onboarding.
+ *
+ * **The server decides whether it passed.** The block exposes one success handle
+ * ({@link EnyoOnboardingV2AuthBlock.outcome}) and the host only fires it once the
+ * backend confirms a valid session for this app and installation — a client
+ * cannot skip past it by pretending, and there is no "continue anyway" branch to
+ * author around it. Until then the installer stays on the step and may retry.
+ *
+ * @example
+ * ```ts
+ * onboardingV2Block.auth(
+ *     'login',
+ *     t('Bei Solarweb anmelden', 'Sign in to Solarweb'),
+ *     {id: 'ok', label: t('Angemeldet', 'Signed in')},
+ *     {help: t('Zugangsdaten des Anlagenbetreibers nutzen.', "Use the plant owner's credentials.")},
+ * );
+ * ```
+ */
+export interface EnyoOnboardingV2AuthBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.Auth;
+    /** Translated sign-in button text, e.g. "Bei Solarweb anmelden" (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+    /** Optional translated help text — which account is needed (de/en). */
+    help?: EnyoOnboardingTranslatedContent[];
+    /** The one success handle; routed like any other outcome. */
+    outcome: EnyoOnboardingV2AuthOutcome;
+}
+
 /** Any block that can appear in a step's `blocks`. */
 export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2TextBlock
@@ -385,7 +478,8 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2ChoiceBlock
     | EnyoOnboardingV2ActionBlock
     | EnyoOnboardingV2LinkBlock
-    | EnyoOnboardingV2InputBlock;
+    | EnyoOnboardingV2InputBlock
+    | EnyoOnboardingV2AuthBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -396,7 +490,8 @@ export type EnyoOnboardingV2Block =
 export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2ChoiceBlock
     | EnyoOnboardingV2ActionBlock
-    | EnyoOnboardingV2InputBlock;
+    | EnyoOnboardingV2InputBlock
+    | EnyoOnboardingV2AuthBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets
@@ -427,9 +522,13 @@ export enum EnyoOnboardingV2TargetType {
     Step = 'step',
     /** Exit: onboarding succeeded (hand back to the app). */
     Success = 'success',
-    /** Exit: escalate to enyo support. */
+    /** Exit: escalate to enyo support (optionally with a `reason`). */
     Support = 'support',
-    /** Exit: pause the run (resumable) with a reason. */
+    /**
+     * Exit: leave the flow with an {@link EnyoOnboardingV2PauseReason}. Usually
+     * a resumable park — except {@link EnyoOnboardingV2PauseReason.EnyoTodo},
+     * which is the terminal "enyo übernimmt" hand-off.
+     */
     Pause = 'pause',
     /** Jump into the flow of another start variant for the same vendor/model. */
     StartVariant = 'start-variant',
@@ -441,9 +540,15 @@ export type EnyoOnboardingV2Target =
     | {type: EnyoOnboardingV2TargetType.Step; stepId: string}
     /** Exit: onboarding succeeded (hand back to the app). */
     | {type: EnyoOnboardingV2TargetType.Success}
-    /** Exit: escalate to enyo support. */
-    | {type: EnyoOnboardingV2TargetType.Support}
-    /** Exit: pause the run (resumable) with a reason. */
+    /**
+     * Exit: escalate to enyo support, optionally recording what failed in
+     * `reason` — a short internal key, never shown to the installer.
+     */
+    | {type: EnyoOnboardingV2TargetType.Support; reason?: string}
+    /**
+     * Exit: leave the flow with a reason. Resumable at `resumeStepName`, except
+     * for the terminal {@link EnyoOnboardingV2PauseReason.EnyoTodo} hand-off.
+     */
     | {type: EnyoOnboardingV2TargetType.Pause; reason: EnyoOnboardingV2PauseReason; resumeStepName?: string}
     /** Jump into the flow of another start variant for the same vendor/model. */
     | {type: EnyoOnboardingV2TargetType.StartVariant; variant: EnyoOnboardingV2StartVariant};
@@ -491,6 +596,21 @@ export interface EnyoOnboardingV2Guide {
     title: EnyoOnboardingTranslatedContent[];
     /** Which start situation this guide covers. */
     startVariant: EnyoOnboardingV2StartVariant;
+    /**
+     * Whether the host runs its local network scan before entering this guide.
+     *
+     * Defaults to `true` — the historic behaviour, and the right one for a
+     * LAN device. Set it to `false` for a guide whose device is never on the
+     * LAN to be found (an OCPP wallbox, a cloud-only inverter): the run then
+     * starts at {@link startStepId} directly instead of spending ~20 s on a scan
+     * that must fail and framing the result as "we couldn't find your device".
+     *
+     * A guide that opts out cannot rely on scan results, so
+     * {@link EnyoOnboardingV2DeviceSelection.Detected} has nothing to select from
+     * unless the guide runs its own
+     * {@link EnyoOnboardingV2ActionKind.NetworkScan} block first.
+     */
+    requiresNetworkScan?: boolean;
     /** Optional translated summary shown in the library (de/en). */
     summary?: EnyoOnboardingTranslatedContent[];
     /** Library icon (defaults to `Connector`). */
