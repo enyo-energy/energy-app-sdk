@@ -118,6 +118,56 @@ export enum EnyoOnboardingV2ActionKind {
      * is the common case, not an edge case.
      */
     OcppConnect = 'ocpp-connect',
+    /**
+     * Let the installer pick one of the EEBUS peers discovered on the local
+     * network and trust its SKI.
+     *
+     * EEBUS is the third way a device reaches us: it is neither typed in as an
+     * IP address ({@link EnyoOnboardingV2InputValueType.IpAddress}) nor dialling
+     * out to our CSMS ({@link OcppConnect}). Heat pumps and wallboxes announce
+     * themselves over mDNS/SHIP and are addressed by their **SKI**, so pairing
+     * means *choosing one of the announced peers* — a decision only the
+     * installer standing in front of the device can make, since two identical
+     * heat pumps in one house differ only by manufacturer, model and the last
+     * bytes of their SKI.
+     *
+     * The host app renders the picker from the peers the hub discovered; the
+     * guide contributes the trigger label and the branches. Because the list
+     * comes from discovery, the guide must have scanned: either it keeps
+     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or it
+     * carries a {@link NetworkScan} block ahead of the pairing block —
+     * otherwise the picker opens on an empty list.
+     *
+     * Outcome `value`s MUST be {@link EnyoOnboardingV2EebusPairOutcome}
+     * members. The SKI the installer picked is recorded as the block's input
+     * value, so a finished run says *which* peer was paired, and later steps —
+     * a {@link DeviceTest}, for instance — can read it back under the block's
+     * id.
+     */
+    EebusPair = 'eebus-pair',
+}
+
+/**
+ * The possible results of an {@link EnyoOnboardingV2ActionKind.EebusPair}
+ * block.
+ *
+ * Three, not two: the two ways pairing fails need different guidance. Nothing
+ * was discovered at all is a different conversation from "you picked the right
+ * device but the handshake never came up".
+ */
+export enum EnyoOnboardingV2EebusPairOutcome {
+    /** The installer picked a peer and the SHIP connection came up. */
+    Paired = 'paired',
+    /**
+     * Discovery turned up no EEBUS peer — the device is off, on another subnet,
+     * or EEBUS is not enabled in its menu.
+     */
+    NotFound = 'not-found',
+    /**
+     * A peer was picked but the SHIP handshake did not complete — the pairing
+     * was not confirmed on the device, or a PIN was rejected.
+     */
+    Failure = 'failure',
 }
 
 /**
@@ -608,7 +658,9 @@ export interface EnyoOnboardingV2Guide {
      * A guide that opts out cannot rely on scan results, so
      * {@link EnyoOnboardingV2DeviceSelection.Detected} has nothing to select from
      * unless the guide runs its own
-     * {@link EnyoOnboardingV2ActionKind.NetworkScan} block first.
+     * {@link EnyoOnboardingV2ActionKind.NetworkScan} block first, and an
+     * {@link EnyoOnboardingV2ActionKind.EebusPair} block would offer the
+     * installer an empty list of peers.
      */
     requiresNetworkScan?: boolean;
     /** Optional translated summary shown in the library (de/en). */

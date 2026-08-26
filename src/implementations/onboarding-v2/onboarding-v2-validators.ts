@@ -16,6 +16,7 @@
 
 import {
     EnyoOnboardingV2ActionKind,
+    EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2InputValueType,
@@ -217,6 +218,9 @@ function validateActionBlocks(
             if (block.action === EnyoOnboardingV2ActionKind.OcppConnect) {
                 validateOcppConnectOutcomes(block, at, errors);
             }
+            if (block.action === EnyoOnboardingV2ActionKind.EebusPair) {
+                validateEebusPairOutcomes(block, at, errors, warnings);
+            }
             continue;
         }
 
@@ -293,8 +297,17 @@ function validateLinkBlocks(
 /** Every valid {@link EnyoOnboardingV2InputValueType} value. */
 const INPUT_VALUE_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoOnboardingV2InputValueType));
 
-/** Outcome values the host treats as "the check succeeded". */
-const POSITIVE_INPUT_OUTCOMES: ReadonlySet<string> = new Set(['reachable', 'success', 'found']);
+/**
+ * Outcome values the host treats as "the check succeeded" — mirrors the
+ * runtime's own positive-outcome set, `paired` included, so an eebus-pair
+ * result is not read as a failure.
+ */
+const POSITIVE_INPUT_OUTCOMES: ReadonlySet<string> = new Set([
+    'reachable',
+    'success',
+    'found',
+    EnyoOnboardingV2EebusPairOutcome.Paired,
+]);
 
 /**
  * The {@link EnyoDeviceTestOutcomeEnum} verdicts that collapse onto a positive
@@ -437,6 +450,57 @@ function validateOcppConnectOutcomes(
     }
 }
 
+/** Every {@link EnyoOnboardingV2EebusPairOutcome} value. */
+const EEBUS_PAIR_OUTCOMES: ReadonlySet<string> = new Set(
+    Object.values(EnyoOnboardingV2EebusPairOutcome),
+);
+
+/**
+ * Validates the outcomes of an {@link EnyoOnboardingV2ActionKind.EebusPair}
+ * block.
+ *
+ * The block reports one of three things — a peer was picked and the SHIP
+ * handshake came up, discovery found nothing, or the handshake failed — so its
+ * outcome `value`s are closed over {@link EnyoOnboardingV2EebusPairOutcome}.
+ * Anything else is an outcome that can never fire.
+ *
+ * The missing `paired` branch is a warning rather than an error: it strands
+ * every successful pairing, but an author staging a guide step by step may
+ * legitimately not have wired it yet.
+ *
+ * @param block - The eebus-pair action block being checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateEebusPairOutcomes(
+    block: EnyoOnboardingV2ActionBlock,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const values = new Set<string>();
+    for (const outcome of block.outcomes ?? []) {
+        if (!EEBUS_PAIR_OUTCOMES.has(outcome.value)) {
+            errors.push(
+                `${at}: eebus-pair block "${block.id}" has outcome value "${outcome.value}", which is not an EnyoOnboardingV2EebusPairOutcome member.`,
+            );
+        } else if (values.has(outcome.value)) {
+            errors.push(
+                `${at}: eebus-pair block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
+            );
+        }
+        values.add(outcome.value);
+    }
+
+    if (!values.has(EnyoOnboardingV2EebusPairOutcome.Paired)) {
+        warnings.push(
+            `${at}: eebus-pair block "${block.id}" has no "${EnyoOnboardingV2EebusPairOutcome.Paired}" outcome — ` +
+                'a successful pairing would have nowhere to go.',
+        );
+    }
+}
+
 /**
  * Validates the auth blocks of a step.
  *
@@ -528,6 +592,19 @@ function validateNetworkScanFlag(guide: EnyoOnboardingV2Guide, warnings: string[
             'requiresNetworkScan is false, but a device-test block selects from detected devices — ' +
                 'nothing was scanned, so it has nothing to test. Use deviceSelection "current", or run a ' +
                 'network-scan action inside the guide.',
+        );
+    }
+
+    const pairsEebus = blocks.some(
+        (b) =>
+            b.type === EnyoOnboardingV2BlockType.Action &&
+            b.action === EnyoOnboardingV2ActionKind.EebusPair,
+    );
+    if (pairsEebus) {
+        warnings.push(
+            'requiresNetworkScan is false, but an eebus-pair block asks the installer to pick a ' +
+                'discovered EEBUS peer — nothing was scanned, so the picker would open on an empty ' +
+                'list. Run a network-scan action inside the guide ahead of it.',
         );
     }
 }

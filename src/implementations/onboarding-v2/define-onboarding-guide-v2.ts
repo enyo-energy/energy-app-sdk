@@ -211,6 +211,41 @@ export const onboardingV2Block = {
         outcomes,
     }),
     /**
+     * An EEBUS-pair action block: the installer picks one of the discovered
+     * EEBUS peers and the host trusts its SKI.
+     *
+     * A convenience wrapper over {@link onboardingV2Block.action} that pins the
+     * action kind. The picker is drawn from what mDNS discovery found, so the
+     * guide must have scanned — keep
+     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default or place
+     * a {@link EnyoOnboardingV2ActionKind.NetworkScan} block ahead of this one.
+     *
+     * Most EEBUS devices only announce themselves once pairing is enabled in
+     * their own menu or portal, and many ask for a confirmation there while the
+     * handshake runs, so put that instruction in a text/hint block on the
+     * preceding step — the app cannot do it for the installer.
+     *
+     * Outcome `value`s must be {@link EnyoOnboardingV2EebusPairOutcome} members;
+     * route `not-found` to troubleshooting and `failure` to a step describing
+     * the confirmation on the device. A retry must lead into a *second* pairing
+     * step: a back-edge onto the same step reads as a loop and ends the run.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param label - Translated trigger button text (de/en).
+     * @param outcomes - The `paired` / `not-found` / `failure` results; each is a routing handle.
+     */
+    eebusPair: (
+        id: string,
+        label: EnyoOnboardingTranslatedContent[],
+        outcomes: EnyoOnboardingV2ActionOutcome[],
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Action,
+        action: EnyoOnboardingV2ActionKind.EebusPair,
+        label,
+        outcomes,
+    }),
+    /**
      * An auth block: the installer signs into the energy app's own account
      * system (OAuth / vendor portal).
      *

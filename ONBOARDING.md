@@ -842,9 +842,10 @@ const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 | `hint` | `onboardingV2Block.hint` | callout (`important` \| `info` \| `warning`) |
 | `dynamic` | `onboardingV2Block.dynamic` | runtime-resolved value (`ocpp-url` \| `device-ip`) |
 | `choice` | `onboardingV2Block.choice` | single-select decision; each option is a routing handle |
-| `action` | `onboardingV2Block.action` | host capability (`network-scan` \| `connection-check` \| `device-test`); each outcome is a routing handle |
+| `action` | `onboardingV2Block.action` | host capability (`network-scan` \| `connection-check` \| `device-test` \| `eebus-pair`); each outcome is a routing handle |
 | `action` (device test) | `onboardingV2Block.deviceTest` | hand detected devices to the energy app and branch on whether appliances were found or created |
 | `action` (OCPP) | `onboardingV2Block.ocppConnect` | wait for an OCPP charger to dial into enyo's CSMS; branches `connected` \| `timeout` |
+| `action` (EEBUS) | `onboardingV2Block.eebusPair` | let the installer pick a discovered EEBUS peer and trust its SKI; branches `paired` \| `not-found` \| `failure` |
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
@@ -973,6 +974,50 @@ must be wired: a charger that never calls home — wrong URL typed, no coverage 
 the garage — is the common case, and a guide without a `timeout` branch strands
 the installer on a spinner.
 
+### Pairing an EEBUS device (`eebus-pair`)
+
+A heat pump or wallbox speaking EEBUS is neither typed in as an IP address nor
+dialling out to our CSMS: it announces itself over mDNS/SHIP and is addressed by
+its **SKI**. Pairing therefore means *picking one of the discovered peers* — a
+decision only the installer standing in front of the device can make, since two
+identical heat pumps in one house differ only by manufacturer, model and the last
+bytes of their SKI.
+
+```typescript
+onboardingV2Block.eebusPair('pair', t('EEBUS-Gerät auswählen', 'Select the EEBUS device'), [
+  {id: 'ok',    value: EnyoOnboardingV2EebusPairOutcome.Paired,   label: t('Gerät gekoppelt', 'Device paired')},
+  {id: 'none',  value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Kein EEBUS-Gerät gefunden', 'No EEBUS device found')},
+  {id: 'error', value: EnyoOnboardingV2EebusPairOutcome.Failure,  label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
+])
+```
+
+The host app renders the picker from the peers the hub discovered — manufacturer,
+model, SKI — and records the picked SKI as the block's input value, so a finished
+run says *which* peer was paired, not merely that pairing worked. The guide
+contributes the trigger label and the branches.
+
+Three outcomes, not two, because the two failure modes need different guidance:
+`not-found` means discovery turned up nothing (device off, other subnet, EEBUS not
+enabled in its menu) and usually leads to troubleshooting or an `enyo-todo`
+hand-off; `failure` means a peer *was* picked and the SHIP handshake did not come
+up (the pairing was not confirmed on the device, or a PIN was rejected). Outcome
+`value`s are closed over `EnyoOnboardingV2EebusPairOutcome`, and a block without a
+`paired` branch is warned about — a successful pairing would have nowhere to go.
+
+Two authoring rules follow from how the list is produced:
+
+- **A scan must have happened.** Either keep `requiresNetworkScan` at its default,
+  or place a `network-scan` action ahead of the pairing block; otherwise the
+  picker opens on an empty list, and the validator warns.
+- **Put the device-side release in the step before.** Most EEBUS devices only
+  announce themselves once pairing is enabled in their own menu or portal, and
+  many ask for a confirmation there while the handshake runs. That belongs in a
+  `text`/`hint` block — the app cannot do it for the installer.
+
+Retries are separate steps: a back-edge from `not-found` onto the same step reads
+as a loop and ends the run, so wire it to a "prüfen und erneut suchen" step that
+leads into a *second* pairing step, exactly as `ocpp-connect` does.
+
 ### Skipping the host's network scan (`requiresNetworkScan`)
 
 `requiresNetworkScan` defaults to `true`: before entering the guide, the host scans
@@ -994,4 +1039,6 @@ defineOnboardingGuideV2({
 
 A guide that opts out has no scan results to work with, so `deviceSelection:
 'detected'` has nothing to select from — the validator warns about that
-combination unless the guide runs its own `network-scan` action first.
+combination unless the guide runs its own `network-scan` action first. The same
+applies to an `eebus-pair` block: without a scan there are no discovered peers to
+pick from.

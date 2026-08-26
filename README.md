@@ -2054,6 +2054,16 @@ Drives an EV wallbox / charger. Has the richest command surface of all integrati
   - `publishChargingMeterValues(applianceId, data)` — periodic meter values during a session.
   - `publishMaxChargingPowerChanged(applianceId, maxChargingPowerKw)` — e.g. on thermal derating.
   - `publishChargerStatusChanged(applianceId, data)` — OCPP-style status changes.
+  - `publishEnergyManagementChargingState(applianceId, data)` — the app's own continuously
+    updated state for the energy manager. Facts only: `activePhases` (the phase count in
+    force), `phaseSwitching` (`supported` / `available` right now, `availableFromIso` when
+    it is barred until a known time, `inProgress`), `appliedCurrentLimitA` and the
+    `appliedPowerW` it implies, `lastLimitRequest` (`accepted` \| `clamped` \| `rejected`,
+    with what was requested), and `measuredAtIso` — when the reading was taken, as opposed
+    to when the message was sent. No recommended minimum power, no suggested setpoint,
+    nothing derived from the manager's own plan; static nameplate data stays in the
+    appliance metadata. Republish the **complete** payload on every change and periodically
+    as a heartbeat — an omitted field means "unknown", never "unchanged".
 
 ```typescript
 class MyWallbox extends WallboxIntegrationEnergyApp {

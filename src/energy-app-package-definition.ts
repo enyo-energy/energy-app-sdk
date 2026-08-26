@@ -245,6 +245,18 @@ export interface EnergyAppPackageCompatibilityModel {
      * upgrade graph in {@link EnergyAppPackageDefinition.firmware} instead.
      */
     minimumFirmwareVersion?: string;
+    /**
+     * Optional device category of this concrete model (e.g. `Inverter`,
+     * `BatteryStorage`).
+     *
+     * Packages can support models of different kinds — a hybrid inverter plus a
+     * matching battery, for example — while
+     * {@link EnergyAppPackageDefinition.categories} only describes the package
+     * as a whole. Declaring the category per model lets the enyo Store and
+     * onboarding flows group and filter individual models correctly. Omit when
+     * the package-level categories are precise enough.
+     */
+    category?: EnergyAppPackageCategory;
     /** Optional internal note explaining model-specific caveats or limitations */
     internalComment?: string;
     /**

@@ -5,6 +5,7 @@ import {
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2ChoiceLayout,
     EnyoOnboardingV2DeviceSelection,
+    EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
@@ -731,6 +732,120 @@ describe('ocpp-connect action blocks', () => {
         expect(
             result.errors.some((e) => e.includes('EnyoOnboardingV2OcppConnectOutcome')),
         ).toBe(true);
+    });
+});
+
+describe('eebus-pair action blocks', () => {
+    /**
+     * A guide whose single step pairs an EEBUS device, wiring `values` as its
+     * outcomes. Scans first, so only the outcome checks can fire.
+     */
+    function eebusGuide(...values: string[]): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Wärmepumpe koppeln', 'Pair the heat pump'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'pair',
+                    title: t('Koppeln', 'Pair'),
+                    blocks: [
+                        onboardingV2Block.eebusPair(
+                            'e1',
+                            t('EEBUS-Gerät auswählen', 'Select the EEBUS device'),
+                            values.map((value, i) => ({id: `h${i}`, value, label: t(value, value)})),
+                        ),
+                    ],
+                    transitions: values.map((_, i) =>
+                        onOutcomeV2('e1', `h${i}`, i === 0 ? onboardingV2Target.success() : onboardingV2Target.support()),
+                    ),
+                },
+            ],
+        });
+    }
+
+    it('accepts all three outcomes wired', () => {
+        const result = validateOnboardingGuideV2(
+            eebusGuide(
+                EnyoOnboardingV2EebusPairOutcome.Paired,
+                EnyoOnboardingV2EebusPairOutcome.NotFound,
+                EnyoOnboardingV2EebusPairOutcome.Failure,
+            ),
+        );
+        expect(result.ok).toBe(true);
+        expect(result.errors).toEqual([]);
+        expect(result.warnings).toEqual([]);
+    });
+
+    it('rejects an outcome value outside the enum', () => {
+        const result = validateOnboardingGuideV2(
+            eebusGuide(EnyoOnboardingV2EebusPairOutcome.Paired, 'timeout'),
+        );
+        expect(result.ok).toBe(false);
+        expect(
+            result.errors.some((e) => e.includes('EnyoOnboardingV2EebusPairOutcome')),
+        ).toBe(true);
+    });
+
+    it('rejects a duplicated outcome value', () => {
+        const result = validateOnboardingGuideV2(
+            eebusGuide(
+                EnyoOnboardingV2EebusPairOutcome.Paired,
+                EnyoOnboardingV2EebusPairOutcome.Paired,
+            ),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('warns when the positive branch is missing', () => {
+        const result = validateOnboardingGuideV2(
+            eebusGuide(
+                EnyoOnboardingV2EebusPairOutcome.NotFound,
+                EnyoOnboardingV2EebusPairOutcome.Failure,
+            ),
+        );
+        expect(result.warnings.some((w) => w.includes('"paired" outcome'))).toBe(true);
+    });
+
+    it('warns when a scan-free guide pairs without scanning itself', () => {
+        const guide = eebusGuide(
+            EnyoOnboardingV2EebusPairOutcome.Paired,
+            EnyoOnboardingV2EebusPairOutcome.NotFound,
+            EnyoOnboardingV2EebusPairOutcome.Failure,
+        );
+        guide.requiresNetworkScan = false;
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('empty'))).toBe(true);
+    });
+
+    it('stays quiet when the scan-free guide scans itself first', () => {
+        const guide = eebusGuide(
+            EnyoOnboardingV2EebusPairOutcome.Paired,
+            EnyoOnboardingV2EebusPairOutcome.NotFound,
+            EnyoOnboardingV2EebusPairOutcome.Failure,
+        );
+        guide.requiresNetworkScan = false;
+        guide.steps.unshift({
+            id: 's0',
+            name: 'scan',
+            title: t('Scannen', 'Scan'),
+            blocks: [
+                onboardingV2Block.action('b-scan', EnyoOnboardingV2ActionKind.NetworkScan, t('Scannen', 'Scan'), [
+                    {id: 'found', value: 'found', label: t('Gefunden', 'Found')},
+                    {id: 'none', value: 'not-found', label: t('Nichts', 'Nothing')},
+                ]),
+            ],
+            transitions: [
+                onOutcomeV2('b-scan', 'found', onboardingV2Target.step('s1')),
+                onOutcomeV2('b-scan', 'none', onboardingV2Target.support()),
+            ],
+        });
+        guide.startStepId = 's0';
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.warnings.some((w) => w.includes('requiresNetworkScan'))).toBe(false);
     });
 });
 

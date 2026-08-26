@@ -7,7 +7,11 @@ import {
 import type {EnyoAutomationTriggerData} from "./enyo-automation.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
-import {EnyoChargerApplianceStatusEnum, EnyoChargerApplianceSuspendedReasonEnum} from "./enyo-charger-appliance.js";
+import {
+    EnyoChargerAppliancePhase,
+    EnyoChargerApplianceStatusEnum,
+    EnyoChargerApplianceSuspendedReasonEnum
+} from "./enyo-charger-appliance.js";
 import {
     PreviewChargingSchedule,
     PreviewChargingScheduleCostComparison,
@@ -310,6 +314,8 @@ export enum EnyoDataBusMessageEnum {
     EnergyTariffUpdateV1 = 'EnergyTariffUpdateV1',
     ChargeFinishedV1 = 'ChargeFinishedV1',
     ChargerStatusChangedV1 = 'ChargerStatusChangedV1',
+    /** Recurring state of the charging energy app (phases in force, phase-switch availability, applied limit, last request's verdict) reported to the energy manager. */
+    EnergyManagementChargingStateV1 = 'EnergyManagementChargingStateV1',
     RequestPreviewChargingScheduleV1 = 'RequestPreviewChargingScheduleV1',
     PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1',
     PvForecastV1 = 'PvForecastV1',
@@ -1051,6 +1057,162 @@ export interface EnyoDataBusChargerStatusChangedV1 extends EnyoDataBusMessage {
          * suspended or the cause is unknown.
          */
         suspendedReason?: EnyoChargerApplianceSuspendedReasonEnum;
+    };
+}
+
+/**
+ * What became of the last power/current limit the energy manager asked this
+ * charging app for.
+ *
+ * A request is not the same as a limit in force: chargers round to their
+ * ampere step, refuse values below their minimum current, and cap at their
+ * nameplate. Reporting the verdict closes the loop — without it the energy
+ * manager cannot tell a limit it set from a limit the charger quietly changed.
+ */
+export enum EnyoChargingLimitRequestResultEnum {
+    /** Applied as requested. */
+    Accepted = 'accepted',
+    /** Applied, but at a different value than requested (rounded, floored, capped). */
+    Clamped = 'clamped',
+    /** Not applied at all; the previous limit stayed in force. */
+    Rejected = 'rejected',
+}
+
+/**
+ * The verdict on the last limit request, as a fact about what happened.
+ *
+ * Carries what was asked for and what the app did with it. The value actually
+ * in force afterwards is not repeated here — it is
+ * {@link EnyoDataBusEnergyManagementChargingStateV1.data.appliedCurrentLimitA}
+ * in the same message.
+ */
+export interface EnyoChargingLimitRequestOutcome {
+    /**
+     * `id` of the {@link EnyoDataBusSetChargerAvailablePowerV2} (or other limit
+     * command) this verdict belongs to, when the app tracked it. Lets the energy
+     * manager match the verdict to its own request instead of guessing by time.
+     */
+    requestMessageId?: string;
+    /** What the app did with the request. */
+    result: EnyoChargingLimitRequestResultEnum;
+    /** The active power that was requested, in Watts, as received. */
+    requestedPowerW?: number;
+    /** The current per phase that was requested, in Amperes, when the request was expressed that way. */
+    requestedCurrentA?: number;
+    /** ISO 8601 timestamp at which the app handled the request. */
+    handledAtIso: string;
+    /**
+     * Short machine-readable cause when the request was clamped or rejected,
+     * e.g. `below-minimum-current`, `above-nameplate`, `charger-offline`,
+     * `ampere-step-rounding`. Never shown to end users verbatim.
+     */
+    reason?: string;
+}
+
+/**
+ * Whether this charger can change its phase count right now, and if not, until
+ * when.
+ *
+ * Two different facts: {@link supported} is about the hardware and the wiring
+ * and does not change during operation; {@link available} is about this moment —
+ * a contactor switch interrupts the session, so apps bar the next switch for a
+ * cool-down after the last one, and refuse it outright while the charger is in
+ * certain states.
+ */
+export interface EnyoChargingPhaseSwitchingState {
+    /** Whether the charger can switch between one- and three-phase charging at all. */
+    supported: boolean;
+    /** Whether a phase switch can be performed right now. */
+    available: boolean;
+    /**
+     * ISO 8601 timestamp from which switching becomes available again. Set when
+     * {@link available} is `false` **and** the app knows the deadline — a
+     * cool-down expiry, typically. Omitted when the block has no known end (the
+     * charger is offline, switching is unsupported).
+     */
+    availableFromIso?: string;
+    /** Whether a phase switch is in progress at this moment. */
+    inProgress: boolean;
+    /**
+     * The phase count a switch in progress is heading for. Only present while
+     * {@link inProgress} is `true`.
+     */
+    targetPhases?: EnyoChargerAppliancePhase;
+    /** ISO 8601 timestamp of the last completed phase switch, when the app knows it. */
+    lastSwitchedAtIso?: string;
+    /**
+     * Short machine-readable cause when {@link available} is `false`, e.g.
+     * `cool-down`, `vehicle-charging`, `charger-error`, `user-pinned-phases`.
+     * Never shown to end users verbatim.
+     */
+    unavailableReason?: string;
+}
+
+/**
+ * The charging energy app's own state, reported to the energy manager.
+ *
+ * One **continuously updated state**, not an event: the app republishes the
+ * complete picture whenever something in it changes (a phase switch starts or
+ * finishes, a cool-down expires, a limit is applied) and periodically as a
+ * heartbeat, so a manager that just started up or missed a message converges on
+ * the current truth from the next one. Every message carries the full payload —
+ * a field is omitted to mean "unknown", never "unchanged".
+ *
+ * The payload is **facts about the charger, never advice about what to do with
+ * it**. It reports the phase count in force, whether a phase switch is possible
+ * right now and until when it is not, the limit actually applied and the power
+ * that limit implies, the verdict on the last request, and when all of this was
+ * observed. It deliberately carries no recommended minimum power, no suggested
+ * setpoint and nothing derived from the energy manager's own plan: the manager
+ * owns the planning, and a second opinion travelling with the measurements only
+ * competes with it. Static nameplate data (supported phase configurations,
+ * ampere step, nameplate power) stays where it already lives, in
+ * {@link EnyoChargerApplianceMetadata}.
+ *
+ * Publish it with `resolution: 'dynamic'`.
+ */
+export interface EnyoDataBusEnergyManagementChargingStateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.EnergyManagementChargingStateV1;
+    /** ID of the charger appliance this state describes */
+    applianceId: string;
+    data: {
+        /**
+         * ISO 8601 timestamp at which this state was observed on the charger.
+         * Distinct from {@link EnyoDataBusMessage.timestampIso}, which is when
+         * the message was sent: a value polled from a charger every 30 s is
+         * already that old when it is published, and the energy manager must be
+         * able to tell a fresh reading from a stale one.
+         */
+        measuredAtIso: string;
+        /**
+         * The phase configuration in force right now — `1` or `3` while the
+         * charger is drawing, `0` when it is not drawing at all.
+         */
+        activePhases: number;
+        /** Whether a phase switch is possible right now, and if not, until when. */
+        phaseSwitching: EnyoChargingPhaseSwitchingState;
+        /**
+         * The current limit per phase actually in force on the charger, in
+         * Amperes — the value the charger is running with, not the one that was
+         * asked for. Omitted when the app cannot read it back.
+         */
+        appliedCurrentLimitA?: number;
+        /**
+         * The active power {@link appliedCurrentLimitA} implies at the phase
+         * count in force, in Watts. Reported alongside the current because the
+         * conversion depends on {@link activePhases} and the mains voltage the
+         * app measured — facts the energy manager would otherwise have to
+         * assume.
+         */
+        appliedPowerW?: number;
+        /**
+         * What became of the last limit request the app received. Omitted when
+         * it has not handled one in this session.
+         */
+        lastLimitRequest?: EnyoChargingLimitRequestOutcome;
+        /** Connector ID on the charge point (optional, for multi-connector chargers) */
+        connectorId?: number;
     };
 }
 

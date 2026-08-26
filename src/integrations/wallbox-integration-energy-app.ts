@@ -8,6 +8,7 @@ import {
     EnyoDataBusChargingStartedV1,
     EnyoDataBusChargingStoppedV1,
     EnyoDataBusClearChargingProfilesV1,
+    EnyoDataBusEnergyManagementChargingStateV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
     EnyoDataBusMaxChargingPowerChangedV1,
     EnyoDataBusMessage,
@@ -291,6 +292,44 @@ export abstract class WallboxIntegrationEnergyApp extends IntegrationEnergyApp {
             applianceId,
             timestampIso: new Date().toISOString(),
             data: {maxChargingPowerKw}
+        };
+        this.useDataBus().sendMessage([msg]);
+    }
+
+    /**
+     * Publishes an `EnergyManagementChargingStateV1` message: the app's own
+     * state — the phase count in force, whether a phase switch is possible
+     * right now, the limit actually applied and the verdict on the last
+     * request — reported to the energy manager.
+     *
+     * This is a continuously updated state, not an event. Call it whenever
+     * anything in the payload changes (a phase switch starts or finishes, a
+     * cool-down expires, a new limit is applied) and periodically as a
+     * heartbeat, always passing the **complete** picture: an omitted field
+     * means "unknown", never "unchanged".
+     *
+     * Report facts, never advice: the phase count, the applied limit and the
+     * power it implies, the request verdict, the measurement timestamp — no
+     * recommended minimum power, no suggested setpoint, nothing derived from
+     * the energy manager's own plan.
+     *
+     * @param applianceId - The charger appliance the state describes.
+     * @param data - The full charging state; see
+     *   {@link EnyoDataBusEnergyManagementChargingStateV1}.
+     */
+    public publishEnergyManagementChargingState(
+        applianceId: string,
+        data: EnyoDataBusEnergyManagementChargingStateV1['data']
+    ): void {
+        const msg: EnyoDataBusEnergyManagementChargingStateV1 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.EnergyManagementChargingStateV1,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            resolution: 'dynamic',
+            data
         };
         this.useDataBus().sendMessage([msg]);
     }
