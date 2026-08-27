@@ -1,55 +1,9 @@
-export type EnergyAppPermissionType =
-    'RestrictedInternetAccess'
-    | 'NetworkDeviceDiscovery'
-    | 'NetworkDeviceSearch'
-    | 'NetworkDeviceAccess'
-    | 'AllNetworkDeviceAccess'
-    | 'Modbus'
-    | 'Storage'
-    | 'Appliance'
-    | 'AllAppliances'
-    | 'SendDataBusValues'
-    | 'SubscribeDataBus'
-    | 'SendDataBusCommands'
-    | 'OcppServer'
-    | 'ChargingCard'
-    | 'Vehicle'
-    | 'Charge'
-    | 'SecretManager'
-    | 'LocationZipCode'
-    | 'LocationCoordinates'
-    | 'Timeseries'
-    | 'EnergyManagerInfo'
-    | 'ElectricityTariff'
-    | 'WeatherForecastRegister'
-    | 'WeatherForecastUse'
-    | 'PvForecastRegister'
-    | 'PvForecastUse'
-    | 'DynamicPriceForecastRegister'
-    | 'DynamicPriceForecastUse'
-    | 'PvSystemRegister'
-    | 'PvSystemUse'
-    | 'InverterControlCommands'
-    | 'BatteryControlCommands'
-    | 'BatteryStorageState'
-    | 'ChargerControlCommands'
-    | 'ModbusRtu'
-    | 'EnergyPrices'
-    | 'EnergyManager'
-    | 'EebusDeviceManagement'
-    | 'EebusDataAccess'
-    | 'EebusControl'
-    | 'Mqtt'
-    | 'Bluetooth'
-    | 'Wifi'
-    | 'ChildProcess'
-    | 'Udp'
-    | 'ProvidedFiles'
-    | 'Automation'
-    | 'Savings'
-    | 'EpexSpotPrices'
-    | 'FirmwareRegistry';
-
+/**
+ * All permissions an Energy App package can request.
+ *
+ * Source of truth for the permission catalogue — {@link EnergyAppPermissionType}
+ * is derived from it.
+ */
 export enum EnergyAppPermissionTypeEnum {
     RestrictedInternetAccess = 'RestrictedInternetAccess',
     NetworkDeviceDiscovery = 'NetworkDeviceDiscovery',
@@ -103,3 +57,9 @@ export enum EnergyAppPermissionTypeEnum {
     EpexSpotPrices = 'EpexSpotPrices',
     FirmwareRegistry = 'FirmwareRegistry'
 }
+
+/**
+ * String union of every permission name, derived from
+ * {@link EnergyAppPermissionTypeEnum} so both spellings stay interchangeable.
+ */
+export type EnergyAppPermissionType = `${EnergyAppPermissionTypeEnum}`;
