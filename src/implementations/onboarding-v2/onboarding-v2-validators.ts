@@ -32,6 +32,9 @@ import type {
     EnyoOnboardingV2Transition,
 } from '../../types/enyo-onboarding-v2.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../types/enyo-device-test.js';
+import type {EnergyAppPackagePublicFile} from '../../energy-app-package-definition.js';
+import {isImagePublicFile} from '../files/public-file-validators.js';
+import {resolvePublicFile} from '../files/define-public-file.js';
 
 /**
  * Thrown by {@link assertValidOnboardingGuideV2} when a guide fails validation.
@@ -49,6 +52,24 @@ export class OnboardingV2ValidationError extends Error {
         this.name = 'OnboardingV2ValidationError';
         this.errors = errors;
     }
+}
+
+/**
+ * Optional surroundings a guide is validated against.
+ *
+ * A guide is authored inside a package but stored independently of it, so the
+ * things it references by name — today a package file behind an image block —
+ * can only be checked when the declaring package is at hand. Pass it here and a
+ * mistyped name becomes a blocking error; omit it and the same reference is
+ * merely reported as unverified.
+ */
+export interface OnboardingV2ValidationContext {
+    /**
+     * The declaring package's public files
+     * ({@link EnergyAppPackageDefinition.files}), used to resolve image-block
+     * `file` references.
+     */
+    files?: EnergyAppPackagePublicFile[];
 }
 
 /** The outcome of validating a v2 guide. */
@@ -69,10 +90,14 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  * completing exit — `success` or the `enyo-todo` hand-off).
  *
  * @param guide - The v2 guide to validate.
+ * @param context - Optional {@link OnboardingV2ValidationContext} the guide is
+ *   checked against — pass the declaring package's `files` to have image
+ *   references resolved rather than only reported.
  * @returns The {@link OnboardingV2ValidationResult}.
  */
 export function validateOnboardingGuideV2(
     guide: EnyoOnboardingV2Guide,
+    context?: OnboardingV2ValidationContext,
 ): OnboardingV2ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -101,6 +126,7 @@ export function validateOnboardingGuideV2(
 
         validateActionBlocks(step, at, errors, warnings);
         validateLinkBlocks(step, at, errors, warnings);
+        validateImageBlocks(step, at, errors, warnings, context);
         validateInputBlocks(step, at, errors, warnings);
         validateAuthBlocks(step, at, errors, warnings);
     }
@@ -177,13 +203,16 @@ export function validateOnboardingGuideV2(
  * never throw; the validated guide is returned on success for chaining.
  *
  * @param guide - The v2 guide to validate.
+ * @param context - Optional {@link OnboardingV2ValidationContext}, as for
+ *   {@link validateOnboardingGuideV2}.
  * @returns The same guide when it has no blocking errors.
  * @throws {OnboardingV2ValidationError} When validation produces any error.
  */
 export function assertValidOnboardingGuideV2(
     guide: EnyoOnboardingV2Guide,
+    context?: OnboardingV2ValidationContext,
 ): EnyoOnboardingV2Guide {
-    const {ok, errors} = validateOnboardingGuideV2(guide);
+    const {ok, errors} = validateOnboardingGuideV2(guide, context);
     if (!ok) throw new OnboardingV2ValidationError(errors);
     return guide;
 }
@@ -289,6 +318,94 @@ function validateLinkBlocks(
         if (!block.label?.length) {
             warnings.push(
                 `${at}: link block "${block.id}" has no label — the raw URL is shown instead.`,
+            );
+        }
+    }
+}
+
+/** An image-block `file` reference — the slug shape a package file is named with. */
+const FILE_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Validates the image blocks of a step.
+ *
+ * An image is addressed either by `file` — the name of a file declared in the
+ * package and uploaded by the CLI — or by `url` for an externally hosted image,
+ * and the two are mutually exclusive: a block carrying both hides which one is
+ * authoritative once enyo has filled in the resolved URL, and a block carrying
+ * neither renders as a hole in the guide.
+ *
+ * `url` gets the same scheme check as a link block, for the same reason: an
+ * image URL is fetched and rendered by the installer app, so `data:` and
+ * `javascript:` have no business in it.
+ *
+ * A `file` reference is only resolved when the declaring package's files are
+ * supplied via {@link OnboardingV2ValidationContext}; without them the name is
+ * reported as unverified rather than assumed wrong, since the guide may well be
+ * validated in isolation.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ * @param context - Optional surroundings to resolve `file` references against.
+ */
+function validateImageBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+    context?: OnboardingV2ValidationContext,
+): void {
+    for (const block of step.blocks ?? []) {
+        if (block.type !== EnyoOnboardingV2BlockType.Image) continue;
+
+        const url = block.url?.trim();
+        const file = block.file?.trim();
+
+        if (url && file) {
+            errors.push(
+                `${at}: image block "${block.id}" sets both url and file — use one.`,
+            );
+            continue;
+        }
+        if (!url && !file) {
+            errors.push(`${at}: image block "${block.id}" has neither url nor file.`);
+            continue;
+        }
+
+        if (url) {
+            if (!HTTP_URL_RE.test(url)) {
+                errors.push(
+                    `${at}: image block "${block.id}" url must be an absolute http(s) URL.`,
+                );
+            }
+            continue;
+        }
+
+        if (!FILE_NAME_RE.test(file!)) {
+            errors.push(
+                `${at}: image block "${block.id}" file "${file}" must be a kebab-case ` +
+                    `package file name — pass a url for an externally hosted image.`,
+            );
+            continue;
+        }
+        if (!context?.files) {
+            warnings.push(
+                `${at}: image block "${block.id}" references package file "${file}", ` +
+                    `which cannot be checked without the package's files.`,
+            );
+            continue;
+        }
+        const declared = resolvePublicFile(context.files, file!);
+        if (!declared) {
+            errors.push(
+                `${at}: image block "${block.id}" references unknown package file "${file}".`,
+            );
+        } else if (!isImagePublicFile(declared)) {
+            errors.push(
+                `${at}: image block "${block.id}" references package file "${file}", ` +
+                    `which is not an image.`,
             );
         }
     }

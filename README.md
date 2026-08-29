@@ -32,6 +32,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [NetworkAccessGuard](#networkaccessguard)
   - [NetworkDeviceManager](#networkdevicemanager)
   - [Startup pattern](#startup-pattern)
+- [Package Files](#package-files)
 - [Firmware Update Registry](#firmware-update-registry)
   - [Declaring firmware](#declaring-firmware)
   - [Firmware modes](#firmware-modes)
@@ -1777,6 +1778,65 @@ async function connectDevice(networkDeviceId: string) {
 ```
 
 This pattern matches the wiring used by real Sungrow / Fronius energy-app packages: one `NetworkDeviceManager` per package, `ensureAccess` before every connect, `withAccessGuard` around every poll, and a single `getDevices({ accessStatus: 'granted' })` pass at startup to cover the warm-restart case.
+
+## Package Files
+
+Ship images and other public assets with your package. You declare them by local path
+and name in the package definition, the enyo CLI uploads them during `enyo release`,
+and the rest of the definition refers to each upload **by name** rather than by URL —
+so nothing has to hard-code a URL that only exists after the release.
+
+Today the consumer is the onboarding v2 image block (see ONBOARDING.md).
+
+```typescript
+import {
+    defineEnergyAppPackage,
+    definePublicFile,
+    validatePackageFiles
+} from '@enyo-energy/energy-app-sdk';
+
+const packageDef = defineEnergyAppPackage({
+    // ...
+    files: [
+        definePublicFile({
+            name: 'dip-switches',
+            path: './assets/onboarding/dip-switches.png',
+            internalComment: 'Photo of the DIP block behind the front cover'
+        }),
+        definePublicFile({name: 'wiring', path: './assets/onboarding/wiring.jpg'})
+    ]
+});
+
+// then, in a guide:
+onboardingV2Block.imageFile('show-dips', 'dip-switches');
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | Kebab-case slug, unique in the package. The handle everything else refers to — treat it as an API; renaming it breaks every reference. |
+| `path` | Path relative to the package root. Must stay inside the package: absolute paths, `..` and URLs are rejected. |
+| `mimeType` | Optional; inferred from the extension when omitted. |
+| `internalComment` | Optional note, never shown to users. |
+
+**Every entry is public.** The upload is readable by anyone with (or guessing) its URL,
+with no authentication in front of it — that is the point: an installer app has to show
+the image before the energy app runs anywhere. Declare vendor material only —
+installation diagrams, wiring photos, product shots — never customer data, credentials
+or licensed content.
+
+This is unrelated to `useFiles()`, the runtime API for offering a user a file to save:
+those bytes are produced on demand by the running app and never become a URL.
+
+Validate the declarations before releasing:
+
+```typescript
+const {ok, errors, warnings} = validatePackageFiles(packageDef.files);
+// or: assertValidPackageFiles(packageDef.files) — throws PackageFilesValidationError
+```
+
+It checks that names are unique slugs, that paths stay inside the package and carry an
+extension, and that any declared MIME type is well formed; two names pointing at one
+path is a warning.
 
 ## Firmware Update Registry
 

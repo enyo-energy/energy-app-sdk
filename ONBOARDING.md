@@ -838,7 +838,7 @@ const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 |---|---|---|
 | `text` / `headline` | `onboardingV2Block.text` / `.headline` | prose / sub-heading |
 | `bullets` | `onboardingV2Block.bullets` | bulleted list (each bullet translated) |
-| `image` | `onboardingV2Block.image` | image + optional caption |
+| `image` | `onboardingV2Block.imageFile` / `.image` | image + optional caption; by package file name, or by external URL |
 | `hint` | `onboardingV2Block.hint` | callout (`important` \| `info` \| `warning`) |
 | `dynamic` | `onboardingV2Block.dynamic` | runtime-resolved value (`ocpp-url` \| `device-ip`) |
 | `choice` | `onboardingV2Block.choice` | single-select decision; each option is a routing handle |
@@ -849,6 +849,54 @@ const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
+
+### Images from the app repository
+
+An image block is addressed **either** by `file` — the name of a file declared in the
+package definition's `files` — **or** by `url` for an image hosted elsewhere. Exactly
+one of the two; the validator rejects a block carrying both or neither.
+
+Prefer `file`. The image then lives in the app repository next to the guide that uses
+it, is reviewed in the same pull request, and is uploaded by the enyo CLI during
+`enyo release`; enyo resolves the name to a public URL when the guide is rendered, so
+no URL is ever hard-coded in a guide.
+
+```typescript
+// package definition — declare the asset once
+import {definePublicFile, validatePackageFiles} from '@enyo-energy/energy-app-sdk';
+
+const packageDef = defineEnergyAppPackage({
+  // ...
+  files: [
+    definePublicFile({name: 'dip-switches', path: './assets/onboarding/dip-switches.png'}),
+    definePublicFile({name: 'wiring', path: './assets/onboarding/wiring.jpg'}),
+  ],
+});
+
+// guide — refer to it by name
+onboardingV2Block.imageFile('show-dips', 'dip-switches', [
+  {language: 'de', value: 'DIP-Schalter hinter der Frontblende'},
+  {language: 'en', value: 'DIP switches behind the front cover'},
+]);
+
+// external image, when the vendor already hosts it
+onboardingV2Block.image('vendor-shot', 'https://cdn.vendor.example/ac22.png');
+```
+
+Pass the package's declarations when validating and a mistyped name becomes a blocking
+error instead of a missing image on an installer's screen:
+
+```typescript
+const {ok, errors} = validateOnboardingGuideV2(guide, {files: packageDef.files});
+```
+
+Without them the reference cannot be resolved, and the validator says so as a warning
+rather than assuming the worst. Validate the declarations themselves with
+`validatePackageFiles(packageDef.files)`.
+
+**Everything in `files` is public** — served from an unauthenticated URL so the
+installer app can show it before the energy app runs anywhere. Ship vendor material
+only: diagrams, wiring photos, product shots. Never customer data or credentials.
 
 `choice`, `action`, `input` and `auth` are the graph's **decision points**: every option/outcome
 must be wired by exactly one transition (`onOptionV2` / `onOutcomeV2`); a step with

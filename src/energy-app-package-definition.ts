@@ -281,6 +281,64 @@ export interface EnergyAppPackageCompatibilityVendor {
 }
 
 /**
+ * A file published together with an Energy App package and served publicly
+ * after upload.
+ *
+ * The file is declared here by its local {@link path}; the enyo CLI uploads it
+ * during `enyo release` and the published definition carries the resulting
+ * public URL, so the released package tarball never has to carry the bytes.
+ * Other parts of the definition refer to the upload by its {@link name} rather
+ * than by URL — an onboarding v2 image block
+ * ({@link EnyoOnboardingV2ImageBlock.file}) is the first consumer — which keeps
+ * the URL an implementation detail that enyo resolves at render time.
+ *
+ * **Everything declared here is public.** The upload is readable by anyone who
+ * has (or guesses) its URL, with no authentication in front of it: it exists so
+ * that an installer app can show an image before the energy app runs anywhere.
+ * Declare only vendor material safe to publish — installation diagrams, wiring
+ * photos, product shots. Never customer data, credentials or licensed content.
+ *
+ * Not to be confused with {@link EnergyAppFile}, the *runtime* API for offering
+ * a user a file to save: those bytes are produced on demand by the running app,
+ * are scoped to a device, and never become a URL.
+ *
+ * @example
+ * ```typescript
+ * files: [
+ *     definePublicFile({
+ *         name: 'dip-switches',
+ *         path: './assets/onboarding/dip-switches.png',
+ *         internalComment: 'Photo of the DIP block behind the front cover'
+ *     })
+ * ]
+ * ```
+ */
+export interface EnergyAppPackagePublicFile {
+    /**
+     * Stable, app-chosen name for this file: a kebab-case slug, unique within
+     * the package. This is the handle the rest of the definition refers to, so
+     * treat it as an API — renaming it breaks every reference to the file.
+     */
+    name: string;
+    /**
+     * Path to the file relative to the package root, e.g.
+     * `'./assets/onboarding/dip-switches.png'`. Must stay inside the package:
+     * absolute paths, `../` segments and URLs are rejected. Resolved and
+     * uploaded by the enyo CLI on release; the published definition carries a
+     * public URL instead.
+     */
+    path: string;
+    /**
+     * Optional IANA MIME type served with the file, e.g. `image/png`. Inferred
+     * from the extension when omitted; set it explicitly only when the
+     * extension is missing or misleading.
+     */
+    mimeType?: string;
+    /** Optional internal note explaining this file; never shown to users. */
+    internalComment?: string;
+}
+
+/**
  * How the firmware registry decides which image a device should install next.
  *
  * - `'latest'` — every device is offered the **last declared** firmware entry
@@ -445,6 +503,21 @@ export interface EnergyAppPackageDefinition {
      * single vendor implicitly or has no fixed compatibility surface.
      */
     compatibility: EnergyAppPackageCompatibilityVendor[];
+    /**
+     * Files shipped with this package, declared as local paths, uploaded by the
+     * enyo CLI on release and served publicly from then on.
+     *
+     * Each entry is referenced elsewhere in the package by its `name` — today
+     * from an onboarding v2 image block
+     * ({@link EnyoOnboardingV2ImageBlock.file}) — so a guide never has to
+     * hard-code a URL. Validate the declarations with `validatePackageFiles()`
+     * before publishing.
+     *
+     * Every entry is publicly readable by anyone with its URL; see
+     * {@link EnergyAppPackagePublicFile} for what that rules out. Omit for
+     * packages that ship no assets.
+     */
+    files?: EnergyAppPackagePublicFile[];
     /**
      * Firmware images shipped with this package, declared as local file paths
      * and uploaded by the enyo CLI on release.

@@ -270,11 +270,35 @@ export interface EnyoOnboardingV2BulletsBlock extends EnyoOnboardingV2BlockBase 
     items: EnyoOnboardingTranslatedContent[][];
 }
 
-/** An image with an optional caption. */
+/**
+ * An image with an optional caption.
+ *
+ * The image is addressed in one of two ways, and exactly one of them must be
+ * set:
+ *
+ * - {@link file} — the `name` of an entry in the declaring package's
+ *   `files` ({@link EnergyAppPackagePublicFile}). Preferred: the image lives in
+ *   the app repository next to the guide, the enyo CLI uploads it on release,
+ *   and enyo resolves the name to a URL when the guide is rendered.
+ * - {@link url} — a ready-made public URL, for an image hosted elsewhere (a
+ *   vendor's own CDN). Nothing uploads or mirrors it, so the guide is only as
+ *   available as that host.
+ */
 export interface EnyoOnboardingV2ImageBlock extends EnyoOnboardingV2BlockBase {
     type: EnyoOnboardingV2BlockType.Image;
-    /** A public asset URL (not translated). */
-    url: string;
+    /**
+     * A public asset URL (not translated). Set this for an externally hosted
+     * image; leave it unset when {@link file} is used, in which case enyo fills
+     * it in with the resolved upload URL.
+     */
+    url?: string;
+    /**
+     * Name of a file declared in the package's `files`
+     * ({@link EnergyAppPackagePublicFile.name}), e.g. `'dip-switches'`. Resolved
+     * to a public URL by enyo; a name matching no declaration is a validation
+     * error, not a broken image in the field.
+     */
+    file?: string;
     /** Optional translated caption (de/en). */
     caption?: EnyoOnboardingTranslatedContent[];
 }

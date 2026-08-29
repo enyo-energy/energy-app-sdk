@@ -10,9 +10,12 @@ import {
     EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2StartVariant,
+    type EnyoOnboardingV2Block,
     type EnyoOnboardingV2Guide,
     type EnyoOnboardingV2InputOutcome,
 } from '../../../types/enyo-onboarding-v2.js';
+import type {EnergyAppPackagePublicFile} from '../../../energy-app-package-definition.js';
+import {definePublicFile} from '../../files/define-public-file.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../../types/enyo-device-test.js';
 import {
     defineOnboardingGuideV2,
@@ -925,5 +928,93 @@ describe('assertValidOnboardingGuideV2', () => {
         }
         expect(thrown).toBeInstanceOf(OnboardingV2ValidationError);
         expect((thrown as OnboardingV2ValidationError).errors.length).toBeGreaterThan(0);
+    });
+});
+
+describe('validateOnboardingGuideV2 — image blocks', () => {
+    /** The valid guide with a single image block spliced into its first step. */
+    const guideWithImage = (image: EnyoOnboardingV2Block): EnyoOnboardingV2Guide => {
+        const guide = validGuide();
+        guide.steps[0].blocks.push(image);
+        return guide;
+    };
+
+    /** A package file declaration, defaulting to a usable PNG. */
+    const file = (over: Partial<EnergyAppPackagePublicFile> = {}): EnergyAppPackagePublicFile =>
+        definePublicFile({name: 'dip-switches', path: './assets/dip-switches.png', ...over});
+
+    it('accepts an external url', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.image('b-img', 'https://cdn.example.com/dip.png')),
+        );
+        expect(result.ok).toBe(true);
+    });
+
+    it('rejects a non-http url', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.image('b-img', 'data:image/png;base64,AAAA')),
+        );
+        expect(result.errors.some((e) => e.includes('must be an absolute http(s) URL'))).toBe(true);
+    });
+
+    it('accepts a file reference resolving against the package files', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.imageFile('b-img', 'dip-switches')),
+            {files: [file()]},
+        );
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('cannot be checked'))).toBe(false);
+    });
+
+    it('flags a file reference that resolves to nothing', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.imageFile('b-img', 'typo')),
+            {files: [file()]},
+        );
+        expect(result.errors.some((e) => e.includes('unknown package file "typo"'))).toBe(true);
+    });
+
+    it('flags a file reference pointing at a non-image', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.imageFile('b-img', 'manual')),
+            {files: [file({name: 'manual', path: './assets/manual.pdf'})]},
+        );
+        expect(result.errors.some((e) => e.includes('is not an image'))).toBe(true);
+    });
+
+    it('only warns about a file reference when no package files are supplied', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.imageFile('b-img', 'dip-switches')),
+        );
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('cannot be checked'))).toBe(true);
+    });
+
+    it('rejects a block setting both url and file', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage({
+                id: 'b-img',
+                type: EnyoOnboardingV2BlockType.Image,
+                url: 'https://cdn.example.com/dip.png',
+                file: 'dip-switches',
+            }),
+            {files: [file()]},
+        );
+        expect(result.errors.some((e) => e.includes('sets both url and file'))).toBe(true);
+    });
+
+    it('rejects a block setting neither url nor file', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage({id: 'b-img', type: EnyoOnboardingV2BlockType.Image}),
+        );
+        expect(result.errors.some((e) => e.includes('neither url nor file'))).toBe(true);
+    });
+
+    it('rejects a file reference that is really a url', () => {
+        const result = validateOnboardingGuideV2(
+            guideWithImage(onboardingV2Block.imageFile('b-img', 'https://cdn.example.com/dip.png')),
+            {files: [file()]},
+        );
+        expect(result.errors.some((e) => e.includes('must be a kebab-case'))).toBe(true);
     });
 });

@@ -93,7 +93,12 @@ export const onboardingV2Block = {
         items: EnyoOnboardingTranslatedContent[][],
     ): EnyoOnboardingV2Block => ({id, type: EnyoOnboardingV2BlockType.Bullets, items}),
     /**
-     * An image block.
+     * An image block addressing an externally hosted image by URL.
+     *
+     * Prefer {@link block.imageFile} for an image that lives in the app
+     * repository: nothing mirrors the URL passed here, so the guide is only as
+     * available as the host serving it.
+     *
      * @param id - Stable block id, unique within the guide.
      * @param url - Public asset URL.
      * @param caption - Optional translated caption (de/en).
@@ -103,6 +108,32 @@ export const onboardingV2Block = {
         url: string,
         caption?: EnyoOnboardingTranslatedContent[],
     ): EnyoOnboardingV2Block => ({id, type: EnyoOnboardingV2BlockType.Image, url, caption}),
+    /**
+     * An image block addressing a file shipped with the package.
+     *
+     * The file must be declared in the package definition's `files`
+     * ({@link EnergyAppPackagePublicFile}); the enyo CLI uploads it on release
+     * and enyo resolves the name to a public URL when the guide is rendered.
+     * Pass the package's declarations to `validateOnboardingGuideV2()` to have
+     * a mistyped name rejected before publishing.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param file - Name of the declared package file, e.g. `'dip-switches'`.
+     * @param caption - Optional translated caption (de/en).
+     *
+     * @example
+     * ```typescript
+     * block.imageFile('dip', 'dip-switches', [
+     *     {language: 'de', value: 'DIP-Schalter hinter der Frontblende'},
+     *     {language: 'en', value: 'DIP switches behind the front cover'}
+     * ])
+     * ```
+     */
+    imageFile: (
+        id: string,
+        file: string,
+        caption?: EnyoOnboardingTranslatedContent[],
+    ): EnyoOnboardingV2Block => ({id, type: EnyoOnboardingV2BlockType.Image, file, caption}),
     /**
      * A hint/callout block.
      * @param id - Stable block id, unique within the guide.
