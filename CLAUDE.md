@@ -1,1 +1,2 @@
 - We are building a library used by other developers. Please provide a documentation for every function and class you create.
+- You are forbidden to commit. Never run `git commit` (or any command that creates a commit, such as `git commit --amend`), and never push. Leave all changes in the working tree and tell the user what is ready to be committed — committing is the user's decision alone, even if they ask for a "version bump" or the work looks finished.
