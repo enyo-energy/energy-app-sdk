@@ -13,10 +13,15 @@ import {
  * Supports multiple parallel guides identified by their unique guideName.
  *
  * @deprecated This runtime surface operates on the v1 {@link EnyoOnboardingGuide}
- * model. New guides should be authored with the v2 graph model
- * ({@link EnyoOnboardingV2Guide} / `defineOnboardingGuideV2()`); a v2 runtime
- * method (`saveOnboardingGuideV2`) will be added in a follow-up task. v1 remains
- * supported for backward compatibility.
+ * model, and on the push lifecycle that goes with it — the app saves, updates and
+ * removes guides, and the host stores a copy that can drift.
+ *
+ * New guides are authored with the v2 graph model
+ * ({@link EnyoOnboardingV2Guide} / `defineOnboardingGuideV2()`) and served
+ * through {@link EnergyAppOnboardingV2}, which inverts the direction: the app
+ * registers one handler and the host calls it for the complete set. There is
+ * deliberately no `saveOnboardingGuideV2` — nothing to publish, nothing to keep
+ * in sync. v1 remains supported for backward compatibility.
  */
 export interface EnergyAppOnboarding {
     /**
@@ -37,8 +42,10 @@ export interface EnergyAppOnboarding {
      * });
      * ```
      *
-     * @deprecated Saves a v1 {@link EnyoOnboardingGuide}. A v2 equivalent
-     * (`saveOnboardingGuideV2`) accepting {@link EnyoOnboardingV2Guide} is planned.
+     * @deprecated Saves a v1 {@link EnyoOnboardingGuide}. v2 guides are not saved
+     * at all — register a handler with
+     * {@link EnergyAppOnboardingV2.registerOnboardingGuidesHandler} and return
+     * them when the host asks.
      */
     saveOnboardingGuide(guide: EnyoOnboardingGuide): Promise<void>;
 

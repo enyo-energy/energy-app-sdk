@@ -172,7 +172,8 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Manage electricity tariffs (default tariff, price per kWh) | [`useElectricityTariff()`](#useelectricitytariff-energyappelectricitytariff) |
 | Register a PV system (kWp, DC strings, orientation) | [`usePvSystem()`](#usepvsystem-energyapppvsystem) |
 | Discover capabilities of the active energy manager | [`useEnergyManager()`](#useenergymanager-energyappenergymanager) |
-| Drive a multi-step onboarding flow | [`useOnboarding()`](#useonboarding-energyapponboarding) |
+| Serve your v2 onboarding guides when the host asks for them | [`useOnboardingV2()`](#useonboardingv2-energyapponboardingv2) |
+| Drive a multi-step onboarding flow (v1, deprecated) | [`useOnboarding()`](#useonboarding-energyapponboarding) |
 | Allocate process-local sequential IDs | [`useSequenceGenerator()`](#usesequencegenerator-energyappsequencegenerator) |
 | Manage retries with circuit-breaker semantics | [`RetryManager`](#retry-framework) |
 | Keep an `applianceId` cache in sync with the SDK | [`ApplianceManager`](#appliance-management) |
@@ -1334,7 +1335,35 @@ Requires the `Savings` permission.
 
 ### Operational Utilities
 
+#### `useOnboardingV2(): EnergyAppOnboardingV2`
+
+Serve the onboarding guides your app ships. Guides are **pulled, not published**: you register one handler, and the host calls it with "give me your v2 onboarding guides". You answer with the **complete set** or with **nothing** — there is no save, update or delete, and every answer replaces the host's picture of what your app offers.
+
+```typescript
+await energyApp.useOnboardingV2().registerOnboardingGuidesHandler(async (request) => {
+    const result = { requestId: request.requestId, guides: buildGuides() };
+
+    const { ok, errors } = validateOnboardingV2GuidesResult(result, {
+        files: packageDefinition.files,
+    });
+    if (!ok) {
+        console.error('onboarding guides invalid', errors);
+        return null;   // keep whatever the host already has
+    }
+
+    return result;
+});
+```
+
+`null` and `[]` are **not** the same answer: `[]` says "I genuinely have no guides" and drops the host's cached ones, `null` says "I cannot answer right now" and leaves them alone. Use `null` for transient failures. The host stops waiting after `request.timeoutMs`, so build the guides in memory rather than fetching them.
+
+Each guide must carry the `vendorId`, `modelIds` and `startVariant` it applies to — that is how the host selects one for a run, and there is no publish step left to bind them. See [ONBOARDING.md](./ONBOARDING.md#serving-guides-the-host-pulls-the-app-never-publishes) for the full v2 model.
+
+Not permission-gated.
+
 #### `useOnboarding(): EnergyAppOnboarding`
+
+> **Deprecated** — the v1 model. New guides use the v2 graph model and are served through [`useOnboardingV2()`](#useonboardingv2-energyapponboardingv2).
 
 Drive a multi-step onboarding guide — start / advance / back / skip / cancel, persist responses, and observe step transitions.
 

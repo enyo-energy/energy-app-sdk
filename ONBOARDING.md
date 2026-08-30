@@ -779,6 +779,7 @@ executor, and the guide-authoring tooling.
 | Exits | implicit (last step / complete) | explicit terminals: `success` \| `support` \| `pause` (incl. the `enyo-todo` hand-off) |
 | Cross-flow | — | `start-variant` hand-off between a vendor/model's flows |
 | Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup`) + `requiresNetworkScan` |
+| Lifecycle | **pushed** — the app saves/updates/removes guides, the host stores a copy | **pulled** — the app registers one handler, the host asks for the complete set |
 
 Both models are **multilingual**: every author-facing string is an
 `EnyoOnboardingTranslatedContent[]` (de/en). v2 reuses that v1 primitive.
@@ -831,6 +832,77 @@ const guide = defineOnboardingGuideV2({
 
 const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 ```
+
+### Serving guides: the host pulls, the app never publishes
+
+There is no `saveOnboardingGuideV2`, and that is deliberate. A v2 guide is never
+published, updated or deleted. The app registers **one handler** and the host
+calls it — "give me your v2 onboarding guides" — and the app answers with **all
+of them or with nothing**.
+
+```typescript
+import {
+  validateOnboardingV2GuidesResult,
+} from '@enyo-energy/energy-app-sdk';
+
+await energyApp.useOnboardingV2().registerOnboardingGuidesHandler(async (request) => {
+  const result = {requestId: request.requestId, guides: buildGuides()};
+
+  const {ok, errors, warnings} = validateOnboardingV2GuidesResult(result, {
+    files: packageDefinition.files,
+  });
+  warnings.forEach((w) => console.warn('onboarding guides:', w));
+  if (!ok) {
+    console.error('onboarding guides invalid', errors);
+    return null;   // keep whatever the host already has
+  }
+
+  return result;
+});
+```
+
+Why the inversion: a guide lives in the app's source next to the code it
+describes, so shipping a package version ships the corrected guide with it. No
+separate publish step to forget, no stored copy to drift, and the set can be
+*computed* — return a different variant per supported firmware, or omit a guide
+for hardware the app no longer handles, with no host-side bookkeeping.
+
+**Every call replaces the host's whole picture** of what this app offers. A guide
+is retired by leaving it out of the array; there is nothing to delete.
+
+**`null` and `[]` mean different things.** This is the one thing to get right:
+
+| Answer | Meaning | Host does |
+|---|---|---|
+| `{requestId, guides: [...]}` | this is my complete set | replaces its cached guides with it |
+| `{requestId, guides: []}` | I genuinely have no guides | drops the guides it cached |
+| `null` (or a rejected promise) | I cannot answer right now | keeps what it cached |
+| no answer within `timeoutMs` | — | keeps what it cached |
+
+Use `null` for the transient case — a build that failed validation, a dependency
+not ready during startup. Returning `[]` there would retire every guide the app
+has for as long as the condition lasts.
+
+**Answer from memory.** The host owns the clock and stops waiting after
+`request.timeoutMs`; an abandoned handler is never told. Build the guides
+in-process — a handler that goes to the network on every call is eventually the
+reason an installer sees no guide. `request.origin` says who is asking
+(`catalog-sync` | `onboarding-start` | `user-request`); `onboarding-start` is on
+the critical path of a screen.
+
+**Bind every guide.** The host selects a guide by matching `vendorId`, `modelIds`
+and `startVariant` against the run at hand. Under v1 those were bound at publish
+time; there is no publish time any more, so the guide must carry them itself. A
+guide without a `vendorId` can never be selected, and two guides claiming the same
+vendor + model + start variant collide — the host can pick neither.
+`validateOnboardingV2GuidesResult()` warns about the first and errors on the
+second, on top of running every guide through `validateOnboardingGuideV2()`.
+
+Registering the handler needs no permission. One handler per package: registering
+again replaces the previous one. `refreshOnboardingGuides()` asks the host to
+re-pull immediately when the set changed after startup;
+`deregisterOnboardingGuidesHandler()` stops the host asking, and deliberately
+leaves the cached guides in place — it is not a way to retire them.
 
 ### Content blocks
 

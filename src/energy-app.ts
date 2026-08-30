@@ -17,6 +17,7 @@ import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
 import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
+import {EnergyAppOnboardingV2} from "./packages/energy-app-onboarding-v2.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
@@ -183,6 +184,21 @@ export class EnergyApp implements EnyoEnergyAppSdk {
 
     public useOnboarding(): EnergyAppOnboarding {
         return this.energyAppSdk.useOnboarding();
+    }
+
+    /**
+     * Gets the Onboarding v2 API for serving this app's onboarding guides.
+     *
+     * Guides are pulled rather than published: the app registers one handler and
+     * the host calls it with "give me your v2 onboarding guides", receiving the
+     * complete current set or nothing. There is no save, update or delete —
+     * every answer replaces the host's picture of what this app offers.
+     *
+     * Available to every app — this API is not permission-gated.
+     * @returns The Onboarding v2 API instance
+     */
+    public useOnboardingV2(): EnergyAppOnboardingV2 {
+        return this.energyAppSdk.useOnboardingV2();
     }
 
     /**

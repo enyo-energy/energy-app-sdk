@@ -15,6 +15,7 @@ import {EnergyAppNotification} from "./packages/energy-app-notification.js";
 import {EnergyAppSecretManager} from "./packages/energy-app-secret-manager.js";
 import {EnergyAppLocation} from "./packages/energy-app-location.js";
 import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
+import {EnergyAppOnboardingV2} from "./packages/energy-app-onboarding-v2.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
@@ -108,6 +109,8 @@ export interface EnyoEnergyAppSdk {
     useLocation: () => EnergyAppLocation;
     /** Get the Onboarding API */
     useOnboarding: () => EnergyAppOnboarding;
+    /** Get the Onboarding v2 API for registering the handler the host calls to collect this app's onboarding guides */
+    useOnboardingV2: () => EnergyAppOnboardingV2;
     /** Get the Timeseries API for querying historical energy data */
     useTimeseries: () => EnergyAppTimeseries;
     /** Get the Energy Manager API for retrieving energy manager info and capabilities */
