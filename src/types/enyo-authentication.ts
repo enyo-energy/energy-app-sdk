@@ -61,6 +61,25 @@ export interface EnyoOauthAuthenticationStart {
     clientSecret?: string;
     /** Optional appliance id if the request was created for a specific appliance */
     applianceId?: string;
+    /**
+     * Whether this request was started in web-only mode, meaning
+     * {@link enyoRedirectUrl} is an `https` URL rather than a custom app scheme
+     * such as `enyoapp://`.
+     *
+     * Set by the host when the flow that started the login declared the
+     * constraint — today
+     * {@link EnyoOnboardingV2AuthBlock.requiresWebAuthentication} on an
+     * onboarding v2 auth block. It is reported here so a package building the
+     * provider's authorize URL can act on it explicitly: pick the matching
+     * registered OAuth client, or fail fast with a clear message instead of
+     * letting the authorization server answer "invalid redirect_uri" after the
+     * user has already typed a password.
+     *
+     * Absent or `false` means the host chose the redirect itself and it may
+     * carry a custom scheme. Prefer reading this flag over sniffing
+     * {@link enyoRedirectUrl}'s scheme.
+     */
+    requiresWebAuthentication?: boolean;
 }
 
 export interface EnyoOauthAuthenticationRedirectUrlResponse {

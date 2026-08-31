@@ -19,6 +19,7 @@ import {
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2DeviceSelection,
+    EnyoOnboardingV2SetupFieldType,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
@@ -27,11 +28,13 @@ import {
 } from '../../types/enyo-onboarding-v2.js';
 import type {
     EnyoOnboardingV2ActionBlock,
+    EnyoOnboardingV2AdditionalSetupBlock,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2Step,
     EnyoOnboardingV2Transition,
 } from '../../types/enyo-onboarding-v2.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../types/enyo-device-test.js';
+import {ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME} from '../../types/enyo-onboarding-v2-additional-setup.js';
 import type {EnergyAppPackagePublicFile} from '../../energy-app-package-definition.js';
 import {isImagePublicFile} from '../files/public-file-validators.js';
 import {resolvePublicFile} from '../files/define-public-file.js';
@@ -129,6 +132,7 @@ export function validateOnboardingGuideV2(
         validateImageBlocks(step, at, errors, warnings, context);
         validateInputBlocks(step, at, errors, warnings);
         validateAuthBlocks(step, at, errors, warnings);
+        validateAdditionalSetupBlocks(step, at, errors, warnings);
     }
 
     if (!guide.startStepId || !stepIds.has(guide.startStepId)) {
@@ -674,6 +678,178 @@ function validateAuthBlocks(
     }
 }
 
+
+/** Slug used for `setupKey` and field `name`s. */
+const SETUP_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Above this many fields, a setup block is a form — and a form on a phone, in a
+ * basement, with a torch in the other hand, is its own failure mode. Advisory
+ * only: some vendors genuinely need that much.
+ */
+const SETUP_FIELD_COUNT_WARN_ABOVE = 6;
+
+/** Field types whose value is a credential. Secrecy is derived, never declared. */
+const SECRET_FIELD_TYPES: ReadonlySet<string> = new Set([
+    EnyoOnboardingV2SetupFieldType.Password,
+    EnyoOnboardingV2SetupFieldType.Token,
+]);
+
+/** Every {@link EnyoOnboardingV2SetupFieldType} value. */
+const SETUP_FIELD_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoOnboardingV2SetupFieldType));
+
+/**
+ * Validates the additional-setup blocks of a step.
+ *
+ * The rules that matter most are the two that cannot be caught later:
+ *
+ * - **A mandatory `failed` outcome.** Guide and handler are linked only by
+ *   app-defined strings that nothing checks against each other, so a typo
+ *   between them is a live possibility. `failed` is also where a rejection, a
+ *   timeout and a missing handler land. Without it, any of those strands the
+ *   installer on a spinner.
+ * - **At least two outcomes.** A setup that can only succeed has nowhere to send
+ *   a wrong password.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateAdditionalSetupBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const setupBlocks = (step.blocks ?? []).filter(
+        (b): b is EnyoOnboardingV2AdditionalSetupBlock =>
+            b.type === EnyoOnboardingV2BlockType.AdditionalSetup,
+    );
+
+    for (const block of setupBlocks) {
+        const where = `${at}: additional-setup block "${block.id}"`;
+
+        if (!block.setupKey || !SETUP_SLUG_RE.test(block.setupKey)) {
+            errors.push(`${where} needs a kebab-case setupKey; the handler switches on it.`);
+        }
+        if (!block.cta?.length) errors.push(`${where} has no cta caption.`);
+        if (!block.description?.length) errors.push(`${where} has no description.`);
+
+        // ── fields ──────────────────────────────────────────────────────────
+        const fieldNames = new Set<string>();
+        const fields = block.fields ?? [];
+        for (const [i, field] of fields.entries()) {
+            const fieldAt = `${where} field[${i}] (${field.name || '?'})`;
+
+            if (!field.name || !SETUP_SLUG_RE.test(field.name)) {
+                errors.push(`${fieldAt}: name must be a kebab-case slug.`);
+            } else if (fieldNames.has(field.name)) {
+                errors.push(`${fieldAt}: duplicate name "${field.name}".`);
+            } else {
+                fieldNames.add(field.name);
+            }
+
+            if (!SETUP_FIELD_TYPES.has(field.type)) {
+                errors.push(`${fieldAt}: unknown type "${field.type}".`);
+            }
+            if (!field.label?.length) errors.push(`${fieldAt}: has no label.`);
+
+            if (field.type === EnyoOnboardingV2SetupFieldType.Select) {
+                if ((field.options?.length ?? 0) < 2) {
+                    errors.push(`${fieldAt}: a select field needs at least 2 options.`);
+                }
+            } else if (field.options?.length) {
+                errors.push(`${fieldAt}: options are only meaningful on a select field.`);
+            }
+
+            if (SECRET_FIELD_TYPES.has(field.type) && field.required === false) {
+                warnings.push(
+                    `${fieldAt}: an optional secret usually means the block wants a skip handle — ` +
+                        'half-submitted credentials fail inside the handler rather than on screen.',
+                );
+            }
+        }
+        if (fields.length > SETUP_FIELD_COUNT_WARN_ABOVE) {
+            warnings.push(
+                `${where} collects ${fields.length} fields; consider splitting it across steps.`,
+            );
+        }
+
+        // ── outcomes ────────────────────────────────────────────────────────
+        const outcomes = block.outcomes ?? [];
+        if (outcomes.length < 2) {
+            errors.push(
+                `${where} needs at least 2 outcomes; one that can only succeed has nowhere ` +
+                    'to send a rejected credential.',
+            );
+        }
+
+        const outcomeIds = new Set<string>();
+        const outcomeValues = new Set<string>();
+        for (const outcome of outcomes) {
+            if (!outcome.id) errors.push(`${where} has an outcome without an id.`);
+            else if (outcomeIds.has(outcome.id)) {
+                errors.push(`${where} has a duplicate outcome id "${outcome.id}".`);
+            } else outcomeIds.add(outcome.id);
+
+            if (!outcome.value) errors.push(`${where} has an outcome without a value.`);
+            else if (outcomeValues.has(outcome.value)) {
+                errors.push(`${where} wires outcome value "${outcome.value}" more than once.`);
+            } else outcomeValues.add(outcome.value);
+
+            if (!outcome.label?.length) {
+                warnings.push(`${where} outcome "${outcome.id}" has no label.`);
+            }
+        }
+
+        if (!outcomeValues.has(ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME)) {
+            errors.push(
+                `${where} has no "${ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME}" outcome. A rejected ` +
+                    'handler, an exceeded budget, a missing registration and an unrecognised ' +
+                    'outcome value all land there.',
+            );
+        }
+
+        // ── skip ────────────────────────────────────────────────────────────
+        if (block.skip) {
+            if (!block.skip.id) {
+                errors.push(`${where} has a skip handle without an id.`);
+            } else if (outcomeIds.has(block.skip.id)) {
+                errors.push(
+                    `${where} skip id "${block.skip.id}" collides with an outcome id; ` +
+                        'the two would produce the same routing handle.',
+                );
+            }
+            if (!block.skip.label?.length) {
+                warnings.push(`${where} skip handle has no label.`);
+            }
+        }
+    }
+
+    if (setupBlocks.length > 1) {
+        errors.push(
+            `${at}: more than one additional-setup block; a step can hold at most one, ` +
+                "or the step's routing cannot be read.",
+        );
+    }
+    if (setupBlocks.length === 1) {
+        const others = (step.blocks ?? []).filter(
+            (b) =>
+                b.type === EnyoOnboardingV2BlockType.Choice ||
+                b.type === EnyoOnboardingV2BlockType.Action ||
+                b.type === EnyoOnboardingV2BlockType.Input ||
+                b.type === EnyoOnboardingV2BlockType.Auth,
+        );
+        if (others.length) {
+            warnings.push(
+                `${at}: additional-setup block "${setupBlocks[0]!.id}" shares the step with ` +
+                    `${others.length} other decision block(s); keep one decision per step.`,
+            );
+        }
+    }
+}
+
 /**
  * Checks {@link EnyoOnboardingV2Guide.requiresNetworkScan} against what the guide
  * actually does.
@@ -745,6 +921,9 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             for (const o of b.outcomes) keys.add(`outcome:${b.id}:${o.id}`);
         } else if (b.type === EnyoOnboardingV2BlockType.Auth && b.outcome?.id) {
             keys.add(`outcome:${b.id}:${b.outcome.id}`);
+        } else if (b.type === EnyoOnboardingV2BlockType.AdditionalSetup) {
+            for (const o of b.outcomes ?? []) keys.add(`outcome:${b.id}:${o.id}`);
+            if (b.skip?.id) keys.add(`skip:${b.id}:${b.skip.id}`);
         }
     }
     if (keys.size === 0) keys.add('continue');
@@ -755,6 +934,7 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
 function sourceKey(s: EnyoOnboardingV2Transition['source']): string {
     if (s.kind === EnyoOnboardingV2TransitionSourceKind.Continue) return 'continue';
     if (s.kind === EnyoOnboardingV2TransitionSourceKind.Choice) return `choice:${s.blockId}:${s.optionId}`;
+    if (s.kind === EnyoOnboardingV2TransitionSourceKind.Skip) return `skip:${s.blockId}:${s.skipId}`;
     return `outcome:${s.blockId}:${s.outcomeId}`;
 }
 

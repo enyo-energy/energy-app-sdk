@@ -23,6 +23,9 @@ import {
 import type {
     EnyoOnboardingV2ActionOutcome,
     EnyoOnboardingV2AuthOutcome,
+    EnyoOnboardingV2SetupField,
+    EnyoOnboardingV2SetupOutcome,
+    EnyoOnboardingV2SetupSkipHandle,
     EnyoOnboardingV2Block,
     EnyoOnboardingV2ChoiceOption,
     EnyoOnboardingV2DynamicKind,
@@ -288,19 +291,25 @@ export const onboardingV2Block = {
      * @param id - Stable block id, unique within the guide.
      * @param label - Translated sign-in button text (de/en).
      * @param outcome - The single success handle (`{id, label}`).
-     * @param opts - Optional translated `help` naming the account that is needed.
+     * @param opts - Optional translated `help` naming the account that is needed,
+     *   and `requiresWebAuthentication` to force the login into a web browser
+     *   when the provider rejects a custom-scheme redirect such as `enyoapp://`.
      */
     auth: (
         id: string,
         label: EnyoOnboardingTranslatedContent[],
         outcome: EnyoOnboardingV2AuthOutcome,
-        opts?: {help?: EnyoOnboardingTranslatedContent[]},
+        opts?: {
+            help?: EnyoOnboardingTranslatedContent[];
+            requiresWebAuthentication?: boolean;
+        },
     ): EnyoOnboardingV2Block => ({
         id,
         type: EnyoOnboardingV2BlockType.Auth,
         label,
         outcome,
         help: opts?.help,
+        requiresWebAuthentication: opts?.requiresWebAuthentication,
     }),
     /**
      * A link block: a fixed URL the installer opens or copies.
@@ -361,6 +370,67 @@ export const onboardingV2Block = {
         outcomes,
         placeholder: opts?.placeholder,
         help: opts?.help,
+    }),
+    /**
+     * An additional-setup block: collect zero or more values, hand them to this
+     * energy app, and branch on the verdict the app returns.
+     *
+     * The only interactive block the app itself judges — use it for a vendor API
+     * key, a service token, an installer code. Keep
+     * {@link onboardingV2Block.auth} for the app's own OAuth session, whose
+     * server gating this cannot replace.
+     *
+     * `outcomes` must contain at least two entries, one of them valued `failed`
+     * ({@link ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME}) — every breakdown lands
+     * there, including an outcome the handler returns that no branch declares.
+     * Route each outcome with {@link onOutcomeV2} and the optional skip with
+     * {@link onSkipV2}.
+     *
+     * `Password` and `Token` fields are treated as secrets: masked, never logged,
+     * never prefilled, and not persisted in run state.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param setupKey - App-facing key the handler switches on; may repeat across guides.
+     * @param opts - `cta` and `description` (both translated, both required),
+     *   optional `fields`, the `outcomes`, and an optional `skip` handle.
+     *
+     * @example
+     * ```typescript
+     * onboardingV2Block.additionalSetup('cloud', 'vendor-cloud-token', {
+     *     cta: t('Cloud verbinden', 'Connect the cloud'),
+     *     description: t('Optional: bessere Prognosen.', 'Optional: better forecasts.'),
+     *     fields: [{
+     *         name: 'api-token',
+     *         type: EnyoOnboardingV2SetupFieldType.Token,
+     *         label: t('API-Token', 'API token'),
+     *     }],
+     *     outcomes: [
+     *         {id: 'ok',     value: 'connected', label: t('Verbunden', 'Connected')},
+     *         {id: 'failed', value: 'failed',    label: t('Fehlgeschlagen', 'Failed')},
+     *     ],
+     *     skip: {id: 'later', label: t('Später', 'Later')},
+     * })
+     * ```
+     */
+    additionalSetup: (
+        id: string,
+        setupKey: string,
+        opts: {
+            cta: EnyoOnboardingTranslatedContent[];
+            description: EnyoOnboardingTranslatedContent[];
+            fields?: EnyoOnboardingV2SetupField[];
+            outcomes: EnyoOnboardingV2SetupOutcome[];
+            skip?: EnyoOnboardingV2SetupSkipHandle;
+        },
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.AdditionalSetup,
+        setupKey,
+        cta: opts.cta,
+        description: opts.description,
+        fields: opts.fields,
+        outcomes: opts.outcomes,
+        skip: opts.skip,
     }),
 };
 
@@ -456,6 +526,32 @@ export function onOptionV2(
     return {
         id: `choice:${blockId}:${optionId}`,
         source: {kind: EnyoOnboardingV2TransitionSourceKind.Choice, blockId, optionId},
+        target: to,
+        note,
+    };
+}
+
+/**
+ * Route the skip handle of an `AdditionalSetup` block.
+ *
+ * Only an optional setup has one. It leaves the block without a verdict, so
+ * nothing is collected and the handler is never called — which is what keeps a
+ * failing bonus feature from blocking an otherwise finished onboarding.
+ *
+ * @param blockId - The additional-setup block's id.
+ * @param skipId - The skip handle's id.
+ * @param to - Where skipping leads.
+ * @param note - Optional author note.
+ */
+export function onSkipV2(
+    blockId: string,
+    skipId: string,
+    to: EnyoOnboardingV2Target,
+    note?: string,
+): EnyoOnboardingV2Transition {
+    return {
+        id: `skip:${blockId}:${skipId}`,
+        source: {kind: EnyoOnboardingV2TransitionSourceKind.Skip, blockId, skipId},
         target: to,
         note,
     };

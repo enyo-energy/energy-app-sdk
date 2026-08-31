@@ -238,6 +238,7 @@ export enum EnyoOnboardingV2BlockType {
     Link = 'link',
     Input = 'input',
     Auth = 'auth',
+    AdditionalSetup = 'additional-setup',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -537,8 +538,213 @@ export interface EnyoOnboardingV2AuthBlock extends EnyoOnboardingV2BlockBase {
     label: EnyoOnboardingTranslatedContent[];
     /** Optional translated help text — which account is needed (de/en). */
     help?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Force the login to run in a web browser rather than an in-app / native
+     * flow. Defaults to `false` — the host picks whatever it would normally use.
+     *
+     * Set it when the provider will not accept a custom-scheme redirect. Many
+     * OAuth providers reject anything that is not `https`, so a redirect of
+     * `enyoapp://…` fails at the authorization server with a generic
+     * "invalid redirect_uri" — before the installer has typed a password, and
+     * with nothing on screen that points at the cause. Declaring the constraint
+     * here makes the host hand out an `https` redirect URL instead.
+     *
+     * This is a property of the *provider*, not of a preference: turn it on
+     * because the vendor's OAuth app rejects custom schemes, not because a
+     * browser seems tidier. The native flow is the better experience where it
+     * works — it keeps the installer inside the app.
+     *
+     * The requirement travels with the request the app receives, as
+     * {@link EnyoOauthAuthenticationStart.requiresWebAuthentication}, so an app
+     * that registers its own redirect handler can confirm which mode it got
+     * rather than inferring it from the URL's scheme.
+     */
+    requiresWebAuthentication?: boolean;
     /** The one success handle; routed like any other outcome. */
     outcome: EnyoOnboardingV2AuthOutcome;
+}
+
+/**
+ * What an {@link EnyoOnboardingV2SetupField} collects. Drives the keyboard, the
+ * masking, and — for {@link Password} and {@link Token} — whether the value is
+ * treated as a secret.
+ *
+ * Secrecy is **derived from the type** rather than declared separately: one
+ * fewer thing to get wrong, and a field holding a credential is exactly the
+ * field that should be masked.
+ */
+export enum EnyoOnboardingV2SetupFieldType {
+    /** Free text; any non-empty value is accepted. */
+    Text = 'text',
+    /** A number; `,` and `.` are both accepted as the decimal separator. */
+    Number = 'number',
+    /** One of {@link EnyoOnboardingV2SetupField.options}. */
+    Select = 'select',
+    /** A password. Masked, and handled as a secret — see {@link EnyoOnboardingV2AdditionalSetupBlock}. */
+    Password = 'password',
+    /** An API token or key. Masked, paste-friendly, and handled as a secret. */
+    Token = 'token',
+}
+
+/** One choice of a {@link EnyoOnboardingV2SetupFieldType.Select} field. */
+export interface EnyoOnboardingV2SetupFieldOption {
+    /** The value handed to the handler when this option is picked; not translated. */
+    value: string;
+    /** The translated label shown to the installer (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+}
+
+/**
+ * One value an {@link EnyoOnboardingV2AdditionalSetupBlock} collects before
+ * calling the app.
+ */
+export interface EnyoOnboardingV2SetupField {
+    /**
+     * App-defined key, unique within the block and echoed back to the handler as
+     * {@link EnyoOnboardingV2SetupFieldValue.name}. Kebab-case.
+     */
+    name: string;
+    /** What this field collects. */
+    type: EnyoOnboardingV2SetupFieldType;
+    /** Translated field label (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+    /** Optional translated placeholder (de/en). */
+    placeholder?: EnyoOnboardingTranslatedContent[];
+    /** Optional translated help text — where the installer finds the value (de/en). */
+    help?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Whether the installer must fill this in before the CTA is enabled.
+     * Defaults to `true`.
+     *
+     * An optional secret is usually a sign the *block* wants a
+     * {@link EnyoOnboardingV2AdditionalSetupBlock.skip} instead: half-submitted
+     * credentials fail inside the handler rather than on screen, which is a
+     * worse place to explain the problem.
+     */
+    required?: boolean;
+    /** The options; {@link EnyoOnboardingV2SetupFieldType.Select} only, at least 2. */
+    options?: EnyoOnboardingV2SetupFieldOption[];
+}
+
+/**
+ * A possible verdict of an {@link EnyoOnboardingV2AdditionalSetupBlock}; each is
+ * a routing handle.
+ */
+export interface EnyoOnboardingV2SetupOutcome {
+    /** Stable id, unique within the block; referenced by a transition. */
+    id: string;
+    /**
+     * App-defined key the handler returns to select this branch; not translated.
+     *
+     * `failed` is reserved and **mandatory** on every block. It absorbs a
+     * rejected handler, one that exceeded its budget, a package with no handler
+     * registered, and a returned value matching no declared outcome. Guide and
+     * handler are linked only by these strings — nothing checks them against
+     * each other at compile time — so a typo between the two is a live
+     * possibility, and `failed` is what stops it stranding the installer.
+     */
+    value: string;
+    /** Translated display label for the verdict (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+}
+
+/**
+ * The handle for leaving an {@link EnyoOnboardingV2AdditionalSetupBlock} without
+ * running it at all.
+ *
+ * Present only on a genuinely optional setup, and it is what keeps a failing
+ * bonus feature from blocking an otherwise finished onboarding.
+ */
+export interface EnyoOnboardingV2SetupSkipHandle {
+    /** Stable id, unique within the block; referenced by a transition. */
+    id: string;
+    /** Translated label, e.g. "Später einrichten" (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+}
+
+/**
+ * An app-defined setup: collect zero or more values, hand them to the energy
+ * app, and branch on the verdict **the app** returns.
+ *
+ * The fourth interactive block, and the only one the app itself judges. The
+ * others each answer a different question:
+ *
+ * - {@link EnyoOnboardingV2InputBlock} — one value, checked by the **host**.
+ *   Note that `Text` and `Number` run no check at all and always take the
+ *   positive branch, so a password typed into one is simply waved through. That
+ *   gap is what this block exists to close.
+ * - {@link EnyoOnboardingV2AuthBlock} — the app's own OAuth session, gated by the
+ *   **server**. Keep using it for that: server gating is a security property an
+ *   app cannot self-assert, and no handler here substitutes for it.
+ * - {@link EnyoOnboardingV2ActionBlock} — a **closed** set of host capabilities.
+ *
+ * Use this for what none of those cover: a vendor API key that unlocks
+ * forecasts, a service token for an optional feature, an installer code checked
+ * against the app's own backend.
+ *
+ * **Secrets.** A {@link EnyoOnboardingV2SetupFieldType.Password} or
+ * {@link EnyoOnboardingV2SetupFieldType.Token} field is deliberately **not**
+ * persisted in run state — the opposite of {@link EnyoOnboardingV2InputBlock},
+ * whose value is kept so back/resume does not force a retype. Leaving the step
+ * clears it; returning asks again. That costs the installer a retype, which is
+ * less than a credential outliving the session in run state. The host logs field
+ * names and the resulting outcome key, never values, and an app should persist
+ * what it receives through {@link EnergyAppSecretManager} rather than its own
+ * storage. A secret field carries no default and is never prefilled: guides are
+ * pulled and cached, so there is nowhere safe for one to live.
+ *
+ * Each outcome and the skip handle MUST have exactly one outgoing transition.
+ *
+ * @example
+ * ```ts
+ * onboardingV2Block.additionalSetup('cloud', 'vendor-cloud-token', {
+ *     cta: t('Cloud verbinden', 'Connect the cloud'),
+ *     description: t(
+ *         'Optional: verbindet das Hersteller-Portal für genauere Prognosen.',
+ *         'Optional: connects the vendor portal for better forecasts.',
+ *     ),
+ *     fields: [
+ *         {
+ *             name: 'api-token',
+ *             type: EnyoOnboardingV2SetupFieldType.Token,
+ *             label: t('API-Token', 'API token'),
+ *             help: t('Portal → Einstellungen → API', 'Portal → Settings → API'),
+ *         },
+ *     ],
+ *     outcomes: [
+ *         {id: 'ok',     value: 'connected', label: t('Verbunden', 'Connected')},
+ *         {id: 'bad',    value: 'invalid',   label: t('Token ungültig', 'Invalid token')},
+ *         {id: 'failed', value: 'failed',    label: t('Fehlgeschlagen', 'Failed')},
+ *     ],
+ *     skip: {id: 'later', label: t('Später einrichten', 'Set up later')},
+ * });
+ * ```
+ */
+export interface EnyoOnboardingV2AdditionalSetupBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.AdditionalSetup;
+    /**
+     * App-defined key naming *which* setup this is, passed to the handler
+     * verbatim. Kebab-case.
+     *
+     * Deliberately distinct from {@link EnyoOnboardingV2BlockBase.id}: the id is
+     * a routing handle unique to one guide, while this is the app-facing
+     * identity and may repeat across guides. One handler switches on it instead
+     * of carrying a branch per guide.
+     */
+    setupKey: string;
+    /** Translated CTA caption — the button the installer presses (de/en). */
+    cta: EnyoOnboardingTranslatedContent[];
+    /** Translated description of what this unlocks, and why it is worth doing (de/en). */
+    description: EnyoOnboardingTranslatedContent[];
+    /** What to collect before calling the app. Omit for a pure "do it now" action. */
+    fields?: EnyoOnboardingV2SetupField[];
+    /**
+     * The verdicts; each is a routing handle. At least 2, and exactly one of them
+     * MUST be valued `failed`.
+     */
+    outcomes: EnyoOnboardingV2SetupOutcome[];
+    /** Optional escape hatch. Present only on a genuinely optional setup. */
+    skip?: EnyoOnboardingV2SetupSkipHandle;
 }
 
 /** Any block that can appear in a step's `blocks`. */
@@ -553,7 +759,8 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2ActionBlock
     | EnyoOnboardingV2LinkBlock
     | EnyoOnboardingV2InputBlock
-    | EnyoOnboardingV2AuthBlock;
+    | EnyoOnboardingV2AuthBlock
+    | EnyoOnboardingV2AdditionalSetupBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -565,7 +772,8 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2ChoiceBlock
     | EnyoOnboardingV2ActionBlock
     | EnyoOnboardingV2InputBlock
-    | EnyoOnboardingV2AuthBlock;
+    | EnyoOnboardingV2AuthBlock
+    | EnyoOnboardingV2AdditionalSetupBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets
@@ -579,6 +787,8 @@ export enum EnyoOnboardingV2TransitionSourceKind {
     Choice = 'choice',
     /** A specific outcome of an `Action` or `Input` block fired. */
     Outcome = 'outcome',
+    /** The installer skipped an `AdditionalSetup` block without running it. */
+    Skip = 'skip',
 }
 
 /** Where a transition leaves from within a step. */
@@ -588,7 +798,9 @@ export type EnyoOnboardingV2TransitionSource =
     /** A specific option of a `Choice` block was picked. */
     | {kind: EnyoOnboardingV2TransitionSourceKind.Choice; blockId: string; optionId: string}
     /** A specific outcome of an `Action` or `Input` block fired. */
-    | {kind: EnyoOnboardingV2TransitionSourceKind.Outcome; blockId: string; outcomeId: string};
+    | {kind: EnyoOnboardingV2TransitionSourceKind.Outcome; blockId: string; outcomeId: string}
+    /** An `AdditionalSetup` block was skipped, leaving without a verdict. */
+    | {kind: EnyoOnboardingV2TransitionSourceKind.Skip; blockId: string; skipId: string};
 
 /** Discriminator for the {@link EnyoOnboardingV2Target} union. */
 export enum EnyoOnboardingV2TargetType {

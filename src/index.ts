@@ -24,6 +24,8 @@ export * from './enyo-package-channel.js';
 export * from './types/enyo-timeseries.js';
 export * from './types/enyo-energy-manager.js';
 export * from './packages/energy-app-energy-manager.js';
+export * from './types/enyo-energy-manager-settings.js';
+export * from './implementations/energy-manager-settings/energy-manager-settings-validators.js';
 export * from './types/enyo-electricity-tariff.js';
 export * from './packages/energy-app-electricity-tariff.js';
 export * from './types/enyo-pv-forecast.js';
@@ -80,6 +82,9 @@ export * from './implementations/onboarding-v2/onboarding-v2-validators.js'
 export * from './types/enyo-onboarding-v2-provider.js'
 export * from './packages/energy-app-onboarding-v2.js'
 export * from './implementations/onboarding-v2/onboarding-v2-provider-validators.js'
+export * from './types/enyo-onboarding-v2-dynamic.js'
+export * from './types/enyo-onboarding-v2-additional-setup.js'
+export * from './implementations/onboarding-v2/onboarding-v2-dynamic-validators.js'
 export * from './implementations/files/define-public-file.js'
 export * from './implementations/files/public-file-validators.js'
 export * from './types/enyo-retry-manager.js'

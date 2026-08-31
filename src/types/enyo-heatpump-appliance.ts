@@ -88,6 +88,29 @@ export enum EnyoHeatpumpApplianceHeatingCircuitTypeEnum {
 export interface EnyoHeatpumpApplianceDomesticHotWater {
     index: number;
     tankSizeLiter?: number;
+    /**
+     * Thermal energy required to raise this tank's temperature by 1 K, in
+     * watt-hours per Kelvin (Wh/K).
+     *
+     * Turns a temperature band into an amount of storable energy: overheating
+     * the tank from 50 °C to 60 °C absorbs `10 * whPerDegreeCelsius` watt-hours.
+     * That is what lets an EMS weigh the tank against a battery when deciding
+     * where to put PV surplus, and size an overheating run against
+     * {@link maxTemperatureC} rather than guessing.
+     *
+     * For pure water the theoretical figure is ~1.163 Wh/(L·K), so a 300 L tank
+     * sits near 350 Wh/K. Report the value that reflects the real installation
+     * where it is known or measured — stratification, the usable share of the
+     * volume and standing losses all pull it away from the ideal, and a value
+     * derived from a calibration run beats one derived from
+     * {@link tankSizeLiter}.
+     *
+     * This is **thermal** energy in the tank, not electricity drawn from the
+     * grid. Divide by the heatpump's COP at the time to get the electrical
+     * input; for a resistive heating rod the two are effectively equal (see
+     * {@link EnyoHeatingRodApplianceMetadata.whPerDegreeCelsius}).
+     */
+    whPerDegreeCelsius?: number;
     targetTemperatureC: number;
     hysteresisK?: number;
     /**
@@ -101,6 +124,23 @@ export interface EnyoHeatpumpApplianceDomesticHotWater {
 export interface EnyoHeatpumpApplianceBufferTank {
     index: number;
     tankSizeLiter?: number;
+    /**
+     * Thermal energy required to raise this buffer tank's temperature by 1 K,
+     * in watt-hours per Kelvin (Wh/K).
+     *
+     * The buffer-tank counterpart of
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.whPerDegreeCelsius}, and read
+     * the same way: overheating the buffer by 5 K stores
+     * `5 * whPerDegreeCelsius` watt-hours of thermal energy. Relevant to any
+     * heatpump advertising
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.BufferTankOverheating},
+     * which otherwise has no way to say how much energy an overheating run
+     * actually absorbs.
+     *
+     * Thermal energy in the tank, not electrical input — divide by the current
+     * COP for the latter.
+     */
+    whPerDegreeCelsius?: number;
     targetTemperatureC?: number;
     hysteresisK?: number;
 }

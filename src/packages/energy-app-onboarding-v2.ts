@@ -2,6 +2,14 @@ import type {
     EnyoOnboardingV2GuidesRequest,
     EnyoOnboardingV2GuidesResult,
 } from '../types/enyo-onboarding-v2-provider.js';
+import type {
+    EnyoOnboardingV2DynamicRequest,
+    EnyoOnboardingV2DynamicResult,
+} from '../types/enyo-onboarding-v2-dynamic.js';
+import type {
+    EnyoOnboardingV2AdditionalSetupRequest,
+    EnyoOnboardingV2AdditionalSetupResult,
+} from '../types/enyo-onboarding-v2-additional-setup.js';
 
 /**
  * Handler the host calls to collect every onboarding guide (v2) an app ships.
@@ -31,6 +39,81 @@ import type {
 export type EnyoOnboardingV2GuidesHandler = (
     request: EnyoOnboardingV2GuidesRequest
 ) => Promise<EnyoOnboardingV2GuidesResult | null>;
+
+/**
+ * Handler the host calls to resolve the value behind a dynamic block while a
+ * step is being rendered.
+ *
+ * A guide declares a slot — `onboardingV2Block.dynamic(id, kind)` — and never a
+ * value. This is where the value comes from. The app is asked because it is
+ * usually the one that knows: it opened the OCPP endpoint
+ * ({@link EnergyAppOcpp.getAvailableConnectionDetails}), and it knows which of a
+ * device's addresses is the one worth typing.
+ *
+ * **`null` means "not available", and that is a normal answer.** Return it for
+ * a {@link EnyoOnboardingV2DynamicKind} the app does not serve, or when the run
+ * carries no device to answer about. A dynamic block is passive content with no
+ * routing handle, so an unresolved value never strands a run — the host falls
+ * back to whatever it can resolve itself, and failing that renders the step
+ * without the value. Nothing branches on it.
+ *
+ * **The app's answer wins.** When the handler returns a value the host uses it
+ * over its own resolution, so an app that answers is taking responsibility for
+ * being right — a plausible-but-wrong OCPP URL is copied into a wallbox and
+ * surfaces much later as an `ocpp-connect` timeout with nothing to point at.
+ * Answer `null` rather than guessing.
+ *
+ * An installer is looking at the screen this fills, and the host stops waiting
+ * after {@link EnyoOnboardingV2DynamicRequest.timeoutMs}. Answer from state the
+ * app already holds; this is not the place for a vendor-cloud round trip.
+ * Rejecting the promise is treated as `null`.
+ *
+ * Registering a handler requires no permission.
+ *
+ * @param request - Which value is wanted, for which block, device and run.
+ * @returns A promise resolving to the value, or `null` when it is unavailable.
+ */
+export type EnyoOnboardingV2DynamicHandler = (
+    request: EnyoOnboardingV2DynamicRequest
+) => Promise<EnyoOnboardingV2DynamicResult | null>;
+
+/**
+ * Handler the host calls when an installer runs an
+ * {@link EnyoOnboardingV2AdditionalSetupBlock}.
+ *
+ * The only interactive block whose verdict is the **app's**. A host can check an
+ * IP and a server can gate an OAuth session; neither can say whether a vendor
+ * API token is the right token. The guide collects, the host forwards, the app
+ * answers.
+ *
+ * One handler serves every setup block in every guide — switch on
+ * {@link EnyoOnboardingV2AdditionalSetupRequest.setupKey}, which is stable
+ * across guides, rather than on `blockId`, which is not.
+ *
+ * **The request carries credentials.** Four rules follow:
+ *
+ * 1. Never log a value. Log `setupKey`, field *names*, and the outcome.
+ * 2. Never echo one into `message` (rendered on screen) or `detail` (goes to
+ *    support), not even truncated.
+ * 3. Persist through {@link EnergyAppSecretManager}, not the app's own storage.
+ * 4. Do not hold them past the call. Secret fields are not kept in run state, so
+ *    the handler is the only place they exist.
+ *
+ * **Everything that is not a verdict is `failed`.** A rejection, exceeding
+ * {@link EnyoOnboardingV2AdditionalSetupRequest.timeoutMs}, no registered
+ * handler, or an `outcome` matching nothing the block declared all route to the
+ * block's mandatory `failed` outcome. Prefer resolving with a real outcome and a
+ * translated `message`: `failed` gets the installer a branch, but not an
+ * explanation.
+ *
+ * Registering a handler requires no permission; what the handler *does* may.
+ *
+ * @param request - Which setup was run, with what values, and the time budget.
+ * @returns A promise resolving to the verdict to route on.
+ */
+export type EnyoOnboardingV2AdditionalSetupHandler = (
+    request: EnyoOnboardingV2AdditionalSetupRequest
+) => Promise<EnyoOnboardingV2AdditionalSetupResult>;
 
 /**
  * Interface for answering the host's "give me your v2 onboarding guides"
@@ -134,4 +217,100 @@ export interface EnergyAppOnboardingV2 {
      * @returns Promise that resolves once the host has taken the new answer.
      */
     refreshOnboardingGuides(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls to resolve dynamic block values
+     * (`ocpp-url`, `device-ip`) while a step is rendered.
+     *
+     * One handler per package, serving every
+     * {@link EnyoOnboardingV2DynamicKind}: registering again replaces the
+     * previous one. Register during startup — a request that arrives before
+     * registration is answered as unavailable, and the installer sees a step
+     * missing the value they were told to copy.
+     *
+     * Optional. An app whose guides use no dynamic blocks need not register
+     * anything, and an app that registers may still answer `null` for kinds it
+     * does not serve.
+     *
+     * @param handler - Callback invoked once per dynamic-value request.
+     * @returns Promise that resolves once the handler is registered with the host.
+     *
+     * @example
+     * ```typescript
+     * await energyApp.useOnboardingV2().registerDynamicValueHandler(async (request) => {
+     *     if (request.kind !== EnyoOnboardingV2DynamicKind.OcppUrl) return null;
+     *
+     *     const {cloud, local} = await energyApp.useOcpp().getAvailableConnectionDetails();
+     *     const endpoint = cloud ?? local;
+     *     if (!endpoint) return null;   // nothing to offer — better than a wrong URL
+     *
+     *     return {requestId: request.requestId, kind: request.kind, value: endpoint.url};
+     * });
+     * ```
+     */
+    registerDynamicValueHandler(handler: EnyoOnboardingV2DynamicHandler): Promise<void>;
+
+    /**
+     * Removes the registered dynamic-value handler.
+     *
+     * After deregistration the host resolves dynamic blocks on its own again. If
+     * no handler is registered this operation is a no-op.
+     *
+     * @returns Promise that resolves once the handler has been removed.
+     */
+    deregisterDynamicValueHandler(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls when an installer runs an
+     * {@link EnyoOnboardingV2AdditionalSetupBlock}.
+     *
+     * One handler per package, serving every `setupKey`: registering again
+     * replaces the previous one. Register during startup — a request arriving
+     * before registration is routed to the block's `failed` outcome, which in a
+     * guided run means the installer sees the failure branch of a setup that was
+     * never actually attempted.
+     *
+     * Optional. An app whose guides use no setup blocks registers nothing.
+     *
+     * @param handler - Callback invoked once per additional-setup request.
+     * @returns Promise that resolves once the handler is registered with the host.
+     *
+     * @example
+     * ```typescript
+     * await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request) => {
+     *     if (request.setupKey !== 'vendor-cloud-token') {
+     *         return {requestId: request.requestId, outcome: 'failed'};
+     *     }
+     *
+     *     const token = request.values.find((v) => v.name === 'api-token')?.value;
+     *     if (!token) return {requestId: request.requestId, outcome: 'failed'};
+     *
+     *     const accepted = await vendorCloud.verify(token);   // never log `token`
+     *     if (!accepted) {
+     *         return {
+     *             requestId: request.requestId,
+     *             outcome: 'invalid',
+     *             message: [
+     *                 {language: 'de', value: 'Token wurde abgelehnt.'},
+     *                 {language: 'en', value: 'The token was rejected.'},
+     *             ],
+     *         };
+     *     }
+     *
+     *     await energyApp.useSecretManager().saveSecret('vendor-cloud', {token});
+     *     return {requestId: request.requestId, outcome: 'connected'};
+     * });
+     * ```
+     */
+    registerAdditionalSetupHandler(handler: EnyoOnboardingV2AdditionalSetupHandler): Promise<void>;
+
+    /**
+     * Removes the registered additional-setup handler.
+     *
+     * After deregistration every setup block of this package routes to its
+     * `failed` outcome. If no handler is registered this operation is a no-op.
+     *
+     * @returns Promise that resolves once the handler has been removed.
+     */
+    deregisterAdditionalSetupHandler(): Promise<void>;
 }

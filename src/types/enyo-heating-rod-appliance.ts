@@ -41,6 +41,56 @@ export interface EnyoHeatingRodApplianceMetadata {
     mode?: EnyoHeatingRodApplianceModeEnum;
     /** Rated electrical power of the heating rod in watts */
     ratedPowerW?: number;
+    /**
+     * Volume of the tank this heating rod sits in, in litres.
+     *
+     * The same field as
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.tankSizeLiter} /
+     * {@link EnyoHeatpumpApplianceBufferTank.tankSizeLiter}, and it applies to
+     * whichever tank the rod actually heats — a domestic hot water cylinder or a
+     * heating buffer. Reported here so a standalone heating rod, one that belongs
+     * to no heatpump appliance, can still describe its storage.
+     *
+     * Useful on its own for sizing and display, and as the fallback behind
+     * {@link whPerDegreeCelsius}: at ~1.163 Wh/(L·K) for pure water a tank of
+     * this size takes roughly `tankSizeLiter * 1.163` watt-hours per Kelvin.
+     * Prefer the measured {@link whPerDegreeCelsius} where it is known — the
+     * volume alone ignores stratification and the share of it the rod really
+     * reaches.
+     *
+     * When the rod belongs to a heatpump installation
+     * ({@link heatpumpApplianceId}), this describes the same physical tank as the
+     * heatpump's entry and the two should agree.
+     */
+    tankSizeLiter?: number;
+    /**
+     * Thermal energy required to raise the temperature of the tank this heating
+     * rod sits in by 1 K, in watt-hours per Kelvin (Wh/K).
+     *
+     * Applies to whichever tank the rod actually heats — a domestic hot water
+     * cylinder or a heating buffer. Together with {@link ratedPowerW} it answers
+     * the two questions an EMS has about a surplus run: how much energy the tank
+     * can absorb over a temperature band (`ΔT * whPerDegreeCelsius`), and how
+     * long the rod needs to deliver it
+     * (`ΔT * whPerDegreeCelsius / ratedPowerW` hours).
+     *
+     * For pure water the theoretical figure is ~1.163 Wh/(L·K), so a 300 L tank
+     * sits near 350 Wh/K. Report the value that reflects the real installation
+     * where it is known or measured: stratification and the usable share of the
+     * volume both pull it away from the ideal, and a rod mounted high in a
+     * cylinder heats far less water than the cylinder holds.
+     *
+     * Defined as **thermal** energy, matching
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.whPerDegreeCelsius} so the two
+     * are directly comparable. A resistive element converts electricity to heat
+     * at essentially 100 %, so for the rod alone the electrical input is the same
+     * number — unlike a heatpump, where it must be divided by the COP.
+     *
+     * When the rod belongs to a heatpump installation
+     * ({@link heatpumpApplianceId}), this value and the one on the heatpump's
+     * tank describe the same physical tank and should agree.
+     */
+    whPerDegreeCelsius?: number;
     /** the target temperature of this heating rod. Might be different than the target of the heatpump */
     targetTemperatureC: number;
     /**

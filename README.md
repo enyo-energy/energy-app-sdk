@@ -1127,6 +1127,65 @@ if (info) console.log(`Active manager: ${info.name} v${info.version}`);
 
 Requires the `EnergyManagerInfo` permission.
 
+##### General settings
+
+A closed, SDK-defined set of user-facing controls the active energy manager honours — the contract between the enyo cockpit and whichever manager is installed. Not to be confused with `useSettings()`, which is per-package, string-valued, and rendered on your own config screen.
+
+| Setting | Type |
+|---|---|
+| `BatteryControl` | boolean |
+| `BatteryChargingMode` | `paced` \| `immediate` |
+| `BatteryChargeFromGrid` | boolean |
+| `BatteryDischargeWhileChargingWh` | number \| `null` (Wh allowance; `null`/unset = disabled) |
+| `BlockBatteryDischargeWhileEvCharging` | boolean |
+| `HeatpumpControl` | boolean |
+| `HeatingRodControl` | boolean |
+| `HeatingRodMode` | `pv-surplus-only` \| `boost` |
+| `ChargerControl` | boolean |
+| `DefaultChargeMode` | `EnyoChargeModeEnum` |
+| `PriceLimitCtPerKwh` | number, **ct/kWh** (`7` = 7 ct/kWh) |
+| `CostOptimizedTarget` | wall-clock `"07:30"` + IANA timezone |
+
+An energy manager declares what it honours, next to `registerFeatures()`:
+
+```typescript
+em.registerSupportedSettings([
+    EnergyManagerSettingEnum.BatteryControl,
+    EnergyManagerSettingEnum.BatteryChargingMode,
+    EnergyManagerSettingEnum.ChargerControl,
+    EnergyManagerSettingEnum.DefaultChargeMode,
+]);
+
+// seed defaults without ever overriding the user
+await em.setEnergyManagerSettings(
+    { batteryControl: true, batteryChargingMode: EnergyManagerBatteryChargingModeEnum.Paced },
+    { onlyIfUnset: true },
+);
+```
+
+Anyone can read and react:
+
+```typescript
+const state = await em.getEnergyManagerSettings();   // null when no EM is configured
+if (state?.supported.includes(EnergyManagerSettingEnum.ChargerControl)
+    && state.values.chargerControl === false) {
+    skipChargerOptimization();
+}
+
+const id = em.listenForEnergyManagerSettingsChange(async ({ changed, state }) => {
+    if (changed.includes(EnergyManagerSettingEnum.DefaultChargeMode)) {
+        await applyChargeMode(state.values.defaultChargeMode);
+    }
+});
+em.unsubscribeEnergyManagerSettings(id);
+```
+
+Three things to get right:
+
+- **Absent is not `false`.** `undefined` means unsupported or never chosen; `false` means the user switched it off. Check `supported` first, then the value — collapsing the two steers hardware someone deliberately disabled.
+- **Six settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `priceLimitCtPerKwh` only applies under `price-limit`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES` so the UI and the validator share one source of truth.
+- **`priceLimitCtPerKwh` is in cents**, unlike the SDK's machine-readable price fields (`electricityPricePerKwh`, EUR/kWh). Divide by 100 when comparing. `validateEnergyManagerSettingsState()` warns on values outside a plausible ct band, which catches the mix-up.
+
 #### `useElectricityTariff(): EnergyAppElectricityTariff`
 
 Register, retrieve, and manage electricity tariffs. One tariff can be marked as the system default.
@@ -1356,6 +1415,38 @@ await energyApp.useOnboardingV2().registerOnboardingGuidesHandler(async (request
 ```
 
 `null` and `[]` are **not** the same answer: `[]` says "I genuinely have no guides" and drops the host's cached ones, `null` says "I cannot answer right now" and leaves them alone. Use `null` for transient failures. The host stops waiting after `request.timeoutMs`, so build the guides in memory rather than fetching them.
+
+Guides declare **slots**, not values: `onboardingV2Block.dynamic(id, kind)` for an OCPP URL or a device IP. Register a second handler to fill them, and return `null` for anything you cannot resolve — a dynamic block is passive content, so an unresolved value never strands a run.
+
+```typescript
+await energyApp.useOnboardingV2().registerDynamicValueHandler(async (request) => {
+    if (request.kind !== EnyoOnboardingV2DynamicKind.OcppUrl) return null;
+
+    const { cloud, local } = await energyApp.useOcpp().getAvailableConnectionDetails();
+    const endpoint = cloud ?? local;
+    if (!endpoint) return null;   // unavailable beats wrong
+
+    return { requestId: request.requestId, kind: request.kind, value: endpoint.url };
+});
+```
+
+Guides can also carry `additional-setup` blocks — the one interactive block **your app** judges. It collects fields (including masked `Password`/`Token` fields, which v2 previously had no way to gather at all), calls a third handler, and branches on the outcome you return:
+
+```typescript
+await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request) => {
+    if (request.setupKey !== 'vendor-cloud-token') return { requestId: request.requestId, outcome: 'failed' };
+    const token = request.values.find((v) => v.name === 'api-token')?.value;
+    if (!token || !(await vendorCloud.verify(token))) {
+        return { requestId: request.requestId, outcome: 'invalid' };
+    }
+    await energyApp.useSecretManager().saveSecret('vendor-cloud', { token });
+    return { requestId: request.requestId, outcome: 'connected' };
+});
+```
+
+Every such block must declare a `failed` outcome — it absorbs a rejection, a timeout, a missing handler, and an outcome value matching no branch (guide and handler are linked only by strings). Secrets are never logged, never prefilled, and not kept in run state. See [ONBOARDING.md](./ONBOARDING.md#app-defined-setups-additional-setup).
+
+Your answer wins over the host's own resolution, so a wrong value is worse than none — the installer pastes it into a charger and it fails minutes later as an `ocpp-connect` timeout. `validateOnboardingV2DynamicResult()` catches the copy-target mistakes (whitespace, a non-absolute URL, a plaintext scheme).
 
 Each guide must carry the `vendorId`, `modelIds` and `startVariant` it applies to — that is how the host selects one for a run, and there is no publish step left to bind them. See [ONBOARDING.md](./ONBOARDING.md#serving-guides-the-host-pulls-the-app-never-publishes) for the full v2 model.
 

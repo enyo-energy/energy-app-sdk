@@ -904,6 +904,73 @@ re-pull immediately when the set changed after startup;
 `deregisterOnboardingGuidesHandler()` stops the host asking, and deliberately
 leaves the cached guides in place — it is not a way to retire them.
 
+
+### Filling dynamic blocks (`ocpp-url`, `device-ip`)
+
+A guide declares a **slot**, never a value:
+
+```typescript
+onboardingV2Block.dynamic('url', EnyoOnboardingV2DynamicKind.OcppUrl)
+```
+
+The block carries no `url` field, and that is deliberate — guides are pulled once
+and cached, so a value baked in at build time would be a snapshot served to every
+installation afterwards.
+
+Who fills the slot is the app, when it registers a dynamic-value handler. The app
+usually knows better than the host: it opened the OCPP endpoint, and it knows which
+of a device's addresses is worth typing.
+
+```typescript
+await energyApp.useOnboardingV2().registerDynamicValueHandler(async (request) => {
+  if (request.kind !== EnyoOnboardingV2DynamicKind.OcppUrl) return null;
+
+  const {cloud, local} = await energyApp.useOcpp().getAvailableConnectionDetails();
+  const endpoint = cloud ?? local;
+  if (!endpoint) return null;
+
+  const value = {requestId: request.requestId, kind: request.kind, value: endpoint.url};
+  const {ok, errors} = validateOnboardingV2DynamicResult(value, request);
+  if (!ok) {
+    console.error('dynamic value rejected', errors);
+    return null;              // unavailable beats wrong
+  }
+  return value;
+});
+```
+
+**`null` means "not available", and it is a normal answer.** Return it for a kind
+the app does not serve, or when the run carries no device to answer about (an OCPP
+`manual-setup` run has no `networkDeviceId` at all). A dynamic block is passive
+content with no routing handle, so an unresolved value never strands a run: the host
+falls back to its own resolution, and failing that renders the step without the
+value. A rejected promise is treated as `null`; so is exceeding
+`request.timeoutMs`.
+
+**The app's answer wins over the host's.** Answering means taking responsibility for
+being right, and this is a failure that surfaces late and blind — the installer
+copies a plausible URL into a wallbox and it shows up minutes later as an
+`ocpp-connect` timeout with nothing to point at. Prefer `null` to a guess.
+
+The request carries `kind`, `blockId`, `stepName`, the optional `networkDeviceId` /
+`applianceId` the run is bound to, and `timeoutMs`. One handler serves every kind —
+switch on `request.kind`. An installer is watching the screen this fills, so answer
+from state the app already holds rather than making a vendor-cloud round trip.
+
+`validateOnboardingV2DynamicResult()` checks what fails late otherwise:
+
+| Check | Verdict |
+|---|---|
+| empty `value` | error — return `null` instead |
+| leading/trailing or embedded whitespace | error — it is a copy target, not prose |
+| `kind` answering a different slot than requested | error |
+| `ocpp-url` that is not an absolute `ws`/`wss`/`http(s)` URL | error |
+| `ocpp-url` on a plaintext scheme | warning — a production CSMS hands out `wss://` |
+| `device-ip` that is neither IPv4 nor an `http(s)` URL | warning — a hostname may be intended |
+
+Registering the handler is optional and needs no permission; an app whose guides use
+no dynamic blocks registers nothing.
+
 ### Content blocks
 
 | Block | Factory | Purpose |
@@ -921,6 +988,7 @@ leaves the cached guides in place — it is not a way to retire them.
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
+| `additional-setup` | `onboardingV2Block.additionalSetup` | collect fields (incl. passwords/tokens), call the app, branch on **its** verdict |
 
 ### Images from the app repository
 
@@ -1072,6 +1140,145 @@ step to retry.
 The validator requires the handle to be wired, allows at most one `auth` block per
 step, and warns when another decision block sits next to it, since that would
 offer a way past a gate the client is not allowed to skip.
+
+#### Forcing a browser login (`requiresWebAuthentication`)
+
+Many OAuth providers accept only `https` redirect URIs. Against those, enyo's
+custom-scheme redirect (`enyoapp://…`) is rejected by the authorization server
+with a generic *invalid redirect_uri* — before a password has been typed, and with
+nothing on screen that points at the cause.
+
+Declare the constraint on the block and the host hands out an `https` redirect
+instead, running the login in a web browser:
+
+```typescript
+onboardingV2Block.auth(
+  'login',
+  t('Bei Solarweb anmelden', 'Sign in to Solarweb'),
+  {id: 'ok', label: t('Angemeldet', 'Signed in')},
+  {
+    help: t('Zugangsdaten des Anlagenbetreibers nutzen.', "Use the plant owner's credentials."),
+    requiresWebAuthentication: true,
+  },
+)
+```
+
+Defaults to `false`, which leaves the choice to the host. **Set it because the
+provider rejects custom schemes, not because a browser looks tidier** — the native
+flow is the better experience where it works, since it keeps the installer inside
+the app.
+
+The requirement travels with the request the package receives:
+`EnyoOauthAuthenticationStart.requiresWebAuthentication` is `true` for such a run,
+so a package that builds the provider's authorize URL itself can select the
+matching registered OAuth client, or fail fast with a useful message. Read that
+flag rather than sniffing the scheme of `enyoRedirectUrl`.
+
+
+### App-defined setups (`additional-setup`)
+
+The other three interactive blocks are judged by someone else: `input` by the host,
+`auth` by the server, `action` by a closed set of host capabilities. `additional-setup`
+is the one **the app** judges — for a vendor API key that unlocks forecasts, a service
+token for an optional feature, an installer code checked against the app's own backend.
+
+It also closes a v1 regression. v1 could collect a password
+(`EnyoOnboardingSectionType.PasswordInput`) and route the submission to the package,
+which returned success or error. v2 had no equivalent: its `input` block takes a single
+value and, for `valueType: Text`, **runs no check at all** and always takes the positive
+branch — so a password typed into one today is simply waved through.
+
+```typescript
+onboardingV2Block.additionalSetup('cloud', 'vendor-cloud-token', {
+  cta: t('Cloud verbinden', 'Connect the cloud'),
+  description: t('Optional: bessere Prognosen.', 'Optional: better forecasts.'),
+  fields: [{
+    name: 'api-token',
+    type: EnyoOnboardingV2SetupFieldType.Token,
+    label: t('API-Token', 'API token'),
+    help: t('Portal → Einstellungen → API', 'Portal → Settings → API'),
+  }],
+  outcomes: [
+    {id: 'ok',     value: 'connected', label: t('Verbunden', 'Connected')},
+    {id: 'bad',    value: 'invalid',   label: t('Token ungültig', 'Invalid token')},
+    {id: 'failed', value: 'failed',    label: t('Fehlgeschlagen', 'Failed')},
+  ],
+  skip: {id: 'later', label: t('Später einrichten', 'Set up later')},
+})
+// transitions: onOutcomeV2('cloud', 'ok', …), … plus onSkipV2('cloud', 'later', …)
+```
+
+**Keep using `auth` for the app's own OAuth session.** Its server gating is a security
+property an app cannot self-assert, and a handler here answering "logged in" is only
+the app's word for it.
+
+#### The handler
+
+```typescript
+await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request) => {
+  if (request.setupKey !== 'vendor-cloud-token') {
+    return {requestId: request.requestId, outcome: 'failed'};
+  }
+  const token = request.values.find((v) => v.name === 'api-token')?.value;
+  const accepted = token ? await vendorCloud.verify(token) : false;   // never log `token`
+  if (!accepted) {
+    return {
+      requestId: request.requestId,
+      outcome: 'invalid',
+      message: t('Token wurde abgelehnt.', 'The token was rejected.'),
+    };
+  }
+  await energyApp.useSecretManager().saveSecret('vendor-cloud', {token});
+  return {requestId: request.requestId, outcome: 'connected'};
+});
+```
+
+One handler serves every setup block in every guide — switch on `setupKey`, which is
+stable across guides, not on `blockId`, which is not. That is why the two are separate
+fields.
+
+#### `failed` is mandatory
+
+Every block must declare an outcome valued `failed`, and the validator errors without
+one. It absorbs everything that is not a verdict:
+
+- the handler rejected,
+- it exceeded `request.timeoutMs`,
+- **no handler is registered**,
+- it returned an `outcome` matching no declared branch.
+
+That last case is why this is not optional: guide and handler are linked only by
+app-defined strings, and nothing checks them against each other at compile time. A typo
+between the two is a live possibility, and without `failed` it strands the installer on
+a spinner. The validator also requires **at least two** outcomes — a setup that can only
+succeed has nowhere to send a rejected credential.
+
+#### Secrets
+
+`Password` and `Token` fields are treated as secrets, derived from the type — there is no
+separate flag to forget.
+
+- **Not persisted in run state.** The opposite of an `input` block, whose value is kept so
+  back/resume does not force a retype. Leaving the step clears a secret; returning asks
+  again. That costs a retype, which is less than a credential outliving the session.
+- **Never logged.** The host logs `setupKey`, field *names* and the outcome key — never
+  values. Do not echo one into `message` (rendered on screen) or `detail` (goes to support).
+- **Never prefilled.** Guides are pulled and cached, so a default has nowhere safe to live.
+- **Persist via `EnergyAppSecretManager`**, not the app's own storage.
+
+#### Optional features and `skip`
+
+A `skip` handle lets the installer leave without a verdict — nothing is collected and the
+handler is never called. Declare one on anything genuinely optional, so a failing bonus
+feature does not block an otherwise finished onboarding. It is explicit rather than
+automatic: a mandatory setup should look mandatory in the source. Route it with
+`onSkipV2()`.
+
+The validator additionally errors on: a non-slug `setupKey`, an empty `cta` or
+`description`, duplicate field names, a `select` with fewer than two options, options on a
+non-select field, a skip id colliding with an outcome id, and more than one setup block per
+step. It warns on an optional secret field (that usually wants a block-level `skip`), more
+than six fields, and a setup block sharing a step with another decision block.
 
 ### Waiting for an OCPP charger (`ocpp-connect`)
 
