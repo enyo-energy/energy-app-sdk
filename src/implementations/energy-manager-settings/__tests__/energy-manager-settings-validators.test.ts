@@ -3,6 +3,7 @@ import {
     ENERGY_MANAGER_SETTING_DEPENDENCIES,
     ENERGY_MANAGER_SETTING_VALUE_KEYS,
     EnergyManagerBatteryChargingModeEnum,
+    EnergyManagerBatteryEvDischargeModeEnum,
     EnergyManagerHeatingRodModeEnum,
     EnergyManagerSettingEnum,
     type EnergyManagerSettingValues,
@@ -14,6 +15,10 @@ import {
     EnergyManagerSettingsValidationError,
     validateEnergyManagerSettingsState,
 } from '../energy-manager-settings-validators.js';
+import {
+    getEnergyManagerSettingDependency,
+    isEnergyManagerSettingActive,
+} from '../energy-manager-settings-utils.js';
 
 const ALL_SETTINGS = Object.values(EnergyManagerSettingEnum);
 
@@ -30,8 +35,8 @@ describe('validateEnergyManagerSettingsState — supported list', () => {
                 batteryControl: true,
                 batteryChargingMode: EnergyManagerBatteryChargingModeEnum.Paced,
                 batteryChargeFromGrid: false,
-                batteryDischargeWhileChargingWh: 2000,
-                blockBatteryDischargeWhileEvCharging: false,
+                batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.FixedWh,
+                batteryEvDischargeFixedWh: 2000,
                 heatpumpControl: true,
                 heatingRodControl: true,
                 heatingRodMode: EnergyManagerHeatingRodModeEnum.PvSurplusOnly,
@@ -149,137 +154,134 @@ describe('validateEnergyManagerSettingsState — price limit (ct/kWh)', () => {
     });
 });
 
-describe('validateEnergyManagerSettingsState — battery discharge budget (Wh)', () => {
-    const budgetState = (batteryDischargeWhileChargingWh: number | null) =>
-        state({batteryControl: true, batteryDischargeWhileChargingWh});
+describe('validateEnergyManagerSettingsState — battery-to-EV discharge mode', () => {
+    const modeState = (values: Partial<EnergyManagerSettingValues>) =>
+        validateEnergyManagerSettingsState(state({batteryControl: true, ...values}));
 
-    it('accepts a plausible Wh budget', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(budgetState(5000));
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
+    it('accepts each parameterised mode with its own parameter', () => {
+        expect(modeState({
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.FixedWh,
+            batteryEvDischargeFixedWh: 5000,
+        }).warnings).toEqual([]);
+
+        expect(modeState({
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+            batteryEvDischargeSocLimitPercent: 50,
+        }).warnings).toEqual([]);
     });
 
-    it('accepts `null` as "disabled"', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(budgetState(null));
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
-    });
-
-    it('accepts `0`, which means the same as disabled', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(budgetState(0));
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
-    });
-
-    it('rejects a negative budget', () => {
-        const {ok, errors} = validateEnergyManagerSettingsState(budgetState(-500));
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('cannot be'))).toBe(true);
-        expect(errors.some((e) => e.includes('disable the transfer'))).toBe(true);
-    });
-
-    it('rejects a non-finite budget', () => {
-        const {ok, errors} = validateEnergyManagerSettingsState(budgetState(Number.POSITIVE_INFINITY));
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('finite number or `null`'))).toBe(true);
-    });
-
-    it('warns on a negligible positive figure, catching a kWh value in a Wh field', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(budgetState(10));
-        expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('watt-hours, not kilowatt-hours'))).toBe(true);
-    });
-
-    it('treats `null` as a stored value for gate and support checks', () => {
-        const offGate = validateEnergyManagerSettingsState(
-            state({batteryControl: false, batteryDischargeWhileChargingWh: null}, [
-                EnergyManagerSettingEnum.BatteryControl,
-                EnergyManagerSettingEnum.BatteryDischargeWhileChargingWh,
-            ]),
-        );
-        expect(offGate.warnings.some((w) => w.includes('it currently cannot'))).toBe(true);
-
-        const unsupported = validateEnergyManagerSettingsState(
-            state({batteryControl: true, batteryDischargeWhileChargingWh: null}, [
-                EnergyManagerSettingEnum.BatteryControl,
-            ]),
-        );
-        expect(unsupported.warnings.some((w) => w.includes('will ignore it'))).toBe(true);
-    });
-});
-
-describe('validateEnergyManagerSettingsState — hard block during EV charging', () => {
-    it('accepts either boolean under an active battery gate', () => {
-        for (const blocked of [true, false]) {
-            const {ok, warnings} = validateEnergyManagerSettingsState(
-                state({batteryControl: true, blockBatteryDischargeWhileEvCharging: blocked}),
-            );
-            expect(ok, String(blocked)).toBe(true);
-            expect(warnings, String(blocked)).toEqual([]);
+    it('accepts the parameterless modes', () => {
+        for (const mode of [
+            EnergyManagerBatteryEvDischargeModeEnum.Intelligent,
+            EnergyManagerBatteryEvDischargeModeEnum.BlockDischarge,
+            EnergyManagerBatteryEvDischargeModeEnum.Unmanaged,
+        ]) {
+            const {ok, warnings} = modeState({batteryEvDischargeMode: mode});
+            expect(ok, mode).toBe(true);
+            expect(warnings, mode).toEqual([]);
         }
     });
 
-    it('rejects a non-boolean value', () => {
-        const {ok, errors} = validateEnergyManagerSettingsState(
-            state({
-                batteryControl: true,
-                blockBatteryDischargeWhileEvCharging: 1 as unknown as boolean,
-            }),
-        );
+    it('rejects a mode outside the enum', () => {
+        const {ok, errors} = modeState({
+            batteryEvDischargeMode: 'whatever' as EnergyManagerBatteryEvDischargeModeEnum,
+        });
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('EnergyManagerBatteryEvDischargeModeEnum'))).toBe(true);
+    });
+
+    it('warns when a parameter belongs to a mode that is not selected', () => {
+        const {ok, warnings} = modeState({
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+            batteryEvDischargeSocLimitPercent: 50,
+            batteryEvDischargeFixedWh: 5000,          // belongs to fixed-wh
+        });
+
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('battery-ev-discharge-fixed-wh'))).toBe(true);
+    });
+
+    it('warns when a parameter is stored with no mode selected at all', () => {
+        const {warnings} = modeState({batteryEvDischargeFixedWh: 5000});
+        expect(warnings.some((w) => w.includes('it currently cannot'))).toBe(true);
+    });
+});
+
+describe('validateEnergyManagerSettingsState — fixed Wh budget', () => {
+    const budget = (batteryEvDischargeFixedWh: number) =>
+        validateEnergyManagerSettingsState(state({
+            batteryControl: true,
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.FixedWh,
+            batteryEvDischargeFixedWh,
+        }));
+
+    it('accepts a plausible Wh budget', () => {
+        const {ok, warnings} = budget(5000);
+        expect(ok).toBe(true);
+        expect(warnings).toEqual([]);
+    });
+
+    it('rejects a negative budget and points at the block-discharge mode', () => {
+        const {ok, errors} = budget(-500);
         expect(ok).toBe(false);
         expect(
-            errors.some((e) => e.includes('`blockBatteryDischargeWhileEvCharging` must be a boolean')),
+            errors.some((e) => e.includes('cannot be negative') && e.includes('block-discharge')),
         ).toBe(true);
     });
 
-    it('warns when set while battery control is off', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(
-            state({batteryControl: false, blockBatteryDischargeWhileEvCharging: true}, [
-                EnergyManagerSettingEnum.BatteryControl,
-                EnergyManagerSettingEnum.BlockBatteryDischargeWhileEvCharging,
-            ]),
-        );
-        expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('it currently cannot'))).toBe(true);
+    it('rejects a non-finite budget', () => {
+        const {ok, errors} = budget(Number.POSITIVE_INFINITY);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('finite number'))).toBe(true);
     });
 
-    it('warns when the block sits alongside a budget it would override', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(
-            state({
-                batteryControl: true,
-                blockBatteryDischargeWhileEvCharging: true,
-                batteryDischargeWhileChargingWh: 5000,
-            }),
-        );
-
+    it('warns that 0 duplicates the block-discharge mode', () => {
+        const {ok, warnings} = budget(0);
         expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('can never be spent'))).toBe(true);
+        expect(warnings.some((w) => w.includes('says the same as mode'))).toBe(true);
     });
 
-    it('stays quiet when the block is off and a budget is set', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(
-            state({
-                batteryControl: true,
-                blockBatteryDischargeWhileEvCharging: false,
-                batteryDischargeWhileChargingWh: 5000,
-            }),
-        );
-
+    it('warns on a negligible figure, catching a kWh value in a Wh field', () => {
+        const {ok, warnings} = budget(10);
         expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
+        expect(warnings.some((w) => w.includes('watt-hours, not kilowatt-hours'))).toBe(true);
+    });
+});
+
+describe('validateEnergyManagerSettingsState — SoC floor', () => {
+    const soc = (batteryEvDischargeSocLimitPercent: number) =>
+        validateEnergyManagerSettingsState(state({
+            batteryControl: true,
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+            batteryEvDischargeSocLimitPercent,
+        }));
+
+    it('accepts a floor inside 0…100', () => {
+        for (const value of [0, 20, 50, 99]) {
+            const {ok, warnings} = soc(value);
+            expect(ok, String(value)).toBe(true);
+            expect(warnings, String(value)).toEqual([]);
+        }
     });
 
-    it('stays quiet when the block is on and no budget is stored', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(
-            state({
-                batteryControl: true,
-                blockBatteryDischargeWhileEvCharging: true,
-                batteryDischargeWhileChargingWh: null,
-            }),
-        );
+    it('rejects a value outside 0…100', () => {
+        for (const value of [-1, 101]) {
+            const {ok, errors} = soc(value);
+            expect(ok, String(value)).toBe(false);
+            expect(errors.some((e) => e.includes('between 0 and 100'))).toBe(true);
+        }
+    });
 
+    it('rejects a non-finite floor', () => {
+        const {ok, errors} = soc(Number.NaN);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('finite number'))).toBe(true);
+    });
+
+    it('warns that a floor of 100 can never discharge', () => {
+        const {ok, warnings} = soc(100);
         expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
+        expect(warnings.some((w) => w.includes('nothing can ever be discharged'))).toBe(true);
     });
 });
 
@@ -411,5 +413,91 @@ describe('assertValidEnergyManagerSettingsState', () => {
                 state({chargerControl: true}, [EnergyManagerSettingEnum.ChargerControl]),
             ),
         ).not.toThrow();
+    });
+});
+
+describe('getEnergyManagerSettingDependency', () => {
+    it('returns null for the ungated roots of the tree', () => {
+        for (const root of [
+            EnergyManagerSettingEnum.BatteryControl,
+            EnergyManagerSettingEnum.HeatpumpControl,
+            EnergyManagerSettingEnum.HeatingRodControl,
+            EnergyManagerSettingEnum.ChargerControl,
+        ]) {
+            expect(getEnergyManagerSettingDependency(root), root).toBeNull();
+        }
+    });
+
+    it('returns the gate and the value it must hold', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.HeatingRodMode)).toEqual({
+            requires: EnergyManagerSettingEnum.HeatingRodControl,
+            equals: true,
+        });
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.PriceLimitCtPerKwh)).toEqual({
+            requires: EnergyManagerSettingEnum.DefaultChargeMode,
+            equals: EnyoChargeModeEnum.PriceLimit,
+        });
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh)).toEqual({
+            requires: EnergyManagerSettingEnum.BatteryEvDischargeMode,
+            equals: EnergyManagerBatteryEvDischargeModeEnum.FixedWh,
+        });
+    });
+
+    it('returns only the direct gate, not the whole chain', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh)?.requires)
+            .toBe(EnergyManagerSettingEnum.BatteryEvDischargeMode);
+    });
+});
+
+describe('isEnergyManagerSettingActive', () => {
+    it('treats an ungated setting as always active', () => {
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryControl, {})).toBe(true);
+    });
+
+    it('walks the full chain rather than the direct gate alone', () => {
+        const values = {
+            batteryControl: true,
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.FixedWh,
+        };
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh, values))
+            .toBe(true);
+
+        // Direct gate still holds, but the gate above it does not.
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh, {
+            ...values,
+            batteryControl: false,
+        })).toBe(false);
+    });
+
+    it('separates the two parameterised modes', () => {
+        const values = {
+            batteryControl: true,
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+        };
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryEvDischargeSocLimitPercent, values))
+            .toBe(true);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh, values))
+            .toBe(false);
+    });
+
+    it('treats an unset gate as not holding', () => {
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.HeatingRodMode, {})).toBe(false);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.PriceLimitCtPerKwh, {
+            chargerControl: true,
+        })).toBe(false);
+    });
+
+    it('agrees with the validator about which values can take effect', () => {
+        const values = {
+            batteryControl: true,
+            batteryEvDischargeMode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+            batteryEvDischargeSocLimitPercent: 50,
+            batteryEvDischargeFixedWh: 5000,
+        };
+        const {warnings} = validateEnergyManagerSettingsState(state(values));
+
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh, values))
+            .toBe(false);
+        expect(warnings.some((w) => w.includes('battery-ev-discharge-fixed-wh'))).toBe(true);
     });
 });

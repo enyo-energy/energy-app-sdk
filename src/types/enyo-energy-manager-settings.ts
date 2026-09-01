@@ -44,10 +44,12 @@ export enum EnergyManagerSettingEnum {
     BatteryChargingMode = 'battery-charging-mode',
     /** Whether the battery may be charged from the grid, not only from PV surplus. */
     BatteryChargeFromGrid = 'battery-charge-from-grid',
-    /** How much energy the battery may discharge into a charging vehicle, in Wh. Unset/`null` disables it. */
-    BatteryDischargeWhileChargingWh = 'battery-discharge-while-charging-wh',
-    /** Hard block on battery discharge into a charging vehicle. Overrides any Wh allowance. */
-    BlockBatteryDischargeWhileEvCharging = 'block-battery-discharge-while-ev-charging',
+    /** How the battery may feed a charging vehicle — see {@link EnergyManagerBatteryEvDischargeModeEnum}. */
+    BatteryEvDischargeMode = 'battery-ev-discharge-mode',
+    /** The per-session budget, in Wh. Only under {@link EnergyManagerBatteryEvDischargeModeEnum.FixedWh}. */
+    BatteryEvDischargeFixedWh = 'battery-ev-discharge-fixed-wh',
+    /** The SoC floor, in %. Only under {@link EnergyManagerBatteryEvDischargeModeEnum.SocLimit}. */
+    BatteryEvDischargeSocLimitPercent = 'battery-ev-discharge-soc-limit-percent',
 
     // ── Heat pump ──────────────────────────────────────────────────────────
 
@@ -94,6 +96,64 @@ export enum EnergyManagerBatteryChargingModeEnum {
 }
 
 /**
+ * How the house battery may feed a vehicle that is charging.
+ *
+ * Replaces the earlier pair of a boolean block and a nullable Wh budget. That
+ * shape could express "off" two ways and had no room for the answers installers
+ * actually want — drain to a floor, or let enyo work it out — so the strategy is
+ * now named once here and its parameter lives in a separate setting.
+ *
+ * Read {@link None} and {@link Unmanaged} carefully: they are not synonyms, and
+ * confusing them is the difference between the energy manager holding the
+ * battery back and it simply not looking.
+ */
+export enum EnergyManagerBatteryEvDischargeModeEnum {
+    /**
+     * Allow a fixed budget per session, given by
+     * {@link EnergyManagerSettingValues.batteryEvDischargeFixedWh}.
+     *
+     * The plain answer to "how much of my house battery may go into the car" —
+     * an amount, spent and then stopped.
+     */
+    FixedWh = 'fixed-wh',
+    /**
+     * Discharge into the vehicle until the battery reaches the floor given by
+     * {@link EnergyManagerSettingValues.batteryEvDischargeSocLimitPercent}.
+     *
+     * The same intent as {@link FixedWh} expressed in the unit owners actually
+     * reason in — "keep half the battery for the house" survives a change of
+     * battery, where a watt-hour figure does not.
+     */
+    SocLimit = 'soc-limit',
+    /**
+     * Let enyo decide, session by session.
+     *
+     * The energy manager weighs price, forecast, house load and departure time
+     * instead of following a fixed rule. Nothing further to configure — the
+     * other two settings carry no meaning here.
+     */
+    Intelligent = 'intelligent',
+    /**
+     * Never discharge the battery into a vehicle. The energy manager actively
+     * holds it back.
+     *
+     * This is an instruction, not an absence of one — contrast {@link Unmanaged},
+     * which is the absence. Named for what it does rather than for the amount it
+     * permits, so that the two cannot be read as the same answer.
+     */
+    BlockDischarge = 'block-discharge',
+    /**
+     * The energy manager does not manage this flow at all.
+     *
+     * It neither permits nor prevents: whatever the hardware does on its own
+     * stands, and the battery may well end up feeding the car as a side effect.
+     * Choose this when something else owns the decision, never as a way to
+     * express "no discharge" — that is {@link BlockDischarge}.
+     */
+    Unmanaged = 'unmanaged',
+}
+
+/**
  * What the heating rod is allowed to do.
  *
  * The distinction is grid draw. A heating rod is the least efficient way to make
@@ -137,51 +197,50 @@ export interface EnergyManagerSettingValues {
      */
     batteryChargeFromGrid?: boolean;
     /**
-     * How much energy the house battery may contribute to a vehicle charging
-     * session, in **watt-hours**.
+     * How the house battery may feed a vehicle that is charging.
      *
-     * Off by default, and off is the safe answer: left alone, a wallbox drains
-     * the house battery into the car — a lossy way to move energy that was meant
-     * to carry the house through the evening. Setting a figure here opts the
-     * transfer in, and bounds it.
+     * The strategy; the number it needs, if any, lives in
+     * {@link batteryEvDischargeFixedWh} or
+     * {@link batteryEvDischargeSocLimitPercent}. Which of those is read follows
+     * from the mode, and a value belonging to a different mode is ignored rather
+     * than merged.
      *
-     * - a **number** — the battery may give up to this many Wh to the session.
-     * - **`null`** or **`undefined`** — **disabled**. The battery does not
-     *   discharge into the vehicle at all. The two are equivalent here: `null`
-     *   is a stored "off", `undefined` is no stored value, and both mean the
-     *   feature is not active.
+     * Left alone, a wallbox drains the house battery into the car — a lossy way
+     * to move energy that was meant to carry the house through the evening. That
+     * is why the strategy is stated explicitly rather than inferred.
      *
-     * `0` is accepted and means the same thing as disabled; prefer `null` to say
-     * it deliberately.
-     *
-     * Only meaningful while {@link batteryControl} is `true` — holding the
-     * battery back during a session is a battery-side action, and an energy
-     * manager that may not steer the battery cannot honour any figure here.
+     * Only meaningful while {@link batteryControl} is `true`: an energy manager
+     * that may not steer the battery can neither permit nor prevent this.
      */
-    batteryDischargeWhileChargingWh?: number | null;
+    batteryEvDischargeMode?: EnergyManagerBatteryEvDischargeModeEnum;
     /**
-     * Whether the house battery is forbidden from discharging into a vehicle
-     * while it charges — a hard block, regardless of any budget.
+     * The per-session budget the battery may give a charging vehicle, in
+     * **watt-hours**.
      *
-     * **This overrides {@link batteryDischargeWhileChargingWh}.** The two govern
-     * the same flow at different strengths: the Wh field is a budget the energy
-     * manager may spend, this one closes the tap. When it is `true`, any
-     * allowance is ignored rather than merged, so a stored budget can never take
-     * effect. `validateEnergyManagerSettingsState()` warns when both are set
-     * that way.
+     * Read only under {@link EnergyManagerBatteryEvDischargeModeEnum.FixedWh};
+     * under any other mode it is stale configuration the energy manager ignores.
+     * `0` is legal but says the same as
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.BlockDischarge} — prefer the mode,
+     * which says it where a reader will look.
      *
-     * Why both exist: the budget answers "how much", this answers "at all". A
-     * user who wants the battery kept for the house says so once here, and it
-     * keeps holding no matter what number is left over in the allowance field.
-     *
-     * Only meaningful while {@link batteryControl} is `true` — an energy manager
-     * that may not steer the battery cannot hold it back either.
-     *
-     * As with every field here, `undefined` is not `false`: it means unsupported
-     * or never chosen, while `false` is the user deciding the battery *may*
-     * contribute.
+     * Watt-hours, not kilowatt-hours: a house battery is 5 000–30 000 Wh, so
+     * `10` is a rounding error where `10000` was almost certainly meant.
      */
-    blockBatteryDischargeWhileEvCharging?: boolean;
+    batteryEvDischargeFixedWh?: number;
+    /**
+     * The state of charge the battery may be drained down to when feeding a
+     * vehicle, in **percent** — a floor, not a target. `50` keeps half the
+     * battery for the house.
+     *
+     * Read only under {@link EnergyManagerBatteryEvDischargeModeEnum.SocLimit};
+     * under any other mode it is ignored.
+     *
+     * Expressed this way because it is the unit owners reason in, and because it
+     * survives a change of battery: "keep half for the house" still means half
+     * after the pack is replaced, where a watt-hour budget silently means
+     * something else.
+     */
+    batteryEvDischargeSocLimitPercent?: number;
 
     /**
      * Whether the energy manager may steer the heat pump.
@@ -299,10 +358,12 @@ export interface EnergyManagerSettingDependency {
     /** The setting that gates this one. */
     requires: EnergyManagerSettingEnum;
     /**
-     * The value {@link requires} must hold. `true` for the boolean gates;
-     * an {@link EnyoChargeModeEnum} member for the charge-mode-specific ones.
+     * The value {@link requires} must hold. `true` for the boolean gates, an
+     * {@link EnyoChargeModeEnum} member for the charge-mode-specific ones, and an
+     * {@link EnergyManagerBatteryEvDischargeModeEnum} member for the two settings
+     * that parameterise the battery-to-vehicle strategy.
      */
-    equals: boolean | EnyoChargeModeEnum;
+    equals: boolean | EnyoChargeModeEnum | EnergyManagerBatteryEvDischargeModeEnum;
 }
 
 /**
@@ -332,13 +393,17 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
         requires: EnergyManagerSettingEnum.BatteryControl,
         equals: true,
     },
-    [EnergyManagerSettingEnum.BatteryDischargeWhileChargingWh]: {
+    [EnergyManagerSettingEnum.BatteryEvDischargeMode]: {
         requires: EnergyManagerSettingEnum.BatteryControl,
         equals: true,
     },
-    [EnergyManagerSettingEnum.BlockBatteryDischargeWhileEvCharging]: {
-        requires: EnergyManagerSettingEnum.BatteryControl,
-        equals: true,
+    [EnergyManagerSettingEnum.BatteryEvDischargeFixedWh]: {
+        requires: EnergyManagerSettingEnum.BatteryEvDischargeMode,
+        equals: EnergyManagerBatteryEvDischargeModeEnum.FixedWh,
+    },
+    [EnergyManagerSettingEnum.BatteryEvDischargeSocLimitPercent]: {
+        requires: EnergyManagerSettingEnum.BatteryEvDischargeMode,
+        equals: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
     },
     [EnergyManagerSettingEnum.HeatingRodMode]: {
         requires: EnergyManagerSettingEnum.HeatingRodControl,
@@ -371,8 +436,9 @@ export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
     [EnergyManagerSettingEnum.BatteryControl]: ['batteryControl'],
     [EnergyManagerSettingEnum.BatteryChargingMode]: ['batteryChargingMode'],
     [EnergyManagerSettingEnum.BatteryChargeFromGrid]: ['batteryChargeFromGrid'],
-    [EnergyManagerSettingEnum.BatteryDischargeWhileChargingWh]: ['batteryDischargeWhileChargingWh'],
-    [EnergyManagerSettingEnum.BlockBatteryDischargeWhileEvCharging]: ['blockBatteryDischargeWhileEvCharging'],
+    [EnergyManagerSettingEnum.BatteryEvDischargeMode]: ['batteryEvDischargeMode'],
+    [EnergyManagerSettingEnum.BatteryEvDischargeFixedWh]: ['batteryEvDischargeFixedWh'],
+    [EnergyManagerSettingEnum.BatteryEvDischargeSocLimitPercent]: ['batteryEvDischargeSocLimitPercent'],
     [EnergyManagerSettingEnum.HeatpumpControl]: ['heatpumpControl'],
     [EnergyManagerSettingEnum.HeatingRodControl]: ['heatingRodControl'],
     [EnergyManagerSettingEnum.HeatingRodMode]: ['heatingRodMode'],

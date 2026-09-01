@@ -26,6 +26,7 @@ export * from './types/enyo-energy-manager.js';
 export * from './packages/energy-app-energy-manager.js';
 export * from './types/enyo-energy-manager-settings.js';
 export * from './implementations/energy-manager-settings/energy-manager-settings-validators.js';
+export * from './implementations/energy-manager-settings/energy-manager-settings-utils.js';
 export * from './types/enyo-electricity-tariff.js';
 export * from './packages/energy-app-electricity-tariff.js';
 export * from './types/enyo-pv-forecast.js';

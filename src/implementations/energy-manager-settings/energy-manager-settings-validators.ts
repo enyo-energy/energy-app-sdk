@@ -24,6 +24,7 @@ import {
     ENERGY_MANAGER_SETTING_DEPENDENCIES,
     ENERGY_MANAGER_SETTING_VALUE_KEYS,
     EnergyManagerBatteryChargingModeEnum,
+    EnergyManagerBatteryEvDischargeModeEnum,
     EnergyManagerHeatingRodModeEnum,
     EnergyManagerSettingEnum,
 } from '../../types/enyo-energy-manager-settings.js';
@@ -80,15 +81,19 @@ const PRICE_LIMIT_MIN_CT = -100;
 const PRICE_LIMIT_MAX_CT = 200;
 
 /**
- * Below this, a {@link EnergyManagerSettingValues.batteryDischargeWhileChargingWh}
+ * Below this, a {@link EnergyManagerSettingValues.batteryEvDischargeFixedWh}
  * budget is almost certainly kWh entered into a Wh field.
  *
- * `10` would be ten watt-hours — a rounding error against any house battery, and
- * indistinguishable from "no discharge at all" in practice, where `10` kWh was
- * plainly meant. `0` is exempt: it is a legitimate, if roundabout, way to say
- * disabled.
+ * `10` would be ten watt-hours — a rounding error against any house battery,
+ * where `10` kWh was plainly meant. `0` is handled separately: it is legal, and
+ * warned about for duplicating mode `block-discharge` rather than for being a unit slip.
  */
 const DISCHARGE_BUDGET_MIN_PLAUSIBLE_WH = 100;
+
+/** Every {@link EnergyManagerBatteryEvDischargeModeEnum} value. */
+const EV_DISCHARGE_MODES: ReadonlySet<string> = new Set(
+    Object.values(EnergyManagerBatteryEvDischargeModeEnum),
+);
 
 /** Value enums checked per field, for the enum-valued settings. */
 const BATTERY_CHARGING_MODES: ReadonlySet<string> = new Set(
@@ -146,12 +151,15 @@ function gateValue(
  *   zone the runtime resolves (**error**).
  * - `priceLimitCtPerKwh` is a finite number (**error**), and lies in a plausible
  *   ct/kWh band (**warning** — catches a EUR/kWh value in a ct/kWh field).
- * - `batteryDischargeWhileChargingWh` is a finite non-negative number or `null`
- *   (**error**), and is not a negligible positive figure (**warning** — catches
- *   a kWh value in a Wh field).
- * - `blockBatteryDischargeWhileEvCharging` does not sit alongside a positive
- *   `batteryDischargeWhileChargingWh` budget (**warning** — the block overrides
- *   the budget, so it could never be spent).
+ * - `batteryEvDischargeMode` holds an enum member (**error**).
+ * - `batteryEvDischargeFixedWh` is a finite non-negative number (**error**), and
+ *   is neither `0` nor a negligible positive figure (**warning** — the first
+ *   duplicates mode `block-discharge`, the second catches a kWh value in a Wh field).
+ * - `batteryEvDischargeSocLimitPercent` is a finite number in 0…100 (**error**),
+ *   and not `100` (**warning** — a floor nothing can discharge past).
+ * - A parameter belonging to a mode other than the selected one is flagged by
+ *   the gate check below, since {@link ENERGY_MANAGER_SETTING_DEPENDENCIES}
+ *   gates each on its own mode.
  * - A value stored for an unsupported setting (**warning** — the energy manager
  *   will ignore it).
  * - A value stored while its gate does not hold (**warning** — it can never take
@@ -197,8 +205,7 @@ export function validateEnergyManagerSettingsState(
     const values = state.values ?? {};
 
     // ── value formats ──────────────────────────────────────────────────────
-    for (const key of ['batteryControl', 'batteryChargeFromGrid',
-        'blockBatteryDischargeWhileEvCharging', 'heatpumpControl',
+    for (const key of ['batteryControl', 'batteryChargeFromGrid', 'heatpumpControl',
         'heatingRodControl', 'chargerControl'] as const) {
         if (values[key] !== undefined && typeof values[key] !== 'boolean') {
             errors.push(`\`${key}\` must be a boolean when set.`);
@@ -236,34 +243,53 @@ export function validateEnergyManagerSettingsState(
         }
     }
 
-    if (values.batteryDischargeWhileChargingWh !== undefined
-        && values.batteryDischargeWhileChargingWh !== null) {
-        const budget = values.batteryDischargeWhileChargingWh;
+    if (values.batteryEvDischargeMode !== undefined
+        && !EV_DISCHARGE_MODES.has(values.batteryEvDischargeMode)) {
+        errors.push(
+            `\`batteryEvDischargeMode\` "${values.batteryEvDischargeMode}" is not an ` +
+                'EnergyManagerBatteryEvDischargeModeEnum member.',
+        );
+    }
+
+    if (values.batteryEvDischargeFixedWh !== undefined) {
+        const budget = values.batteryEvDischargeFixedWh;
         if (typeof budget !== 'number' || !Number.isFinite(budget)) {
-            errors.push(
-                '`batteryDischargeWhileChargingWh` must be a finite number or `null` when set.',
-            );
+            errors.push('`batteryEvDischargeFixedWh` must be a finite number when set.');
         } else if (budget < 0) {
             errors.push(
-                `\`batteryDischargeWhileChargingWh\` is ${budget}; a discharge budget cannot be ` +
-                    'negative. Use `null` to disable the transfer entirely.',
+                `\`batteryEvDischargeFixedWh\` is ${budget}; a budget cannot be negative. ` +
+                    `Use mode "${EnergyManagerBatteryEvDischargeModeEnum.BlockDischarge}" to forbid the transfer.`,
             );
-        } else if (budget > 0 && budget < DISCHARGE_BUDGET_MIN_PLAUSIBLE_WH) {
+        } else if (budget === 0) {
             warnings.push(
-                `\`batteryDischargeWhileChargingWh\` is ${budget} Wh, which is negligible against ` +
-                    'any house battery — this field is in watt-hours, not kilowatt-hours.',
+                '`batteryEvDischargeFixedWh` is 0, which says the same as mode ' +
+                    `"${EnergyManagerBatteryEvDischargeModeEnum.BlockDischarge}" — prefer the mode, which says it ` +
+                    'where a reader will look.',
+            );
+        } else if (budget < DISCHARGE_BUDGET_MIN_PLAUSIBLE_WH) {
+            warnings.push(
+                `\`batteryEvDischargeFixedWh\` is ${budget} Wh, which is negligible against any ` +
+                    'house battery — this field is in watt-hours, not kilowatt-hours.',
             );
         }
     }
 
-    if (values.blockBatteryDischargeWhileEvCharging === true
-        && typeof values.batteryDischargeWhileChargingWh === 'number'
-        && values.batteryDischargeWhileChargingWh > 0) {
-        warnings.push(
-            '`blockBatteryDischargeWhileEvCharging` is true, which closes the tap entirely, so the ' +
-                `\`batteryDischargeWhileChargingWh\` budget of ${values.batteryDischargeWhileChargingWh} Wh ` +
-                'can never be spent. Clear one of the two.',
-        );
+    if (values.batteryEvDischargeSocLimitPercent !== undefined) {
+        const soc = values.batteryEvDischargeSocLimitPercent;
+        if (typeof soc !== 'number' || !Number.isFinite(soc)) {
+            errors.push('`batteryEvDischargeSocLimitPercent` must be a finite number when set.');
+        } else if (soc < 0 || soc > 100) {
+            errors.push(
+                `\`batteryEvDischargeSocLimitPercent\` is ${soc}; it is a percentage and must lie ` +
+                    'between 0 and 100.',
+            );
+        } else if (soc === 100) {
+            warnings.push(
+                '`batteryEvDischargeSocLimitPercent` is 100, a floor the battery is already at, so ' +
+                    `nothing can ever be discharged — mode "${EnergyManagerBatteryEvDischargeModeEnum.BlockDischarge}" ` +
+                    'states that intent directly.',
+            );
+        }
     }
 
     if (values.costOptimizedTargetTime !== undefined) {

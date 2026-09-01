@@ -1136,8 +1136,9 @@ A closed, SDK-defined set of user-facing controls the active energy manager hono
 | `BatteryControl` | boolean |
 | `BatteryChargingMode` | `paced` \| `immediate` |
 | `BatteryChargeFromGrid` | boolean |
-| `BatteryDischargeWhileChargingWh` | number \| `null` (Wh allowance; `null`/unset = disabled) |
-| `BlockBatteryDischargeWhileEvCharging` | boolean |
+| `BatteryEvDischargeMode` | `fixed-wh` \| `soc-limit` \| `intelligent` \| `block-discharge` \| `unmanaged` |
+| `BatteryEvDischargeFixedWh` | number, **Wh** (only under `fixed-wh`) |
+| `BatteryEvDischargeSocLimitPercent` | number, **%** floor (only under `soc-limit`) |
 | `HeatpumpControl` | boolean |
 | `HeatingRodControl` | boolean |
 | `HeatingRodMode` | `pv-surplus-only` \| `boost` |
@@ -1183,7 +1184,8 @@ em.unsubscribeEnergyManagerSettings(id);
 Three things to get right:
 
 - **Absent is not `false`.** `undefined` means unsupported or never chosen; `false` means the user switched it off. Check `supported` first, then the value — collapsing the two steers hardware someone deliberately disabled.
-- **Six settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `priceLimitCtPerKwh` only applies under `price-limit`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES` so the UI and the validator share one source of truth.
+- **How the battery may feed a charging EV is one mode plus its parameter.** `BatteryEvDischargeMode` picks the strategy; `BatteryEvDischargeFixedWh` and `BatteryEvDischargeSocLimitPercent` are read only under their own mode. `block-discharge` (actively hold the battery back) and `unmanaged` (do not intervene either way) are **not** synonyms.
+- **Eight settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `priceLimitCtPerKwh` only applies under `price-limit`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
 - **`priceLimitCtPerKwh` is in cents**, unlike the SDK's machine-readable price fields (`electricityPricePerKwh`, EUR/kWh). Divide by 100 when comparing. `validateEnergyManagerSettingsState()` warns on values outside a plausible ct band, which catches the mix-up.
 
 #### `useElectricityTariff(): EnergyAppElectricityTariff`
