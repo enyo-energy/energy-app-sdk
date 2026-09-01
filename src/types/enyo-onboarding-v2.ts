@@ -39,6 +39,27 @@ export enum EnyoOnboardingV2StartVariant {
     DeviceFoundConfig = 'device-found-config',
     /** Manual setup is required by the user (e.g. enter OCPP URL). */
     ManualSetup = 'manual-setup',
+    /**
+     * Maintenance on an appliance that already exists — the only variant that
+     * does not start from an installation.
+     *
+     * The other three all describe a device on its way *into* the system: not
+     * found yet, found but unconfigured, or set up by hand. This one starts from
+     * the opposite situation — the appliance is installed, known and running,
+     * and the installer is coming back to it to service, reconfigure or
+     * reconnect it.
+     *
+     * Because the appliance is the subject of the run rather than its result, a
+     * maintenance guide MUST name it: see
+     * {@link EnyoOnboardingV2Guide.applianceId}, which
+     * {@link validateOnboardingGuideV2} requires on this variant and on no
+     * other. That binding is what fills the `applianceId` the host passes to
+     * {@link EnyoOnboardingV2DynamicRequest} and
+     * {@link EnyoOnboardingV2AdditionalSetupRequest} — on an installation
+     * variant those are populated only once an appliance happens to exist,
+     * whereas here they are known from the first step.
+     */
+    Maintenance = 'maintenance',
 }
 
 /**
@@ -911,6 +932,25 @@ export interface EnyoOnboardingV2Guide {
     startStepId: string;
     /** The graph nodes (a set, not an ordered list). */
     steps: EnyoOnboardingV2Step[];
+    /**
+     * The appliance this guide is bound to — **required on**
+     * {@link EnyoOnboardingV2StartVariant.Maintenance}, and meaningless on every
+     * other variant.
+     *
+     * A maintenance run services an appliance that already exists, so the
+     * appliance is an input to the run rather than something it produces: the
+     * host binds the run to this id and passes it on as
+     * {@link EnyoOnboardingV2DynamicRequest.applianceId} and
+     * {@link EnyoOnboardingV2AdditionalSetupRequest.applianceId} from the first
+     * step onwards. The installation variants have nothing to bind — their
+     * appliance is created by the run, if it is created at all — and a guide
+     * that sets this anyway is warned about and the value ignored.
+     *
+     * Optional in the type because one interface serves all four variants; the
+     * variant-dependent requirement is enforced by
+     * {@link validateOnboardingGuideV2} instead of by the compiler.
+     */
+    applianceId?: string;
     /** Optional vendor binding (catalog id). Usually set at publish time. */
     vendorId?: string;
     /** Optional model bindings (catalog ids). Usually set at publish time. */

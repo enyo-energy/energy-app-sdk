@@ -913,6 +913,57 @@ describe('requiresNetworkScan', () => {
     });
 });
 
+describe('maintenance guides', () => {
+    /** A minimal maintenance guide bound to an appliance. */
+    const maintenanceGuide = (applianceId?: string): EnyoOnboardingV2Guide =>
+        defineOnboardingGuideV2({
+            title: t('Wartung', 'Maintenance'),
+            startVariant: EnyoOnboardingV2StartVariant.Maintenance,
+            applianceId,
+            startStepId: 's1',
+            requiresNetworkScan: false,
+            steps: [
+                {
+                    id: 's1',
+                    name: 'service',
+                    title: t('Warten', 'Service'),
+                    blocks: [onboardingV2Block.text('b1', t('Gerät prüfen', 'Check the device'))],
+                    transitions: [onContinueV2(onboardingV2Target.success())],
+                },
+            ],
+        });
+
+    it('accepts a maintenance guide carrying an applianceId', () => {
+        const result = validateOnboardingGuideV2(maintenanceGuide('appliance-42'));
+        expect(result.ok).toBe(true);
+        expect(result.errors).toEqual([]);
+        expect(result.warnings.some((w) => w.includes('applianceId'))).toBe(false);
+    });
+
+    it('rejects a maintenance guide without an applianceId', () => {
+        const result = validateOnboardingGuideV2(maintenanceGuide());
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('`applianceId` is required'))).toBe(true);
+    });
+
+    it('rejects a blank applianceId the same way as a missing one', () => {
+        const result = validateOnboardingGuideV2(maintenanceGuide('   '));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('`applianceId` is required'))).toBe(true);
+    });
+
+    it('warns when an installation guide carries an applianceId', () => {
+        const result = validateOnboardingGuideV2({...validGuide(), applianceId: 'appliance-42'});
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('applianceId'))).toBe(true);
+    });
+
+    it('stays quiet about applianceId on an installation guide without one', () => {
+        const result = validateOnboardingGuideV2(validGuide());
+        expect(result.warnings.some((w) => w.includes('applianceId'))).toBe(false);
+    });
+});
+
 describe('assertValidOnboardingGuideV2', () => {
     it('returns the guide when valid', () => {
         const guide = validGuide();

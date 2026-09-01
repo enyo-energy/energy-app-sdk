@@ -778,7 +778,7 @@ executor, and the guide-authoring tooling.
 | Routing | name-string routing (`branches.routes` → `targetStepName`) | explicit `transitions[]`: a source **handle** → a `target` |
 | Exits | implicit (last step / complete) | explicit terminals: `success` \| `support` \| `pause` (incl. the `enyo-todo` hand-off) |
 | Cross-flow | — | `start-variant` hand-off between a vendor/model's flows |
-| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup`) + `requiresNetworkScan` |
+| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup` \| `maintenance`) + `requiresNetworkScan` |
 | Lifecycle | **pushed** — the app saves/updates/removes guides, the host stores a copy | **pulled** — the app registers one handler, the host asks for the complete set |
 
 Both models are **multilingual**: every author-facing string is an
@@ -832,6 +832,39 @@ const guide = defineOnboardingGuideV2({
 
 const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 ```
+
+### Maintenance guides (`maintenance` + `applianceId`)
+
+Three of the four start variants describe a device on its way *into* the system:
+not found yet (`device-not-found`), found but unconfigured (`device-found-config`),
+or entered by hand (`manual-setup`). The fourth is the opposite situation: the
+appliance is already installed, known and running, and the installer is coming
+back to it to service, reconfigure or reconnect it.
+
+Because the appliance is the **input** to such a run rather than its result, a
+maintenance guide must name it — `applianceId` is **required** on
+`startVariant: 'maintenance'`, and ignored on every other variant:
+
+```typescript
+const guide = defineOnboardingGuideV2({
+  title: t('Wallbox neu verbinden', 'Reconnect the wallbox'),
+  startVariant: EnyoOnboardingV2StartVariant.Maintenance,
+  applianceId: 'appliance-42',      // required here, ignored elsewhere
+  requiresNetworkScan: false,        // usually right: nothing to discover
+  startStepId: 'check',
+  steps: [/* … */],
+});
+```
+
+`validateOnboardingGuideV2()` errors when a `maintenance` guide has no
+`applianceId` (a blank string counts as missing) and warns when an installation
+guide carries one.
+
+The binding is what the host passes on: `applianceId` reaches the app as
+`EnyoOnboardingV2DynamicRequest.applianceId` and
+`EnyoOnboardingV2AdditionalSetupRequest.applianceId` from the first step onwards.
+On an installation variant those two fields are populated only once an appliance
+happens to exist during the run; on a maintenance run they are known up front.
 
 ### Serving guides: the host pulls, the app never publishes
 

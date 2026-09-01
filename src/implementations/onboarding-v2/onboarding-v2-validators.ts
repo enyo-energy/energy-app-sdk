@@ -23,6 +23,7 @@ import {
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
+    EnyoOnboardingV2StartVariant,
     EnyoOnboardingV2TargetType,
     EnyoOnboardingV2TransitionSourceKind,
 } from '../../types/enyo-onboarding-v2.js';
@@ -197,6 +198,7 @@ export function validateOnboardingGuideV2(
     }
 
     validateNetworkScanFlag(guide, warnings);
+    validateApplianceBinding(guide, errors, warnings);
 
     return {ok: errors.length === 0, errors, warnings};
 }
@@ -847,6 +849,52 @@ function validateAdditionalSetupBlocks(
                     `${others.length} other decision block(s); keep one decision per step.`,
             );
         }
+    }
+}
+
+/**
+ * Checks {@link EnyoOnboardingV2Guide.applianceId} against the guide's
+ * {@link EnyoOnboardingV2Guide.startVariant}.
+ *
+ * The binding is required on {@link EnyoOnboardingV2StartVariant.Maintenance}
+ * and meaningless everywhere else. A maintenance run services an appliance that
+ * already exists, so a guide that does not name one cannot be bound to anything
+ * — that is a blocking error, not advice. The reverse is only a warning: an
+ * installation guide carrying an appliance id is harmless, the host ignores it,
+ * but it is a sign the wrong variant was chosen.
+ *
+ * @param guide - The guide being validated.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateApplianceBinding(
+    guide: EnyoOnboardingV2Guide,
+    errors: string[],
+    warnings: string[],
+): void {
+    const isMaintenance = guide.startVariant === EnyoOnboardingV2StartVariant.Maintenance;
+    const applianceId = typeof guide.applianceId === 'string' ? guide.applianceId.trim() : undefined;
+
+    if (isMaintenance) {
+        if (!applianceId) {
+            errors.push(
+                '`applianceId` is required on a `' +
+                    `${EnyoOnboardingV2StartVariant.Maintenance}` +
+                    '` guide — a maintenance run services an appliance that already exists, so the ' +
+                    'guide must name it.',
+            );
+        }
+        return;
+    }
+
+    if (applianceId) {
+        warnings.push(
+            '`applianceId` is set on a `' +
+                `${guide.startVariant}` +
+                '` guide and is ignored — only a `' +
+                `${EnyoOnboardingV2StartVariant.Maintenance}` +
+                '` guide binds an existing appliance.',
+        );
     }
 }
 
