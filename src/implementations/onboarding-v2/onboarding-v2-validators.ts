@@ -199,6 +199,7 @@ export function validateOnboardingGuideV2(
 
     validateNetworkScanFlag(guide, warnings);
     validateApplianceBinding(guide, errors, warnings);
+    validateUserNotification(guide, warnings);
 
     return {ok: errors.length === 0, errors, warnings};
 }
@@ -896,6 +897,34 @@ function validateApplianceBinding(
                 '` guide binds an existing appliance.',
         );
     }
+}
+
+/**
+ * Checks {@link EnyoOnboardingV2Guide.notifyUser} against the guide's
+ * {@link EnyoOnboardingV2Guide.startVariant}.
+ *
+ * The flag asks the host to tell the end customer that a maintenance run is
+ * happening on their appliance, so it only means anything on
+ * {@link EnyoOnboardingV2StartVariant.Maintenance}. An installation guide has
+ * nobody to notify — the appliance does not exist yet and the installer is
+ * standing in front of the device — so setting it there is a warning, not an
+ * error: the host ignores the value, but it is a sign the wrong variant was
+ * chosen. Leaving it unset is always fine; it defaults to `false`.
+ *
+ * @param guide - The guide being validated.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateUserNotification(guide: EnyoOnboardingV2Guide, warnings: string[]): void {
+    if (guide.notifyUser === undefined) return;
+    if (guide.startVariant === EnyoOnboardingV2StartVariant.Maintenance) return;
+
+    warnings.push(
+        '`notifyUser` is set on a `' +
+            `${guide.startVariant}` +
+            '` guide and is ignored — only a `' +
+            `${EnyoOnboardingV2StartVariant.Maintenance}` +
+            '` guide notifies the end customer about the run.',
+    );
 }
 
 /**

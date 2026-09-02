@@ -850,6 +850,7 @@ const guide = defineOnboardingGuideV2({
   title: t('Wallbox neu verbinden', 'Reconnect the wallbox'),
   startVariant: EnyoOnboardingV2StartVariant.Maintenance,
   applianceId: 'appliance-42',      // required here, ignored elsewhere
+  notifyUser: true,                  // tell the customer this run is happening
   requiresNetworkScan: false,        // usually right: nothing to discover
   startStepId: 'check',
   steps: [/* … */],
@@ -859,6 +860,15 @@ const guide = defineOnboardingGuideV2({
 `validateOnboardingGuideV2()` errors when a `maintenance` guide has no
 `applianceId` (a blank string counts as missing) and warns when an installation
 guide carries one.
+
+`notifyUser` is the second maintenance-only field. A maintenance run touches an
+appliance the customer already lives with — it may take the wallbox offline for
+a few minutes or change how the inverter behaves — so set it to `true` when the
+customer should hear about it and the host sends them a notification for the
+run. It defaults to `false`: a guide says nothing unless it asks to. An
+installation guide has nobody to notify (there is no appliance yet, and the
+installer is standing in front of the device), so setting it there is warned
+about and ignored.
 
 The binding is what the host passes on: `applianceId` reaches the app as
 `EnyoOnboardingV2DynamicRequest.applianceId` and

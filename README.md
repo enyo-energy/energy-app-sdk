@@ -712,19 +712,51 @@ Manage charging sessions:
 ```typescript
 const charging = energyApp.useCharge();
 
-// Start charging session
-const sessionId = await charging.startCharge({
-    vehicleId: 'vehicle-123',
+// Open a session when the charger reports a StartTransaction
+const charge = await charging.startCharge({
+    applianceId: 'appliance-42',
+    transactionId: 'tx-1',
+    meterStartValueWh: 1_204_000,
     connectorId: 1,
-    maxPowerKw: 22
 });
 
-// Get active sessions
-const sessions = await charging.getActiveSessions();
+// Close it when the charger reports a StopTransaction
+const finished = await charging.stopCharge(charge.id, {
+    meterEndValueWh: 1_215_500,
+    energyDeliveredWh: 11_500,
+});
+console.log(`${finished.totalEnergyKwh} kWh for ${finished.paidPriceEuroCent} ct`);
 
-// Stop charging
-await charging.stopCharge(sessionId);
+// The session a charger is running right now, if any
+const active = await charging.findActiveCharge('appliance-42');
+
+// A session that spans several OCPP transactions (reconnect, re-authorization)
+await charging.addTransactionIdToActiveCharge('appliance-42', 'tx-2');
+
+// Read the history
+const completed = await charging.list({
+    applianceId: 'appliance-42',
+    status: EnyoChargeStatus.Completed,
+});
 ```
+
+**Energy and cost totals are the host's to compute, never the app's.**
+`stopCharge()` derives `totalEnergyKwh` and `paidPriceEuroCent` from the
+session's meter readings and the electricity tariff in force while the energy
+flowed. Pass readings — `meterEndValueWh`, and `energyDeliveredWh` when the
+charger reports it — and let the host price them. An app that computes its own
+totals makes the customer's bill depend on which app closed the session.
+
+The same division applies to the samples in `meterValues`: leave `pricePerKwh`
+and `chargingCostEuro` unset and the host resolves the tariff for each sample's
+15-minute slot itself. `powerW` and `voltageL1..L3` are optional — write them
+when the charger reports them; when omitted the host keeps whatever it already
+recorded for that timestamp.
+
+`startCharge()` is idempotent on `applianceId` + `transactionId`, so a repeated
+StartTransaction returns the running session instead of opening a second one.
+`save()` remains a whole-object update for a session that already exists; it
+offers no uniqueness guarantee, so do not open sessions with it.
 
 React to charging sessions as they happen:
 

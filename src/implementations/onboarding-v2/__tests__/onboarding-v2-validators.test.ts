@@ -958,6 +958,32 @@ describe('maintenance guides', () => {
         expect(result.warnings.some((w) => w.includes('applianceId'))).toBe(true);
     });
 
+    it.each([true, false])('accepts notifyUser: %s on a maintenance guide', (notifyUser) => {
+        const result = validateOnboardingGuideV2({
+            ...maintenanceGuide('appliance-42'),
+            notifyUser,
+        });
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('notifyUser'))).toBe(false);
+    });
+
+    it('does not warn about notifyUser when it is left unset', () => {
+        const result = validateOnboardingGuideV2(validGuide());
+        expect(result.warnings.some((w) => w.includes('notifyUser'))).toBe(false);
+    });
+
+    it('warns when an installation guide sets notifyUser', () => {
+        const result = validateOnboardingGuideV2({...validGuide(), notifyUser: true});
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('notifyUser'))).toBe(true);
+    });
+
+    it('warns when an installation guide sets notifyUser to false', () => {
+        const result = validateOnboardingGuideV2({...validGuide(), notifyUser: false});
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('notifyUser'))).toBe(true);
+    });
+
     it('stays quiet about applianceId on an installation guide without one', () => {
         const result = validateOnboardingGuideV2(validGuide());
         expect(result.warnings.some((w) => w.includes('applianceId'))).toBe(false);

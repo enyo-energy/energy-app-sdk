@@ -951,6 +951,28 @@ export interface EnyoOnboardingV2Guide {
      * {@link validateOnboardingGuideV2} instead of by the compiler.
      */
     applianceId?: string;
+    /**
+     * Whether the end customer is told about this maintenance run — **only
+     * meaningful on** {@link EnyoOnboardingV2StartVariant.Maintenance}, and
+     * ignored on every other variant.
+     *
+     * A maintenance run touches an appliance the customer already lives with:
+     * it may take the wallbox offline for a few minutes, change how the
+     * inverter behaves, or simply happen while nobody is watching. Set this to
+     * `true` when the customer should hear about it — the host sends them a
+     * notification for the run — and leave it unset when the work is invisible
+     * to them and a message would only be noise.
+     *
+     * Defaults to `false`: a guide says nothing unless it asks to. The
+     * installation variants have no customer to notify — there is no appliance
+     * yet, and the installer is standing in front of the device — so a guide
+     * that sets this anyway is warned about and the value ignored.
+     *
+     * Optional in the type because one interface serves all four variants; the
+     * variant-dependent meaning is enforced by
+     * {@link validateOnboardingGuideV2} instead of by the compiler.
+     */
+    notifyUser?: boolean;
     /** Optional vendor binding (catalog id). Usually set at publish time. */
     vendorId?: string;
     /** Optional model bindings (catalog ids). Usually set at publish time. */
