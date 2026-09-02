@@ -200,6 +200,7 @@ export function validateOnboardingGuideV2(
     validateNetworkScanFlag(guide, warnings);
     validateApplianceBinding(guide, errors, warnings);
     validateUserNotification(guide, warnings);
+    validateGuideName(guide, errors, warnings);
 
     return {ok: errors.length === 0, errors, warnings};
 }
@@ -895,6 +896,47 @@ function validateApplianceBinding(
                 '` guide and is ignored — only a `' +
                 `${EnyoOnboardingV2StartVariant.Maintenance}` +
                 '` guide binds an existing appliance.',
+        );
+    }
+}
+
+/**
+ * Checks {@link EnyoOnboardingV2Guide.name} is usable as a handle.
+ *
+ * The property is optional — a guide that never needs to be addressed does not
+ * need one, and the host falls back to a name derived from the guide's
+ * bindings. But a name that is *present* and blank is worse than absent: it
+ * looks like a handle at the call site and matches nothing, so
+ * `removeOnboardingGuide('')` would silently do nothing. That is an error.
+ *
+ * Whitespace around a name is trimmed by the host before it is compared, so
+ * `" setup "` and `"setup"` are the same handle; a name carrying padding is
+ * only warned about, since it works but will not look like what the author
+ * typed in a log line.
+ *
+ * @param guide - The guide being validated.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateGuideName(
+    guide: EnyoOnboardingV2Guide,
+    errors: string[],
+    warnings: string[],
+): void {
+    if (guide.name === undefined) return;
+
+    if (typeof guide.name !== 'string' || guide.name.trim() === '') {
+        errors.push(
+            '`name` is present but blank — a guide either carries a handle an app can address ' +
+                'it by or omits the property entirely; an empty name matches nothing.',
+        );
+        return;
+    }
+
+    if (guide.name !== guide.name.trim()) {
+        warnings.push(
+            `\`name\` "${guide.name}" has leading or trailing whitespace, which the host trims — ` +
+                'the guide is addressed as `' + guide.name.trim() + '`.',
         );
     }
 }

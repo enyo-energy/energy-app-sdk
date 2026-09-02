@@ -59,14 +59,17 @@ const ANY_MODEL = '*';
 /**
  * A short human-readable label for a guide, for use in messages.
  *
- * Prefers the first translated title, since ids are not required at guide level;
- * falls back to the start variant so a titleless guide is still identifiable.
+ * Prefers {@link EnyoOnboardingV2Guide.name} — it is the handle the author will
+ * search for — then the first translated title, then the start variant, so a
+ * guide with neither a name nor a title is still identifiable.
  *
  * @param guide - The guide to label.
  * @param index - Its position in the answer's `guides` array.
  * @returns A message prefix such as ``guides[2] ("Wallbox über OCPP")``.
  */
 function guideLabel(guide: EnyoOnboardingV2Guide, index: number): string {
+    const name = guide.name?.trim();
+    if (name) return `guides[${index}] ("${name}")`;
     const title = guide.title?.[0]?.value;
     return `guides[${index}] (${title ? `"${title}"` : (guide.startVariant ?? '?')})`;
 }
@@ -144,6 +147,9 @@ export function validateOnboardingV2GuidesResult(
 
     // Which guide(s) claimed each binding, so a collision can name both sides.
     const claimedBy = new Map<string, string>();
+    // Same, for the explicit `name` handles — a duplicate makes an app unable to
+    // say which of the two it means.
+    const namedBy = new Map<string, string>();
 
     for (const [i, guide] of result.guides.entries()) {
         const at = guideLabel(guide, i);
@@ -159,6 +165,19 @@ export function validateOnboardingV2GuidesResult(
             );
         } else if (!guide.modelIds?.length) {
             warnings.push(`${at}: no modelIds — this guide applies to every model of "${guide.vendorId}".`);
+        }
+
+        const name = guide.name?.trim();
+        if (name) {
+            const previouslyNamed = namedBy.get(name);
+            if (previouslyNamed) {
+                errors.push(
+                    `${at}: name "${name}" is already used by ${previouslyNamed} — ` +
+                        'a name is how an app addresses one specific guide, so two guides cannot share one.',
+                );
+            } else {
+                namedBy.set(name, at);
+            }
         }
 
         for (const key of bindingKeys(guide)) {

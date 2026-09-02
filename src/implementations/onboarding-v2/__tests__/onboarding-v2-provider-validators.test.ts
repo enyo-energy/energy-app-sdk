@@ -144,6 +144,88 @@ describe('validateOnboardingV2GuidesResult', () => {
     });
 });
 
+describe('guide names', () => {
+    it('accepts an answer whose guides carry distinct names', () => {
+        const {ok, errors, warnings} = validateOnboardingV2GuidesResult(
+            result([
+                guide({name: 'setup-lan'}),
+                guide({
+                    name: 'setup-ocpp',
+                    startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+                }),
+            ]),
+        );
+
+        expect(ok).toBe(true);
+        expect(errors).toEqual([]);
+        expect(warnings).toEqual([]);
+    });
+
+    it('rejects two guides sharing a name and points at both', () => {
+        const {ok, errors} = validateOnboardingV2GuidesResult(
+            result([
+                guide({name: 'setup'}),
+                guide({
+                    name: 'setup',
+                    startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+                }),
+            ]),
+        );
+
+        expect(ok).toBe(false);
+        const duplicate = errors.find((e) => e.includes('name "setup" is already used'));
+        expect(duplicate).toBeDefined();
+        expect(duplicate).toContain('guides[1]');
+        expect(duplicate).toContain('guides[0]');
+    });
+
+    it('compares names trimmed, so padding does not hide a duplicate', () => {
+        const {ok, errors} = validateOnboardingV2GuidesResult(
+            result([
+                guide({name: 'setup'}),
+                guide({
+                    name: '  setup  ',
+                    startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+                }),
+            ]),
+        );
+
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('name "setup" is already used'))).toBe(true);
+    });
+
+    it('rejects a present-but-blank name', () => {
+        const {ok, errors} = validateOnboardingV2GuidesResult(result([guide({name: '   '})]));
+
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('`name` is present but blank'))).toBe(true);
+    });
+
+    it('leaves an unnamed guide alone', () => {
+        const {ok, errors, warnings} = validateOnboardingV2GuidesResult(result([guide()]));
+
+        expect(ok).toBe(true);
+        expect(errors).toEqual([]);
+        expect(warnings.some((w) => w.includes('name'))).toBe(false);
+    });
+
+    it('warns about padding on an otherwise usable name', () => {
+        const {ok, warnings} = validateOnboardingV2GuidesResult(result([guide({name: ' setup '})]));
+
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('leading or trailing whitespace'))).toBe(true);
+    });
+
+    it('labels a named guide by its name in messages', () => {
+        const {errors} = validateOnboardingV2GuidesResult(
+            result([guide({name: 'setup-lan'}), guide({name: 'setup-lan-again'})]),
+        );
+
+        // The two guides collide on their binding; the message names the handle.
+        expect(errors.some((e) => e.includes('guides[1] ("setup-lan-again")'))).toBe(true);
+    });
+});
+
 describe('assertValidOnboardingV2GuidesResult', () => {
     it('returns the answer unchanged when it is valid', () => {
         const answer = result([guide()]);

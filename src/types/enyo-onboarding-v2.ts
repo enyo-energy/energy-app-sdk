@@ -899,6 +899,35 @@ export interface EnyoOnboardingV2Step {
  * usually bound at registration/publish time and may be omitted here.
  */
 export interface EnyoOnboardingV2Guide {
+    /**
+     * Stable handle for this guide — the name the app calls it by when it wants
+     * to act on it later.
+     *
+     * A guide is normally never addressed: guides are pulled, the app's answer
+     * is the complete set, and a guide is retired by leaving it out. This exists
+     * for the cases where an app has to say something *about one specific
+     * guide* instead of restating the whole set — retiring it with
+     * {@link EnergyAppOnboardingV2.removeOnboardingGuide}, or completing or
+     * removing the run walking it
+     * ({@link EnergyAppOnboardingV2.completeOnboardingRun},
+     * {@link EnergyAppOnboardingV2.removeOnboardingRun}).
+     *
+     * **Stable once shipped, like a step's `name`.** A run in progress is
+     * anchored to it, so renaming a guide between two package versions strands
+     * whatever was paused inside it. Choose a kebab-case slug that describes the
+     * flow rather than the hardware it currently applies to
+     * (`wallbox-ocpp-setup`, not `acme-ac22`), and keep it when the bindings
+     * change.
+     *
+     * Unique within the app's answer — two guides sharing a name cannot be told
+     * apart, and {@link validateOnboardingV2GuidesResult} rejects the answer.
+     *
+     * Optional. Omit it and the host files the guide under a name derived from
+     * what it binds to (vendor, models, start variant, and the appliance on a
+     * maintenance guide) exactly as before — that keeps working, it just cannot
+     * be named by an app that never chose a name.
+     */
+    name?: string;
     /** Translated display title (de/en). */
     title: EnyoOnboardingTranslatedContent[];
     /** Which start situation this guide covers. */

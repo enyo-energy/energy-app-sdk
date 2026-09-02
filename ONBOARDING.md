@@ -948,6 +948,72 @@ re-pull immediately when the set changed after startup;
 leaves the cached guides in place — it is not a way to retire them.
 
 
+### Naming a guide, and acting on one (`name`)
+
+Guides carry no id. They are pulled, the answer *is* the set, and a guide is
+identified by what it binds to — which is enough right up until the app needs to
+say something about **one** guide without restating all of them.
+
+`name` is that handle. It is optional; a guide that never needs to be addressed
+does not need one:
+
+```typescript
+defineOnboardingGuideV2({
+  name: 'wallbox-ocpp-setup',      // stable handle, unique within the answer
+  title: t('Wallbox über OCPP', 'Wallbox via OCPP'),
+  startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+  startStepId: 'enter-url',
+  steps: [/* … */],
+});
+```
+
+Treat it like a step's `name`: **stable once shipped**. A run in progress is
+anchored to it, so renaming a guide between package versions strands whatever was
+paused inside it. Name the flow, not the hardware it currently applies to
+(`wallbox-ocpp-setup`, not `acme-ac22`), and keep the name when the bindings
+change. `validateOnboardingV2GuidesResult()` rejects an answer with two guides
+sharing a name, and a guide whose `name` is present but blank.
+
+Three calls take a name. Which one to reach for depends on whether the *flow* or
+one *walk of it* is over:
+
+| Call | Ends | Use when |
+|---|---|---|
+| `removeOnboardingGuide(name)` | the guide, for the next installer | the app can no longer serve this flow at all |
+| `completeOnboardingRun(name, selector?)` | one run, **as a success** | the goal was met outside the guide |
+| `removeOnboardingRun(name, selector?)` | one run, as abandoned | the run cannot continue and achieved nothing |
+
+```typescript
+const onboarding = energyApp.useOnboardingV2();
+
+// The wallbox connected on its own — the installer never reached the last step.
+await onboarding.completeOnboardingRun('wallbox-ocpp-setup');
+
+// The appliance this maintenance flow services was deleted.
+await onboarding.removeOnboardingRun('wallbox-service', {applianceId});
+
+// The vendor account was unlinked — withdraw the flow before someone starts it.
+await onboarding.removeOnboardingGuide('vendor-cloud-setup');
+```
+
+`completeOnboardingRun` and `removeOnboardingRun` are **not interchangeable**:
+completing a run reports a finished installation, so using it for an abandoned
+setup is how a broken installation looks fine on a dashboard.
+
+`removeOnboardingGuide()` drops the guide from the host's cache but does not stop
+the handler offering it — if `buildGuides()` still returns it, the next pull
+brings it back. Remove it from what the handler builds as well. It also leaves
+runs already inside the guide alone: a guide is retired for the *next* installer,
+and pulling a flow out from under one mid-installation would strand them.
+
+The `selector` picks between runs when a guide can have more than one open, which
+in practice means a maintenance guide: its runs live one per appliance, so pass
+`{applianceId}`. Omit it everywhere else. Every one of these calls is a no-op
+when it names nothing — an unknown guide, a run already finished — rather than an
+error, and none of them is permission-gated: a name resolves within the calling
+package, so an app can only reach its own guides.
+
+
 ### Filling dynamic blocks (`ocpp-url`, `device-ip`)
 
 A guide declares a **slot**, never a value:

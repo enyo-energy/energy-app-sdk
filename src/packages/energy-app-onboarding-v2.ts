@@ -12,6 +12,29 @@ import type {
 } from '../types/enyo-onboarding-v2-additional-setup.js';
 
 /**
+ * Which run of a named guide an app means.
+ *
+ * A guide name identifies the *flow*; this narrows it to one walk of that flow
+ * when more than one can be open at a time. A maintenance guide is bound to an
+ * appliance and its runs live in a lane of their own — one per appliance — so
+ * that is the only distinction the host needs.
+ *
+ * Omit it entirely for a guide that has one open run, which is every
+ * installation variant.
+ */
+export interface EnyoOnboardingV2RunSelector {
+    /**
+     * The appliance whose run is meant, for a guide bound to one
+     * ({@link EnyoOnboardingV2StartVariant.Maintenance}).
+     *
+     * Omitted on a maintenance guide, the call addresses that guide's single
+     * open run when there is exactly one and is rejected when there are
+     * several — an ambiguous "complete the run" must not close an arbitrary one.
+     */
+    applianceId?: string;
+}
+
+/**
  * Handler the host calls to collect every onboarding guide (v2) an app ships.
  *
  * The handler builds the guides and resolves — that promise is the whole
@@ -217,6 +240,127 @@ export interface EnergyAppOnboardingV2 {
      * @returns Promise that resolves once the host has taken the new answer.
      */
     refreshOnboardingGuides(): Promise<void>;
+
+    /**
+     * Retires one guide by name, without the app restating its whole set.
+     *
+     * The ordinary way to retire a guide is to leave it out of the next
+     * {@link EnyoOnboardingV2GuidesHandler} answer, and that remains the right
+     * choice when the app's guide set is a static list in its source. This is
+     * for the case that answer cannot express: a guide the app decided to
+     * withdraw *now* — a vendor account was unlinked, an appliance it was bound
+     * to is gone — where waiting for the host's next pull means an installer
+     * can still start a flow the app can no longer serve.
+     *
+     * Names the guide by its {@link EnyoOnboardingV2Guide.name}, so only a
+     * guide that carries one can be retired this way. A guide without a name is
+     * addressable only as part of the complete answer.
+     *
+     * **The handler is still the source of truth.** This drops the guide from
+     * the host's cache; it does not stop the app from offering it again. If the
+     * handler keeps returning the guide, the next pull brings it back — so
+     * remove it from what the handler builds as well, or the retirement lasts
+     * only until the next sync.
+     *
+     * Runs already walking the guide are not touched: a guide is retired for the
+     * *next* installer, and pulling a flow out from under one already inside it
+     * would strand them mid-installation. Use {@link removeOnboardingRun} to end
+     * a run.
+     *
+     * Removing a guide the host does not know — wrong name, already retired — is
+     * a no-op rather than an error.
+     *
+     * This API is available to every app — it is not permission-gated.
+     *
+     * @param name - The {@link EnyoOnboardingV2Guide.name} of the guide to retire.
+     * @returns Promise that resolves once the host has dropped the guide.
+     *
+     * @example
+     * ```typescript
+     * await energyApp.useOnboardingV2().removeOnboardingGuide('vendor-cloud-setup');
+     * ```
+     */
+    removeOnboardingGuide(name: string): Promise<void>;
+
+    /**
+     * Marks the run walking a named guide as **completed**.
+     *
+     * For the flow that finished somewhere other than on the installer's
+     * screen. A guide normally completes when the walk reaches a success
+     * target — the installer taps through to the end. But an app sometimes
+     * learns the goal was met by another route: the wallbox connected over OCPP
+     * by itself, the vendor cloud confirmed the pairing, the appliance the
+     * maintenance run was servicing reported healthy. Leaving that run open
+     * shows the customer an installation still in progress that nobody intends
+     * to continue.
+     *
+     * The run is closed as a **success**: it leaves the "open" set, stops being
+     * offered for resumption, and counts as a finished installation. Use
+     * {@link removeOnboardingRun} for a flow that ended without achieving
+     * anything — the two are not interchangeable, and reporting an abandoned
+     * setup as completed is how a broken installation looks fine on a dashboard.
+     *
+     * Completing a run that is already finished — completed or removed — is a
+     * no-op: the first outcome stands, and a late confirmation does not reopen
+     * or re-close a run. So is naming a guide with no open run at all.
+     *
+     * Not permission-gated, like the rest of this API: a guide name is resolved
+     * within the calling package, so an app can only reach runs of guides it
+     * ships itself.
+     *
+     * @param name - The {@link EnyoOnboardingV2Guide.name} of the guide whose run
+     *   should be completed.
+     * @param selector - Which run, when the guide can have more than one open.
+     * @returns Promise that resolves once the host has closed the run.
+     *
+     * @example
+     * ```typescript
+     * // The wallbox connected on its own — the installer never reached the last step.
+     * ocpp.onChargePointConnect(async () => {
+     *     await energyApp.useOnboardingV2().completeOnboardingRun('wallbox-ocpp-setup');
+     * });
+     * ```
+     */
+    completeOnboardingRun(name: string, selector?: EnyoOnboardingV2RunSelector): Promise<void>;
+
+    /**
+     * Ends the run walking a named guide **without** completing it.
+     *
+     * The counterpart to {@link completeOnboardingRun}, for a flow that is over
+     * but achieved nothing: the device it was setting up was removed, the
+     * appliance a maintenance run was servicing no longer exists, the app can no
+     * longer serve the guide the run is walking. The run leaves the open set as
+     * abandoned rather than successful, so it stops being offered for resumption
+     * and is not counted as a finished installation.
+     *
+     * This ends a *run*, not a guide. The guide stays available and a new run
+     * can start on it immediately — that is the point when a stuck run is
+     * blocking a fresh attempt, since a device can have only one open run per
+     * flow. Use {@link removeOnboardingGuide} to withdraw the flow itself.
+     *
+     * An installer may be looking at the run when it is removed. Do this because
+     * the run genuinely cannot continue, not to tidy up: the screen ends the
+     * setup under them, and nothing explains why.
+     *
+     * Removing a run that is already finished, or naming a guide with no open
+     * run, is a no-op.
+     *
+     * Not permission-gated, like the rest of this API: a guide name is resolved
+     * within the calling package, so an app can only reach runs of guides it
+     * ships itself.
+     *
+     * @param name - The {@link EnyoOnboardingV2Guide.name} of the guide whose run
+     *   should be removed.
+     * @param selector - Which run, when the guide can have more than one open.
+     * @returns Promise that resolves once the host has ended the run.
+     *
+     * @example
+     * ```typescript
+     * // The appliance this maintenance flow services was deleted.
+     * await energyApp.useOnboardingV2().removeOnboardingRun('wallbox-service', {applianceId});
+     * ```
+     */
+    removeOnboardingRun(name: string, selector?: EnyoOnboardingV2RunSelector): Promise<void>;
 
     /**
      * Registers the handler the host calls to resolve dynamic block values
