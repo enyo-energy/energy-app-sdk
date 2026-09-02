@@ -46,6 +46,7 @@ import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
+import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -540,6 +541,23 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useEpexSpotPrices(): EnergyAppEpexSpotPrice {
         return this.energyAppSdk.useEpexSpotPrices();
+    }
+
+    /**
+     * Gets the Grid Fee API for publishing time-dependent grid fees (network
+     * charges) and resolving them to a 15-minute series.
+     *
+     * Nothing published here is folded into a price automatically — provider
+     * APIs differ in whether their prices already contain the network charge, so
+     * the app that owns the tariff declares that via the tariff's
+     * `priceComposition` and composes the effective price itself with
+     * `composeElectricityPrices()`.
+     * @returns The Grid Fee API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `GridFeeRegister` or
+     *         `GridFeeUse` permission required by the called method is not granted.
+     */
+    public useGridFee(): EnergyAppGridFee {
+        return this.energyAppSdk.useGridFee();
     }
 
     /**

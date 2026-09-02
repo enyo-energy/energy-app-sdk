@@ -64,6 +64,14 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [BatteryCommandForecast](#batterycommandforecast)
   - [HeatpumpForecast](#heatpumpforecast)
   - [Validators](#validators)
+- [Dynamic Grid Fees & Tariff Bonuses](#dynamic-grid-fees--tariff-bonuses)
+  - [The rule that shapes this API](#the-rule-that-shapes-this-api)
+  - [Publishing a dynamic grid fee](#publishing-a-dynamic-grid-fee)
+  - [Declaring it on a tariff](#declaring-it-on-a-tariff)
+  - [Multiple bonuses, and how they stack](#multiple-bonuses-and-how-they-stack)
+  - [Reading the result](#reading-the-result)
+  - [Staying current](#staying-current)
+  - [Helpers](#helpers)
 - [Automations](#automations)
   - [The model](#-the-model)
   - [Guide: Energy Manager apps](#-guide-energy-manager-apps)
@@ -170,6 +178,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Register a weather / PV / dynamic-price forecast provider | [`useWeatherForecasting()`](#useweatherforecasting-energyappweatherforecasting) / [`usePvForecasting()`](#usepvforecasting-energyapppvforecasting) / [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast) |
 | Read EPEX SPOT wholesale prices (incl. negative-price windows) | [`useEpexSpotPrices()`](#useepexspotprices-energyappepexspotprice) |
 | Manage electricity tariffs (default tariff, price per kWh) | [`useElectricityTariff()`](#useelectricitytariff-energyappelectricitytariff) |
+| Publish or resolve time-variable grid fees (§14a HT/NT) | [`useGridFee()`](#usegridfee-energyappgridfee) |
 | Register a PV system (kWp, DC strings, orientation) | [`usePvSystem()`](#usepvsystem-energyapppvsystem) |
 | Discover capabilities of the active energy manager | [`useEnergyManager()`](#useenergymanager-energyappenergymanager) |
 | Serve your v2 onboarding guides when the host asks for them | [`useOnboardingV2()`](#useonboardingv2-energyapponboardingv2) |
@@ -357,6 +366,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`PvSystemRegister`** / **`PvSystemUse`**: Register / read PV system configuration
 - **`Savings`**: Publish and read back day-scoped savings reports
 - **`EpexSpotPrices`**: Read EPEX SPOT day-ahead wholesale market prices
+- **`GridFeeRegister`** / **`GridFeeUse`**: Publish / resolve dynamic grid fees (time-variable network charges)
 
 #### Site & Identity Permissions
 
@@ -1227,14 +1237,46 @@ Register, retrieve, and manage electricity tariffs. One tariff can be marked as 
 ```typescript
 const tariffs = energyApp.useElectricityTariff();
 
-await tariffs.registerTariff({ id: 't1', name: 'Spot 2026', pricePerKwh: 0.21 });
+await tariffs.registerTariff({
+    tariffType: ElectricityTariffTypeEnum.Dynamic,
+    tariffName: 'Spot 2026',
+    vendorName: 'enyo',
+    dynamicTariffData: { currency: 'EUR', gridFeePerKwh: 0.0912 },
+});
 await tariffs.makeDefaultTariff('t1');
 
 const defaultTariff = await tariffs.getDefaultTariff();
 const all = await tariffs.getAllTariffs();
 ```
 
+A tariff can also declare that its grid fee is **dynamic**, state what its prices already include, and
+carry any number of **bonuses** — see [Dynamic Grid Fees & Tariff Bonuses](#dynamic-grid-fees--tariff-bonuses).
+
+Register a listener to be told when any tariff changes — a new default, a changed grid fee link, an
+added or expired bonus all invalidate a previously composed price series:
+
+```typescript
+const listenerId = tariffs.onTariffChanged(async event => {
+    if (event.changeType === EnyoTariffChangeTypeEnum.Removed) return;
+    await recomposePrices(event.tariff);
+});
+// later
+tariffs.offTariffChanged(listenerId);
+```
+
 Requires the `ElectricityTariff` permission.
+
+#### `useGridFee(): EnergyAppGridFee`
+
+Publish time-dependent grid fees (network charges) and resolve them to a 15-minute series. See
+[Dynamic Grid Fees & Tariff Bonuses](#dynamic-grid-fees--tariff-bonuses) for the full picture.
+
+```typescript
+const gridFee = energyApp.useGridFee();
+const fees = await gridFee.getDynamicGridFees({ fromIso, untilIso });
+```
+
+Publishers need `GridFeeRegister`; consumers need `GridFeeUse`.
 
 #### `useWeatherForecasting(): EnergyAppWeatherForecasting`
 
@@ -2929,6 +2971,174 @@ try {
     }
 }
 ```
+
+## Dynamic Grid Fees & Tariff Bonuses
+
+An electricity price is rarely one number. It is the energy price, plus the grid operator's network
+charge, minus whatever discounts the supplier grants. Both of the latter vary over time: §14a EnWG
+module 3 network charges switch between high- and low-tariff windows by time of day, weekday and
+season, and a supplier bonus may run "−5 ct/kWh between 22:00 and 06:00" or for a fixed promotional
+period.
+
+### The rule that shapes this API
+
+**The energy app composes the price. The host never adds anything.**
+
+That is not a stylistic choice. Provider APIs disagree with each other: some already return
+grid-fee-inclusive prices, others return the bare energy price. Only the app that owns the tariff
+knows which — so it *declares* it on the tariff, and composes accordingly. A host that silently added
+network charges would double-count for half the providers on the market.
+
+```typescript
+const tariff = await energyApp.useElectricityTariff().getDefaultTariff();
+const fees   = await energyApp.useGridFee().getDynamicGridFees({ fromIso, untilIso });
+const spot   = await energyApp.useEpexSpotPrices().getPrices({ fromIso, untilIso });
+
+const prices = composeElectricityPrices({
+    energyPrices: fromEpexSpotEntries(spot.entries),
+    energyPriceComposition: tariff?.priceComposition,  // ← what the prices already contain
+    gridFees: fees,
+    bonuses: tariff?.bonuses,
+    currency: 'EUR',
+});
+
+const cheapest = prices.reduce((a, b) => (b.effectivePricePerKwh < a.effectivePricePerKwh ? b : a));
+```
+
+### Publishing a dynamic grid fee
+
+Amounts are always **unsigned magnitudes**: a grid fee is added, a bonus is subtracted. There is no
+signed number to get backwards.
+
+```typescript
+await energyApp.useGridFee().registerGridFee({
+    id: 'dso-hd-2026',
+    name: 'Netzentgelt HT/NT 2026',
+    gridOperator: 'Netze BW',
+    currency: EnyoCurrencyEnum.EUR,
+    timezone: 'Europe/Berlin',          // required — windows are wall-clock, and DST is real
+    appliesTo: EnyoPriceAppliesToEnum.Consumption,
+    moduleThreeCompliant: true,
+    schedule: {
+        type: EnyoPriceScheduleTypeEnum.Recurring,
+        windows: [
+            { startTimeOfDay: '06:00', endTimeOfDay: '22:00', amountPerKwh: 0.0912 },
+            { startTimeOfDay: '22:00', endTimeOfDay: '06:00', amountPerKwh: 0.0431 },
+        ],
+    },
+});
+```
+
+Three schedule types cover what grid operators and suppliers actually publish:
+
+| Type | Use it for |
+|---|---|
+| `Constant` | one amount that never changes |
+| `Recurring` | HT/NT, weekday-dependent and seasonal windows (`daysOfWeek`, `months`) |
+| `Absolute` | dated series, e.g. a day-ahead publication — republish with `publishGridFeeWindows()` |
+
+A `Recurring` window may wrap past midnight (`22:00` → `06:00`). When it does, `daysOfWeek` and
+`months` are evaluated against the day the window **starts** — a Monday-only 22:00–06:00 window covers
+Monday evening *and* the early hours of Tuesday.
+
+### Declaring it on a tariff
+
+```typescript
+await energyApp.useElectricityTariff().registerTariff({
+    tariffType: ElectricityTariffTypeEnum.Dynamic,
+    tariffName: 'Spot 2026',
+    vendorName: 'enyo',
+    priceComposition: { includesGridFee: false },   // provider returns the bare energy price
+    dynamicTariffData: {
+        currency: 'EUR',
+        gridFeeMode: GridFeeModeEnum.Dynamic,       // read the fee from useGridFee(), don't carry one
+    },
+    bonuses: [{
+        id: 'night',
+        name: 'Nachtbonus',
+        timezone: 'Europe/Berlin',
+        appliesTo: EnyoPriceAppliesToEnum.Consumption,
+        schedule: {
+            type: EnyoPriceScheduleTypeEnum.Recurring,
+            windows: [{ startTimeOfDay: '22:00', endTimeOfDay: '06:00', amountPerKwh: 0.05 }],
+        },
+    }],
+});
+```
+
+The tariff declares only *that* its grid fee is time-dependent, never *which* fee applies. **A grid fee
+is not bound to a tariff** — it belongs to the site's grid connection, is registered independently, and
+stays the same whichever supplier the site buys from. That is why `getDynamicGridFees()` takes no
+tariff selector.
+
+`gridFeeMode` defaults to `Static`, so tariffs written before this existed keep working unchanged, and
+`DynamicTariffData.gridFeePerKwh` remains the constant fallback (now deprecated). The declaration is
+available on **all three** tariff shapes — a fixed energy price with time-variable network charges is a
+real product.
+
+If the provider ships all-in prices instead, set `priceComposition.includesGridFee: true` and leave
+`gridFeeMode` alone. Combining it with `Dynamic` is rejected by `validateElectricityTariffPricing()` —
+it is the exact configuration that double-counts.
+
+### Multiple bonuses, and how they stack
+
+A tariff may carry several bonuses at once. Overlapping bonuses **add up**, unless one of them is
+`exclusive` — then the exclusive bonus with the highest `priority` applies alone.
+
+```typescript
+bonuses: [
+    { id: 'night',  schedule: nightWindow,  /* … */ },                          // −5 ct
+    { id: 'summer', schedule: summerWindow, /* … */ },                          // −2 ct → −7 ct together
+    { id: 'launch', schedule: promo, exclusive: true, priority: 10, /* … */ },  // wins alone where it applies
+]
+```
+
+### Reading the result
+
+Every component is reported separately, so a UI can explain the number and an optimizer can reason
+about its parts:
+
+```typescript
+{
+    timestampIso: '2026-09-02T22:00:00.000Z',
+    energyPricePerKwh: 0.18,
+    gridFeePerKwh: 0.0431,
+    gridFeeOrigin: 'added',        // 'included' when the provider already had it, 'not-applicable' when none
+    bonusPerKwh: 0.05,
+    bonusOrigin: 'added',
+    appliedBonusIds: ['night'],
+    effectivePricePerKwh: 0.1731,
+    currency: 'EUR',
+}
+```
+
+A component flagged `included` is still reported — you can break down an all-in price — but it is never
+added a second time. Effective prices may go negative, because wholesale prices do; pass
+`minEffectivePricePerKwh` only if your use case genuinely needs a floor.
+
+### Staying current
+
+Both sides change under you. Listen to both:
+
+```typescript
+energyApp.useGridFee().onGridFeeChanged(() => recompose());          // new day-ahead fee series
+energyApp.useElectricityTariff().onTariffChanged(() => recompose()); // new default, bonus, or fee link
+```
+
+### Helpers
+
+| Function | Purpose |
+|---|---|
+| `composeElectricityPrices()` | energy price + grid fee − bonuses → effective price, with full breakdown |
+| `fromEnergyPriceEntries()` / `fromEpexSpotEntries()` | adapt the SDK's price shapes into composer input |
+| `resolveTariffBonuses()` | resolve a tariff's bonuses to 15-min intervals, stacking rule applied |
+| `resolvePriceSchedule()` | expand any schedule to a 15-min series (DST-aware, dependency-free) |
+| `validateDynamicGridFee()` / `validateElectricityTariffPricing()` | catch overlapping windows, negative amounts and double-count configurations before registering |
+
+### Not covered
+
+Consumption-quota bonuses — "the first 100 kWh each month are free", "1000 free charging kWh per year" —
+are **not** expressible. They need consumption accounting that this model deliberately does not carry.
 
 ## Examples
 

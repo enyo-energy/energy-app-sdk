@@ -44,6 +44,7 @@ import {EnergyAppAutomation} from "./packages/energy-app-automation.js";
 import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
+import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -165,4 +166,6 @@ export interface EnyoEnergyAppSdk {
     useDeviceTest: () => EnergyAppDeviceTest;
     /** Get the EPEX SPOT Price API for reading the cleared day-ahead wholesale electricity prices that apply to this device */
     useEpexSpotPrices: () => EnergyAppEpexSpotPrice;
+    /** Get the Grid Fee API for publishing time-dependent network charges and resolving them to a 15-minute series */
+    useGridFee: () => EnergyAppGridFee;
 }

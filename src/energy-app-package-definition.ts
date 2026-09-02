@@ -19,6 +19,7 @@ export enum EnergyAppPackageCategory {
     TemperatureSensor = 'temperature-sensor',
     SmartPlug = 'smart-plug',
     HeatingRod = 'heating-rod',
+    GridOperator = 'grid-operator',
     Other = 'other',
 }
 

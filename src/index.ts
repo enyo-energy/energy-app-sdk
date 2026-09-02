@@ -148,3 +148,11 @@ export * from './packages/energy-app-epex-spot-price.js';
 export * from './types/enyo-automation.js';
 export * from './packages/energy-app-automation.js';
 export * from './implementations/automation/automation-validators.js';
+
+export * from './types/enyo-price-schedule.js';
+export * from './types/enyo-grid-fee.js';
+export * from './types/enyo-price-composition.js';
+export * from './packages/energy-app-grid-fee.js';
+export * from './implementations/pricing/price-schedule-resolver.js';
+export * from './implementations/pricing/price-component-validators.js';
+export * from './implementations/pricing/compose-electricity-prices.js';

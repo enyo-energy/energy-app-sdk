@@ -1,4 +1,8 @@
-import {EnyoElectricityTariff, EnyoElectricityTariffWithDefault} from "../types/enyo-electricity-tariff.js";
+import {
+    EnyoElectricityTariff,
+    EnyoElectricityTariffWithDefault,
+    EnyoTariffChangeEvent,
+} from "../types/enyo-electricity-tariff.js";
 
 /**
  * Interface for managing electricity tariffs.
@@ -61,4 +65,39 @@ export interface EnergyAppElectricityTariff {
      * @returns Promise that resolves to the full updated tariff with its default indicator
      */
     updateTariff(id: string, attributes: Partial<Omit<EnyoElectricityTariff, 'id'>>): Promise<EnyoElectricityTariffWithDefault>;
+
+    /**
+     * Registers a listener invoked whenever any tariff is registered, updated
+     * or removed, or whenever a different tariff becomes the system default.
+     *
+     * Listeners see changes made by every energy app on the system, not just
+     * this one — filter on {@link EnyoTariffChangeEvent.tariffId} when only one
+     * tariff matters. This is the signal to recompose prices: a changed grid fee
+     * link, an added or expired bonus, or a new default tariff all invalidate a
+     * previously composed price series.
+     *
+     * Requires the `ElectricityTariff` permission.
+     *
+     * @param listener - Callback invoked with the tariff change event
+     * @returns A unique listener id that can be passed to {@link offTariffChanged}
+     *
+     * @example
+     * ```typescript
+     * const listenerId = tariffs.onTariffChanged(async event => {
+     *     if (event.changeType === EnyoTariffChangeTypeEnum.Removed) return;
+     *     await recomposePrices(event.tariff);
+     * });
+     * // later
+     * tariffs.offTariffChanged(listenerId);
+     * ```
+     */
+    onTariffChanged(listener: (event: EnyoTariffChangeEvent) => void | Promise<void>): string;
+
+    /**
+     * Removes a previously registered tariff change listener. If the listener id
+     * is unknown, this operation is a no-op.
+     *
+     * @param listenerId - The id returned from {@link onTariffChanged}
+     */
+    offTariffChanged(listenerId: string): void;
 }
