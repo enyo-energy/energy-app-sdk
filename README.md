@@ -1232,37 +1232,69 @@ Three things to get right:
 
 #### `useElectricityTariff(): EnergyAppElectricityTariff`
 
-Register, retrieve, and manage electricity tariffs. One tariff can be marked as the system default.
+A site has **two tariff slots** — one for consumption, one for feed-in — and every method addresses
+them by `EnyoTariffDirectionEnum`. There is no tariff list, no default flag and no tariff id:
+occupying a slot is what it means to be the tariff in force.
+
+Consumers read:
 
 ```typescript
 const tariffs = energyApp.useElectricityTariff();
 
-await tariffs.registerTariff({
-    tariffType: ElectricityTariffTypeEnum.Dynamic,
-    tariffName: 'Spot 2026',
-    vendorName: 'enyo',
-    dynamicTariffData: { currency: 'EUR', gridFeePerKwh: 0.0912 },
-});
-await tariffs.makeDefaultTariff('t1');
+const tariff = await tariffs.getTariff(EnyoTariffDirectionEnum.Consumption);
+const prices = await tariffs.getPrices(EnyoTariffDirectionEnum.Consumption, { fromIso, untilIso });
 
-const defaultTariff = await tariffs.getDefaultTariff();
-const all = await tariffs.getAllTariffs();
+// Never add a component the series already contains.
+const needsGridFee = !prices?.includes.includes(EnyoPriceComponentEnum.GridFee);
 ```
 
-A tariff can also declare that its grid fee is **dynamic**, state what its prices already include, and
-carry any number of **bonuses** — see [Dynamic Grid Fees & Tariff Bonuses](#dynamic-grid-fees--tariff-bonuses).
-
-Register a listener to be told when any tariff changes — a new default, a changed grid fee link, an
-added or expired bonus all invalidate a previously composed price series:
+The app that integrates a provider owns the other side. It answers when the user picks it, sets the
+tariff once it is actually usable, and pushes prices as they arrive:
 
 ```typescript
-const listenerId = tariffs.onTariffChanged(async event => {
-    if (event.changeType === EnyoTariffChangeTypeEnum.Removed) return;
+tariffs.onTariffSelected(async direction => {
+    if (!await isAuthenticated()) {
+        return {
+            status: EnyoTariffActivationStatusEnum.AuthenticationRequired,
+            authenticationUrl: buildOAuthUrl(direction),
+        };
+    }
+    await tariffs.setTariff(direction, {
+        name: 'Spot 2026',
+        vendorName: 'enyo',
+        currency: EnyoCurrencyEnum.EUR,
+        pricing: { type: EnyoTariffPricingTypeEnum.Dynamic },
+        externalTariffId: contract.id,
+    });
+    return { status: EnyoTariffActivationStatusEnum.Success };
+});
+
+await tariffs.publishPrices(EnyoTariffDirectionEnum.Consumption, {
+    includes: [EnyoPriceComponentEnum.GridFee],   // ← we folded the fee in ourselves
+    entries,
+});
+```
+
+**Calling `setTariff` is the activation signal.** Return `AuthenticationRequired` or
+`OnboardingRequired` from the handler to have the host send the user somewhere, and carry the
+`authenticationUrl` / `onboardingGuideId` that makes it actionable; when that flow later completes,
+call `setTariff` and the slot goes live. There is nothing else to report.
+
+Prices are **pushed, not pulled** — providers publish day-ahead prices on their own schedule and
+rate-limit their APIs, so an app fetches when it makes sense and publishes what it got.
+
+Listen for slot changes to know when to recompose:
+
+```typescript
+const unsubscribe = tariffs.onTariffChanged(async event => {
+    if (event.direction !== EnyoTariffDirectionEnum.Consumption) return;
     await recomposePrices(event.tariff);
 });
 // later
-tariffs.offTariffChanged(listenerId);
+unsubscribe();
 ```
+
+A tariff carries **no grid fee** — see [Dynamic Grid Fees & Tariff Bonuses](#dynamic-grid-fees--tariff-bonuses).
 
 Requires the `ElectricityTariff` permission.
 
@@ -1273,7 +1305,7 @@ Publish time-dependent grid fees (network charges) and resolve them to a 15-minu
 
 ```typescript
 const gridFee = energyApp.useGridFee();
-const fees = await gridFee.getDynamicGridFees({ fromIso, untilIso });
+const fees = await gridFee.getGridFeeValues({ fromIso, untilIso });
 ```
 
 Publishers need `GridFeeRegister`; consumers need `GridFeeUse`.
@@ -2986,19 +3018,19 @@ period.
 
 That is not a stylistic choice. Provider APIs disagree with each other: some already return
 grid-fee-inclusive prices, others return the bare energy price. Only the app that owns the tariff
-knows which — so it *declares* it on the tariff, and composes accordingly. A host that silently added
-network charges would double-count for half the providers on the market.
+knows which — so it *declares* it on the price series it publishes, and composes accordingly. A host
+that silently added network charges would double-count for half the providers on the market.
 
 ```typescript
-const tariff = await energyApp.useElectricityTariff().getDefaultTariff();
-const fees   = await energyApp.useGridFee().getDynamicGridFees({ fromIso, untilIso });
+const series = await energyApp.useElectricityTariff().getPrices(direction, { fromIso, untilIso });
+const fees   = await energyApp.useGridFee().getGridFeeValues({ fromIso, untilIso });
 const spot   = await energyApp.useEpexSpotPrices().getPrices({ fromIso, untilIso });
 
 const prices = composeElectricityPrices({
     energyPrices: fromEpexSpotEntries(spot.entries),
-    energyPriceComposition: tariff?.priceComposition,  // ← what the prices already contain
-    gridFees: fees,
-    bonuses: tariff?.bonuses,
+    energyPriceComposition: series?.includes,   // ← what the prices already contain
+    gridFees: fromGridFeeEntries(fees),         // ← gross cent → currency units
+    bonuses: myBonuses,
     currency: 'EUR',
 });
 
@@ -3035,50 +3067,48 @@ Three schedule types cover what grid operators and suppliers actually publish:
 |---|---|
 | `Constant` | one amount that never changes |
 | `Recurring` | HT/NT, weekday-dependent and seasonal windows (`daysOfWeek`, `months`) |
-| `Absolute` | dated series, e.g. a day-ahead publication — republish with `publishGridFeeWindows()` |
+| `Absolute` | dated series, e.g. a day-ahead publication — republish with `registerGridFee()` |
 
 A `Recurring` window may wrap past midnight (`22:00` → `06:00`). When it does, `daysOfWeek` and
 `months` are evaluated against the day the window **starts** — a Monday-only 22:00–06:00 window covers
 Monday evening *and* the early hours of Tuesday.
 
-### Declaring it on a tariff
+### Declaring it on a price series
+
+A tariff carries **no grid fee at all**. It is neither a field on the tariff nor something the tariff
+declares a mode for: a network charge belongs to the site's grid connection, is registered
+independently with `useGridFee()`, and stays the same whichever supplier the site buys from. That is
+why `getGridFee()` takes no arguments and `getGridFeeValues()` takes no tariff selector.
+
+What the owning app *does* declare is what its published prices already contain:
 
 ```typescript
-await energyApp.useElectricityTariff().registerTariff({
-    tariffType: ElectricityTariffTypeEnum.Dynamic,
-    tariffName: 'Spot 2026',
-    vendorName: 'enyo',
-    priceComposition: { includesGridFee: false },   // provider returns the bare energy price
-    dynamicTariffData: {
-        currency: 'EUR',
-        gridFeeMode: GridFeeModeEnum.Dynamic,       // read the fee from useGridFee(), don't carry one
-    },
-    bonuses: [{
-        id: 'night',
-        name: 'Nachtbonus',
-        timezone: 'Europe/Berlin',
-        appliesTo: EnyoPriceAppliesToEnum.Consumption,
-        schedule: {
-            type: EnyoPriceScheduleTypeEnum.Recurring,
-            windows: [{ startTimeOfDay: '22:00', endTimeOfDay: '06:00', amountPerKwh: 0.05 }],
-        },
-    }],
+await energyApp.useElectricityTariff().publishPrices(EnyoTariffDirectionEnum.Consumption, {
+    includes: [],   // the bare energy price — the consumer adds the grid fee
+    entries,
 });
 ```
 
-The tariff declares only *that* its grid fee is time-dependent, never *which* fee applies. **A grid fee
-is not bound to a tariff** — it belongs to the site's grid connection, is registered independently, and
-stays the same whichever supplier the site buys from. That is why `getDynamicGridFees()` takes no
-tariff selector.
+If the provider ships all-in prices instead, publish `includes: [EnyoPriceComponentEnum.GridFee]` and
+consumers will report the fee without adding it a second time. Declaring an included component you did
+not actually apply is the one mistake that silently under-prices every interval.
 
-`gridFeeMode` defaults to `Static`, so tariffs written before this existed keep working unchanged, and
-`DynamicTariffData.gridFeePerKwh` remains the constant fallback (now deprecated). The declaration is
-available on **all three** tariff shapes — a fixed energy price with time-variable network charges is a
-real product.
+Bonuses work the same way — either apply them yourself and declare
+`EnyoPriceComponentEnum.Bonuses`, or hand them to `composeElectricityPrices()` and have them applied
+and reported separately:
 
-If the provider ships all-in prices instead, set `priceComposition.includesGridFee: true` and leave
-`gridFeeMode` alone. Combining it with `Dynamic` is rejected by `validateElectricityTariffPricing()` —
-it is the exact configuration that double-counts.
+```typescript
+const bonuses = [{
+    id: 'night',
+    name: 'Nachtbonus',
+    timezone: 'Europe/Berlin',
+    appliesTo: EnyoPriceAppliesToEnum.Consumption,
+    schedule: {
+        type: EnyoPriceScheduleTypeEnum.Recurring,
+        windows: [{ startTimeOfDay: '22:00', endTimeOfDay: '06:00', amountPerKwh: 0.05 }],
+    },
+}];
+```
 
 ### Multiple bonuses, and how they stack
 
@@ -3133,7 +3163,7 @@ energyApp.useElectricityTariff().onTariffChanged(() => recompose()); // new defa
 | `fromEnergyPriceEntries()` / `fromEpexSpotEntries()` | adapt the SDK's price shapes into composer input |
 | `resolveTariffBonuses()` | resolve a tariff's bonuses to 15-min intervals, stacking rule applied |
 | `resolvePriceSchedule()` | expand any schedule to a 15-min series (DST-aware, dependency-free) |
-| `validateDynamicGridFee()` / `validateElectricityTariffPricing()` | catch overlapping windows, negative amounts and double-count configurations before registering |
+| `validateDynamicGridFee()` / `validateTariffBonuses()` | catch overlapping windows and negative amounts before registering |
 
 ### Not covered
 

@@ -1,10 +1,4 @@
-import {
-    EnyoElectricityTariff,
-    EnyoTariffBonus,
-    GridFeeModeEnum,
-    TariffGridFeeConfig,
-    TariffPriceCompositionInfo,
-} from '../../types/enyo-electricity-tariff.js';
+import {EnyoTariffBonus} from '../../types/enyo-electricity-tariff.js';
 import {EnyoDynamicGridFeeRegistration} from '../../types/enyo-grid-fee.js';
 import {
     EnyoPriceAppliesToEnum,
@@ -223,7 +217,6 @@ export function validatePriceSchedule(schedule: EnyoPriceSchedule, label = 'sche
  * ```
  */
 export function validateDynamicGridFee(registration: EnyoDynamicGridFeeRegistration): void {
-    requireNonEmpty(registration.id, 'gridFee.id');
     requireNonEmpty(registration.name, 'gridFee.name');
     requireNonEmpty(registration.gridOperator, 'gridFee.gridOperator');
     requireNonEmpty(registration.currency, 'gridFee.currency');
@@ -268,67 +261,4 @@ export function validateTariffBonuses(bonuses: EnyoTariffBonus[]): void {
         }
         seen.add(bonus.id);
     });
-}
-
-/**
- * Validates how a tariff's pricing data declares its grid fee.
- *
- * Catches the configuration that silently double-charges the customer: declaring
- * a dynamic grid fee while also declaring that the tariff's prices already
- * include the grid fee. Anyone trusting the declaration would add the fee on top
- * of prices that already contain it.
- *
- * @param config - The grid fee configuration of one tariff pricing shape
- * @param priceComposition - The tariff's price composition declaration, if any
- * @param label - Prefix used in error messages, e.g. `'dynamicTariffData'`
- * @throws {PriceComponentValidationError} On the first invariant violation
- */
-export function validateTariffGridFeeConfig(
-    config: TariffGridFeeConfig,
-    priceComposition: TariffPriceCompositionInfo | undefined,
-    label = 'tariffData',
-): void {
-    const mode = config.gridFeeMode ?? GridFeeModeEnum.Static;
-    if (!Object.values(GridFeeModeEnum).includes(mode)) {
-        fail(`${label}.gridFeeMode must be one of ${Object.values(GridFeeModeEnum).join(', ')}`);
-    }
-    if (mode === GridFeeModeEnum.Dynamic && priceComposition?.includesGridFee === true) {
-        fail(
-            `${label} declares a dynamic grid fee while priceComposition.includesGridFee is true — ` +
-            `the fee is already contained in the tariff's prices and must not be added again`,
-        );
-    }
-}
-
-/**
- * Validates the pricing-related parts of a complete electricity tariff: the grid
- * fee link of whichever pricing shape is present, and the tariff's bonuses.
- *
- * Call it before {@link EnergyAppElectricityTariff.registerTariff} to turn what
- * would otherwise be a silently mispriced tariff into an actionable error.
- *
- * @param tariff - The tariff to validate (with or without its `id`)
- * @throws {PriceComponentValidationError} On the first invariant violation
- *
- * @example
- * ```typescript
- * validateElectricityTariffPricing(tariff);
- * await energyApp.useElectricityTariff().registerTariff(tariff);
- * ```
- */
-export function validateElectricityTariffPricing(
-    tariff: Omit<EnyoElectricityTariff, 'id'> & {id?: string},
-): void {
-    if (tariff.staticTariffData !== undefined) {
-        validateTariffGridFeeConfig(tariff.staticTariffData, tariff.priceComposition, 'staticTariffData');
-    }
-    if (tariff.timeVariableTariffData !== undefined) {
-        validateTariffGridFeeConfig(tariff.timeVariableTariffData, tariff.priceComposition, 'timeVariableTariffData');
-    }
-    if (tariff.dynamicTariffData !== undefined) {
-        validateTariffGridFeeConfig(tariff.dynamicTariffData, tariff.priceComposition, 'dynamicTariffData');
-    }
-    if (tariff.bonuses !== undefined) {
-        validateTariffBonuses(tariff.bonuses);
-    }
 }

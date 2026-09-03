@@ -1,9 +1,10 @@
-import {EnyoTariffBonus} from '../../types/enyo-electricity-tariff.js';
+import {EnyoPriceComponentEnum, EnyoTariffBonus} from '../../types/enyo-electricity-tariff.js';
 import {EnyoEnergyPriceEntry} from '../../types/enyo-energy-prices.js';
 import {EnyoEpexSpotPriceEntry} from '../../types/enyo-epex-spot-price.js';
-import {EnyoDynamicGridFeeSeries} from '../../types/enyo-grid-fee.js';
+import {EnyoGridFeeSeries} from '../../types/enyo-grid-fee.js';
 import {
     EnyoComposableEnergyPriceEntry,
+    EnyoComposableGridFeeSeries,
     EnyoComposeElectricityPricesInput,
     EnyoComposedElectricityPriceEntry,
     EnyoPriceComponentOriginEnum,
@@ -36,11 +37,43 @@ export function fromEnergyPriceEntries(
 }
 
 /**
+ * Converts a grid fee series from `useGridFee().getGridFeeValues()` into the
+ * unit the composer works in.
+ *
+ * This is the **only** place cent meets currency in the pricing path, and it
+ * exists so the conversion happens once, visibly, instead of at every call site.
+ * Grid fees are published and read as gross **cent** per kWh because that is how
+ * they are quoted and configured; energy prices are in whole currency units
+ * (EUR/kWh), so a fee added to a price without dividing by 100 overstates it by
+ * a factor of 100 — a mistake that survives review because both numbers look
+ * plausible.
+ *
+ * Pass the result as {@link EnyoComposeElectricityPricesInput.gridFees}. Whether
+ * the amounts include the fee's additional charges is decided when the series is
+ * fetched, not here.
+ *
+ * @param series - The series returned by `getGridFeeValues()`, or `null`
+ * @returns The same series with amounts in currency per kWh, or `null` when the input was
+ */
+export function fromGridFeeEntries(series: EnyoGridFeeSeries | null | undefined): EnyoComposableGridFeeSeries | null {
+    if (series == null) {
+        return null;
+    }
+    return {
+        appliesTo: series.appliesTo,
+        entries: series.entries.map(entry => ({
+            timestampIso: entry.timestampIso,
+            feePerKwh: entry.grossCentPerKwh / 100,
+        })),
+    };
+}
+
+/**
  * Adapts an EPEX SPOT day-ahead series into composer input.
  *
  * Spot prices are the raw exchange result and contain neither grid fees nor
- * levies, taxes or supplier margin — so the tariff's `priceComposition` for such
- * a series should leave every `includes*` flag `false`.
+ * levies, taxes or supplier margin — so a series built from them should declare
+ * no included components at all.
  *
  * @param entries - Spot price entries as returned by the EPEX SPOT price API
  * @returns Composable energy price entries
@@ -145,7 +178,7 @@ export function resolveTariffBonuses(
     return combined;
 }
 
-function gridFeeByTimestamp(series: EnyoDynamicGridFeeSeries | null | undefined): Map<string, number> {
+function gridFeeByTimestamp(series: EnyoComposableGridFeeSeries | null | undefined): Map<string, number> {
     const map = new Map<string, number>();
     for (const entry of series?.entries ?? []) {
         map.set(entry.timestampIso, entry.feePerKwh);
@@ -155,12 +188,16 @@ function gridFeeByTimestamp(series: EnyoDynamicGridFeeSeries | null | undefined)
 
 /**
  * Composes the effective electricity price per 15-minute interval from an energy
- * price series, a dynamic grid fee and a tariff's bonuses.
+ * price series, a grid fee and a tariff's bonuses.
+ *
+ * The three inputs come from three independent sources and are deliberately not
+ * coupled: energy prices from the tariff or the spot market, the grid fee from
+ * `useGridFee()`, the bonuses from the tariff. Pass whichever apply.
  *
  * This runs **in the energy app**, never in the host, because only the app knows
  * what its provider's API already returns: some providers deliver all-in prices
  * with the network charge baked in, others deliver the pure energy price. Pass
- * the tariff's `priceComposition` as `energyPriceComposition` and the composer
+ * the price series' `includes` as `energyPriceComposition` and the composer
  * reports each component without adding one that is already included.
  *
  * Every component is reported separately — `gridFeePerKwh` with its
@@ -177,15 +214,15 @@ function gridFeeByTimestamp(series: EnyoDynamicGridFeeSeries | null | undefined)
  *
  * @example
  * ```typescript
- * const tariff = await energyApp.useElectricityTariff().getDefaultTariff();
- * const fees = await energyApp.useGridFee().getDynamicGridFees({fromIso, untilIso});
+ * const series = await energyApp.useElectricityTariff().getPrices(direction, {fromIso, untilIso});
+ * const fees = await energyApp.useGridFee().getGridFeeValues({fromIso, untilIso});
  * const spot = await energyApp.useEpexSpotPrices().getPrices({fromIso, untilIso});
  *
  * const prices = composeElectricityPrices({
  *     energyPrices: fromEpexSpotEntries(spot.entries),
- *     energyPriceComposition: tariff?.priceComposition,
+ *     energyPriceComposition: series?.includes,
  *     gridFees: fees,
- *     bonuses: tariff?.bonuses,
+ *     bonuses: myBonuses,
  *     currency: 'EUR',
  * });
  *
@@ -196,8 +233,8 @@ export function composeElectricityPrices(
     input: EnyoComposeElectricityPricesInput,
 ): EnyoComposedElectricityPriceEntry[] {
     const direction = input.appliesTo ?? EnyoPriceAppliesToEnum.Consumption;
-    const gridFeeIncluded = input.energyPriceComposition?.includesGridFee === true;
-    const bonusesIncluded = input.energyPriceComposition?.includesBonuses === true;
+    const gridFeeIncluded = input.energyPriceComposition?.includes(EnyoPriceComponentEnum.GridFee) === true;
+    const bonusesIncluded = input.energyPriceComposition?.includes(EnyoPriceComponentEnum.Bonuses) === true;
 
     const gridFeeSeriesApplies =
         input.gridFees != null && appliesToDirection(input.gridFees.appliesTo, direction);

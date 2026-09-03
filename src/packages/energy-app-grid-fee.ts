@@ -1,40 +1,50 @@
 import {
     EnyoDynamicGridFee,
-    EnyoDynamicGridFeeFilter,
     EnyoDynamicGridFeeRegistration,
-    EnyoDynamicGridFeeSeries,
     EnyoGridFeeChangeEvent,
+    EnyoGridFeeInfo,
+    EnyoGridFeeSeries,
+    EnyoGridFeeValuesFilter,
 } from '../types/enyo-grid-fee.js';
-import {EnyoAbsolutePriceWindow} from '../types/enyo-price-schedule.js';
 
 /**
- * Interface for publishing and consuming dynamic grid fees (network charges).
+ * Interface for publishing and consuming grid fees (network charges).
  *
- * Any energy app can act as a producer by registering a grid fee — typically an
- * app that knows the local grid operator's tariff sheet or fetches a published
- * series — and any energy app can act as a consumer by resolving that fee for a
- * time range with {@link getDynamicGridFees}.
+ * Five methods, split by role. A **producer** — an app that knows the local grid
+ * operator's tariff sheet or fetches a published series — owns
+ * {@link registerGridFee} and {@link removeGridFee}. A **consumer** asks
+ * {@link getGridFee} what applies and {@link getGridFeeValues} for the numbers
+ * over a range, and subscribes with {@link onGridFeeChanged}. Nothing else is
+ * needed, so nothing else is offered.
  *
  * Publishing requires the `GridFeeRegister` permission; consuming requires
  * `GridFeeUse`.
  *
  * A grid fee describes the site's **grid connection**, not a supplier contract:
  * it is registered and resolved independently of any tariff, and the same fee
- * applies whichever supplier the site buys from.
+ * applies whichever supplier the site buys from. This API is the *only* place a
+ * grid fee lives — a tariff declares nothing about how the fee is determined,
+ * so there is no second source to reconcile against.
+ *
+ * **A site has exactly one grid fee.** It has one grid connection, and the
+ * operator of that connection publishes one network charge for it. So nothing
+ * here takes an identifier: registering replaces whatever was there, and reading
+ * needs no selector.
  *
  * **Nothing here is applied to a price automatically.** The host never folds a
  * grid fee into {@link EnergyAppEnergyPrices.getPrices}, because provider APIs
  * differ: some already return grid-fee-inclusive prices, some do not. The app
  * that owns the tariff knows which is the case — it declares it via the
- * tariff's `priceComposition` and composes the effective price itself with
- * `composeElectricityPrices()`.
+ * price series' `includes` list and composes the effective price
+ * itself with `composeElectricityPrices()`. That flag is the one thing a tariff
+ * says about grid fees, and it describes the provider's price feed rather than
+ * the fee.
  *
  * @example
  * ```typescript
  * // Producer: a §14a EnWG module 3 HT/NT network charge
  * const gridFee = energyApp.useGridFee();
  * await gridFee.registerGridFee({
- *     id: 'dso-hd-2026',
  *     name: 'Netzentgelt HT/NT 2026',
  *     gridOperator: 'Netze BW',
  *     currency: EnyoCurrencyEnum.EUR,
@@ -51,7 +61,7 @@ import {EnyoAbsolutePriceWindow} from '../types/enyo-price-schedule.js';
  * });
  *
  * // Consumer: resolve it for the next 24 hours
- * const fees = await gridFee.getDynamicGridFees({
+ * const fees = await gridFee.getGridFeeValues({
  *     fromIso: new Date().toISOString(),
  *     untilIso: new Date(Date.now() + 86_400_000).toISOString(),
  * });
@@ -59,141 +69,143 @@ import {EnyoAbsolutePriceWindow} from '../types/enyo-price-schedule.js';
  */
 export interface EnergyAppGridFee {
     /**
-     * Registers a new dynamic grid fee or updates an existing one. Uses upsert
-     * logic based on `id` — if a fee with the same id already exists it is
-     * replaced, otherwise a new one is created.
+     * Sets the site's grid fee, replacing whatever was registered before.
+     *
+     * Full replacement is the only write there is, and it is enough for every
+     * case — correcting a name, moving to next year's tariff sheet, or
+     * republishing a day-ahead schedule are all "here is the fee now". A partial
+     * update would only add a second way to say the same thing, and a
+     * schedule-only write would let metadata and windows drift apart.
+     *
+     * There is no identifier and no create-versus-update distinction: the site
+     * has one grid connection and therefore one grid fee. Two apps that both
+     * register one will overwrite each other, so an app should only publish a
+     * fee it is actually authoritative for.
      *
      * Requires the `GridFeeRegister` permission.
      *
-     * @param registration - The grid fee to register, including its schedule
+     * @param registration - The complete grid fee, including its schedule
      * @returns Promise that resolves to the stored grid fee, including the host-assigned `publishedAtIso`
+     *
+     * @example
+     * ```typescript
+     * // Republishing tomorrow's day-ahead windows is the same call.
+     * await gridFee.registerGridFee({...fee, schedule: {
+     *     type: EnyoPriceScheduleTypeEnum.Absolute,
+     *     windows: tomorrowsWindows,
+     * }});
+     * ```
      */
     registerGridFee(registration: EnyoDynamicGridFeeRegistration): Promise<EnyoDynamicGridFee>;
 
     /**
-     * Partially updates a registered grid fee. Only the provided attributes are
-     * modified; all other fields remain unchanged.
+     * Removes the site's grid fee. {@link getGridFee} and
+     * {@link getGridFeeValues} resolve to `null` afterwards. If no fee is
+     * registered, this operation is a no-op.
      *
      * Requires the `GridFeeRegister` permission.
      *
-     * @param id - The unique identifier of the grid fee to update
-     * @param attributes - A partial set of grid fee fields to update (excluding `id`)
-     * @returns Promise that resolves to the full updated grid fee
-     */
-    updateGridFee(
-        id: string,
-        attributes: Partial<Omit<EnyoDynamicGridFeeRegistration, 'id'>>,
-    ): Promise<EnyoDynamicGridFee>;
-
-    /**
-     * Removes a registered grid fee. {@link getDynamicGridFees} resolves to
-     * `null` for it afterwards. If the fee does not exist, this operation is a
-     * no-op.
-     *
-     * Requires the `GridFeeRegister` permission.
-     *
-     * @param id - The unique identifier of the grid fee to remove
      * @returns Promise that resolves when the grid fee has been removed
      */
-    removeGridFee(id: string): Promise<void>;
+    removeGridFee(): Promise<void>;
 
     /**
-     * Retrieves all registered grid fees across all energy apps on the system.
+     * Answers "what grid fee applies here?" in one call.
+     *
+     * This is the entry point for consuming a grid fee. The returned
+     * {@link EnyoGridFeeInfo} says whether the fee is
+     * {@link EnyoGridFeeTypeEnum.Static static} or
+     * {@link EnyoGridFeeTypeEnum.Dynamic dynamic}, carries the gross cent per
+     * kWh outright when it is static, and reports any additional fixed charges
+     * separately. A static fee needs no second call; a dynamic one is fetched
+     * interval by interval with {@link getGridFeeValues}.
+     *
+     * Takes no arguments — the site has one grid fee, so there is nothing to
+     * select. Returns `null` when none is registered, which is a normal answer
+     * and not an error.
      *
      * Requires the `GridFeeUse` permission.
      *
-     * @returns Promise that resolves to an array of all registered grid fees
+     * @returns Promise resolving to the site's grid fee, or `null` when none is registered
+     *
+     * @example
+     * ```typescript
+     * const fee = await gridFee.getGridFee();
+     * if (fee?.type === EnyoGridFeeTypeEnum.Static) {
+     *     show(fee.grossCentPerKwh, fee.additionalFeesGrossCentPerKwh);
+     * } else if (fee) {
+     *     const series = await gridFee.getGridFeeValues({fromIso, untilIso});
+     * }
+     * ```
      */
-    listGridFees(): Promise<EnyoDynamicGridFee[]>;
+    getGridFee(): Promise<EnyoGridFeeInfo | null>;
 
     /**
-     * Retrieves a single registered grid fee by its id, or `null` when no fee
-     * with that id exists.
-     *
-     * Requires the `GridFeeUse` permission.
-     *
-     * @param id - The unique identifier of the grid fee
-     * @returns Promise that resolves to the grid fee, or `null`
-     */
-    getGridFee(id: string): Promise<EnyoDynamicGridFee | null>;
-
-    /**
-     * Replaces the absolute windows of a grid fee whose schedule is
-     * {@link EnyoPriceScheduleTypeEnum.Absolute}. Use this for fees the grid
-     * operator publishes as a dated series (for example day-ahead), where the
-     * schedule changes far more often than the fee's metadata.
-     *
-     * Windows must not overlap and are stored sorted ascending by `startIso`.
-     * Publishing replaces the previously stored windows in full.
-     *
-     * Requires the `GridFeeRegister` permission.
-     *
-     * @param id - The unique identifier of the registered grid fee
-     * @param windows - The complete set of absolute windows to store
-     * @returns Promise that resolves when the windows have been stored and change listeners dispatched
-     */
-    publishGridFeeWindows(id: string, windows: EnyoAbsolutePriceWindow[]): Promise<void>;
-
-    /**
-     * Resolves a dynamic grid fee to a flat **15-minute series** over the
-     * requested range — the same resolution
+     * Resolves the applicable grid fee to a flat **15-minute series** of gross
+     * cent per kWh over the requested range — the same resolution
      * {@link EnergyAppEnergyPrices.getPrices} uses, so both series can be
      * combined interval by interval.
      *
-     * The fee is selected by `gridFeeId` or `meteringPointId`; with no selector
-     * the grid fee that applies to this device is used. Grid fees are **not**
-     * bound to a tariff — a network charge is a property of the grid connection,
-     * and the same fee applies no matter which supplier the site buys from.
-     * Returns `null` when no fee matches the selector.
+     * Works for every fee, static or dynamic: a flat charge resolves to a series
+     * whose entries all carry the same amount, so a caller that only wants
+     * numbers over a range never has to branch on {@link EnyoGridFeeInfo.type}
+     * at all.
      *
-     * Intervals no window covers resolve to `feePerKwh: 0`, and intervals
-     * outside the fee's `validFromIso` / `validUntilIso` window are omitted.
+     * Set `includeAdditionalFees` to fold the fee's fixed charges into every
+     * interval and get the full gross charge per kWh; leave it off for the
+     * network charge alone. The result reports which of the two you got in
+     * {@link EnyoGridFeeSeries.includesAdditionalFees}, so a fee that declares
+     * no additional charges is never mistaken for a total.
+     *
+     * Returns `null` when the site has no grid fee registered. Intervals no
+     * window covers resolve to `0`, and intervals outside the fee's
+     * `validFromIso` / `validUntilIso` window are omitted.
      *
      * Requires the `GridFeeUse` permission.
      *
-     * @param filter - The time range and the selector identifying which fee to resolve
+     * @param filter - The time range and whether to include additional fees
      * @returns Promise that resolves to the 15-minute fee series, or `null` when no fee applies
      *
      * @example
      * ```typescript
-     * const fees = await gridFee.getDynamicGridFees({
-     *     fromIso: '2026-09-02T00:00:00Z',
-     *     untilIso: '2026-09-03T00:00:00Z',
+     * // network charge only
+     * const net = await gridFee.getGridFeeValues({fromIso, untilIso});
+     *
+     * // everything the customer pays per kWh
+     * const total = await gridFee.getGridFeeValues({
+     *     fromIso,
+     *     untilIso,
+     *     includeAdditionalFees: true,
      * });
-     * fees?.entries.forEach(e => console.log(e.timestampIso, e.feePerKwh));
+     * total?.entries.forEach(e => console.log(e.timestampIso, e.grossCentPerKwh));
      * ```
      */
-    getDynamicGridFees(filter: EnyoDynamicGridFeeFilter): Promise<EnyoDynamicGridFeeSeries | null>;
+    getGridFeeValues(filter: EnyoGridFeeValuesFilter): Promise<EnyoGridFeeSeries | null>;
 
     /**
-     * Registers a listener invoked whenever any grid fee is registered, updated
-     * or removed — including when its absolute windows are republished.
+     * Registers a listener invoked whenever any grid fee is registered, replaced
+     * or removed.
      *
      * Use it to recompute composed prices without polling: a grid operator that
      * publishes a new day-ahead series mid-day changes the cost of every future
      * interval.
      *
+     * Returns the unsubscribe function directly rather than an id to hand back
+     * to a second method — calling it twice is a no-op.
+     *
      * Requires the `GridFeeUse` permission.
      *
      * @param listener - Callback invoked with the change event
-     * @returns A unique listener id that can be passed to {@link offGridFeeChanged}
+     * @returns A function that removes this listener when called
      *
      * @example
      * ```typescript
-     * const id = gridFee.onGridFeeChanged(async event => {
-     *     if (event.gridFeeId === myFeeId) await recomputePrices();
+     * const unsubscribe = gridFee.onGridFeeChanged(async () => {
+     *     await recomputePrices();
      * });
      * // later
-     * gridFee.offGridFeeChanged(id);
+     * unsubscribe();
      * ```
      */
-    onGridFeeChanged(listener: (event: EnyoGridFeeChangeEvent) => void | Promise<void>): string;
-
-    /**
-     * Removes a previously registered grid fee change listener. If the listener
-     * id is unknown, this operation is a no-op.
-     *
-     * @param listenerId - The id returned from {@link onGridFeeChanged}
-     */
-    offGridFeeChanged(listenerId: string): void;
+    onGridFeeChanged(listener: (event: EnyoGridFeeChangeEvent) => void | Promise<void>): () => void;
 }

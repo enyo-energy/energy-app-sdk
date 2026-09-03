@@ -544,14 +544,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
     }
 
     /**
-     * Gets the Grid Fee API for publishing time-dependent grid fees (network
-     * charges) and resolving them to a 15-minute series.
+     * Gets the Grid Fee API for publishing grid fees (network charges), asking
+     * which one applies, and resolving it to a 15-minute series.
+     *
+     * This is the single source for grid fees. A network charge belongs to the
+     * site's grid connection rather than to a supplier contract, so a tariff
+     * carries no fee of its own and declares nothing about how one is
+     * determined — constant and time-dependent fees are both registered and read
+     * here.
      *
      * Nothing published here is folded into a price automatically — provider
-     * APIs differ in whether their prices already contain the network charge, so
-     * the app that owns the tariff declares that via the tariff's
-     * `priceComposition` and composes the effective price itself with
-     * `composeElectricityPrices()`.
+     * APIs differ in whether their prices already contain the network charge.
+     * The app that owns the tariff declares that one fact via the tariff's
+     * the price series' `includes` and composes the effective price itself
+     * with `composeElectricityPrices()`.
      * @returns The Grid Fee API instance
      * @throws {EnergyAppPermissionNotGrantedError} If the `GridFeeRegister` or
      *         `GridFeeUse` permission required by the called method is not granted.

@@ -53,6 +53,18 @@ export interface ModbusOptions {
     staleSocketMs?: number;
     /** TCP keepalive idle interval in ms on the live socket, so a dead peer surfaces fast. Default 10000; 0 disables. */
     keepAliveMs?: number;
+    /**
+     * When `true`, the connection is taken from a shared pool of sockets keyed by the target
+     * device (host, port, unit id and transport settings) instead of opening a socket that belongs
+     * exclusively to this caller. Pooling lets several parts of an app — or several `connect()`
+     * calls for the same device — reuse one TCP connection, which matters for devices that accept
+     * only a small number of simultaneous Modbus clients. A pooled instance's `disconnect()`
+     * releases the connection back to the pool rather than necessarily closing the socket, and the
+     * socket stays open while other users still hold it.
+     *
+     * Defaults to `true` (a dedicated connection per `connect()` call).
+     */
+    pooledConnection?: boolean;
 }
 
 /**

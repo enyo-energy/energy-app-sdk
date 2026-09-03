@@ -2,9 +2,7 @@ import {
     EnyoCharge,
     EnyoChargeFilter,
     EnyoChargeStatus,
-    EnyoDefaultChargeMode,
-    EnyoStartChargeRequest,
-    EnyoStopChargeRequest
+    EnyoDefaultChargeMode
 } from "../types/enyo-charge.js";
 
 /**
@@ -13,89 +11,16 @@ import {
  */
 export interface EnergyAppCharge {
     /**
-     * Opens a charging session for an appliance and returns it.
-     *
-     * Use this to start a session — not {@link save}. `save` writes whatever
-     * object it is given and offers no uniqueness guarantee, so two
-     * StartTransactions arriving a few milliseconds apart both pass an app-side
-     * "is one already active?" check and create two sessions for one plug-in.
-     * This call is handled by the host, which holds the invariant that an
-     * appliance has at most one active charge.
-     *
-     * **Idempotent.** When a session is already active for the same
-     * `applianceId` + `transactionId`, that session is returned unchanged
-     * rather than a second one being created — a repeated StartTransaction is
-     * safe. A session that is active on the appliance under a *different*
-     * transaction ID is treated as over: the host finalises it with best-effort
-     * end values before opening this one. If it is really the same physical
-     * session continuing under a new transaction ID (a reconnect, a
-     * re-authorization), use {@link addTransactionIdToActiveCharge} instead.
-     *
-     * The returned charge carries its `id`, so the session can be updated and
-     * later stopped without a {@link findActiveCharge} round-trip first.
-     *
-     * **Required permission:** `Charge`.
-     *
-     * @param request - What is known at plug-in time.
-     * @returns Promise resolving to the started session — or the session that
-     *          was already running for this appliance and transaction.
-     *
-     * @example
-     * ```typescript
-     * const charge = await energyApp.useCharge().startCharge({
-     *     applianceId,
-     *     transactionId: ocppTransactionId,
-     *     meterStartValueWh: meterValue,
-     *     connectorId: 1,
-     * });
-     * ```
-     */
-    startCharge: (request: EnyoStartChargeRequest) => Promise<EnyoCharge>;
-    /**
-     * Closes a charging session and returns the final record.
-     *
-     * The host does the arithmetic, and that is the point of this call: it
-     * derives {@link EnyoCharge.totalEnergyKwh} and
-     * {@link EnyoCharge.paidPriceEuroCent} from the session's meter readings
-     * and the electricity tariff in force while the energy flowed, then moves
-     * the session to a terminal status and notifies
-     * {@link listenForChargeStopped}. An app must not price a session itself —
-     * totals computed app-side would differ between apps, and a customer's bill
-     * would depend on which app happened to close the charge.
-     *
-     * Supply readings, not totals: `meterEndValueWh` and, when the charger
-     * reports it, `energyDeliveredWh`. Anything an app writes into
-     * `paidPriceEuroCent` via {@link save} is overwritten here.
-     *
-     * Stopping a session that is already in a terminal status is a no-op and
-     * returns the stored record — a duplicate StopTransaction will not re-price
-     * a finished charge.
-     *
-     * **Required permission:** `Charge`.
-     *
-     * @param chargeId - The session to close, as returned by
-     *   {@link startCharge} or {@link findActiveCharge}.
-     * @param request - How the session ended.
-     * @returns Promise resolving to the final charge record, totals included.
-     *
-     * @example
-     * ```typescript
-     * const finished = await energyApp.useCharge().stopCharge(charge.id, {
-     *     meterEndValueWh: meterValue,
-     *     energyDeliveredWh: stopTransaction.energyWh,
-     * });
-     * console.log(`${finished.totalEnergyKwh} kWh for ${finished.paidPriceEuroCent} ct`);
-     * ```
-     */
-    stopCharge: (chargeId: string, request: EnyoStopChargeRequest) => Promise<EnyoCharge>;
-    /**
      * Save or update a charging session in the system.
      *
      * This is a whole-object write for a session that already exists — a
-     * changed vehicle, a corrected reading. Use {@link startCharge} to open a
-     * session and {@link stopCharge} to close one: calling this without a
-     * `chargeId` creates a row with no uniqueness guarantee, and writing
-     * terminal values by hand skips the host's energy and cost calculation.
+     * changed vehicle, a corrected reading. Calling it without a `chargeId`
+     * creates a row with no uniqueness guarantee, so two StartTransactions
+     * arriving a few milliseconds apart both pass an app-side "is one already
+     * active?" check and create two sessions for one plug-in. Writing terminal
+     * values by hand also skips the host's energy and cost calculation, which
+     * is what turns meter readings into {@link EnyoCharge.totalEnergyKwh} and
+     * {@link EnyoCharge.paidPriceEuroCent}.
      */
     save: (charge: Omit<EnyoCharge, 'id'>, chargeId?: string) => Promise<void>;
     /** Get a list of charging sessions with optional filtering */

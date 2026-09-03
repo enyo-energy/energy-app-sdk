@@ -3,10 +3,11 @@ import {
     composeElectricityPrices,
     fromEnergyPriceEntries,
     fromEpexSpotEntries,
+    fromGridFeeEntries,
     resolveTariffBonuses,
 } from '../compose-electricity-prices.js';
-import {EnyoTariffBonus} from '../../../types/enyo-electricity-tariff.js';
-import {EnyoDynamicGridFeeSeries} from '../../../types/enyo-grid-fee.js';
+import {EnyoPriceComponentEnum, EnyoTariffBonus} from '../../../types/enyo-electricity-tariff.js';
+import {EnyoGridFeeSeries} from '../../../types/enyo-grid-fee.js';
 import {EnyoPriceComponentOriginEnum} from '../../../types/enyo-price-composition.js';
 import {EnyoPriceAppliesToEnum, EnyoPriceScheduleTypeEnum} from '../../../types/enyo-price-schedule.js';
 import {EnyoCurrencyEnum} from '../../../types/enyo-currency.js';
@@ -19,14 +20,21 @@ const ENERGY_PRICES = [
     {timestampIso: '2026-09-02T10:15:00.000Z', pricePerKwh: 0.10},
 ];
 
-function gridFeeSeries(feePerKwh: number, appliesTo = EnyoPriceAppliesToEnum.Consumption): EnyoDynamicGridFeeSeries {
+function gridFeeSeries(feePerKwh: number, appliesTo = EnyoPriceAppliesToEnum.Consumption) {
     return {
-        gridFeeId: 'dso-1',
+        appliesTo,
+        entries: ENERGY_PRICES.map(entry => ({timestampIso: entry.timestampIso, feePerKwh})),
+    };
+}
+
+function grossGridFeeSeries(grossCentPerKwh: number, includesAdditionalFees = false): EnyoGridFeeSeries {
+    return {
         currency: EnyoCurrencyEnum.EUR,
         resolution: ForecastResolutionEnum.FifteenMinutes,
         timezone: BERLIN,
-        appliesTo,
-        entries: ENERGY_PRICES.map(entry => ({timestampIso: entry.timestampIso, feePerKwh})),
+        appliesTo: EnyoPriceAppliesToEnum.Consumption,
+        includesAdditionalFees,
+        entries: ENERGY_PRICES.map(entry => ({timestampIso: entry.timestampIso, grossCentPerKwh})),
     };
 }
 
@@ -45,7 +53,7 @@ describe('composeElectricityPrices', () => {
     it('adds the grid fee when the energy prices do not include it', () => {
         const composed = composeElectricityPrices({
             energyPrices: ENERGY_PRICES,
-            energyPriceComposition: {includesGridFee: false},
+            energyPriceComposition: [],
             gridFees: gridFeeSeries(0.09),
         });
         expect(composed[0].gridFeeOrigin).toBe(EnyoPriceComponentOriginEnum.Added);
@@ -56,7 +64,7 @@ describe('composeElectricityPrices', () => {
     it('reports but never adds a grid fee the provider already includes', () => {
         const composed = composeElectricityPrices({
             energyPrices: ENERGY_PRICES,
-            energyPriceComposition: {includesGridFee: true},
+            energyPriceComposition: [EnyoPriceComponentEnum.GridFee],
             gridFees: gridFeeSeries(0.09),
         });
         expect(composed[0].gridFeeOrigin).toBe(EnyoPriceComponentOriginEnum.Included);
@@ -125,7 +133,7 @@ describe('composeElectricityPrices', () => {
     it('reports but never applies bonuses the provider already applied', () => {
         const composed = composeElectricityPrices({
             energyPrices: ENERGY_PRICES,
-            energyPriceComposition: {includesGridFee: false, includesBonuses: true},
+            energyPriceComposition: [EnyoPriceComponentEnum.Bonuses],
             bonuses: [constantBonus('night', 0.03)],
         });
         expect(composed[0].bonusOrigin).toBe(EnyoPriceComponentOriginEnum.Included);
@@ -224,5 +232,28 @@ describe('energy price adapters', () => {
                 pricePerKwh: -0.0142,
             },
         ])).toEqual([{timestampIso: '2026-09-02T10:00:00.000Z', pricePerKwh: -0.0142}]);
+    });
+});
+
+describe('fromGridFeeEntries', () => {
+    it('converts gross cent per kWh into currency units', () => {
+        const adapted = fromGridFeeEntries(grossGridFeeSeries(9.12));
+
+        expect(adapted?.entries[0].feePerKwh).toBeCloseTo(0.0912, 10);
+    });
+
+    it('passes null and undefined through', () => {
+        expect(fromGridFeeEntries(null)).toBeNull();
+        expect(fromGridFeeEntries(undefined)).toBeNull();
+    });
+
+    it('feeds the composer at the same scale as the energy price', () => {
+        const composed = composeElectricityPrices({
+            energyPrices: ENERGY_PRICES,
+            gridFees: fromGridFeeEntries(grossGridFeeSeries(9)),
+        });
+
+        expect(composed[0].gridFeePerKwh).toBeCloseTo(0.09, 10);
+        expect(composed[0].effectivePricePerKwh).toBeCloseTo(0.29, 10);
     });
 });

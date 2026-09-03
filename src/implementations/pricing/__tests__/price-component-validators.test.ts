@@ -2,18 +2,11 @@ import {describe, expect, it} from 'vitest';
 import {
     PriceComponentValidationError,
     validateDynamicGridFee,
-    validateElectricityTariffPricing,
     validatePriceSchedule,
     validateTariffBonus,
     validateTariffBonuses,
-    validateTariffGridFeeConfig,
 } from '../price-component-validators.js';
-import {
-    ElectricityTariffTypeEnum,
-    EnyoElectricityTariff,
-    EnyoTariffBonus,
-    GridFeeModeEnum,
-} from '../../../types/enyo-electricity-tariff.js';
+import {EnyoTariffBonus} from '../../../types/enyo-electricity-tariff.js';
 import {EnyoDynamicGridFeeRegistration} from '../../../types/enyo-grid-fee.js';
 import {EnyoPriceAppliesToEnum, EnyoPriceScheduleTypeEnum} from '../../../types/enyo-price-schedule.js';
 import {EnyoCurrencyEnum} from '../../../types/enyo-currency.js';
@@ -22,7 +15,6 @@ const BERLIN = 'Europe/Berlin';
 
 function gridFee(overrides: Partial<EnyoDynamicGridFeeRegistration> = {}): EnyoDynamicGridFeeRegistration {
     return {
-        id: 'dso-1',
         name: 'Netzentgelt HT/NT 2026',
         gridOperator: 'Netze BW',
         currency: EnyoCurrencyEnum.EUR,
@@ -155,7 +147,7 @@ describe('validateDynamicGridFee', () => {
     });
 
     it('rejects blank identifying fields', () => {
-        expect(() => validateDynamicGridFee(gridFee({id: '  '}))).toThrow(/gridFee.id/);
+        expect(() => validateDynamicGridFee(gridFee({name: '  '}))).toThrow(/gridFee.name/);
         expect(() => validateDynamicGridFee(gridFee({gridOperator: ''}))).toThrow(/gridOperator/);
     });
 
@@ -180,67 +172,5 @@ describe('validateTariffBonus', () => {
 
     it('rejects duplicate bonus ids within one tariff', () => {
         expect(() => validateTariffBonuses([bonus(), bonus()])).toThrow(/used more than once/);
-    });
-});
-
-describe('validateTariffGridFeeConfig', () => {
-    it('accepts dynamic mode on its own — the fee is not bound to the tariff', () => {
-        expect(() => validateTariffGridFeeConfig({gridFeeMode: GridFeeModeEnum.Dynamic}, undefined)).not.toThrow();
-    });
-
-    it('rejects declaring a dynamic fee that the prices already include', () => {
-        expect(() => validateTariffGridFeeConfig(
-            {gridFeeMode: GridFeeModeEnum.Dynamic},
-            {includesGridFee: true},
-        )).toThrow(/already contained/);
-    });
-
-    it('accepts a dynamic fee when the prices exclude it', () => {
-        expect(() => validateTariffGridFeeConfig(
-            {gridFeeMode: GridFeeModeEnum.Dynamic},
-            {includesGridFee: false},
-        )).not.toThrow();
-    });
-
-    it('treats an omitted mode as static', () => {
-        expect(() => validateTariffGridFeeConfig({}, undefined)).not.toThrow();
-        expect(() => validateTariffGridFeeConfig({}, {includesGridFee: true})).not.toThrow();
-    });
-});
-
-describe('validateElectricityTariffPricing', () => {
-    const tariff: EnyoElectricityTariff = {
-        id: 'spot-2026',
-        tariffType: ElectricityTariffTypeEnum.Dynamic,
-        tariffName: 'Spot 2026',
-        vendorName: 'enyo',
-        priceComposition: {includesGridFee: false},
-        dynamicTariffData: {
-            currency: 'EUR',
-            gridFeeMode: GridFeeModeEnum.Dynamic,
-        },
-        bonuses: [bonus()],
-    };
-
-    it('accepts a fully specified tariff', () => {
-        expect(() => validateElectricityTariffPricing(tariff)).not.toThrow();
-    });
-
-    it('reports which pricing shape is misconfigured', () => {
-        expect(() => validateElectricityTariffPricing({
-            ...tariff,
-            priceComposition: {includesGridFee: true},
-        })).toThrow(/dynamicTariffData/);
-    });
-
-    it('validates the grid fee declaration of a static tariff too', () => {
-        expect(() => validateElectricityTariffPricing({
-            id: 'fixed',
-            tariffType: ElectricityTariffTypeEnum.Static,
-            tariffName: 'Fixed',
-            vendorName: 'enyo',
-            priceComposition: {includesGridFee: true},
-            staticTariffData: {pricePerKwh: 0.28, currency: 'EUR', gridFeeMode: GridFeeModeEnum.Dynamic},
-        })).toThrow(/staticTariffData/);
     });
 });

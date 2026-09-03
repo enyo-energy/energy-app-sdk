@@ -399,6 +399,9 @@ export class ApplianceManager {
         const updatedListenerId = applianceService.listenForApplianceUpdated(
             (appliance: EnyoAppliance) => {
                 if (this.disposed) return;
+                if (this.config.enableLogging) {
+                    console.debug(`Appliance updated event for ${appliance.id}`);
+                }
                 this.updateCache(appliance);
             },
         );
@@ -407,6 +410,9 @@ export class ApplianceManager {
         const removedListenerId = applianceService.listenForApplianceRemoved(
             (applianceId: string) => {
                 if (this.disposed) return;
+                if (this.config.enableLogging) {
+                    console.debug(`Appliance removed event for ${applianceId}`);
+                }
                 this.removeFromCache(applianceId);
             },
         );

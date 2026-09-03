@@ -5,6 +5,7 @@ import {
     EnyoApplianceTypeEnum
 } from "./enyo-appliance.js";
 import type {EnyoAutomationTriggerData} from "./enyo-automation.js";
+import type {EnyoChargeStatus} from "./enyo-charge.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {
@@ -689,6 +690,13 @@ export interface EnyoDataBusChargingStartedV1 extends EnyoDataBusMessage {
         vehicleId?: string;
         /** Meter reading at session start in Watt hours */
         meterValueWh: number;
+        /**
+         * Number of phases the vehicle is charging over, when the charger
+         * reports it. Defaults to 3 when omitted — a single-phase session left
+         * unset is billed and forecast as if it drew three times the current it
+         * really does.
+         */
+        numberOfPhases?: number;
     };
 }
 

@@ -1,5 +1,4 @@
-import {EnyoTariffBonus, TariffPriceCompositionInfo} from './enyo-electricity-tariff.js';
-import {EnyoDynamicGridFeeSeries} from './enyo-grid-fee.js';
+import {EnyoPriceComponentEnum, EnyoTariffBonus} from './enyo-electricity-tariff.js';
 import {EnyoPriceAppliesToEnum} from './enyo-price-schedule.js';
 
 /**
@@ -32,6 +31,22 @@ export interface EnyoComposableEnergyPriceEntry {
 }
 
 /**
+ * A grid fee series expressed in the unit the composer works in — whole currency
+ * units per kWh, matching the energy prices it is added to.
+ *
+ * Deliberately *not* the shape `useGridFee().getGridFeeValues()` returns, which
+ * is in gross cent. Run that through `fromGridFeeEntries()`, which performs the
+ * conversion in one visible place rather than leaving a factor of 100 to each
+ * call site.
+ */
+export interface EnyoComposableGridFeeSeries {
+    /** Direction the fee applies to; entries are skipped when it does not match. */
+    appliesTo: EnyoPriceAppliesToEnum;
+    /** Fee per kWh in currency units, keyed to the interval it applies to. */
+    entries: {timestampIso: string; feePerKwh: number}[];
+}
+
+/**
  * Input for {@link composeElectricityPrices}.
  */
 export interface EnyoComposeElectricityPricesInput {
@@ -42,22 +57,26 @@ export interface EnyoComposeElectricityPricesInput {
      */
     energyPrices: EnyoComposableEnergyPriceEntry[];
     /**
-     * What the {@link energyPrices} already contain, taken from the tariff's
-     * `priceComposition`. Components flagged as included are reported in the
-     * result but **not added again**. Omitted means "energy price only".
+     * What the {@link energyPrices} already contain, taken from the series'
+     * {@link EnyoTariffPriceSeries.includes}. Components listed here are
+     * reported in the result but **not added again**. Omitted or empty means
+     * "energy price only".
      */
-    energyPriceComposition?: TariffPriceCompositionInfo;
+    energyPriceComposition?: EnyoPriceComponentEnum[];
     /**
-     * The resolved dynamic grid fee series, e.g. from
-     * `useGridFee().getDynamicGridFees()`. Ignored when the energy prices
-     * already include the grid fee, and may be `null` or omitted when the
-     * tariff has no dynamic grid fee.
+     * The resolved grid fee series, adapted from
+     * `useGridFee().getGridFeeValues()` with `fromGridFeeEntries()` — which also
+     * converts it from gross cent to currency units. Ignored when the energy
+     * prices already include the grid fee, and may be `null` or omitted when no
+     * grid fee applies to the site.
      */
-    gridFees?: EnyoDynamicGridFeeSeries | null;
+    gridFees?: EnyoComposableGridFeeSeries | null;
     /**
-     * A constant grid fee per kWh, used when the tariff carries one instead of
-     * referencing a dynamic fee. Ignored when {@link gridFees} is given or when
-     * the energy prices already include the grid fee.
+     * A constant grid fee in currency units per kWh, for callers that have a
+     * single figure rather than a series — e.g. `getGridFee()` reporting a
+     * {@link EnyoGridFeeTypeEnum.Static} fee, divided by 100 to leave cent.
+     * Ignored when {@link gridFees} is given or when the energy prices already
+     * include the grid fee.
      */
     constantGridFeePerKwh?: number;
     /**
