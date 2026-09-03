@@ -485,6 +485,36 @@ export interface EnyoDataBusHeatpumpValuesV1 extends EnyoDataBusMessage {
             heatGenerationHeatingWh?: number;
             /** Power generation for domestic hot water in Wh (meter value)*/
             heatGenerationDomesticHotWaterWh?: number;
+            /**
+             * Whether the compressor is drawing power at this moment.
+             *
+             * Optional context for {@link powerW}: the same 4 kW draw means
+             * something different depending on which heat source produced it,
+             * and only the appliance knows which. A compressor's consumption
+             * moves with its modulation band and is worth shifting in time; a
+             * heating rod's does not.
+             *
+             * Omit when the appliance does not report it — `undefined` means
+             * "not known", which is not the same as `false`.
+             */
+            compressorRunning?: boolean;
+            /**
+             * Whether the heat pump's integrated heating rod (backup /
+             * auxiliary resistive element) is energized at this moment.
+             *
+             * May be `true` at the same time as {@link compressorRunning}:
+             * bivalent operation runs the rod alongside the compressor when the
+             * compressor alone cannot meet demand, and that combination is
+             * usually the most expensive state the appliance can be in.
+             *
+             * This is the rod built into the heat pump. A heating rod that is a
+             * separate appliance reports its own state through
+             * {@link EnyoDataBusHeatingRodValuesV1} instead.
+             *
+             * Omit when the appliance does not report it — `undefined` means
+             * "not known", which is not the same as `false`.
+             */
+            heatingRodRunning?: boolean;
         };
         /** Grid operator power limitation currently applied by the heatpump, if any */
         gridOperatorLimit?: EnyoGridOperatorLimit;
@@ -2260,6 +2290,40 @@ export enum EnyoHeatpumpControlPurposeEnum {
 }
 
 /**
+ * Which heat source an announced available-power envelope is meant to be spent
+ * on.
+ *
+ * The two sources are not interchangeable: a compressor moves several units of
+ * heat per unit of electricity and its draw is worth shifting in time, while a
+ * heating rod is resistive and returns roughly one. Granting PV surplus without
+ * saying which to use lets an appliance dump it into the rod, which is the
+ * worst available answer for the same Watts.
+ *
+ * Reported back through {@link EnyoDataBusHeatpumpValuesV1}'s
+ * `compressorRunning` / `heatingRodRunning`, so a sender can see whether the
+ * target was honoured.
+ */
+export enum EnyoHeatpumpHeatSourceEnum {
+    /**
+     * Spend the power on the compressor. The integrated heating rod should stay
+     * off for the duration of this envelope.
+     */
+    Compressor = 'compressor',
+    /**
+     * Spend the power on the integrated heating rod — for example to absorb a
+     * surplus the compressor's modulation band cannot take, or when the
+     * compressor is unavailable.
+     */
+    HeatingRod = 'heating-rod',
+    /**
+     * Either source, or both at once. Explicitly permits bivalent operation,
+     * where the rod runs alongside the compressor to meet demand the compressor
+     * alone cannot.
+     */
+    Both = 'both',
+}
+
+/**
  * Where an announced available-power envelope is expected to originate from.
  * Used to give appliances (and analytics) insight into whether the granted
  * power is PV surplus, battery discharge, or grid import.
@@ -2306,6 +2370,24 @@ export interface EnyoDataBusSetHeatpumpAvailablePowerV2 extends EnyoDataBusMessa
          * pre-heating). Advisory — the appliance may still apply its own logic.
          */
         purpose?: EnyoHeatpumpControlPurposeEnum;
+        /**
+         * Which heat source the announced power should be spent on — the
+         * compressor, the integrated heating rod, or either.
+         *
+         * Where {@link purpose} says *what for*, this says *with what*. Set it
+         * when the distinction matters to the sender: PV surplus is normally
+         * worth far more through the compressor, while a rod is the right sink
+         * for a surplus the compressor cannot absorb.
+         *
+         * Omit to leave the choice to the appliance — omission is not the same
+         * as {@link EnyoHeatpumpHeatSourceEnum.Both}, which actively permits
+         * running the rod alongside the compressor.
+         *
+         * Advisory, like {@link purpose}: the appliance may override it when
+         * safety or comfort requires, for example to run a legionella cycle or
+         * a defrost that needs the rod.
+         */
+        desiredTarget?: EnyoHeatpumpHeatSourceEnum;
         /**
          * Optional breakdown of the announced envelope by source (PV / battery /
          * grid). When present, the shares should sum to {@link data.powerW}.
