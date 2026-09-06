@@ -67,4 +67,27 @@ export interface EnyoBatteryApplianceMetadata {
      * (0–100). The EMS should not charge the battery above this value.
      */
     maxSoC?: number;
+    /**
+     * Observed round-trip efficiency as a percentage (0–100): of the energy put
+     * into the battery, how much comes back out again.
+     *
+     * A **calculated** value, not a nameplate figure — derived from measured
+     * charge and discharge energy over completed cycles. It therefore drifts
+     * with cell age, temperature and depth of discharge, and is absent until
+     * enough cycles have been observed to compute it. Consumers should treat a
+     * missing value as "not yet known" rather than substituting a datasheet
+     * number.
+     *
+     * This is what decides whether a charge/discharge cycle is worth running at
+     * all: arbitrage pays only when the price spread exceeds the energy lost to
+     * the round trip, so an optimizer that assumes 100% will schedule cycles
+     * that lose money.
+     *
+     * Measure it at the same boundary the battery reports its power and meter
+     * values at. An AC-to-AC round trip includes the inverter's conversion
+     * losses in both directions and typically lands several points below the
+     * DC-to-DC figure for the same pack — quoting one where the other is
+     * expected silently misprices every cycle.
+     */
+    roundTripEfficiencyPercent?: number;
 }

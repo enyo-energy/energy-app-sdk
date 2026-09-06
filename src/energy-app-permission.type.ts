@@ -57,7 +57,8 @@ export enum EnergyAppPermissionTypeEnum {
     EpexSpotPrices = 'EpexSpotPrices',
     FirmwareRegistry = 'FirmwareRegistry',
     GridFeeRegister = 'GridFeeRegister',
-    GridFeeUse = 'GridFeeUse'
+    GridFeeUse = 'GridFeeUse',
+    CommandLog = 'CommandLog'
 }
 
 /**

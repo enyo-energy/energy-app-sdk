@@ -47,6 +47,7 @@ import {EnergyAppSavings} from "./packages/energy-app-savings.js";
 import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
+import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -564,6 +565,23 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useGridFee(): EnergyAppGridFee {
         return this.energyAppSdk.useGridFee();
+    }
+
+    /**
+     * Gets the Command Log API for recording the writes this app issued to an
+     * appliance — which Modbus register, which OCPP configuration key or
+     * message, with what it was before and whether the device took it.
+     *
+     * An appliance's state shows what it is doing; the command log shows what
+     * was done to it and why, which is what an incident investigation actually
+     * needs. Entries are append-only, and reads span every app so that two
+     * packages fighting over the same register are visible.
+     * @returns The Command Log API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `CommandLog`
+     *         permission is not granted.
+     */
+    public useCommandLog(): EnergyAppCommandLog {
+        return this.energyAppSdk.useCommandLog();
     }
 
     /**

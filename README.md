@@ -367,6 +367,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`Savings`**: Publish and read back day-scoped savings reports
 - **`EpexSpotPrices`**: Read EPEX SPOT day-ahead wholesale market prices
 - **`GridFeeRegister`** / **`GridFeeUse`**: Publish / resolve dynamic grid fees (time-variable network charges)
+- **`CommandLog`**: Record and read back the commands apps issued to appliances
 
 #### Site & Identity Permissions
 
@@ -1499,6 +1500,50 @@ Notes worth respecting when producing a report:
 - **Units follow the platform:** energy in Wh, power in W, prices per kWh, currency as `EnyoCurrencyEnum`.
 
 Requires the `Savings` permission.
+
+#### `useCommandLog(): EnergyAppCommandLog`
+
+Record which register, configuration key or message your app wrote to an appliance — and read those
+writes back. This is the answer to *"why did the device do that?"*: an appliance's state shows what it
+is doing now, not that you wrote holding register 40023 four seconds ago because the energy manager cut
+available power, nor that the write was rejected.
+
+```typescript
+const commandLog = energyApp.useCommandLog();
+
+await commandLog.logCommand({
+    applianceId,
+    protocol: EnyoCommandProtocolEnum.Modbus,
+    operation: 'write-single-register',
+    target: '40023',
+    previousValue: String(before),
+    newValue: String(limitW),
+    outcome: EnyoCommandOutcomeEnum.Success,
+    reason: 'energy manager reduced available power',
+});
+
+// Everything we failed to write to this appliance today.
+const failures = await commandLog.getCommands({
+    applianceId,
+    outcome: EnyoCommandOutcomeEnum.Failed,
+    fromIso: startOfDay,
+});
+```
+
+- **Writes, not reads.** Polling a register every two seconds does not belong here; recording reads
+  would bury the writes the log exists for.
+- **Log the attempt, not only the success.** `Failed`, `TimedOut` and `Rejected` entries are the ones
+  someone goes looking for. `Rejected` is separate from `Failed` on purpose — a device that answered and
+  refused is a different diagnosis from one that could not be reached.
+- **Fill `reason`.** *What* was written can be reconstructed from the device; *why* cannot.
+- **Never gate the command on the log.** Log after the write is attempted; a failure to log must not
+  surface as a failure to control the appliance.
+- **Append-only.** No update, no delete — a log the app can rewrite cannot explain an incident.
+  Retention is the host's.
+- **Reads span every app** unless you filter by `packageName`: two packages fighting over the same
+  register are invisible from one app's own entries.
+
+Requires the `CommandLog` permission.
 
 ### Operational Utilities
 
