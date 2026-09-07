@@ -37,7 +37,9 @@ export enum EnyoApplianceStateEnum {
  * which describes connectivity. `Healthy` means the appliance is operating
  * normally; `Warning` means a non-blocking issue has been reported (the
  * appliance is still functional but should be inspected); `Faulted` means it
- * has reported an internal error and may need attention. Vendor- or
+ * has reported an internal error and may need attention; `Deactivated` means
+ * the appliance has been intentionally switched off from energy management and
+ * is neither monitored nor controlled until it is reactivated. Vendor- or
  * protocol-specific details should be conveyed via accompanying error codes.
  */
 export enum EnyoApplianceStatusEnum {
@@ -47,6 +49,12 @@ export enum EnyoApplianceStatusEnum {
     Warning = 'warning',
     /** Appliance has reported an internal fault */
     Faulted = 'faulted',
+    /**
+     * Appliance has been intentionally deactivated and is excluded from energy
+     * management. It is not controlled and its health is not evaluated until it
+     * is reactivated.
+     */
+    Deactivated = 'deactivated',
 }
 
 /**
@@ -188,7 +196,7 @@ export interface EnyoApplianceMetadata {
     ipAddress?: string;
     /** Connection state */
     state?: EnyoApplianceStateEnum;
-    /** Health status of the appliance (e.g. healthy or faulted) */
+    /** Health status of the appliance (e.g. healthy, faulted or deactivated) */
     status?: EnyoApplianceStatusEnum;
     network?: EnyoApplianceNetworkMetadata;
     modbus?: EnyoApplianceModbusMetadata;

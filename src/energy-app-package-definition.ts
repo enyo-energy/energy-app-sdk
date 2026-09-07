@@ -279,6 +279,18 @@ export interface EnergyAppPackageCompatibilityVendor {
     vendorName: string;
     /** Models from this vendor that the package supports */
     models: EnergyAppPackageCompatibilityModel[];
+    /**
+     * Marks this package as the default Energy App for the vendor when no
+     * concrete model has been selected.
+     *
+     * During onboarding a user may only know the manufacturer of their device,
+     * not its exact model. When several packages declare compatibility with the
+     * same vendor, the one flagged with `default: true` is the app the enyo
+     * Store and onboarding flows pick in that case. Set it on at most one
+     * package per vendor; omit it (or set `false`) when the package should only
+     * be offered for an explicitly selected model.
+     */
+    defaultEnergyApp?: boolean;
 }
 
 /**

@@ -635,7 +635,8 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataB
  * provided together if they change in the same event. `errorCodes` carries
  * vendor- or protocol-specific codes that explain a transition into a
  * `warning` or `faulted` status; each entry's `severity` field indicates
- * which.
+ * which. A transition into `deactivated` is intentional and normally carries
+ * no error codes.
  */
 export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
     type: 'message';
