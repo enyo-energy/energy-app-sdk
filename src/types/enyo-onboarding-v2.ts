@@ -21,10 +21,7 @@
  * before publishing.
  */
 
-import type {
-    EnyoOnboardingGuideCategory,
-    EnyoOnboardingTranslatedContent,
-} from './enyo-onboarding.js';
+import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -1125,21 +1122,6 @@ export interface EnyoOnboardingV2Guide {
     title: EnyoOnboardingTranslatedContent[];
     /** Which start situation this guide covers. */
     startVariant: EnyoOnboardingV2StartVariant;
-    /**
-     * The lifecycle role this guide plays, which decides where the host offers
-     * it (an "add new device" entry point, the configuration-required prompt).
-     *
-     * Distinct from {@link startVariant}, which describes the *situation the
-     * flow starts from* (device not found, found but unconfigured, …). This says
-     * *why the installer is here at all*: configuring the package for the first
-     * time is a different entry point from adding a second device to a package
-     * that already works, even when both start from `device-not-found`.
-     *
-     * Shared with the v1 model rather than restated as a v2 enum — the category
-     * is a property of a guide's role, not of the authoring model. Defaults to
-     * {@link EnyoOnboardingGuideCategory.InitialSetup} semantics when omitted.
-     */
-    category?: EnyoOnboardingGuideCategory;
     /**
      * Whether the host runs its local network scan before entering this guide.
      *
