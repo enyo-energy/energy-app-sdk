@@ -16,9 +16,11 @@ export interface EnyoOnboardingTranslatedContent {
  * Used to distinguish guides that perform different roles, e.g. initial
  * configuration of a package vs. adding or reconnecting a single device.
  *
- * @deprecated Superseded by the v2 graph model. Author guides with
- * {@link EnyoOnboardingV2Guide} via `defineOnboardingGuideV2()`. v1 is retained
- * for backward compatibility and will be removed in a future major.
+ * Shared by both onboarding models — v2 guides set it through
+ * {@link EnyoOnboardingV2Guide.category} — in the same way both reuse
+ * {@link EnyoOnboardingTranslatedContent}. Not deprecated with the rest of v1:
+ * the category is a property of a guide's role, not of the authoring model it
+ * was written in.
  */
 export enum EnyoOnboardingGuideCategory {
     /** Initial package configuration — shown when EnergyAppStateEnum is 'configuration-required' */

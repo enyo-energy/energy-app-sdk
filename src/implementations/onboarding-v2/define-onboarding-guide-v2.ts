@@ -14,6 +14,8 @@ import type {EnyoOnboardingTranslatedContent} from '../../types/enyo-onboarding.
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2BlockType,
+    EnyoOnboardingV2Credential,
+    EnyoOnboardingV2SelectOption,
     EnyoOnboardingV2ChoiceLayout,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2PauseReason,
@@ -95,6 +97,79 @@ export const onboardingV2Block = {
         id: string,
         items: EnyoOnboardingTranslatedContent[][],
     ): EnyoOnboardingV2Block => ({id, type: EnyoOnboardingV2BlockType.Bullets, items}),
+    /**
+     * A select block — a dropdown whose answer is recorded, not branched on.
+     *
+     * Use this, not {@link block.choice}, when the answer is data rather than a
+     * route: a choice needs one outgoing transition per option, so forty models
+     * would mean forty transitions to the same step.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param label - Translated field label (de/en).
+     * @param options - The selectable options; unique values, at least one.
+     * @param opts - Optional `defaultValue`, `help` and `required`.
+     *
+     * @example
+     * ```typescript
+     * block.select('model', t('Modell', 'Model'), [
+     *     {value: 'sb-3-0', label: t('Sunny Boy 3.0', 'Sunny Boy 3.0')},
+     *     {value: 'sb-5-0', label: t('Sunny Boy 5.0', 'Sunny Boy 5.0')},
+     * ], {required: true})
+     * ```
+     */
+    select: (
+        id: string,
+        label: EnyoOnboardingTranslatedContent[],
+        options: EnyoOnboardingV2SelectOption[],
+        opts?: {
+            defaultValue?: string;
+            help?: EnyoOnboardingTranslatedContent[];
+            required?: boolean;
+        },
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Select,
+        label,
+        options,
+        ...(opts?.defaultValue !== undefined ? {defaultValue: opts.defaultValue} : {}),
+        ...(opts?.help ? {help: opts.help} : {}),
+        ...(opts?.required !== undefined ? {required: opts.required} : {}),
+    }),
+    /**
+     * A credentials block — label/value pairs the installer transcribes into the
+     * device or a vendor portal.
+     *
+     * Passive content: it routes nothing, so a step whose only non-content block
+     * is this one still leaves through its single `continue` handle.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param credentials - The label/value pairs. At least one.
+     * @param options - Optional heading, note, and copy-button toggle.
+     *
+     * @example
+     * ```typescript
+     * block.credentials('creds', [
+     *     {label: t('Benutzername', 'Username'), value: 'enyo'},
+     *     {label: t('Passwort', 'Password'), value: generated, secret: true},
+     * ], {title: t('Zugangsdaten', 'Credentials')})
+     * ```
+     */
+    credentials: (
+        id: string,
+        credentials: EnyoOnboardingV2Credential[],
+        options?: {
+            title?: EnyoOnboardingTranslatedContent[];
+            description?: EnyoOnboardingTranslatedContent[];
+            copyable?: boolean;
+        },
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Credentials,
+        credentials,
+        copyable: options?.copyable ?? true,
+        ...(options?.title ? {title: options.title} : {}),
+        ...(options?.description ? {description: options.description} : {}),
+    }),
     /**
      * An image block addressing an externally hosted image by URL.
      *
@@ -276,6 +351,44 @@ export const onboardingV2Block = {
         id,
         type: EnyoOnboardingV2BlockType.Action,
         action: EnyoOnboardingV2ActionKind.EebusPair,
+        label,
+        outcomes,
+    }),
+    /**
+     * A device-select block: the installer picks the device being onboarded from
+     * everything the run has found.
+     *
+     * Use it whenever a scan can turn up more than one candidate. A
+     * {@link block.networkScan} branches on found/not-found but binds nothing,
+     * so without this the run does not know *which* device it is working on —
+     * and {@link EnyoOnboardingV2DeviceSelection.Current} and
+     * {@link EnyoOnboardingV2DynamicKind.DeviceIp} have nothing to resolve
+     * against.
+     *
+     * The picker renders what discovery found, so the guide must have scanned:
+     * keep {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or
+     * place a {@link block.networkScan} ahead of this one.
+     *
+     * Outcome `value`s must be {@link EnyoOnboardingV2DeviceSelectOutcome}
+     * members; route `not-found` to troubleshooting rather than to a step that
+     * assumes a device exists.
+     *
+     * Register an {@link EnyoOnboardingV2DeviceSelectHandler} to turn the pick
+     * into appliances — the host awaits it and binds the run to the ids it
+     * returns. Without one the pick binds an address and nothing more.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param label - Translated trigger button text (de/en).
+     * @param outcomes - The `selected` / `not-found` results; each is a routing handle.
+     */
+    deviceSelect: (
+        id: string,
+        label: EnyoOnboardingTranslatedContent[],
+        outcomes: EnyoOnboardingV2ActionOutcome[],
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Action,
+        action: EnyoOnboardingV2ActionKind.DeviceSelect,
         label,
         outcomes,
     }),

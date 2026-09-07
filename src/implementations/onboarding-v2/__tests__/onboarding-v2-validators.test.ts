@@ -7,10 +7,14 @@ import {
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2InputValueType,
+    EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2StartVariant,
     type EnyoOnboardingV2Block,
+    type EnyoOnboardingV2Credential,
+    type EnyoOnboardingV2SelectOption,
+    EnyoOnboardingV2InputValueType,
     type EnyoOnboardingV2Guide,
     type EnyoOnboardingV2InputOutcome,
 } from '../../../types/enyo-onboarding-v2.js';
@@ -1093,5 +1097,306 @@ describe('validateOnboardingGuideV2 — image blocks', () => {
             {files: [file()]},
         );
         expect(result.errors.some((e) => e.includes('must be a kebab-case'))).toBe(true);
+    });
+});
+
+describe('credentials blocks', () => {
+    /**
+     * A guide whose single step shows credentials. Like a link, a credentials
+     * block routes nothing, so the step keeps its plain `continue` handle.
+     */
+    function guideWithCredentials(
+        credentials: EnyoOnboardingV2Credential[],
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Zugangsdaten eintragen', 'Enter the credentials'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 'step-creds',
+            steps: [
+                {
+                    id: 'step-creds',
+                    name: 'zugangsdaten',
+                    title: t('Zugangsdaten', 'Credentials'),
+                    blocks: [
+                        onboardingV2Block.text('b-intro', t('Im Gerät eintragen.', 'Enter these in the device.')),
+                        onboardingV2Block.credentials('b-creds', credentials),
+                    ],
+                    transitions: [onContinueV2(onboardingV2Target.success())],
+                },
+            ],
+        });
+    }
+
+    const validPair: EnyoOnboardingV2Credential[] = [
+        {label: t('Benutzername', 'Username'), value: 'enyo'},
+    ];
+
+    it('accepts a credentials block and keeps the step on its continue handle', () => {
+        const {ok, errors} = validateOnboardingGuideV2(guideWithCredentials(validPair));
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+    });
+
+    it('defaults copyable to true and carries optional title and description', () => {
+        const block = onboardingV2Block.credentials('b-creds', validPair, {
+            title: t('Zugangsdaten', 'Credentials'),
+            description: t('Gilt nur einmalig.', 'Valid once only.'),
+        });
+        expect(block).toMatchObject({
+            type: EnyoOnboardingV2BlockType.Credentials,
+            copyable: true,
+            title: t('Zugangsdaten', 'Credentials'),
+            description: t('Gilt nur einmalig.', 'Valid once only.'),
+        });
+    });
+
+    it('honours copyable: false', () => {
+        const block = onboardingV2Block.credentials('b-creds', validPair, {copyable: false});
+        expect(block).toMatchObject({copyable: false});
+    });
+
+    it('carries the secret flag through', () => {
+        const block = onboardingV2Block.credentials('b-creds', [
+            {label: t('Passwort', 'Password'), value: 'hunter2', secret: true},
+        ]);
+        expect(block).toMatchObject({credentials: [{value: 'hunter2', secret: true}]});
+    });
+
+    it('rejects a block with no credentials', () => {
+        const {ok, errors} = validateOnboardingGuideV2(guideWithCredentials([]));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('has no credentials'))).toBe(true);
+    });
+
+    it('rejects an entry with a blank value — it would render as an empty row', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithCredentials([{label: t('Passwort', 'Password'), value: '   '}]),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('entry 0 has no value'))).toBe(true);
+    });
+
+    it('warns about an entry with no label', () => {
+        const {warnings} = validateOnboardingGuideV2(
+            guideWithCredentials([{label: [], value: 'enyo'}]),
+        );
+        expect(warnings.some((w) => w.includes('entry 0 has no label'))).toBe(true);
+    });
+});
+
+describe('select blocks', () => {
+    /**
+     * A select records an answer rather than routing on one, so — like a link or
+     * a credentials block — the step keeps its plain `continue` handle no matter
+     * how many options the dropdown offers.
+     */
+    function guideWithSelect(
+        options: EnyoOnboardingV2SelectOption[],
+        opts?: {defaultValue?: string},
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Modell wählen', 'Choose the model'),
+            startVariant: EnyoOnboardingV2StartVariant.DeviceFoundConfig,
+            startStepId: 'step-select',
+            steps: [
+                {
+                    id: 'step-select',
+                    name: 'modell',
+                    title: t('Modell', 'Model'),
+                    blocks: [
+                        onboardingV2Block.select('b-sel', t('Modell', 'Model'), options, opts),
+                    ],
+                    transitions: [onContinueV2(onboardingV2Target.success())],
+                },
+            ],
+        });
+    }
+
+    const twoOptions: EnyoOnboardingV2SelectOption[] = [
+        {value: 'sb-3-0', label: t('Sunny Boy 3.0', 'Sunny Boy 3.0')},
+        {value: 'sb-5-0', label: t('Sunny Boy 5.0', 'Sunny Boy 5.0')},
+    ];
+
+    it('accepts a select and keeps the step on its continue handle', () => {
+        const {ok, errors} = validateOnboardingGuideV2(guideWithSelect(twoOptions));
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+    });
+
+    it('carries defaultValue, help and required through the factory', () => {
+        const block = onboardingV2Block.select('b-sel', t('Modell', 'Model'), twoOptions, {
+            defaultValue: 'sb-5-0',
+            help: t('Siehe Typenschild.', 'See the type plate.'),
+            required: true,
+        });
+        expect(block).toMatchObject({
+            type: EnyoOnboardingV2BlockType.Select,
+            defaultValue: 'sb-5-0',
+            required: true,
+        });
+    });
+
+    it('rejects a select with no options', () => {
+        const {ok, errors} = validateOnboardingGuideV2(guideWithSelect([]));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('has no options'))).toBe(true);
+    });
+
+    it('rejects duplicate option values — the app could not tell them apart', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithSelect([twoOptions[0], {...twoOptions[1], value: 'sb-3-0'}]),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('rejects a defaultValue matching no option', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithSelect(twoOptions, {defaultValue: 'sb-9-9'}),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('matches no option'))).toBe(true);
+    });
+
+    it('warns about a single-option select', () => {
+        const {warnings} = validateOnboardingGuideV2(guideWithSelect([twoOptions[0]]));
+        expect(warnings.some((w) => w.includes('offers a single option'))).toBe(true);
+    });
+});
+
+describe('validated inputs', () => {
+    function guideWithInput(
+        valueType: EnyoOnboardingV2InputValueType,
+        validated: boolean,
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Seriennummer', 'Serial number'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            startStepId: 'step-input',
+            steps: [
+                {
+                    id: 'step-input',
+                    name: 'seriennummer',
+                    title: t('Seriennummer', 'Serial number'),
+                    blocks: [
+                        {
+                            id: 'b-in',
+                            type: EnyoOnboardingV2BlockType.Input,
+                            valueType,
+                            validated,
+                            label: t('Seriennummer', 'Serial number'),
+                            submitLabel: t('Prüfen', 'Check'),
+                            outcomes: [
+                                {id: 'ok', value: 'success', label: t('Passt', 'Fine')},
+                                {id: 'no', value: 'failed', label: t('Fehler', 'Error')},
+                            ],
+                        },
+                    ],
+                    transitions: [
+                        onOutcomeV2('b-in', 'ok', onboardingV2Target.success()),
+                        onOutcomeV2('b-in', 'no', onboardingV2Target.support()),
+                    ],
+                },
+            ],
+        });
+    }
+
+    it('accepts a validated text input', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithInput(EnyoOnboardingV2InputValueType.Text, true),
+        );
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+    });
+
+    it('accepts a password input', () => {
+        expect(
+            validateOnboardingGuideV2(guideWithInput(EnyoOnboardingV2InputValueType.Password, false)).ok,
+        ).toBe(true);
+    });
+
+    it('rejects validated on an ip-address input — the device test already answers', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithInput(EnyoOnboardingV2InputValueType.IpAddress, true),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('validated on an ip-address input'))).toBe(true);
+    });
+});
+
+describe('device-select blocks', () => {
+    /**
+     * A scan says whether anything is there; a device-select says which one it
+     * is. The picked device binds the run, so both branches must land somewhere.
+     */
+    function guideWithDeviceSelect(
+        outcomes: Array<{id: string; value: string; label: EnyoOnboardingTranslatedContent[]}>,
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Gerät wählen', 'Choose the device'),
+            startVariant: EnyoOnboardingV2StartVariant.DeviceFoundConfig,
+            startStepId: 'step-pick',
+            steps: [
+                {
+                    id: 'step-pick',
+                    name: 'geraet',
+                    title: t('Gerät', 'Device'),
+                    blocks: [
+                        onboardingV2Block.deviceSelect('b-pick', t('Gerät wählen', 'Choose device'), outcomes),
+                    ],
+                    transitions: outcomes.map((o) =>
+                        onOutcomeV2('b-pick', o.id, onboardingV2Target.success()),
+                    ),
+                },
+            ],
+        });
+    }
+
+    const bothOutcomes = [
+        {
+            id: 'ok',
+            value: EnyoOnboardingV2DeviceSelectOutcome.Selected,
+            label: t('Gewählt', 'Selected'),
+        },
+        {
+            id: 'none',
+            value: EnyoOnboardingV2DeviceSelectOutcome.NotFound,
+            label: t('Nicht gefunden', 'Not found'),
+        },
+    ];
+
+    it('accepts a device-select with both outcomes wired', () => {
+        const {ok, errors} = validateOnboardingGuideV2(guideWithDeviceSelect(bothOutcomes));
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+    });
+
+    it('rejects an outcome value outside the enum', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithDeviceSelect([
+                bothOutcomes[0],
+                {id: 'huh', value: 'maybe', label: t('Vielleicht', 'Maybe')},
+            ]),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('not an EnyoOnboardingV2DeviceSelectOutcome member'))).toBe(true);
+    });
+
+    it('rejects the same outcome value wired twice', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            guideWithDeviceSelect([bothOutcomes[0], {...bothOutcomes[1], id: 'dup', value: bothOutcomes[0].value}]),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('warns when the not-found branch is missing — the installer would be stranded', () => {
+        const {warnings} = validateOnboardingGuideV2(guideWithDeviceSelect([bothOutcomes[0]]));
+        expect(warnings.some((w) => w.includes('would be stranded'))).toBe(true);
+    });
+
+    it('warns when the selected branch is missing', () => {
+        const {warnings} = validateOnboardingGuideV2(guideWithDeviceSelect([bothOutcomes[1]]));
+        expect(warnings.some((w) => w.includes('a picked device would have nowhere to go'))).toBe(true);
     });
 });

@@ -16,6 +16,7 @@
 
 import {
     EnyoOnboardingV2ActionKind,
+    EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2DeviceSelection,
@@ -130,6 +131,8 @@ export function validateOnboardingGuideV2(
 
         validateActionBlocks(step, at, errors, warnings);
         validateLinkBlocks(step, at, errors, warnings);
+        validateCredentialsBlocks(step, at, errors, warnings);
+        validateSelectBlocks(step, at, errors, warnings);
         validateImageBlocks(step, at, errors, warnings, context);
         validateInputBlocks(step, at, errors, warnings);
         validateAuthBlocks(step, at, errors, warnings);
@@ -255,6 +258,9 @@ function validateActionBlocks(
             if (block.action === EnyoOnboardingV2ActionKind.OcppConnect) {
                 validateOcppConnectOutcomes(block, at, errors);
             }
+            if (block.action === EnyoOnboardingV2ActionKind.DeviceSelect) {
+                validateDeviceSelectOutcomes(block, at, errors, warnings);
+            }
             if (block.action === EnyoOnboardingV2ActionKind.EebusPair) {
                 validateEebusPairOutcomes(block, at, errors, warnings);
             }
@@ -328,6 +334,102 @@ function validateLinkBlocks(
                 `${at}: link block "${block.id}" has no label — the raw URL is shown instead.`,
             );
         }
+    }
+}
+
+/**
+ * Validates the select blocks of a step.
+ *
+ * A select records an answer rather than routing on one, so the failures that
+ * matter are the ones that make the recorded value ambiguous or unreachable:
+ * duplicate option values (the app cannot tell which was picked) and a
+ * `defaultValue` naming no option (nothing is pre-selected, silently).
+ */
+function validateSelectBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    for (const block of step.blocks ?? []) {
+        if (block.type !== EnyoOnboardingV2BlockType.Select) continue;
+
+        if (!block.label?.length) {
+            warnings.push(`${at}: select block "${block.id}" has no label.`);
+        }
+        if (!block.options?.length) {
+            errors.push(`${at}: select block "${block.id}" has no options.`);
+            continue;
+        }
+        if (block.options.length === 1) {
+            warnings.push(
+                `${at}: select block "${block.id}" offers a single option — ` +
+                `there is nothing for the installer to choose.`,
+            );
+        }
+
+        const seen = new Set<string>();
+        block.options.forEach((option, index) => {
+            if (!option.value?.trim()) {
+                errors.push(`${at}: select block "${block.id}" option ${index} has no value.`);
+                return;
+            }
+            if (seen.has(option.value)) {
+                errors.push(
+                    `${at}: select block "${block.id}" uses the option value ` +
+                    `"${option.value}" more than once.`,
+                );
+            }
+            seen.add(option.value);
+            if (!option.label?.length) {
+                warnings.push(
+                    `${at}: select block "${block.id}" option "${option.value}" has no label.`,
+                );
+            }
+        });
+
+        if (block.defaultValue !== undefined && !seen.has(block.defaultValue)) {
+            errors.push(
+                `${at}: select block "${block.id}" defaultValue "${block.defaultValue}" ` +
+                `matches no option.`,
+            );
+        }
+    }
+}
+
+/**
+ * Validates the credentials blocks of a step.
+ *
+ * A pair with no value is the failure that matters: it renders as an empty row,
+ * and the installer has nothing to type into the device. An untranslated label
+ * only degrades the display, so it is a warning.
+ */
+function validateCredentialsBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    for (const block of step.blocks ?? []) {
+        if (block.type !== EnyoOnboardingV2BlockType.Credentials) continue;
+
+        if (!block.credentials?.length) {
+            errors.push(`${at}: credentials block "${block.id}" has no credentials.`);
+            continue;
+        }
+        block.credentials.forEach((credential, index) => {
+            if (!credential.value?.trim()) {
+                errors.push(
+                    `${at}: credentials block "${block.id}" entry ${index} has no value — ` +
+                    `it would render as an empty row.`,
+                );
+            }
+            if (!credential.label?.length) {
+                warnings.push(
+                    `${at}: credentials block "${block.id}" entry ${index} has no label.`,
+                );
+            }
+        });
     }
 }
 
@@ -483,6 +585,13 @@ function validateInputBlocks(
             errors.push(`${at}: input block "${block.id}" has no submitLabel.`);
         }
 
+        if (block.validated && block.valueType === EnyoOnboardingV2InputValueType.IpAddress) {
+            errors.push(
+                `${at}: input block "${block.id}" sets validated on an ip-address input — ` +
+                `the device test already produces the app's own verdict.`,
+            );
+        }
+
         const outcomes = block.outcomes ?? [];
         if (outcomes.length < 2) {
             errors.push(`${at}: input block "${block.id}" needs at least 2 outcomes.`);
@@ -572,6 +681,63 @@ function validateOcppConnectOutcomes(
                 `${at}: ocpp-connect block "${block.id}" has no "${required}" outcome; both results must be routed.`,
             );
         }
+    }
+}
+
+/** Every {@link EnyoOnboardingV2DeviceSelectOutcome} value. */
+const DEVICE_SELECT_OUTCOMES: ReadonlySet<string> = new Set(
+    Object.values(EnyoOnboardingV2DeviceSelectOutcome),
+);
+
+/**
+ * Validates the outcomes of an {@link EnyoOnboardingV2ActionKind.DeviceSelect}
+ * block.
+ *
+ * The block reports one of two things — the installer picked a device, or the
+ * run came away without one — so its outcome `value`s are closed over
+ * {@link EnyoOnboardingV2DeviceSelectOutcome}. Anything else is an outcome that
+ * can never fire.
+ *
+ * A missing `selected` branch strands every successful pick, and a missing
+ * `not-found` branch strands the installer whose device is not in the list —
+ * both warnings rather than errors, so a guide can be staged step by step.
+ *
+ * @param block - The device-select action block being checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateDeviceSelectOutcomes(
+    block: EnyoOnboardingV2ActionBlock,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const values = new Set<string>();
+    for (const outcome of block.outcomes ?? []) {
+        if (!DEVICE_SELECT_OUTCOMES.has(outcome.value)) {
+            errors.push(
+                `${at}: device-select block "${block.id}" has outcome value "${outcome.value}", which is not an EnyoOnboardingV2DeviceSelectOutcome member.`,
+            );
+        } else if (values.has(outcome.value)) {
+            errors.push(
+                `${at}: device-select block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
+            );
+        }
+        values.add(outcome.value);
+    }
+
+    if (!values.has(EnyoOnboardingV2DeviceSelectOutcome.Selected)) {
+        warnings.push(
+            `${at}: device-select block "${block.id}" has no "${EnyoOnboardingV2DeviceSelectOutcome.Selected}" outcome — ` +
+                'a picked device would have nowhere to go.',
+        );
+    }
+    if (!values.has(EnyoOnboardingV2DeviceSelectOutcome.NotFound)) {
+        warnings.push(
+            `${at}: device-select block "${block.id}" has no "${EnyoOnboardingV2DeviceSelectOutcome.NotFound}" outcome — ` +
+                'an installer whose device is not in the list would be stranded.',
+        );
     }
 }
 

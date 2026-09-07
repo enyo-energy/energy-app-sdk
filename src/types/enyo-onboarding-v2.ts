@@ -21,7 +21,10 @@
  * before publishing.
  */
 
-import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
+import type {
+    EnyoOnboardingGuideCategory,
+    EnyoOnboardingTranslatedContent,
+} from './enyo-onboarding.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -166,6 +169,57 @@ export enum EnyoOnboardingV2ActionKind {
      * id.
      */
     EebusPair = 'eebus-pair',
+    /**
+     * Show the installer every network device the run has found and let them
+     * pick the one being onboarded.
+     *
+     * A scan answers "is anything there?"; this answers "which of these is it?".
+     * {@link NetworkScan} branches on found/not-found but binds nothing, so a
+     * house with a dozen devices on the LAN leaves the run without knowing which
+     * one the installer is standing in front of — a decision only they can make,
+     * since two identical inverters differ by little more than their address.
+     *
+     * The picked device **binds the run**: it is recorded as the block's input
+     * value under the block's id, and it is what later steps resolve against —
+     * {@link EnyoOnboardingV2DeviceSelection.Current} on a {@link DeviceTest},
+     * and {@link EnyoOnboardingV2DynamicKind.DeviceIp} on a dynamic block.
+     *
+     * Like {@link EebusPair}, the picker renders what discovery turned up, so
+     * the guide must have scanned: either it keeps
+     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or it
+     * carries a {@link NetworkScan} block ahead of this one — otherwise the
+     * picker opens on an empty list.
+     *
+     * Binding is an address, not an appliance. To have the pick become something
+     * the energy manager can read or control, register an
+     * {@link EnyoOnboardingV2DeviceSelectHandler}: the host hands it the picked
+     * devices, awaits the appliance ids it answers with, and binds the run to
+     * them. Without a handler the block still works — the run takes `selected`
+     * and stays bound to the device — it just produces no appliance.
+     *
+     * Outcome `value`s MUST be {@link EnyoOnboardingV2DeviceSelectOutcome}
+     * members.
+     */
+    DeviceSelect = 'device-select',
+}
+
+/**
+ * The possible results of an {@link EnyoOnboardingV2ActionKind.DeviceSelect}
+ * block. Deliberately binary: either the run came away bound to a device or it
+ * did not.
+ */
+export enum EnyoOnboardingV2DeviceSelectOutcome {
+    /** The installer picked a device; the run is now bound to it. */
+    Selected = 'selected',
+    /**
+     * The run came away with no device — either discovery offered none, or the
+     * installer looked at the list and none of them was theirs.
+     *
+     * One branch for both because the advice is the same: the device is off, on
+     * another subnet, or not speaking to the network yet. Route it to
+     * troubleshooting, not to a step that assumes a device exists.
+     */
+    NotFound = 'not-found',
 }
 
 /**
@@ -213,6 +267,18 @@ export enum EnyoOnboardingV2InputValueType {
     IpAddress = 'ip-address',
     /** A number; `,` and `.` are both accepted as the decimal separator. */
     Number = 'number',
+    /**
+     * A secret — a device password, a WiFi key, an API token.
+     *
+     * Behaves like {@link Text} for routing (no format check, positive outcome),
+     * but the installer app masks the field and the host never renders the value
+     * back into the step on resume. Use it for anything an installer would not
+     * want standing on screen while they photograph the setup.
+     *
+     * Masking is a display property, not storage: the value is still recorded in
+     * the run state like any other input.
+     */
+    Password = 'password',
 }
 
 /**
@@ -260,6 +326,8 @@ export enum EnyoOnboardingV2BlockType {
     Input = 'input',
     Auth = 'auth',
     AdditionalSetup = 'additional-setup',
+    Credentials = 'credentials',
+    Select = 'select',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -333,6 +401,109 @@ export interface EnyoOnboardingV2HintBlock extends EnyoOnboardingV2BlockBase {
     text: EnyoOnboardingTranslatedContent[];
 }
 
+/**
+ * One label/value pair shown by an {@link EnyoOnboardingV2CredentialsBlock}.
+ */
+export interface EnyoOnboardingV2Credential {
+    /** Translated label for the value, e.g. "Benutzername" / "Username" (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+    /**
+     * The value to display, not translated — a username, a generated password,
+     * an API key, a server URL the installer types into the device.
+     */
+    value: string;
+    /**
+     * Mask the value behind a reveal control. Defaults to `false`.
+     *
+     * Set it for anything that should not sit on screen while an installer is
+     * photographing the setup or sharing a screen. Masking is a display choice
+     * only: the value still travels in the guide, so it is not a substitute for
+     * withholding a secret that this installer should not have.
+     */
+    secret?: boolean;
+}
+
+/**
+ * Values the installer must read out of the guide and enter somewhere else —
+ * the credentials a device needs to talk to us, or the ones we generated for it.
+ *
+ * The v2 equivalent of the v1 `credentials` section. Passive content: it
+ * produces no routing handle, so a step whose only non-content block is a
+ * credentials block still routes through its single `continue` handle.
+ *
+ * Values are supplied by the app, not translated, and are usually per-install —
+ * guides are pulled from the app's handler at render time, so the handler can
+ * mint or look up the values as it builds the guide.
+ *
+ * Prefer {@link EnyoOnboardingV2DynamicBlock} where a dynamic kind already
+ * exists ({@link EnyoOnboardingV2DynamicKind.OcppUrl},
+ * {@link EnyoOnboardingV2DynamicKind.DeviceIp}): the host resolves those itself
+ * and keeps them correct. Use this block for everything else.
+ */
+export interface EnyoOnboardingV2CredentialsBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.Credentials;
+    /** Optional translated heading above the pairs (de/en). */
+    title?: EnyoOnboardingTranslatedContent[];
+    /** The label/value pairs to display. At least one. */
+    credentials: EnyoOnboardingV2Credential[];
+    /**
+     * Show a copy-to-clipboard button per value. Defaults to `true` — these
+     * exist to be transcribed, and retyping a generated password by hand is how
+     * an onboarding fails.
+     */
+    copyable?: boolean;
+    /** Optional translated note below the pairs (de/en). */
+    description?: EnyoOnboardingTranslatedContent[];
+}
+
+/** One option of an {@link EnyoOnboardingV2SelectBlock}. */
+export interface EnyoOnboardingV2SelectOption {
+    /**
+     * The value recorded when this option is picked. Not translated — this is
+     * what the app reads back, so it must be stable across releases.
+     */
+    value: string;
+    /** Translated option label shown in the dropdown (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+}
+
+/**
+ * A dropdown that **records** the installer's answer without branching on it —
+ * "which model is this?", "which phase is it wired to?".
+ *
+ * The counterpart to {@link EnyoOnboardingV2ChoiceBlock}, and the distinction
+ * matters: a choice is a routing control, so every option needs its own outgoing
+ * transition. Expressing "pick one of forty inverter models, we just need to
+ * know which" as a choice would mean forty transitions to the same step. This
+ * block routes nothing, so the step keeps its single `continue` handle no matter
+ * how many options it offers.
+ *
+ * The picked value is persisted per block in the run state and handed back on
+ * resume/back, exactly like an {@link EnyoOnboardingV2InputBlock}'s value, and a
+ * finished run says which option was chosen under this block's id.
+ */
+export interface EnyoOnboardingV2SelectBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.Select;
+    /** Translated field label, e.g. "Wechselrichter-Modell" (de/en). */
+    label: EnyoOnboardingTranslatedContent[];
+    /** The selectable options. At least one; unique `value`s. */
+    options: EnyoOnboardingV2SelectOption[];
+    /**
+     * `value` of the option pre-selected when the step is first rendered. Must
+     * match one of {@link options}. Omit to start with nothing selected.
+     */
+    defaultValue?: string;
+    /** Optional translated help text — where the installer finds the answer (de/en). */
+    help?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Require an answer before the step may be left. Defaults to `false`.
+     *
+     * Since the block produces no routing handle, a required select gates the
+     * step's `continue` handle rather than branching.
+     */
+    required?: boolean;
+}
+
 /** A pre-defined dynamic value resolved at runtime from the device. */
 export interface EnyoOnboardingV2DynamicBlock extends EnyoOnboardingV2BlockBase {
     type: EnyoOnboardingV2BlockType.Dynamic;
@@ -387,7 +558,9 @@ export interface EnyoOnboardingV2ActionBlock extends EnyoOnboardingV2BlockBase {
     outcomes: EnyoOnboardingV2ActionOutcome[];
     /**
      * Which devices to hand to the app. Only meaningful for
-     * {@link EnyoOnboardingV2ActionKind.DeviceTest}; ignored by the other kinds.
+     * {@link EnyoOnboardingV2ActionKind.DeviceTest}; ignored by the other kinds,
+     * including {@link EnyoOnboardingV2ActionKind.DeviceSelect}, which always
+     * offers everything the run has found.
      * Defaults to {@link EnyoOnboardingV2DeviceSelection.Detected}.
      */
     deviceSelection?: EnyoOnboardingV2DeviceSelection;
@@ -511,6 +684,22 @@ export interface EnyoOnboardingV2InputBlock extends EnyoOnboardingV2BlockBase {
     submitLabel: EnyoOnboardingTranslatedContent[];
     /** The possible verdicts; each is a routing handle. At least 2. */
     outcomes: EnyoOnboardingV2InputOutcome[];
+    /**
+     * Hand the typed value to the app's registered
+     * {@link EnyoOnboardingV2ValidationHandler} before the flow moves on, so a
+     * wrong serial number or API token is caught on the step that asked for it.
+     * Defaults to `false`.
+     *
+     * Not a branch: a rejected value keeps the installer on the step with the
+     * app's message shown, and produces no outcome. Turning this on therefore
+     * never changes a guide's graph or its transitions.
+     *
+     * Meaningless on {@link EnyoOnboardingV2InputValueType.IpAddress}, which
+     * already gets the app's own verdict from its
+     * {@link EnyoDeviceTestHandler}; the validator rejects the combination
+     * rather than running two app round trips for one value.
+     */
+    validated?: boolean;
 }
 
 /**
@@ -781,13 +970,17 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2LinkBlock
     | EnyoOnboardingV2InputBlock
     | EnyoOnboardingV2AuthBlock
-    | EnyoOnboardingV2AdditionalSetupBlock;
+    | EnyoOnboardingV2AdditionalSetupBlock
+    | EnyoOnboardingV2CredentialsBlock
+    | EnyoOnboardingV2SelectBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
  *
- * A {@link EnyoOnboardingV2LinkBlock} is deliberately absent: it is passive
- * content and routes nothing.
+ * {@link EnyoOnboardingV2LinkBlock}, {@link EnyoOnboardingV2CredentialsBlock}
+ * and {@link EnyoOnboardingV2SelectBlock} are deliberately absent: they are
+ * content, and route nothing. A select records an answer without branching on
+ * it — see its own docs for why that is not a choice block.
  */
 export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2ChoiceBlock
@@ -932,6 +1125,21 @@ export interface EnyoOnboardingV2Guide {
     title: EnyoOnboardingTranslatedContent[];
     /** Which start situation this guide covers. */
     startVariant: EnyoOnboardingV2StartVariant;
+    /**
+     * The lifecycle role this guide plays, which decides where the host offers
+     * it (an "add new device" entry point, the configuration-required prompt).
+     *
+     * Distinct from {@link startVariant}, which describes the *situation the
+     * flow starts from* (device not found, found but unconfigured, …). This says
+     * *why the installer is here at all*: configuring the package for the first
+     * time is a different entry point from adding a second device to a package
+     * that already works, even when both start from `device-not-found`.
+     *
+     * Shared with the v1 model rather than restated as a v2 enum — the category
+     * is a property of a guide's role, not of the authoring model. Defaults to
+     * {@link EnyoOnboardingGuideCategory.InitialSetup} semantics when omitted.
+     */
+    category?: EnyoOnboardingGuideCategory;
     /**
      * Whether the host runs its local network scan before entering this guide.
      *

@@ -10,6 +10,8 @@ import type {
     EnyoOnboardingV2AdditionalSetupRequest,
     EnyoOnboardingV2AdditionalSetupResult,
 } from '../types/enyo-onboarding-v2-additional-setup.js';
+import type {EnyoOnboardingV2ValidationHandler} from '../types/enyo-onboarding-v2-validation.js';
+import type {EnyoOnboardingV2DeviceSelectHandler} from '../types/enyo-onboarding-v2-device-select.js';
 
 /**
  * Which run of a named guide an app means.
@@ -457,4 +459,60 @@ export interface EnergyAppOnboardingV2 {
      * @returns Promise that resolves once the handler has been removed.
      */
     deregisterAdditionalSetupHandler(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls to check a value typed into an
+     * {@link EnyoOnboardingV2InputBlock} that set
+     * {@link EnyoOnboardingV2InputBlock.validated}.
+     *
+     * One handler serves every validated input across all of this app's guides.
+     * Registering again replaces the previous one.
+     *
+     * A guide that declares `validated` blocks while no handler is registered is
+     * not broken — unanswered validation is treated as acceptance, exactly like
+     * a timeout — but nothing is checked, so register the handler before
+     * publishing guides that rely on it.
+     *
+     * @param handler - Called with the submitted value; answers valid or invalid
+     * @returns Promise that resolves once the handler is registered
+     */
+    registerInputValidationHandler(handler: EnyoOnboardingV2ValidationHandler): Promise<void>;
+
+    /**
+     * Removes the registered input validation handler. Validated inputs then
+     * accept every value, as if no handler had ever been registered.
+     *
+     * @returns Promise that resolves once the handler is removed
+     */
+    deregisterInputValidationHandler(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls when an installer picks devices in an
+     * {@link EnyoOnboardingV2ActionKind.DeviceSelect} block, so the app can turn
+     * them into appliances and hand back the ids.
+     *
+     * The host awaits the answer and binds the run to the returned appliances,
+     * which is what fills `applianceId` for later dynamic and additional-setup
+     * requests on the same run.
+     *
+     * Optional. Without a handler the block still works — the run takes its
+     * `selected` branch and stays bound to the picked device — but no appliance
+     * is created, so a guide that ends there produces an address and nothing the
+     * energy manager can read or control.
+     *
+     * One handler serves every device-select block across all of this app's
+     * guides. Registering again replaces the previous one.
+     *
+     * @param handler - Called with the picked devices; answers with appliance ids
+     * @returns Promise that resolves once the handler is registered
+     */
+    registerDeviceSelectHandler(handler: EnyoOnboardingV2DeviceSelectHandler): Promise<void>;
+
+    /**
+     * Removes the registered device-select handler. Picks then create no
+     * appliances, as if no handler had ever been registered.
+     *
+     * @returns Promise that resolves once the handler is removed
+     */
+    deregisterDeviceSelectHandler(): Promise<void>;
 }
