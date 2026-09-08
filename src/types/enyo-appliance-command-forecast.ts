@@ -196,9 +196,15 @@ export enum BatteryCommandForecastDirectionEnum {
     /** Power should flow from the battery into the home / grid (discharging). */
     Discharge = 'discharge',
     /**
-     * No energy flow — the battery holds its current state-of-charge.
-     * Use to mark idle periods between charge / discharge entries. The
-     * entry's `powerW` must be `0`.
+     * Leave the slot to the battery's own logic — for the duration of
+     * the entry the appliance decides itself whether to charge,
+     * discharge or stand still (auto mode).
+     *
+     * This is *not* a "no energy flow" marker: to block charging or
+     * discharging, use {@link BatteryCommandForecastDirectionEnum.Charge}
+     * respectively {@link BatteryCommandForecastDirectionEnum.Discharge}
+     * with `powerW = 0`. An `Idle` entry prescribes no setpoint, so its
+     * `powerW` must be `0`.
      */
     Idle = 'idle',
 }
@@ -222,11 +228,12 @@ export interface BatteryCommandForecastScheduleEntry {
     /**
      * Target power in Watts. Always non-negative — direction is carried
      * by {@link direction}, never by sign. A `powerW` of `0` together
-     * with a `Charge` or `Discharge` direction means "hold at zero in
-     * the named direction" (effectively idle until the next entry);
-     * prefer the explicit
-     * {@link BatteryCommandForecastDirectionEnum.Idle} direction for
-     * unambiguous idle slots, in which case `powerW` must also be `0`.
+     * with a `Charge` or `Discharge` direction blocks that direction —
+     * the battery must not charge respectively discharge until the next
+     * entry. Use that to keep the battery still, *not*
+     * {@link BatteryCommandForecastDirectionEnum.Idle}, which hands
+     * control back to the appliance's own logic and prescribes no
+     * setpoint at all (its `powerW` must be `0`).
      */
     powerW: number;
 }

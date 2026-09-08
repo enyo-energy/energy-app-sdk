@@ -571,6 +571,86 @@ const registers = await client.readHoldingRegisters(1001, 10);
 await client.writeSingleRegister(2001, 500);
 ```
 
+##### Exceptions are data, not just failures
+
+When a device *answers* but refuses an operation, the call rejects with a `ModbusExceptionError`
+carrying the device's raw exception code. That is different from a timeout or a dropped socket, and
+the distinction is the whole point: a permission probe is a write you expect to be refused.
+
+```typescript
+import {ModbusExceptionError} from '@enyo-energy/energy-app-sdk';
+
+// May this connection write at all? Write a register back its own value and see.
+const current = (await client.readHoldingRegisters(43006, 1)).readUInt16BE(0);
+try {
+    await client.writeSingleRegister(43006, current);
+    controlAllowed = true;                       // the write landed
+} catch (error) {
+    if (error instanceof ModbusExceptionError) {
+        controlAllowed = false;                  // refused by the device, e.g. code 0x80
+    } else {
+        throw error;                             // the link is broken — a different problem
+    }
+}
+```
+
+Vendor-specific codes are passed through unvalidated (Huawei answers `0x80` for "permission
+authentication failure or permission expiration", which is outside the standard `0x01`…`0x0B`
+range). An exception response never recycles the socket.
+
+##### Vendor function codes: `sendRawPdu()`
+
+Some devices reserve a function code of their own for things the standard eight codes cannot
+express — most commonly an installer login that must succeed before any control write is accepted.
+`sendRawPdu()` puts one PDU on the wire verbatim and hands back the raw answer, on the connection
+the SDK already owns:
+
+```typescript
+const response = await client.sendRawPdu(0x41, Buffer.from([0x24, ...challengeBytes]));
+
+if (response.exceptionCode !== undefined) {
+    // The device refused. Expected often enough that it is a result, not a throw.
+    console.warn(`Vendor command refused with 0x${response.exceptionCode.toString(16)}`);
+} else {
+    parseVendorReply(response.payload);
+}
+```
+
+- The SDK knows nothing about the vendor. Sub-commands, digests and keepalives stay in your app.
+- The call queues on the same per-connection chain as every other request, so `noParallelRequests`
+  and `waitBetweenMessagesMs` hold — a login can never interleave with a block read that is already
+  in flight.
+- Request payloads are **never logged**; only the function code and the payload length are. Vendor
+  handshakes carry credential digests.
+- Payloads are capped at `MODBUS_MAX_PDU_PAYLOAD_BYTES` (252), keeping the frame inside the 253-byte
+  Modbus PDU limit. Function codes must be 1…127.
+- It needs the same `Modbus` permission as the rest of the Modbus surface — an app that can already
+  call `writeMultipleRegisters` can write any holding register, so this grants reach, not privilege.
+
+##### Knowing when the socket was replaced
+
+Anything the device tracks per *connection* rather than per device — a vendor login above all — dies
+silently when the socket is recycled. The next write simply comes back refused. `onReconnect()` is
+the signal that lets you re-establish it beforehand:
+
+```typescript
+const stopListening = client.onReconnect(() => {
+    // Permission was granted to the old socket and is gone with it.
+    authenticated = false;
+    void loginAgain();
+});
+
+// Or check after the fact, without keeping a listener alive:
+const before = client.connectionGeneration();
+await doSomething();
+if (client.connectionGeneration() !== before) {
+    // The socket was replaced in the meantime; connection-scoped state is void.
+}
+```
+
+Listeners are dropped automatically on `disconnect()`, and `onReconnect()` returns a function that
+removes just yours.
+
 #### `useOcpp(): EnergyAppOcpp`
 
 Handle OCPP charging station communication:
