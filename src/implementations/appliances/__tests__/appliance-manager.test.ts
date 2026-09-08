@@ -12,6 +12,11 @@ import {
     EnyoHeatingRodApplianceModeEnum,
 } from '../../../types/enyo-heating-rod-appliance.js';
 import {
+    EnyoSmartPlugApplianceAvailableFeaturesEnum,
+    EnyoSmartPlugApplianceIconEnum,
+    EnyoSmartPlugApplianceStateEnum,
+} from '../../../types/enyo-smart-plug-appliance.js';
+import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceModeEnum,
 } from '../../../types/enyo-heatpump-appliance.js';
@@ -482,6 +487,57 @@ describe('ApplianceManager', () => {
                 ],
                 mode: EnyoHeatingRodApplianceModeEnum.Idle,
                 ratedPowerW: 4500,
+            });
+
+            manager.dispose();
+        });
+
+        it('shallow-merges smartPlug metadata when patching only a subset', async () => {
+            const a = makeAppliance('appl-1', {
+                type: EnyoApplianceTypeEnum.SmartPlug,
+                smartPlug: {
+                    availableFeatures: [
+                        EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching,
+                        EnyoSmartPlugApplianceAvailableFeaturesEnum.Power,
+                    ],
+                    state: EnyoSmartPlugApplianceStateEnum.Off,
+                    channel: 1,
+                    ratedPowerW: 3500,
+                    defaults: {
+                        showInCockpit: true,
+                        onOffSwitchShown: true,
+                        icon: EnyoSmartPlugApplianceIconEnum.Dishwasher,
+                    },
+                },
+            }, 'SN-1');
+            const sdk = createAppliancesFake([a]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // Patch only the relay state — the other smartPlug fields must survive.
+            await manager.updateAppliance('appl-1', {
+                smartPlug: {
+                    availableFeatures: [
+                        EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching,
+                        EnyoSmartPlugApplianceAvailableFeaturesEnum.Power,
+                    ],
+                    state: EnyoSmartPlugApplianceStateEnum.On,
+                },
+            });
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.smartPlug).toEqual({
+                availableFeatures: [
+                    EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching,
+                    EnyoSmartPlugApplianceAvailableFeaturesEnum.Power,
+                ],
+                state: EnyoSmartPlugApplianceStateEnum.On,
+                channel: 1,
+                ratedPowerW: 3500,
+                defaults: {
+                    showInCockpit: true,
+                    onOffSwitchShown: true,
+                    icon: EnyoSmartPlugApplianceIconEnum.Dishwasher,
+                },
             });
 
             manager.dispose();

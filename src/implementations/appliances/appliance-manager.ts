@@ -18,6 +18,7 @@ import type {EnyoMeterAppliance} from "../../types/enyo-meter-appliance.js";
 import type {EnyoTemperatureSensorApplianceMetadata} from "../../types/enyo-temperature-sensor-appliance.js";
 import type {EnyoAirConditioningApplianceMetadata} from "../../types/enyo-air-conditioning-appliance.js";
 import type {EnyoHeatingRodApplianceMetadata} from "../../types/enyo-heating-rod-appliance.js";
+import type {EnyoSmartPlugApplianceMetadata} from "../../types/enyo-smart-plug-appliance.js";
 import {IdentifierStrategy} from "./identifier-strategies.js";
 
 /**
@@ -94,6 +95,7 @@ export interface ApplianceConfig {
     temperatureSensor?: EnyoTemperatureSensorApplianceMetadata;
     airConditioning?: EnyoAirConditioningApplianceMetadata;
     heatingRod?: EnyoHeatingRodApplianceMetadata;
+    smartPlug?: EnyoSmartPlugApplianceMetadata;
     availableFeatures?: EnyoApplianceAvailableFeaturesEnum[];
     /**
      * Optional identifier of the cloud-deployed energy app package that manages
@@ -142,6 +144,7 @@ const MERGEABLE_METADATA_KEYS = [
     'temperatureSensor',
     'airConditioning',
     'heatingRod',
+    'smartPlug',
 ] as const;
 
 /**
@@ -308,6 +311,7 @@ export class ApplianceManager {
             temperatureSensor: appliance.temperatureSensor,
             airConditioning: appliance.airConditioning,
             heatingRod: appliance.heatingRod,
+            smartPlug: appliance.smartPlug,
             // Conditionally spread the two optional top-level fields that are NOT
             // covered by MERGEABLE_METADATA_KEYS. If they were always materialized
             // as explicit keys, an omitted (undefined) value would clobber the
@@ -882,6 +886,8 @@ export interface PartialEnyoAppliance {
     airConditioning?: Partial<EnyoAirConditioningApplianceMetadata>;
     /** Optional Metadata of the Appliance if of type HeatingRod */
     heatingRod?: Partial<EnyoHeatingRodApplianceMetadata>;
+    /** Optional Metadata of the Appliance if of type SmartPlug */
+    smartPlug?: Partial<EnyoSmartPlugApplianceMetadata>;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
     /**

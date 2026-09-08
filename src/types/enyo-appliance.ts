@@ -8,6 +8,7 @@ import {EnyoMeterAppliance} from "./enyo-meter-appliance.js";
 import {EnyoTemperatureSensorApplianceMetadata} from "./enyo-temperature-sensor-appliance.js";
 import {EnyoAirConditioningApplianceMetadata} from "./enyo-air-conditioning-appliance.js";
 import {EnyoHeatingRodApplianceMetadata} from "./enyo-heating-rod-appliance.js";
+import {EnyoSmartPlugApplianceMetadata} from "./enyo-smart-plug-appliance.js";
 
 export enum EnyoApplianceTypeEnum {
     Inverter = 'Inverter',
@@ -18,6 +19,8 @@ export enum EnyoApplianceTypeEnum {
     AirConditioning = 'AirConditioning',
     TemperatureSensor = 'TemperatureSensor',
     HeatingRod = 'HeatingRod',
+    /** Switchable socket / relay channel powering an arbitrary load (e.g. a Shelly channel) */
+    SmartPlug = 'SmartPlug',
 }
 
 export interface EnyoApplianceName {
@@ -287,6 +290,8 @@ export interface EnyoAppliance {
     airConditioning?: EnyoAirConditioningApplianceMetadata;
     /** Optional Metadata of the Appliance if of type HeatingRod */
     heatingRod?: EnyoHeatingRodApplianceMetadata;
+    /** Optional Metadata of the Appliance if of type SmartPlug */
+    smartPlug?: EnyoSmartPlugApplianceMetadata;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
     /**

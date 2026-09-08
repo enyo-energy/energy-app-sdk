@@ -21,6 +21,7 @@ import {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
+import {EnyoSmartPlugApplianceStateEnum} from "./enyo-smart-plug-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
 import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
@@ -373,6 +374,10 @@ export enum EnyoDataBusMessageEnum {
     SetHeatingRodAvailablePowerV2 = 'SetHeatingRodAvailablePowerV2',
     /** V2 control command: prescribe a single-setpoint control (mode + direction + power) to a battery/storage appliance. */
     SetStorageControlV2 = 'SetStorageControlV2',
+    /** Live values of a smart plug: relay state, power draw and energy meter reading. */
+    SmartPlugValuesUpdateV1 = 'SmartPlugValuesUpdateV1',
+    /** Control command: switch a smart plug / relay channel on or off. */
+    SetSmartPlugSwitchV1 = 'SetSmartPlugSwitchV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
 }
 
@@ -2558,5 +2563,72 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
         socPercent: number;
         /** Total usable capacity of the vehicle's traction battery in kWh, if known */
         batterySizeKwh?: number;
+    };
+}
+
+/**
+ * Live values of a smart plug / switchable relay channel, published by the
+ * integration that owns the appliance.
+ *
+ * Send this whenever the relay state or the measured power changes, so an
+ * energy manager can account for the load and decide whether to switch the plug
+ * via {@link EnyoDataBusSetSmartPlugSwitchV1}.
+ */
+export interface EnyoDataBusSmartPlugValuesV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SmartPlugValuesUpdateV1;
+    /** ID of the smart plug appliance that delivered these values */
+    applianceId: string;
+    data: {
+        /**
+         * Current relay state of the plug. Omit when the integration cannot
+         * determine it — `undefined` means "not known", which is not the same
+         * as {@link EnyoSmartPlugApplianceStateEnum.Off}.
+         */
+        state?: EnyoSmartPlugApplianceStateEnum;
+        /**
+         * Current active power drawn by the connected load in Watt. Normally
+         * positive (a plug powers a consumer). Omit when the plug cannot
+         * measure it — do not send `0` as a stand-in for "unknown", since a
+         * consumer cannot tell that apart from "nothing is drawing power".
+         */
+        powerW?: number;
+        /** Cumulative energy meter reading of the plug in Watt hours */
+        meterValueWh?: number;
+        /** Voltage measured at the plug in V, when reported */
+        voltageV?: number;
+        /** Current measured at the plug in A, when reported */
+        currentA?: number;
+    };
+}
+
+/**
+ * Command switching a smart plug / relay channel on or off.
+ *
+ * Only valid for appliances that list
+ * {@link EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching} and whose
+ * metadata does not set `controlAllowed: false`. The receiving integration
+ * should answer with an {@link EnyoDataBusCommandAcknowledgeV1} message
+ * referencing this message's `id`, and reflect the resulting relay state in the
+ * next {@link EnyoDataBusSmartPlugValuesV1}.
+ */
+export interface EnyoDataBusSetSmartPlugSwitchV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetSmartPlugSwitchV1;
+    /** ID of the smart plug appliance to switch */
+    applianceId: string;
+    data: {
+        /** Target relay state: `On` closes the relay, `Off` opens it */
+        state: EnyoSmartPlugApplianceStateEnum;
+        /**
+         * Minimum time in minutes the requested state should be held before the
+         * plug may be switched again, to protect the connected load from
+         * short-cycling. When omitted, the integration should fall back to the
+         * appliance's `minOnDurationMinutes` / `minOffDurationMinutes`
+         * metadata, and otherwise switch immediately.
+         */
+        minDurationMinutes?: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
