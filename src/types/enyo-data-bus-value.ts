@@ -21,6 +21,7 @@ import {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
+import type {EnyoFlexibilityTargetPower} from "./enyo-flexibility-announcement.js";
 import {EnyoSmartPlugApplianceStateEnum} from "./enyo-smart-plug-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
@@ -620,6 +621,36 @@ export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
 }
 
 
+/**
+ * An appliance announces how much energy it can shift, and until when.
+ *
+ * Optionally it can also say *what the energy is for and at which power* via
+ * `data.flexibility.context.targets` — e.g. a heat pump splitting its draw
+ * between the domestic hot water tank, the heating buffer tank, and the space
+ * heating circuit. That breakdown is additive context for the decision maker;
+ * `kWh` remains the authoritative total.
+ *
+ * @example
+ * ```typescript
+ * dataBus.sendMessage([{
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.ApplianceFlexibilityAnnouncementV1,
+ *     applianceId: 'heatpump-1',
+ *     data: {
+ *         flexibility: {
+ *             kWh: 4,
+ *             availableUntilIsoTimestamp: '2025-10-01T14:00:00Z',
+ *             context: {
+ *                 targets: [
+ *                     {target: EnyoFlexibilityTargetEnum.DomesticHotWater, powerW: 1500, kWh: 2.5},
+ *                     {target: EnyoFlexibilityTargetEnum.BufferTank, powerW: 800, kWh: 1.5},
+ *                 ],
+ *             },
+ *         },
+ *     },
+ * }]);
+ * ```
+ */
 export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.ApplianceFlexibilityAnnouncementV1;
@@ -630,6 +661,19 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataB
             kWh: number;
             /** Defines until the kWh flexibility can be shifted. If for Example 10 kWh can be shifted until 2025-10-01T14:00:00 (current time 2025-10-01T10:00:00), the control can shift the 10 kWh in the next 4 hours */
             availableUntilIsoTimestamp: string;
+            /**
+             * Optional extra context for the consumer of this announcement.
+             * Nested so further context keys can be added without changing the
+             * message shape again.
+             */
+            context?: {
+                /**
+                 * Breakdown of what the announced flexibility is for and at which
+                 * power. May be partial — entries need not sum to the appliance's
+                 * full draw — and a given target SHOULD appear at most once.
+                 */
+                targets: EnyoFlexibilityTargetPower[];
+            };
         }
     }
 }

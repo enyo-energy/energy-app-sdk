@@ -611,3 +611,102 @@ export interface AirConditioningTemperatureTimeseriesResponse extends Timeseries
     /** Array of air conditioning temperature entries, one per time bucket */
     entries: AirConditioningTemperatureTimeseriesEntry[];
 }
+
+// ============================================================================
+// Smart Plug Power Timeseries Types
+// ============================================================================
+
+/**
+ * Power and runtime figures for a single smart plug within one time bucket.
+ *
+ * A smart plug measures an arbitrary load, so the per-plug breakdown matters
+ * more here than for other appliance types: summing several plugs gives the
+ * total switchable load, but only the per-plug values say *which* load ran.
+ *
+ * Every field other than the identity is optional, because plug capabilities
+ * differ (see {@link EnyoSmartPlugApplianceAvailableFeaturesEnum}): a
+ * switch-only plug reports runtime but no power, a measure-only plug reports
+ * power but no runtime.
+ */
+export interface SmartPlugTimeseriesPlugValues {
+    /** ID of the smart plug appliance these values belong to */
+    applianceId: string;
+    /**
+     * Time-weighted average power drawn by the connected load in Watts for this
+     * bucket. Omitted for plugs that cannot measure power — this is not the same
+     * as `0`, which means "measured, nothing drawing".
+     */
+    averagePowerW?: number;
+    /** Cumulative energy drawn by the connected load in Watt-hours for this bucket */
+    powerWh?: number;
+    /** Lowest power in Watts observed in this bucket */
+    minPowerW?: number;
+    /** Highest power in Watts observed in this bucket */
+    maxPowerW?: number;
+    /**
+     * Minutes the relay was on within this bucket, for plugs that report their
+     * state. `0` means the plug was known to be off for the whole bucket; the
+     * value never exceeds the bucket length.
+     */
+    onDurationMinutes?: number;
+    /**
+     * Number of relay state changes observed in this bucket. Useful for spotting
+     * short-cycling of the connected load.
+     */
+    switchCount?: number;
+}
+
+/**
+ * A single entry in the smart plug timeseries.
+ *
+ * Carries the aggregate across every included plug plus the per-plug breakdown
+ * for the same bucket, so a consumer can chart the total switchable load and
+ * the individual loads from one response.
+ */
+export interface SmartPlugTimeseriesEntry extends TimeseriesEntryBase {
+    /** Time-weighted average power across all included plugs in Watts for this bucket */
+    smartPlugPowerW: number;
+    /** Cumulative energy across all included plugs in Watt-hours for this bucket */
+    smartPlugPowerWh: number;
+    /** Per-plug values for this bucket, one entry per included plug */
+    plugs: SmartPlugTimeseriesPlugValues[];
+}
+
+/**
+ * Request parameters for querying smart plug timeseries data.
+ *
+ * Pass `applianceIds` to restrict the query to specific plugs; omit it to
+ * include every smart plug of the device.
+ */
+export interface SmartPlugTimeseriesRequest extends TimeseriesRequestBase {}
+
+/**
+ * Per-plug summary across the full queried period.
+ *
+ * Mirrors the optionality of {@link SmartPlugTimeseriesPlugValues}: a field is
+ * only present when the plug reported the underlying values.
+ */
+export interface SmartPlugTimeseriesPlugSummary {
+    /** ID of the smart plug appliance this summary belongs to */
+    applianceId: string;
+    /** Total energy drawn by the connected load in Watt-hours across all buckets */
+    totalPowerWh?: number;
+    /** Time-weighted average power in Watts across the full period */
+    averagePowerW?: number;
+    /** Total minutes the relay was on across the full period */
+    totalOnDurationMinutes?: number;
+    /** Total number of relay state changes across the full period */
+    totalSwitchCount?: number;
+}
+
+/**
+ * Response containing smart plug timeseries data.
+ */
+export interface SmartPlugTimeseriesResponse extends TimeseriesResponseBase {
+    /** Array of smart plug entries, one per time bucket */
+    entries: SmartPlugTimeseriesEntry[];
+    /** Total energy across all included plugs in Watt-hours across all buckets */
+    totalSmartPlugPowerWh: number;
+    /** Per-plug summaries across the full queried period */
+    plugs: SmartPlugTimeseriesPlugSummary[];
+}

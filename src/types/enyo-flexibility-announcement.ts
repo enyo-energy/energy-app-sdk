@@ -44,11 +44,50 @@ export enum EnyoFlexibilityAnnouncementTypeEnum {
  * What a heat pump's flexibility is aimed at — gives the decision maker extra
  * context on the demand behind a heat-pump announcement. `Cooling` is reserved
  * for a future cooling mode and is not emitted yet.
+ *
+ * This enum describes the *mode* a heat pump runs in. To say what the announced
+ * energy is for — and how much power goes to each target — use
+ * {@link EnyoFlexibilityTargetEnum} together with
+ * {@link EnyoFlexibilityTargetPower}. The overlap between the two
+ * (`heating` / `dhw`) is intentional: both vocabularies stay wire-stable on
+ * their own.
  */
 export enum EnyoFlexibilityHeatpumpTargetTypeEnum {
     Heating = 'heating',
     Cooling = 'cooling',
     Dhw = 'dhw',
+}
+
+/**
+ * What an announced share of flexibility is physically aimed at — the open
+ * vocabulary behind the "how much watt for what" breakdown carried by
+ * {@link EnyoFlexibilityTargetPower}.
+ *
+ * The members present today all describe heat sinks, because thermal appliances
+ * are the first ones to split their draw. The enum is deliberately **not**
+ * scoped to thermal loads though: further members may describe non-thermal
+ * targets (a vehicle battery, a stationary storage, a dedicated household
+ * circuit) as other appliance types start announcing a breakdown. Consumers
+ * should therefore treat an unknown value as "some other target" rather than
+ * assuming every value maps to a heat sink.
+ *
+ * Broader than {@link EnyoFlexibilityHeatpumpTargetTypeEnum}, which names the
+ * *mode* a heat pump runs in: this enum adds the heating buffer tank, is not
+ * heat-pump specific (a heating rod announces against the same sinks), and
+ * carries no `cooling` member — cooling is a run mode, not a target.
+ *
+ * Values match the vocabulary used elsewhere in the SDK for the same physical
+ * parts (e.g. `domesticHotWater` and `bufferTank...` in the timeseries types),
+ * so a consumer can correlate an announcement with measured values without a
+ * mapping table.
+ */
+export enum EnyoFlexibilityTargetEnum {
+    /** Domestic hot water tank. */
+    DomesticHotWater = 'domesticHotWater',
+    /** Heating buffer / storage tank. */
+    BufferTank = 'bufferTank',
+    /** Space heating circuit. */
+    Heating = 'heating',
 }
 
 /**
@@ -85,6 +124,36 @@ export enum EnyoFlexibilityOptimizationModeEnum {
 }
 
 // ─── Shared value objects ───────────────────────────────────
+
+/**
+ * How much power the announced flexibility would draw for one target — one
+ * entry of the "how much watt for what" breakdown behind an announcement.
+ *
+ * Purely informational context: the announcement's own energy figure stays
+ * authoritative. A breakdown may be partial — its entries need not sum to the
+ * appliance's full draw — but a given {@link target} SHOULD appear at most once
+ * per breakdown.
+ *
+ * @example
+ * ```typescript
+ * // A heat pump that would put 1500 W into the DHW tank and 800 W into heating
+ * const targets: EnyoFlexibilityTargetPower[] = [
+ *     {target: EnyoFlexibilityTargetEnum.DomesticHotWater, powerW: 1500, kWh: 2.5},
+ *     {target: EnyoFlexibilityTargetEnum.Heating, powerW: 800},
+ * ];
+ * ```
+ */
+export interface EnyoFlexibilityTargetPower {
+    /** What this share is for. */
+    target: EnyoFlexibilityTargetEnum;
+    /** Electrical power this share would draw, in Watts. Non-negative. */
+    powerW: number;
+    /**
+     * Share of the announced energy attributable to this target, in kWh.
+     * Optional — omit when only the power split is known.
+     */
+    kWh?: number;
+}
 
 /** Discrete power band the solver may pick from: [minWatt, maxWatt] in stepWatt steps. */
 export interface EnyoFlexibilityPowerBand {
@@ -164,6 +233,13 @@ export interface EnyoFlexibilityAnnouncementContext {
     heatpumpTargetType?: EnyoFlexibilityHeatpumpTargetTypeEnum;
     /** For air-conditioning announcements: what the flexibility is aimed at. */
     airConditioningTargetType?: EnyoFlexibilityAirConditioningTargetTypeEnum;
+    /**
+     * How much power the announced flexibility would draw per target — "how much
+     * watt for what". Keeps the category surface in step with the per-appliance
+     * announcement, which carries the same breakdown under
+     * `data.flexibility.context.targets`.
+     */
+    targets?: EnyoFlexibilityTargetPower[];
     /**
      * For storage announcements: the round-trip cost of cycling the battery, in
      * EUR per kWh. The floor a discharge has to beat to be worth licensing.

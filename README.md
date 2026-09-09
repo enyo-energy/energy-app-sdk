@@ -84,6 +84,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [Basic Energy App](#basic-energy-app)
   - [Device Integration](#device-integration)
   - [Data Bus Messaging](#data-bus-messaging)
+    - [Announcing Appliance Flexibility](#announcing-appliance-flexibility)
   - [Settings Management](#settings-management)
 - [Troubleshooting](#troubleshooting)
 - [External Libraries](#external-libraries)
@@ -1494,7 +1495,7 @@ Publishers need `PvSystemRegister`; consumers need `PvSystemUse`.
 
 #### `useTimeseries(): EnergyAppTimeseries`
 
-Query historical 15-minute aggregated data across the energy domain (PV production, battery SoC / power, meter values, grid power, home consumption, heatpump electrical / thermal, air-conditioning, temperature sensors). Some endpoints also support 1-minute resolution.
+Query historical 15-minute aggregated data across the energy domain (PV production, battery SoC / power, meter values, grid power, home consumption, heatpump electrical / thermal, air-conditioning, temperature sensors, smart plugs). Some endpoints also support 1-minute resolution.
 
 ```typescript
 const ts = energyApp.useTimeseries();
@@ -3528,6 +3529,74 @@ energyApp.register(async (packageName, version) => {
     energyApp.updateEnergyAppState('running');
 });
 ```
+
+#### Announcing Appliance Flexibility
+
+An appliance tells the rest of the system how much energy it can shift, and
+until when, with `ApplianceFlexibilityAnnouncementV1`. Optionally it can also say
+**how much watt for what** — which part of the system the energy would go into —
+so the consumer of the announcement can reason about the demand behind the number
+instead of treating it as one opaque block.
+
+The breakdown is a list of `EnyoFlexibilityTargetPower` entries under
+`data.flexibility.context.targets`. Each entry names a `EnyoFlexibilityTargetEnum`
+target, the power that share would draw in Watts, and optionally the share of the
+announced energy in kWh.
+
+`EnyoFlexibilityTargetEnum` is an open vocabulary. Today it covers
+`domesticHotWater`, `bufferTank`, and `heating`, since thermal appliances are the
+first to split their draw — but it is not limited to thermal targets, and further
+members may describe non-thermal ones. Treat an unknown value as "some other
+target" rather than assuming it is a heat sink.
+
+```typescript
+import {
+    EnergyApp,
+    EnyoFlexibilityTargetEnum,
+} from '@enyo-energy/energy-app-sdk';
+
+const energyApp = new EnergyApp();
+const dataBus = energyApp.useDataBus();
+
+dataBus.sendMessage([{
+    type: 'message',
+    message: 'ApplianceFlexibilityAnnouncementV1',
+    applianceId: 'heatpump-1',
+    data: {
+        flexibility: {
+            // Authoritative total: 4 kWh can be shifted until 14:00.
+            kWh: 4,
+            availableUntilIsoTimestamp: '2025-10-01T14:00:00Z',
+            // Optional: what those 4 kWh are for, and at which power.
+            context: {
+                targets: [
+                    {
+                        target: EnyoFlexibilityTargetEnum.DomesticHotWater,
+                        powerW: 1500,
+                        kWh: 2.5,
+                    },
+                    {
+                        target: EnyoFlexibilityTargetEnum.BufferTank,
+                        powerW: 800,
+                        kWh: 1.5,
+                    },
+                ],
+            },
+        },
+    },
+}]);
+```
+
+Notes:
+
+- `context` is entirely optional — existing publishers that only send `kWh` and
+  `availableUntilIsoTimestamp` stay valid.
+- The breakdown may be **partial**: its entries do not have to sum to `kWh` or to
+  the appliance's full draw. Only `kWh` is authoritative.
+- A given target should appear at most once per breakdown.
+- The same breakdown is available on category-level announcements via
+  `context.targets` on `EnyoFlexibilityAnnouncementContext`, so the
+  per-appliance and aggregated surfaces stay in step.
 
 ### Settings Management
 

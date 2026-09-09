@@ -23,6 +23,8 @@ import {
     AirConditioningPowerTimeseriesResponse,
     AirConditioningTemperatureTimeseriesRequest,
     AirConditioningTemperatureTimeseriesResponse,
+    SmartPlugTimeseriesRequest,
+    SmartPlugTimeseriesResponse,
 } from "../types/enyo-timeseries.js";
 
 /**
@@ -290,4 +292,34 @@ export interface EnergyAppTimeseries {
      * ```
      */
     getAirConditioningTemperatureTimeseries(request: AirConditioningTemperatureTimeseriesRequest): Promise<AirConditioningTemperatureTimeseriesResponse>;
+
+    /**
+     * Retrieves smart plug timeseries data aggregated in time buckets.
+     *
+     * Every bucket carries the aggregate across all included plugs
+     * (`smartPlugPowerW` / `Wh`) plus a per-plug breakdown, since a plug measures
+     * an arbitrary load and the total alone does not say which load ran. The
+     * response additionally summarises each plug across the full period.
+     *
+     * Per-plug fields are optional because plug capabilities differ: a
+     * measure-only plug reports power but no runtime, a switch-only plug reports
+     * runtime (`onDurationMinutes`, `switchCount`) but no power.
+     *
+     * @param request - The query parameters including date range and optional appliance filter
+     * @returns Promise resolving to smart plug entries with the total and per-plug summaries
+     *
+     * @example
+     * ```typescript
+     * const response = await timeseries.getSmartPlugTimeseries({
+     *     startDateIso: '2024-01-01T00:00:00Z',
+     *     endDateIso: '2024-01-02T00:00:00Z'
+     * });
+     * console.log(`Total plug consumption: ${response.totalSmartPlugPowerWh} Wh`);
+     * response.plugs.forEach(plug => {
+     *     console.log(`${plug.applianceId}: ${plug.totalPowerWh ?? 0} Wh, ` +
+     *         `on for ${plug.totalOnDurationMinutes ?? 0} min`);
+     * });
+     * ```
+     */
+    getSmartPlugTimeseries(request: SmartPlugTimeseriesRequest): Promise<SmartPlugTimeseriesResponse>;
 }
