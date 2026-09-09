@@ -14,13 +14,14 @@ import {
     type EnyoOnboardingV2Block,
     type EnyoOnboardingV2Credential,
     type EnyoOnboardingV2SelectOption,
-    EnyoOnboardingV2InputValueType,
     type EnyoOnboardingV2Guide,
     type EnyoOnboardingV2InputOutcome,
 } from '../../../types/enyo-onboarding-v2.js';
 import type {EnergyAppPackagePublicFile} from '../../../energy-app-package-definition.js';
 import {definePublicFile} from '../../files/define-public-file.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../../types/enyo-device-test.js';
+import {EnyoEebusDeviceTypeEnum} from '../../../types/enyo-eebus.js';
+import {EnyoNetworkDeviceDetectedAtEnum} from '../../../types/enyo-network-device.js';
 import {
     defineOnboardingGuideV2,
     onboardingV2Block,
@@ -742,7 +743,7 @@ describe('ocpp-connect action blocks', () => {
     });
 });
 
-describe('eebus-pair action blocks', () => {
+describe('eebus-device-select blocks', () => {
     /**
      * A guide whose single step pairs an EEBUS device, wiring `values` as its
      * outcomes. Scans first, so only the outcome checks can fire.
@@ -758,11 +759,15 @@ describe('eebus-pair action blocks', () => {
                     name: 'pair',
                     title: t('Koppeln', 'Pair'),
                     blocks: [
-                        onboardingV2Block.eebusPair(
-                            'e1',
-                            t('EEBUS-Gerät auswählen', 'Select the EEBUS device'),
-                            values.map((value, i) => ({id: `h${i}`, value, label: t(value, value)})),
-                        ),
+                        onboardingV2Block.eebusDeviceSelect('e1', {
+                            headline: t('EEBUS-Gerät auswählen', 'Select the EEBUS device'),
+                            deviceTypes: [EnyoEebusDeviceTypeEnum.HeatPumpAppliance],
+                            outcomes: values.map((value, i) => ({
+                                id: `h${i}`,
+                                value,
+                                label: t(value, value),
+                            })),
+                        }),
                     ],
                     transitions: values.map((_, i) =>
                         onOutcomeV2('e1', `h${i}`, i === 0 ? onboardingV2Target.success() : onboardingV2Target.support()),
@@ -1342,7 +1347,10 @@ describe('device-select blocks', () => {
                     name: 'geraet',
                     title: t('Gerät', 'Device'),
                     blocks: [
-                        onboardingV2Block.deviceSelect('b-pick', t('Gerät wählen', 'Choose device'), outcomes),
+                        onboardingV2Block.deviceSelect('b-pick', {
+                            headline: t('Gerät wählen', 'Choose device'),
+                            outcomes,
+                        }),
                     ],
                     transitions: outcomes.map((o) =>
                         onOutcomeV2('b-pick', o.id, onboardingV2Target.success()),
@@ -1398,5 +1406,150 @@ describe('device-select blocks', () => {
     it('warns when the selected branch is missing', () => {
         const {warnings} = validateOnboardingGuideV2(guideWithDeviceSelect([bothOutcomes[1]]));
         expect(warnings.some((w) => w.includes('a picked device would have nowhere to go'))).toBe(true);
+    });
+
+    it('rejects an empty detectedAt filter, which could only ever reach not-found', () => {
+        const guide = guideWithDeviceSelect(bothOutcomes);
+        (guide.steps[0]!.blocks[0] as {detectedAt?: unknown[]}).detectedAt = [];
+
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('empty `detectedAt` filter'))).toBe(true);
+    });
+
+    it('accepts a detectedAt filter that names a channel', () => {
+        const guide = guideWithDeviceSelect(bothOutcomes);
+        (guide.steps[0]!.blocks[0] as {detectedAt?: unknown[]}).detectedAt = [
+            EnyoNetworkDeviceDetectedAtEnum.Modbus,
+        ];
+
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+    });
+
+    it('rejects a second decision block on the picker\u2019s step', () => {
+        const guide = guideWithDeviceSelect(bothOutcomes);
+        guide.steps[0]!.blocks.push(
+            onboardingV2Block.choice('b-choice', EnyoOnboardingV2ChoiceLayout.Buttons, [
+                {id: 'yes', label: t('Ja', 'Yes')},
+            ]),
+        );
+        guide.steps[0]!.transitions.push(
+            onOptionV2('b-choice', 'yes', onboardingV2Target.success()),
+        );
+
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('owns its step'))).toBe(true);
+    });
+
+    it('rejects two pickers on one step', () => {
+        const guide = guideWithDeviceSelect(bothOutcomes);
+        guide.steps[0]!.blocks.push(
+            onboardingV2Block.eebusDeviceSelect('b-eebus', {
+                headline: t('EEBUS', 'EEBUS'),
+                outcomes: [
+                    {
+                        id: 'p',
+                        value: EnyoOnboardingV2EebusPairOutcome.Paired,
+                        label: t('Gekoppelt', 'Paired'),
+                    },
+                ],
+            }),
+        );
+        guide.steps[0]!.transitions.push(onOutcomeV2('b-eebus', 'p', onboardingV2Target.success()));
+
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('other picker block'))).toBe(true);
+    });
+});
+
+describe('offline-reconnect guides', () => {
+    /** A minimal guide on the given variant, optionally bound to an appliance. */
+    function variantGuide(
+        startVariant: EnyoOnboardingV2StartVariant,
+        overrides: Partial<EnyoOnboardingV2Guide> = {},
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Neu verbinden', 'Reconnect'),
+            startVariant,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'intro',
+                    title: t('Los', 'Go'),
+                    blocks: [onboardingV2Block.text('b1', t('Hallo', 'Hello'))],
+                    transitions: [onContinueV2(onboardingV2Target.success())],
+                },
+            ],
+            ...overrides,
+        });
+    }
+
+    it('requires an applianceId, like maintenance does', () => {
+        const {ok, errors} = validateOnboardingGuideV2(
+            variantGuide(EnyoOnboardingV2StartVariant.OfflineReconnect),
+        );
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('`applianceId` is required'))).toBe(true);
+    });
+
+    it('accepts one bound to an appliance and notifying the customer', () => {
+        const {ok, errors, warnings} = validateOnboardingGuideV2(
+            variantGuide(EnyoOnboardingV2StartVariant.OfflineReconnect, {
+                applianceId: 'app-1',
+                notifyUser: true,
+            }),
+        );
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('notifyUser'))).toBe(false);
+    });
+
+    it('still warns about notifyUser on an installation variant', () => {
+        const {warnings} = validateOnboardingGuideV2(
+            variantGuide(EnyoOnboardingV2StartVariant.ManualSetup, {notifyUser: true}),
+        );
+        expect(warnings.some((w) => w.includes('`notifyUser` is set'))).toBe(true);
+    });
+});
+
+describe('catalog bindings', () => {
+    /** A minimal valid guide, plus whatever the test wants to bind. */
+    function boundGuide(overrides: Partial<EnyoOnboardingV2Guide>): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Einrichtung', 'Setup'),
+            startVariant: EnyoOnboardingV2StartVariant.DeviceFoundConfig,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'intro',
+                    title: t('Los', 'Go'),
+                    blocks: [onboardingV2Block.text('b1', t('Hallo', 'Hello'))],
+                    transitions: [onContinueV2(onboardingV2Target.success())],
+                },
+            ],
+            ...overrides,
+        });
+    }
+
+    it('warns about a vendorId an app filled in itself', () => {
+        const {ok, warnings} = validateOnboardingGuideV2(boundGuide({vendorId: 'acme'}));
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('`vendorId` is set and is ignored'))).toBe(true);
+    });
+
+    it('warns about modelIds an app filled in itself', () => {
+        const {warnings} = validateOnboardingGuideV2(boundGuide({modelIds: ['ac22']}));
+        expect(warnings.some((w) => w.includes('`modelIds` is set and is ignored'))).toBe(true);
+    });
+
+    it('stays quiet when the guide leaves both to enyo', () => {
+        const {warnings} = validateOnboardingGuideV2(boundGuide({}));
+        expect(warnings.some((w) => w.includes('is set and is ignored'))).toBe(false);
     });
 });

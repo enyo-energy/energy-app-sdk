@@ -12,14 +12,15 @@ import type {
 } from '../types/enyo-onboarding-v2-additional-setup.js';
 import type {EnyoOnboardingV2ValidationHandler} from '../types/enyo-onboarding-v2-validation.js';
 import type {EnyoOnboardingV2DeviceSelectHandler} from '../types/enyo-onboarding-v2-device-select.js';
+import type {EnyoOnboardingV2EebusDeviceSelectHandler} from '../types/enyo-onboarding-v2-eebus-device-select.js';
 
 /**
  * Which run of a named guide an app means.
  *
  * A guide name identifies the *flow*; this narrows it to one walk of that flow
- * when more than one can be open at a time. A maintenance guide is bound to an
- * appliance and its runs live in a lane of their own — one per appliance — so
- * that is the only distinction the host needs.
+ * when more than one can be open at a time. An appliance-bound guide
+ * (maintenance, offline reconnect) has runs in a lane of their own — one per
+ * appliance — so that is the only distinction the host needs.
  *
  * Omit it entirely for a guide that has one open run, which is every
  * installation variant.
@@ -27,7 +28,8 @@ import type {EnyoOnboardingV2DeviceSelectHandler} from '../types/enyo-onboarding
 export interface EnyoOnboardingV2RunSelector {
     /**
      * The appliance whose run is meant, for a guide bound to one
-     * ({@link EnyoOnboardingV2StartVariant.Maintenance}).
+     * ({@link EnyoOnboardingV2StartVariant.Maintenance},
+     * {@link EnyoOnboardingV2StartVariant.OfflineReconnect}).
      *
      * Omitted on a maintenance guide, the call addresses that guide's single
      * open run when there is exactly one and is rejected when there are
@@ -487,9 +489,9 @@ export interface EnergyAppOnboardingV2 {
     deregisterInputValidationHandler(): Promise<void>;
 
     /**
-     * Registers the handler the host calls when an installer picks devices in an
-     * {@link EnyoOnboardingV2ActionKind.DeviceSelect} block, so the app can turn
-     * them into appliances and hand back the ids.
+     * Registers the handler the host calls when an installer picks a device in an
+     * {@link EnyoOnboardingV2DeviceSelectBlock}, so the app can turn it into
+     * appliances and hand back the ids.
      *
      * The host awaits the answer and binds the run to the returned appliances,
      * which is what fills `applianceId` for later dynamic and additional-setup
@@ -515,4 +517,45 @@ export interface EnergyAppOnboardingV2 {
      * @returns Promise that resolves once the handler is removed
      */
     deregisterDeviceSelectHandler(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls once an installer has paired an EEBUS
+     * peer in an {@link EnyoOnboardingV2EebusDeviceSelectBlock}, so the app can
+     * turn it into appliances and hand back the ids.
+     *
+     * Separate from {@link registerDeviceSelectHandler} because the two are
+     * handed different things: a network device with an IP address, or a trusted
+     * peer with a SKI and an announced EEBUS device type. An app that onboards
+     * both registers both; neither is a fallback for the other, and a network
+     * pick never reaches this handler.
+     *
+     * The pairing itself is the host's — the SHIP handshake has already succeeded
+     * by the time this is called, and a handshake that failed takes the block's
+     * `failure` branch without the app being asked. The host awaits the answer
+     * and binds the run to the returned appliances, which is what fills
+     * `applianceId` for later dynamic and additional-setup requests on the same
+     * run.
+     *
+     * Optional. Without a handler the block still works — the peer is paired, the
+     * run takes its `paired` branch and stays bound to the SKI — but no appliance
+     * is created, so a guide that ends there produces a trusted address and
+     * nothing the energy manager can read or control.
+     *
+     * One handler serves every EEBUS picker block across all of this app's
+     * guides. Registering again replaces the previous one.
+     *
+     * @param handler - Called with the paired peer; answers with appliance ids
+     * @returns Promise that resolves once the handler is registered
+     */
+    registerEebusDeviceSelectHandler(handler: EnyoOnboardingV2EebusDeviceSelectHandler): Promise<void>;
+
+    /**
+     * Removes the registered EEBUS device-select handler. Pairings then create no
+     * appliances, as if no handler had ever been registered. The peers that were
+     * already paired stay trusted — deregistering a handler does not un-pair
+     * anything.
+     *
+     * @returns Promise that resolves once the handler is removed
+     */
+    deregisterEebusDeviceSelectHandler(): Promise<void>;
 }

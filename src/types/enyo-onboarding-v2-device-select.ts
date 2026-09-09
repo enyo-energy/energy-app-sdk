@@ -3,8 +3,8 @@
  * network devices an installer picked, and taking back the appliances the app
  * made of them.
  *
- * An {@link EnyoOnboardingV2ActionKind.DeviceSelect} block answers "which of
- * these is it?" and binds the run to the installer's pick. That binding is an
+ * An {@link EnyoOnboardingV2DeviceSelectBlock} answers "which of these is
+ * it?" and binds the run to the installer's pick. That binding is an
  * address, not an appliance: nothing in the system yet represents the device as
  * something the energy manager can read or control. This model closes that gap —
  * the app is asked to turn the picked device(s) into appliances and answer with
@@ -31,13 +31,15 @@ import type {EnyoNetworkDevice} from './enyo-network-device.js';
 /**
  * One "the installer picked these — make appliances of them" request.
  *
- * Raised when a {@link EnyoOnboardingV2ActionKind.DeviceSelect} block completes,
- * so it is on the critical path of a screen someone is waiting on.
+ * Raised when an {@link EnyoOnboardingV2DeviceSelectBlock} completes, so it is
+ * on the critical path of a screen someone is waiting on — including when the
+ * block skipped its screen because only one device matched
+ * ({@link autoSelected}).
  */
 export interface EnyoOnboardingV2DeviceSelectRequest {
     /** Correlates this request with its result. Unique per request. */
     requestId: string;
-    /** The {@link EnyoOnboardingV2ActionBlock.id} the pick was made on. */
+    /** The {@link EnyoOnboardingV2DeviceSelectBlock.id} the pick was made on. */
     blockId: string;
     /**
      * The {@link EnyoOnboardingV2Step.name} the block sits on, so an app can tell
@@ -54,7 +56,18 @@ export interface EnyoOnboardingV2DeviceSelectRequest {
      * A single-pick block sends exactly one entry.
      */
     devices: EnyoNetworkDevice[];
-    /** The appliance the run is already bound to, when one exists. */
+    /**
+     * The appliance the run is already bound to, when one exists.
+     *
+     * Always set on a run of an appliance-bound guide
+     * ({@link EnyoOnboardingV2StartVariant.Maintenance},
+     * {@link EnyoOnboardingV2StartVariant.OfflineReconnect}), and there it is an
+     * instruction as much as context: a reconnect run is re-pointing *this*
+     * appliance at the device the installer just picked, so the handler should
+     * re-bind it and answer with this same id. Creating a second appliance for a
+     * device the customer already has leaves them with a duplicate in the app and
+     * a history split across two records.
+     */
     applianceId?: string;
     /**
      * The budget for this request, in milliseconds.
@@ -65,6 +78,18 @@ export interface EnyoOnboardingV2DeviceSelectRequest {
      * so they fit inside the budget.
      */
     timeoutMs: number;
+    /**
+     * `true` when the host picked on the installer's behalf because exactly one
+     * device matched the block's filter and
+     * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch} was left on —
+     * the screen was never rendered.
+     *
+     * Changes nothing about what the handler must do; the request is identical in
+     * every other respect. It exists so a support log can say whether a human
+     * confirmed this device or the system inferred it, which is the first
+     * question asked when the wrong device turns out to be bound.
+     */
+    autoSelected?: boolean;
 }
 
 /**

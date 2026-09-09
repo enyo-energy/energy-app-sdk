@@ -30,8 +30,6 @@ const guide = (
         title: t('Einrichtung', 'Setup'),
         startVariant: EnyoOnboardingV2StartVariant.DeviceFoundConfig,
         startStepId: 's1',
-        vendorId: 'acme',
-        modelIds: ['ac22'],
         steps: [
             {
                 id: 's1',
@@ -94,53 +92,26 @@ describe('validateOnboardingV2GuidesResult', () => {
         expect(errors.some((e) => e.includes('startStepId'))).toBe(true);
     });
 
-    it('errors when two guides claim the same vendor, model and start variant', () => {
-        const {ok, errors} = validateOnboardingV2GuidesResult(result([guide(), guide()]));
+    it('warns when a guide fills in the vendor and model bindings enyo attaches itself', () => {
+        const {ok, warnings} = validateOnboardingV2GuidesResult(
+            result([guide({vendorId: 'acme', modelIds: ['ac22']})]),
+        );
 
-        expect(ok).toBe(false);
-        expect(
-            errors.some((e) => e.includes('binding "acme|ac22|device-found-config" is already claimed')),
-        ).toBe(true);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('`vendorId` is set and is ignored'))).toBe(true);
+        expect(warnings.some((w) => w.includes('`modelIds` is set and is ignored'))).toBe(true);
     });
 
-    it('allows the same vendor and model on different start variants', () => {
-        const {ok} = validateOnboardingV2GuidesResult(
+    it('accepts two guides that differ only by start variant, since neither claims a binding', () => {
+        const {ok, errors} = validateOnboardingV2GuidesResult(
             result([
-                guide(),
-                guide({startVariant: EnyoOnboardingV2StartVariant.DeviceNotFound}),
+                guide({name: 'a'}),
+                guide({name: 'b', startVariant: EnyoOnboardingV2StartVariant.DeviceNotFound}),
             ]),
         );
 
         expect(ok).toBe(true);
-    });
-
-    it('detects a collision on a single overlapping model', () => {
-        const {ok, errors} = validateOnboardingV2GuidesResult(
-            result([guide({modelIds: ['ac11', 'ac22']}), guide({modelIds: ['ac22', 'ac33']})]),
-        );
-
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('acme|ac22|device-found-config'))).toBe(true);
-    });
-
-    it('warns about a guide that names no vendor, since it can never be selected', () => {
-        const {ok, warnings} = validateOnboardingV2GuidesResult(
-            result([guide({vendorId: undefined})]),
-        );
-
-        expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('no vendorId'))).toBe(true);
-    });
-
-    it('warns about a vendor-wide guide and collides it with another vendor-wide one', () => {
-        const vendorWide = guide({modelIds: undefined});
-        const single = validateOnboardingV2GuidesResult(result([vendorWide]));
-        expect(single.ok).toBe(true);
-        expect(single.warnings.some((w) => w.includes('no modelIds'))).toBe(true);
-
-        const pair = validateOnboardingV2GuidesResult(result([vendorWide, guide({modelIds: undefined})]));
-        expect(pair.ok).toBe(false);
-        expect(pair.errors.some((e) => e.includes('acme|*|device-found-config'))).toBe(true);
+        expect(errors).toEqual([]);
     });
 });
 
@@ -218,11 +189,12 @@ describe('guide names', () => {
 
     it('labels a named guide by its name in messages', () => {
         const {errors} = validateOnboardingV2GuidesResult(
-            result([guide({name: 'setup-lan'}), guide({name: 'setup-lan-again'})]),
+            result([guide({name: 'setup-lan'}), guide({name: 'setup-lan', startStepId: 'nope'})]),
         );
 
-        // The two guides collide on their binding; the message names the handle.
-        expect(errors.some((e) => e.includes('guides[1] ("setup-lan-again")'))).toBe(true);
+        // The second guide is both a duplicate name and structurally broken; the
+        // messages address it by its handle rather than by its title.
+        expect(errors.some((e) => e.includes('guides[1] ("setup-lan")'))).toBe(true);
     });
 });
 
@@ -233,12 +205,13 @@ describe('assertValidOnboardingV2GuidesResult', () => {
     });
 
     it('throws with every blocking error attached', () => {
-        expect(() => assertValidOnboardingV2GuidesResult(result([guide(), guide()]))).toThrow(
+        const clashing = result([guide({name: 'setup'}), guide({name: 'setup'})]);
+        expect(() => assertValidOnboardingV2GuidesResult(clashing)).toThrow(
             OnboardingV2GuidesValidationError,
         );
 
         try {
-            assertValidOnboardingV2GuidesResult(result([guide(), guide()]));
+            assertValidOnboardingV2GuidesResult(clashing);
         } catch (error) {
             expect((error as OnboardingV2GuidesValidationError).errors.length).toBeGreaterThan(0);
         }

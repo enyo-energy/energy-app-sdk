@@ -31,6 +31,9 @@ import {
 import type {
     EnyoOnboardingV2ActionBlock,
     EnyoOnboardingV2AdditionalSetupBlock,
+    EnyoOnboardingV2Block,
+    EnyoOnboardingV2DeviceSelectBlock,
+    EnyoOnboardingV2EebusDeviceSelectBlock,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2Step,
     EnyoOnboardingV2Transition,
@@ -130,6 +133,7 @@ export function validateOnboardingGuideV2(
         if (!step.blocks?.length) warnings.push(`${at}: no content blocks.`);
 
         validateActionBlocks(step, at, errors, warnings);
+        validatePickerBlocks(step, at, errors, warnings);
         validateLinkBlocks(step, at, errors, warnings);
         validateCredentialsBlocks(step, at, errors, warnings);
         validateSelectBlocks(step, at, errors, warnings);
@@ -203,6 +207,7 @@ export function validateOnboardingGuideV2(
     validateNetworkScanFlag(guide, warnings);
     validateApplianceBinding(guide, errors, warnings);
     validateUserNotification(guide, warnings);
+    validateCatalogBindings(guide, warnings);
     validateGuideName(guide, errors, warnings);
 
     return {ok: errors.length === 0, errors, warnings};
@@ -257,12 +262,6 @@ function validateActionBlocks(
             }
             if (block.action === EnyoOnboardingV2ActionKind.OcppConnect) {
                 validateOcppConnectOutcomes(block, at, errors);
-            }
-            if (block.action === EnyoOnboardingV2ActionKind.DeviceSelect) {
-                validateDeviceSelectOutcomes(block, at, errors, warnings);
-            }
-            if (block.action === EnyoOnboardingV2ActionKind.EebusPair) {
-                validateEebusPairOutcomes(block, at, errors, warnings);
             }
             continue;
         }
@@ -526,8 +525,8 @@ const INPUT_VALUE_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoOnboard
 
 /**
  * Outcome values the host treats as "the check succeeded" — mirrors the
- * runtime's own positive-outcome set, `paired` included, so an eebus-pair
- * result is not read as a failure.
+ * runtime's own positive-outcome set, `paired` included, so an EEBUS
+ * pairing result is not read as a failure.
  */
 const POSITIVE_INPUT_OUTCOMES: ReadonlySet<string> = new Set([
     'reachable',
@@ -690,8 +689,7 @@ const DEVICE_SELECT_OUTCOMES: ReadonlySet<string> = new Set(
 );
 
 /**
- * Validates the outcomes of an {@link EnyoOnboardingV2ActionKind.DeviceSelect}
- * block.
+ * Validates the outcomes of an {@link EnyoOnboardingV2DeviceSelectBlock}.
  *
  * The block reports one of two things — the installer picked a device, or the
  * run came away without one — so its outcome `value`s are closed over
@@ -702,13 +700,13 @@ const DEVICE_SELECT_OUTCOMES: ReadonlySet<string> = new Set(
  * `not-found` branch strands the installer whose device is not in the list —
  * both warnings rather than errors, so a guide can be staged step by step.
  *
- * @param block - The device-select action block being checked.
+ * @param block - The device-select block being checked.
  * @param at - Human-readable location prefix for messages.
  * @param errors - Collector for blocking problems.
  * @param warnings - Collector for advisory problems.
  */
 function validateDeviceSelectOutcomes(
-    block: EnyoOnboardingV2ActionBlock,
+    block: EnyoOnboardingV2DeviceSelectBlock,
     at: string,
     errors: string[],
     warnings: string[],
@@ -747,8 +745,7 @@ const EEBUS_PAIR_OUTCOMES: ReadonlySet<string> = new Set(
 );
 
 /**
- * Validates the outcomes of an {@link EnyoOnboardingV2ActionKind.EebusPair}
- * block.
+ * Validates the outcomes of an {@link EnyoOnboardingV2EebusDeviceSelectBlock}.
  *
  * The block reports one of three things — a peer was picked and the SHIP
  * handshake came up, discovery found nothing, or the handshake failed — so its
@@ -759,13 +756,13 @@ const EEBUS_PAIR_OUTCOMES: ReadonlySet<string> = new Set(
  * every successful pairing, but an author staging a guide step by step may
  * legitimately not have wired it yet.
  *
- * @param block - The eebus-pair action block being checked.
+ * @param block - The EEBUS device-select block being checked.
  * @param at - Human-readable location prefix for messages.
  * @param errors - Collector for blocking problems.
  * @param warnings - Collector for advisory problems.
  */
 function validateEebusPairOutcomes(
-    block: EnyoOnboardingV2ActionBlock,
+    block: EnyoOnboardingV2EebusDeviceSelectBlock,
     at: string,
     errors: string[],
     warnings: string[],
@@ -774,11 +771,11 @@ function validateEebusPairOutcomes(
     for (const outcome of block.outcomes ?? []) {
         if (!EEBUS_PAIR_OUTCOMES.has(outcome.value)) {
             errors.push(
-                `${at}: eebus-pair block "${block.id}" has outcome value "${outcome.value}", which is not an EnyoOnboardingV2EebusPairOutcome member.`,
+                `${at}: eebus-device-select block "${block.id}" has outcome value "${outcome.value}", which is not an EnyoOnboardingV2EebusPairOutcome member.`,
             );
         } else if (values.has(outcome.value)) {
             errors.push(
-                `${at}: eebus-pair block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
+                `${at}: eebus-device-select block "${block.id}" wires outcome value "${outcome.value}" more than once.`,
             );
         }
         values.add(outcome.value);
@@ -786,9 +783,114 @@ function validateEebusPairOutcomes(
 
     if (!values.has(EnyoOnboardingV2EebusPairOutcome.Paired)) {
         warnings.push(
-            `${at}: eebus-pair block "${block.id}" has no "${EnyoOnboardingV2EebusPairOutcome.Paired}" outcome — ` +
+            `${at}: eebus-device-select block "${block.id}" has no "${EnyoOnboardingV2EebusPairOutcome.Paired}" outcome — ` +
                 'a successful pairing would have nowhere to go.',
         );
+    }
+}
+
+/**
+ * Every block type that owns a decision — a picker shares a step with none of
+ * them.
+ */
+const DECISION_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
+    EnyoOnboardingV2BlockType.Action,
+    EnyoOnboardingV2BlockType.Choice,
+    EnyoOnboardingV2BlockType.Input,
+    EnyoOnboardingV2BlockType.Auth,
+    EnyoOnboardingV2BlockType.AdditionalSetup,
+    EnyoOnboardingV2BlockType.DeviceSelect,
+    EnyoOnboardingV2BlockType.EebusDeviceSelect,
+]);
+
+/** The two picker block types, as a type guard over the block union. */
+function isPickerBlock(
+    block: EnyoOnboardingV2Block,
+): block is EnyoOnboardingV2DeviceSelectBlock | EnyoOnboardingV2EebusDeviceSelectBlock {
+    return (
+        block.type === EnyoOnboardingV2BlockType.DeviceSelect ||
+        block.type === EnyoOnboardingV2BlockType.EebusDeviceSelect
+    );
+}
+
+/**
+ * Validates the picker blocks of a step —
+ * {@link EnyoOnboardingV2DeviceSelectBlock} and
+ * {@link EnyoOnboardingV2EebusDeviceSelectBlock}.
+ *
+ * Three things are checked beyond the per-kind outcome rules:
+ *
+ * - **A picker owns its step.** It renders a full screen and may skip that
+ *   screen entirely when one candidate matches; a second decision block beside
+ *   it would either be skipped along with it or offer a way past the pick. Both
+ *   are errors rather than warnings, because there is no reading of the step
+ *   that behaves sensibly.
+ * - **An empty filter is not a filter.** `detectedAt: []` / `deviceTypes: []`
+ *   match nothing, so the picker can only ever reach its `not-found` branch.
+ *   Omitting the property is how "no filter" is expressed.
+ * - **A picker that renders should say something.** With neither a headline of
+ *   its own nor a step title, the installer gets a bare list — a warning, since
+ *   the host has a default caption.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validatePickerBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const blocks = (step.blocks ?? []).filter(isPickerBlock);
+    if (!blocks.length) return;
+
+    const label = (block: EnyoOnboardingV2Block): string => `${block.type} block "${block.id}"`;
+
+    if (blocks.length > 1) {
+        errors.push(
+            `${at}: ${label(blocks[0]!)} shares the step with ${blocks.length - 1} other picker block(s) — ` +
+                'each picker is a screen of its own, and two on one step cannot both be shown or both be skipped.',
+        );
+    }
+
+    const others = (step.blocks ?? []).filter(
+        (b) => !isPickerBlock(b) && DECISION_BLOCK_TYPES.has(b.type),
+    );
+    if (others.length) {
+        errors.push(
+            `${at}: ${label(blocks[0]!)} shares the step with ${others.length} other decision block(s) — ` +
+                'a picker owns its step, and a block beside it offers a way past the selection ' +
+                '(or vanishes with the picker when it is skipped).',
+        );
+    }
+
+    for (const block of blocks) {
+        if (block.type === EnyoOnboardingV2BlockType.DeviceSelect) {
+            validateDeviceSelectOutcomes(block, at, errors, warnings);
+            if (block.detectedAt && block.detectedAt.length === 0) {
+                errors.push(
+                    `${at}: ${label(block)} has an empty \`detectedAt\` filter, which matches no device — ` +
+                        'omit the property to offer every device the run found.',
+                );
+            }
+        } else {
+            validateEebusPairOutcomes(block, at, errors, warnings);
+            if (block.deviceTypes && block.deviceTypes.length === 0) {
+                errors.push(
+                    `${at}: ${label(block)} has an empty \`deviceTypes\` filter, which matches no peer — ` +
+                        'omit the property to offer every discovered peer.',
+                );
+            }
+        }
+
+        if (!block.headline?.length && !step.title?.length) {
+            warnings.push(
+                `${at}: ${label(block)} has no headline and sits on a step with no title — ` +
+                    'the installer is shown a bare list of devices.',
+            );
+        }
     }
 }
 
@@ -837,6 +939,8 @@ function validateAuthBlocks(
             (b) =>
                 b.type === EnyoOnboardingV2BlockType.Choice ||
                 b.type === EnyoOnboardingV2BlockType.Action ||
+                b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
+                b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.Input,
         );
         if (others.length) {
@@ -1008,6 +1112,8 @@ function validateAdditionalSetupBlocks(
             (b) =>
                 b.type === EnyoOnboardingV2BlockType.Choice ||
                 b.type === EnyoOnboardingV2BlockType.Action ||
+                b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
+                b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.Input ||
                 b.type === EnyoOnboardingV2BlockType.Auth,
         );
@@ -1024,12 +1130,14 @@ function validateAdditionalSetupBlocks(
  * Checks {@link EnyoOnboardingV2Guide.applianceId} against the guide's
  * {@link EnyoOnboardingV2Guide.startVariant}.
  *
- * The binding is required on {@link EnyoOnboardingV2StartVariant.Maintenance}
- * and meaningless everywhere else. A maintenance run services an appliance that
- * already exists, so a guide that does not name one cannot be bound to anything
- * — that is a blocking error, not advice. The reverse is only a warning: an
- * installation guide carrying an appliance id is harmless, the host ignores it,
- * but it is a sign the wrong variant was chosen.
+ * The binding is required on the two appliance-bound variants —
+ * {@link EnyoOnboardingV2StartVariant.Maintenance} and
+ * {@link EnyoOnboardingV2StartVariant.OfflineReconnect} — and meaningless
+ * everywhere else. Both run against an appliance that already exists (servicing
+ * it, or reconnecting one that went offline), so a guide that does not name one
+ * cannot be bound to anything — that is a blocking error, not advice. The
+ * reverse is only a warning: an installation guide carrying an appliance id is
+ * harmless, the host ignores it, but it is a sign the wrong variant was chosen.
  *
  * @param guide - The guide being validated.
  * @param errors - Collector for blocking problems.
@@ -1040,16 +1148,16 @@ function validateApplianceBinding(
     errors: string[],
     warnings: string[],
 ): void {
-    const isMaintenance = guide.startVariant === EnyoOnboardingV2StartVariant.Maintenance;
+    const isApplianceBound = APPLIANCE_BOUND_VARIANTS.has(guide.startVariant);
     const applianceId = typeof guide.applianceId === 'string' ? guide.applianceId.trim() : undefined;
 
-    if (isMaintenance) {
+    if (isApplianceBound) {
         if (!applianceId) {
             errors.push(
                 '`applianceId` is required on a `' +
-                    `${EnyoOnboardingV2StartVariant.Maintenance}` +
-                    '` guide — a maintenance run services an appliance that already exists, so the ' +
-                    'guide must name it.',
+                    `${guide.startVariant}` +
+                    '` guide — the run works on an appliance that already exists, so the guide must ' +
+                    'name it.',
             );
         }
         return;
@@ -1061,10 +1169,22 @@ function validateApplianceBinding(
                 `${guide.startVariant}` +
                 '` guide and is ignored — only a `' +
                 `${EnyoOnboardingV2StartVariant.Maintenance}` +
+                '` or `' +
+                `${EnyoOnboardingV2StartVariant.OfflineReconnect}` +
                 '` guide binds an existing appliance.',
         );
     }
 }
+
+/**
+ * The start variants whose run is bound to an appliance that already exists, and
+ * which therefore require {@link EnyoOnboardingV2Guide.applianceId} and give
+ * {@link EnyoOnboardingV2Guide.notifyUser} a meaning.
+ */
+const APPLIANCE_BOUND_VARIANTS: ReadonlySet<string> = new Set<string>([
+    EnyoOnboardingV2StartVariant.Maintenance,
+    EnyoOnboardingV2StartVariant.OfflineReconnect,
+]);
 
 /**
  * Checks {@link EnyoOnboardingV2Guide.name} is usable as a handle.
@@ -1111,10 +1231,11 @@ function validateGuideName(
  * Checks {@link EnyoOnboardingV2Guide.notifyUser} against the guide's
  * {@link EnyoOnboardingV2Guide.startVariant}.
  *
- * The flag asks the host to tell the end customer that a maintenance run is
- * happening on their appliance, so it only means anything on
- * {@link EnyoOnboardingV2StartVariant.Maintenance}. An installation guide has
- * nobody to notify — the appliance does not exist yet and the installer is
+ * The flag asks the host to tell the end customer that something is happening on
+ * their appliance, so it only means anything on the appliance-bound variants
+ * ({@link EnyoOnboardingV2StartVariant.Maintenance},
+ * {@link EnyoOnboardingV2StartVariant.OfflineReconnect}). An installation guide
+ * has nobody to notify — the appliance does not exist yet and the installer is
  * standing in front of the device — so setting it there is a warning, not an
  * error: the host ignores the value, but it is a sign the wrong variant was
  * chosen. Leaving it unset is always fine; it defaults to `false`.
@@ -1124,15 +1245,50 @@ function validateGuideName(
  */
 function validateUserNotification(guide: EnyoOnboardingV2Guide, warnings: string[]): void {
     if (guide.notifyUser === undefined) return;
-    if (guide.startVariant === EnyoOnboardingV2StartVariant.Maintenance) return;
+    if (APPLIANCE_BOUND_VARIANTS.has(guide.startVariant)) return;
 
     warnings.push(
         '`notifyUser` is set on a `' +
             `${guide.startVariant}` +
             '` guide and is ignored — only a `' +
             `${EnyoOnboardingV2StartVariant.Maintenance}` +
+            '` or `' +
+            `${EnyoOnboardingV2StartVariant.OfflineReconnect}` +
             '` guide notifies the end customer about the run.',
     );
+}
+
+/**
+ * Checks that a guide does not try to bind itself to a vendor or a model.
+ *
+ * {@link EnyoOnboardingV2Guide.vendorId} and
+ * {@link EnyoOnboardingV2Guide.modelIds} describe a guide *as enyo stores it*:
+ * the bindings are derived from the package the guide is served by and from the
+ * vendor catalog, and they are attached when the guide is registered. An app
+ * that fills them in is not choosing what its guide applies to — the values are
+ * overwritten — it is only planting a catalog id that will disagree with the
+ * real binding once the catalog moves on.
+ *
+ * A warning rather than an error: the guide is publishable and behaves
+ * correctly, the fields are simply ignored.
+ *
+ * @param guide - The guide being validated.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateCatalogBindings(guide: EnyoOnboardingV2Guide, warnings: string[]): void {
+    if (guide.vendorId !== undefined) {
+        warnings.push(
+            '`vendorId` is set and is ignored — enyo attaches the vendor binding when the guide is ' +
+                'registered. Change the registration, not the guide.',
+        );
+    }
+    if (guide.modelIds !== undefined) {
+        warnings.push(
+            '`modelIds` is set and is ignored — enyo attaches the model bindings when the guide is ' +
+                'registered. Two models that need different instructions are two guides, not one ' +
+                'guide naming both.',
+        );
+    }
 }
 
 /**
@@ -1173,16 +1329,17 @@ function validateNetworkScanFlag(guide: EnyoOnboardingV2Guide, warnings: string[
         );
     }
 
-    const pairsEebus = blocks.some(
+    const picks = blocks.some(
         (b) =>
-            b.type === EnyoOnboardingV2BlockType.Action &&
-            b.action === EnyoOnboardingV2ActionKind.EebusPair,
+            b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
+            b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect,
     );
-    if (pairsEebus) {
+    if (picks) {
         warnings.push(
-            'requiresNetworkScan is false, but an eebus-pair block asks the installer to pick a ' +
-                'discovered EEBUS peer — nothing was scanned, so the picker would open on an empty ' +
-                'list. Run a network-scan action inside the guide ahead of it.',
+            'requiresNetworkScan is false, but a device-select or eebus-device-select block asks the ' +
+                'installer to pick a discovered device — nothing was scanned, so the picker would open ' +
+                'on an empty list and route straight to its not-found branch. Run a network-scan action ' +
+                'inside the guide ahead of it.',
         );
     }
 }
@@ -1201,9 +1358,11 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             for (const o of b.options) keys.add(`choice:${b.id}:${o.id}`);
         } else if (
             b.type === EnyoOnboardingV2BlockType.Action ||
-            b.type === EnyoOnboardingV2BlockType.Input
+            b.type === EnyoOnboardingV2BlockType.Input ||
+            b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
+            b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect
         ) {
-            for (const o of b.outcomes) keys.add(`outcome:${b.id}:${o.id}`);
+            for (const o of b.outcomes ?? []) keys.add(`outcome:${b.id}:${o.id}`);
         } else if (b.type === EnyoOnboardingV2BlockType.Auth && b.outcome?.id) {
             keys.add(`outcome:${b.id}:${b.outcome.id}`);
         } else if (b.type === EnyoOnboardingV2BlockType.AdditionalSetup) {

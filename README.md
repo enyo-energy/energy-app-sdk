@@ -85,6 +85,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [Device Integration](#device-integration)
   - [Data Bus Messaging](#data-bus-messaging)
     - [Announcing Appliance Flexibility](#announcing-appliance-flexibility)
+    - [Explaining Why a Command Was Issued](#explaining-why-a-command-was-issued)
   - [Settings Management](#settings-management)
 - [Troubleshooting](#troubleshooting)
 - [External Libraries](#external-libraries)
@@ -1680,9 +1681,27 @@ await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request)
 
 Every such block must declare a `failed` outcome — it absorbs a rejection, a timeout, a missing handler, and an outcome value matching no branch (guide and handler are linked only by strings). Secrets are never logged, never prefilled, and not kept in run state. See [ONBOARDING.md](./ONBOARDING.md#app-defined-setups-additional-setup).
 
+Guides pick the device on a screen of their own. `device-select` lists the network devices the run found; `eebus-device-select` lists the discovered EEBUS peers, filtered by the SHIP device type they announce (`EnyoEebusDeviceTypeEnum`). Both carry their own `headline`/`description`, and both **skip the screen entirely** when exactly one candidate matches the filter — the handler still runs and the run is still bound, with `autoSelected: true` on the request. Register one handler per kind; a network device and an EEBUS peer are different things and neither handler is a fallback for the other:
+
+```typescript
+const onboarding = energyApp.useOnboardingV2();
+
+await onboarding.registerDeviceSelectHandler(async (request) => ({
+    requestId: request.requestId,
+    applianceIds: await adoptDevices(request.devices, request.applianceId),
+}));
+
+await onboarding.registerEebusDeviceSelectHandler(async (request) => ({
+    requestId: request.requestId,   // request.peer.ski identifies the paired device
+    applianceIds: await adoptEebusPeer(request.peer, request.applianceId),
+}));
+```
+
+On an `offline-reconnect` run the request carries the appliance that went offline — re-point it and answer with the same `applianceId` rather than creating a second one. See [ONBOARDING.md](./ONBOARDING.md#picking-the-device-device-select).
+
 Your answer wins over the host's own resolution, so a wrong value is worse than none — the installer pastes it into a charger and it fails minutes later as an `ocpp-connect` timeout. `validateOnboardingV2DynamicResult()` catches the copy-target mistakes (whitespace, a non-absolute URL, a plaintext scheme).
 
-Each guide must carry the `vendorId`, `modelIds` and `startVariant` it applies to — that is how the host selects one for a run, and there is no publish step left to bind them. See [ONBOARDING.md](./ONBOARDING.md#serving-guides-the-host-pulls-the-app-never-publishes) for the full v2 model.
+Each guide declares the `startVariant` it applies to (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance`, `offline-reconnect`). It must **not** declare `vendorId` or `modelIds`: enyo attaches those bindings when the guide is registered, an app-supplied value is overwritten, and `validateOnboardingGuideV2()` warns about it. See [ONBOARDING.md](./ONBOARDING.md#serving-guides-the-host-pulls-the-app-never-publishes) for the full v2 model.
 
 Not permission-gated.
 
@@ -3602,6 +3621,112 @@ Notes:
   say what the granted envelope is meant for, using the same vocabulary, so a
   grant can be read against the announcement it answers. It is advisory — the
   command's `powerW` remains the only limit.
+
+#### Explaining Why a Command Was Issued
+
+Every data bus command can carry an `EnyoDataBusCommandReason`. Its `type`
+(`EnyoDataBusCommandReasonTypeEnum`) and `category` are **closed, coarse
+vocabularies** — they exist for filtering, iconography and analytics, not for
+narrating a decision. There is no "thermal cost" or "efficiency" member, and you
+must not synthesize one: pick the honest type and attach the numbers.
+
+The prose for the end user lives in `translation` (per language). The numbers
+behind that prose live in the optional `context`
+(`EnyoDataBusCommandReasonContext`), so a consumer can verify, re-render or audit
+the explanation instead of taking it on trust:
+
+| Section | Answers | Key fields |
+| --- | --- | --- |
+| `proactive` | Did we act on a forecast rather than a measurement? | `boolean` |
+| `forecast` | What did we see coming? | `outdoorTemperatureC`, `thresholdTemperatureC`, `windowStartIso`/`windowEndIso`, `triggerTimestampIso` |
+| `placement` | When does the block run, and by when must it be done? | `startIso`, `endIso`, `durationMinutes`, `deadlineIso` |
+| `efficiency` | Why this slot and not the cheaper-looking one? | `coefficientOfPerformance`, `effectiveCostPerKwhThermal`, `compared*` |
+| `thermalStorage` | What ends the block? | `target`, `energyPerKelvinKwh`, `overheatKelvin`, `plannedEnergyKwh`, `absorbableEnergyKwh` |
+
+Worked example — a buffer tank charged ahead of a cold front. The command is
+`ScheduledOptimization` (category `Schedule`), which is the honest type for a
+block an optimizer placed in advance:
+
+```typescript
+import {
+    EnyoCurrencyEnum,
+    EnyoDataBusCommandReason,
+    EnyoDataBusCommandReasonCategoryEnum,
+    EnyoDataBusCommandReasonTypeEnum,
+    EnyoFlexibilityTargetEnum,
+} from '@enyo-energy/energy-app-sdk';
+
+const reason: EnyoDataBusCommandReason = {
+    type: EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization,
+    category: EnyoDataBusCommandReasonCategoryEnum.Schedule,
+    translation: [
+        {
+            language: 'en',
+            value:
+                'Banking 2 hours of cheap heat into the buffer tank before tonight\'s cold front, ' +
+                'so the compressor can coast through the expensive hours.',
+        },
+    ],
+    // Per kWh of *electricity* — the raw price of the chosen slot.
+    electricityPricePerKwh: 0.30,
+    currency: EnyoCurrencyEnum.EUR,
+    context: {
+        // We watch the weather, not the tank.
+        proactive: true,
+        forecast: {
+            outdoorTemperatureC: 6.5,
+            thresholdTemperatureC: 10,
+            windowStartIso: '2026-01-14T12:00:00Z',
+            windowEndIso: '2026-01-15T12:00:00Z',
+            triggerTimestampIso: '2026-01-14T21:00:00Z',
+        },
+        // A 120-minute block, finished before that cold front arrives.
+        placement: {
+            startIso: '2026-01-14T12:00:00Z',
+            endIso: '2026-01-14T14:00:00Z',
+            durationMinutes: 120,
+            deadlineIso: '2026-01-14T21:00:00Z',
+        },
+        // Placed by price ÷ COP, not price alone: a warm midday hour at 30 ct
+        // delivers cheaper heat than a cold night hour at 20 ct.
+        efficiency: {
+            coefficientOfPerformance: 4.2,
+            effectiveCostPerKwhThermal: 0.0714,
+            comparedElectricityPricePerKwh: 0.20,
+            comparedCoefficientOfPerformance: 2.4,
+            comparedEffectiveCostPerKwhThermal: 0.0833,
+            comparedStartIso: '2026-01-14T02:00:00Z',
+        },
+        // And it stops once the store is physically full: the pump tells us one
+        // Kelvin of overheat absorbs 1.2 kWh, so 5 K of headroom is 6.1 kWh.
+        thermalStorage: {
+            target: EnyoFlexibilityTargetEnum.BufferTank,
+            energyPerKelvinKwh: 1.2,
+            overheatKelvin: 5,
+            plannedEnergyKwh: 6.0,
+            absorbableEnergyKwh: 6.1,
+        },
+    },
+};
+```
+
+Notes:
+
+- **`context` is entirely optional and additive.** A reason that sets none of it
+  behaves exactly as before; consumers must tolerate every section being absent.
+- **Costs are not all per kWh of electricity.** `electricityPricePerKwh` is per
+  kWh drawn; `effectiveCostPerKwhThermal` is per kWh *delivered*, in the same
+  `currency`. Mixing the two is what makes an efficiency-placed command look like
+  a mistake.
+- **One rejected alternative, not a solver dump.** The `compared*` fields describe
+  the single best slot that lost, because that is what explains the choice to a
+  person.
+- **Nothing in a reason controls anything.** It explains a command; the command's
+  own fields stay authoritative.
+- **`thermalStorage.target` reuses `EnyoFlexibilityTargetEnum`**, the same
+  vocabulary as flexibility announcements and the `targets` breakdown on
+  available-power commands — so a grant and its justification name the same
+  physical sink without a mapping table.
 
 ### Settings Management
 

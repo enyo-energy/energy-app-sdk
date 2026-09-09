@@ -31,6 +31,52 @@ export interface EebusDevice {
 }
 
 /**
+ * The device type an EEBUS peer announces about itself, as carried in the `type`
+ * field of its SHIP mDNS/DNS-SD record.
+ *
+ * This is the peer's own claim, made before anything is paired — which is
+ * exactly why it is useful during onboarding: it is the only thing that tells a
+ * heat pump apart from the wallbox and the inverter in a discovery list, and it
+ * is what {@link EnyoOnboardingV2EebusDeviceSelectBlock.deviceTypes} filters a
+ * picker by.
+ *
+ * Deliberately the SHIP vocabulary rather than {@link EnyoApplianceTypeEnum}: a
+ * filter that names what the peer actually announces can be checked against the
+ * wire, whereas one phrased in appliance types would need a mapping table that
+ * silently rots as SHIP adds device types.
+ *
+ * **Open vocabulary.** A peer may announce a type not listed here, or none at
+ * all. Treat an unknown string as *some other type* — never as a match — and
+ * keep such peers visible where no filter is applied.
+ */
+export enum EnyoEebusDeviceTypeEnum {
+    /** A heat pump (SHIP `HeatPumpAppliance`). */
+    HeatPumpAppliance = 'HeatPumpAppliance',
+    /** Charging equipment for an electric vehicle (SHIP `EVSE`). */
+    Evse = 'EVSE',
+    /** A charging station enclosing one or more EVSEs. */
+    ChargingStation = 'ChargingStation',
+    /** A PV / battery inverter. */
+    InverterSystem = 'InverterSystem',
+    /** A photovoltaic system. */
+    PvSystem = 'PVSystem',
+    /** An electricity storage system (household battery). */
+    ElectricityStorageSystem = 'ElectricityStorageSystem',
+    /** An electricity supply system (grid connection point / meter). */
+    ElectricitySupplySystem = 'ElectricitySupplySystem',
+    /** A sub-meter for electricity. */
+    SubMeterElectricity = 'SubMeterElectricity',
+    /** A heating or ventilation system that is not a heat pump. */
+    HvacSystem = 'HVACSystem',
+    /** A domestic hot water / heat storage system. */
+    HeatStorageSystem = 'HeatStorageSystem',
+    /** An energy management system (a CEM peer — usually us, not the device). */
+    EnergyManagementSystem = 'EnergyManagementSystem',
+    /** A device that announces no more specific type. */
+    Generic = 'Generic',
+}
+
+/**
  * Represents a device discovered on the network via mDNS that has not yet been paired.
  */
 export interface EebusDiscoveredDevice {
@@ -42,6 +88,18 @@ export interface EebusDiscoveredDevice {
     host: string;
     /** Port number for the SHIP connection */
     port: number;
+    /**
+     * The device type the peer announced in its SHIP record, when it announced
+     * one this SDK knows.
+     *
+     * Absent for a peer that advertises no `type`, and for one advertising a
+     * value outside {@link EnyoEebusDeviceTypeEnum} — the raw claim is not
+     * surfaced as a free string, since a caller that cannot act on the known
+     * values cannot act on an unknown one either. Absent therefore means "do not
+     * assume", not "generic": a peer announcing `Generic` sets this to
+     * {@link EnyoEebusDeviceTypeEnum.Generic}.
+     */
+    deviceType?: EnyoEebusDeviceTypeEnum;
 }
 
 /**

@@ -21,7 +21,7 @@ import {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
-import type {EnyoFlexibilityTargetPower} from "./enyo-flexibility-announcement.js";
+import type {EnyoFlexibilityTargetEnum, EnyoFlexibilityTargetPower} from "./enyo-flexibility-announcement.js";
 import {EnyoSmartPlugApplianceStateEnum} from "./enyo-smart-plug-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
@@ -32,11 +32,25 @@ import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
  * Used to attach context to commands for logging, debugging, and UI display.
  */
 export enum EnyoDataBusCommandReasonTypeEnum {
-    /** Command issued because the electricity price is below a configured threshold */
+    /**
+     * Command issued because the electricity price is below a configured threshold.
+     *
+     * Says the *electricity* was cheap. When the slot was in fact ranked by
+     * cost per kWh of delivered heat rather than by price alone, add
+     * {@link EnyoDataBusCommandReasonContext.efficiency} so the arithmetic is
+     * visible — a warm hour at a higher price can still be the cheaper heat.
+     */
     ElectricityPriceBelowThreshold = 'electricity-price-below-threshold',
     /** Command issued because the electricity price is above a configured threshold */
     ElectricityPriceAboveThreshold = 'electricity-price-above-threshold',
-    /** Command issued because PV surplus is available */
+    /**
+     * Command issued because PV surplus is available.
+     *
+     * Covers surplus banked into a thermal store as well as surplus consumed
+     * right away; describe the store with
+     * {@link EnyoDataBusCommandReasonContext.thermalStorage} when it was the
+     * store's headroom, not the surplus, that bounded the block.
+     */
     PvSurplusAvailable = 'pv-surplus-available',
     /** Command issued because PV surplus is unavailable */
     PvSurplusUnavailable = 'pv-surplus-unavailable',
@@ -63,7 +77,22 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     BatterySoCHigh = 'battery-soc-high',
     /** Command issued to follow the planned EV charging schedule */
     EvChargingSchedule = 'ev-charging-schedule',
-    /** Command issued as part of a planned/scheduled optimization */
+    /**
+     * Command issued as part of a planned/scheduled optimization.
+     *
+     * The honest type for a proactive block placed by an optimizer — including
+     * an efficiency-placed thermal pre-charge, where a store is charged ahead
+     * of a forecast cold front and the slot is picked by price divided by COP
+     * rather than by price alone.
+     *
+     * This enum is deliberately closed and coarse: there is no "thermal cost"
+     * or "efficiency" member, and consumers must not synthesize one. Explain
+     * such a command by pairing this type (category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.Schedule}) with
+     * {@link EnyoDataBusCommandReason.context} — `forecast` for what was seen
+     * coming, `efficiency` for why this slot won, `thermalStorage` for what
+     * ends the block, `placement` for when it runs.
+     */
     ScheduledOptimization = 'scheduled-optimization',
     /** Command issued because the user explicitly requested it */
     UserRequest = 'user-request',
@@ -138,6 +167,214 @@ export interface EnyoDataBusCommandReason {
      * rather than saying "elsewhere".
      */
     inFavourOfApplianceType?: EnyoApplianceTypeEnum;
+    /**
+     * Optional structured backing for the explanation — the numbers behind the
+     * decision, so {@link translation} can make a claim a consumer is able to
+     * verify and render rather than having to take on trust.
+     *
+     * Nested so further context keys can be added without growing the flat
+     * field list above, mirroring `EnyoFlexibilityAnnouncementContext`.
+     */
+    context?: EnyoDataBusCommandReasonContext;
+}
+
+/**
+ * When a command was planned to run, and by when it had to be done.
+ *
+ * Carries the *plan*, not the outcome: a command that is cut short or extended
+ * later does not retroactively change the placement it was issued with.
+ */
+export interface EnyoDataBusCommandReasonPlacement {
+    /** ISO 8601 timestamp the planned block starts at. */
+    startIso?: string;
+    /** ISO 8601 timestamp the planned block ends at. */
+    endIso?: string;
+    /**
+     * Length of the planned block in minutes. May be given without
+     * {@link startIso}/{@link endIso} when only the duration was decided
+     * (e.g. "bank a 120-minute block of cheap heat").
+     */
+    durationMinutes?: number;
+    /**
+     * ISO 8601 timestamp the block had to be finished by — the event the
+     * placement was pulled forward for, such as the hour a cold front or an
+     * expensive price window starts. Distinct from {@link endIso}: the deadline
+     * is the constraint, the end is what was chosen inside it.
+     */
+    deadlineIso?: string;
+}
+
+/**
+ * Why *this* slot was chosen over a cheaper-looking one — the efficiency
+ * arithmetic behind a placement.
+ *
+ * Exists because raw price alone misexplains an efficiency-placed command. A
+ * heat pump delivers far more heat per kWh when it is warm outside, so a warm
+ * midday hour at a higher electricity price can produce cheaper heat than a
+ * cold night hour at a lower one. Without these fields a consumer reading only
+ * {@link EnyoDataBusCommandReason.electricityPricePerKwh} would conclude the
+ * optimizer picked the expensive hour by mistake.
+ *
+ * Costs here are per kWh of *delivered* energy (heat, for a heat pump), in
+ * {@link EnyoDataBusCommandReason.currency}, whereas
+ * {@link EnyoDataBusCommandReason.electricityPricePerKwh} is per kWh of
+ * electricity drawn. The `compared*` fields describe a single rejected
+ * alternative — the best slot that lost — so the trade-off can be shown to an
+ * end user; they are not a dump of every candidate the solver evaluated.
+ */
+export interface EnyoDataBusCommandReasonEfficiencyContext {
+    /**
+     * Conversion efficiency assumed for the chosen slot — delivered energy per
+     * unit of electrical energy. For a heat pump, the expected COP.
+     */
+    coefficientOfPerformance?: number;
+    /**
+     * Cost of one kWh of delivered energy in the chosen slot, in
+     * {@link EnyoDataBusCommandReason.currency}. Effectively electricity price
+     * divided by {@link coefficientOfPerformance} — the figure the placement
+     * was actually ranked by.
+     */
+    effectiveCostPerKwhThermal?: number;
+    /** Electricity price per kWh of the rejected alternative slot. */
+    comparedElectricityPricePerKwh?: number;
+    /** Conversion efficiency assumed for the rejected alternative slot. */
+    comparedCoefficientOfPerformance?: number;
+    /**
+     * Cost of one kWh of delivered energy in the rejected alternative slot —
+     * the number that made it lose despite a lower electricity price.
+     */
+    comparedEffectiveCostPerKwhThermal?: number;
+    /** ISO 8601 timestamp the rejected alternative slot would have started at. */
+    comparedStartIso?: string;
+}
+
+/**
+ * How much heat the store being charged can still physically absorb — the
+ * ceiling that ends a pre-charge regardless of how cheap the energy is.
+ *
+ * A thermal store is charged by overheating it above its normal setpoint, and
+ * the appliance reports how much energy one Kelvin of overheat absorbs. That
+ * makes the headroom a computable number rather than a guess, and it is the
+ * honest answer to "why did it stop after 90 minutes when the cheap window was
+ * three hours long?".
+ */
+export interface EnyoDataBusCommandReasonThermalStorageContext {
+    /**
+     * Which physical sink is being charged. Reuses the vocabulary of
+     * {@link EnyoFlexibilityTargetEnum} — the same enum a flexibility
+     * announcement and an available-power grant
+     * ({@link EnyoAvailablePowerCommandData.targets}) name their targets with —
+     * so a grant and its justification can be read against each other without a
+     * mapping table.
+     */
+    target?: EnyoFlexibilityTargetEnum;
+    /**
+     * Energy the store absorbs per Kelvin of overheat, in kWh/K, as reported by
+     * the appliance. The conversion factor behind {@link absorbableEnergyKwh}.
+     */
+    energyPerKelvinKwh?: number;
+    /** Planned overheat above the normal setpoint, in Kelvin. */
+    overheatKelvin?: number;
+    /** Energy the command intends to bank into the store, in kWh. */
+    plannedEnergyKwh?: number;
+    /**
+     * Energy the store can still take before it is physically full, in kWh.
+     * When {@link plannedEnergyKwh} equals this, the store — not the price — is
+     * what limited the block.
+     */
+    absorbableEnergyKwh?: number;
+}
+
+/**
+ * The forecast that triggered a proactive command — what we saw coming, not
+ * what we measured now.
+ *
+ * Set on commands whose trigger is ahead of them: a pre-charge placed because
+ * the outdoor temperature is forecast to drop below a threshold later, for
+ * instance, is not explained by any present measurement of the appliance.
+ */
+export interface EnyoDataBusCommandReasonForecastContext {
+    /** Forecast outdoor temperature that triggered the command, in Celsius. */
+    outdoorTemperatureC?: number;
+    /**
+     * Threshold the forecast crossed, in Celsius — the line that made
+     * {@link outdoorTemperatureC} worth acting on.
+     */
+    thresholdTemperatureC?: number;
+    /** ISO 8601 start of the forecast window that was inspected. */
+    windowStartIso?: string;
+    /** ISO 8601 end of the forecast window that was inspected. */
+    windowEndIso?: string;
+    /**
+     * ISO 8601 timestamp inside the window at which the forecast condition
+     * first holds — when the cold front actually arrives.
+     */
+    triggerTimestampIso?: string;
+}
+
+/**
+ * Structured context backing a command reason: the numbers a consumer needs to
+ * verify, re-render or audit the explanation carried in
+ * {@link EnyoDataBusCommandReason.translation}.
+ *
+ * Every section is optional and purely additive; a reason that sets none of
+ * them behaves exactly as before. Nothing here is a control instruction — it
+ * explains a command, it never modifies it.
+ *
+ * It exists because {@link EnyoDataBusCommandReasonTypeEnum} is deliberately
+ * closed and coarse. An efficiency-placed thermal pre-charge, for example, has
+ * no type of its own and must not get one invented for it: it is issued as
+ * {@link EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization} (category
+ * {@link EnyoDataBusCommandReasonCategoryEnum.Schedule}) and made
+ * self-explanatory through {@link efficiency}, {@link thermalStorage},
+ * {@link forecast} and {@link placement} instead.
+ *
+ * @example
+ * ```typescript
+ * // Buffer tank, charged ahead of a cold front, placed by price ÷ COP.
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.Schedule,
+ *     electricityPricePerKwh: 0.30,
+ *     currency: EnyoCurrencyEnum.EUR,
+ *     context: {
+ *         proactive: true,
+ *         placement: {durationMinutes: 120, startIso: '2026-01-14T12:00:00Z', deadlineIso: '2026-01-14T21:00:00Z'},
+ *         forecast: {outdoorTemperatureC: 6.5, thresholdTemperatureC: 10, triggerTimestampIso: '2026-01-14T21:00:00Z'},
+ *         efficiency: {
+ *             coefficientOfPerformance: 4.2,
+ *             effectiveCostPerKwhThermal: 0.0714,
+ *             comparedElectricityPricePerKwh: 0.20,
+ *             comparedCoefficientOfPerformance: 2.4,
+ *             comparedEffectiveCostPerKwhThermal: 0.0833,
+ *             comparedStartIso: '2026-01-14T02:00:00Z',
+ *         },
+ *         thermalStorage: {
+ *             target: EnyoFlexibilityTargetEnum.BufferTank,
+ *             energyPerKelvinKwh: 1.2,
+ *             overheatKelvin: 5,
+ *             plannedEnergyKwh: 6.0,
+ *             absorbableEnergyKwh: 6.1,
+ *         },
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonContext {
+    /**
+     * Whether the command was triggered by something forecast rather than by a
+     * present measurement. When `true`, {@link forecast} should say what was
+     * seen coming.
+     */
+    proactive?: boolean;
+    /** When the command was planned to run, and by when it had to be done. */
+    placement?: EnyoDataBusCommandReasonPlacement;
+    /** Why this slot beat a cheaper-looking one. */
+    efficiency?: EnyoDataBusCommandReasonEfficiencyContext;
+    /** How much the charged store can still physically absorb. */
+    thermalStorage?: EnyoDataBusCommandReasonThermalStorageContext;
+    /** The forecast that triggered a proactive command. */
+    forecast?: EnyoDataBusCommandReasonForecastContext;
 }
 
 /**

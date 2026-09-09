@@ -22,6 +22,8 @@
  */
 
 import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
+import type {EnyoEebusDeviceTypeEnum} from './enyo-eebus.js';
+import type {EnyoNetworkDeviceDetectedAtEnum} from './enyo-network-device.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -60,6 +62,37 @@ export enum EnyoOnboardingV2StartVariant {
      * whereas here they are known from the first step.
      */
     Maintenance = 'maintenance',
+    /**
+     * An appliance that used to work has stopped talking to us, and the
+     * installer (or the customer) is reconnecting it.
+     *
+     * The second variant that starts from an existing appliance, and the
+     * distinction from {@link Maintenance} is the situation, not the mechanics:
+     * maintenance is planned work on an appliance we can still reach, while this
+     * one starts from a broken connection — the device changed its IP after a
+     * router swap, dropped off the WiFi, lost its cloud token, or had EEBUS
+     * pairing cleared by a firmware update. The guide's job is to find it again
+     * and re-bind it to the appliance that already exists, not to create a
+     * second one.
+     *
+     * Given its own variant rather than folded into maintenance because the host
+     * offers it in a different situation and an app usually wants a different
+     * flow: a reconnect guide starts with a scan and a picker, whereas a
+     * maintenance guide starts by talking to an appliance it can already reach.
+     *
+     * Shares maintenance's rules, since both are bound to something that already
+     * exists: {@link EnyoOnboardingV2Guide.applianceId} is REQUIRED and names the
+     * appliance being reconnected, and {@link EnyoOnboardingV2Guide.notifyUser}
+     * is meaningful — an appliance offline long enough to need this is usually
+     * one the customer has already noticed.
+     *
+     * A device-select or EEBUS picker in such a guide should re-bind rather than
+     * duplicate: the registered handler is passed the run's existing
+     * {@link EnyoOnboardingV2DeviceSelectRequest.applianceId} and should answer
+     * with that same id once it has re-pointed the appliance at the device the
+     * installer picked.
+     */
+    OfflineReconnect = 'offline-reconnect',
 }
 
 /**
@@ -139,71 +172,11 @@ export enum EnyoOnboardingV2ActionKind {
      * is the common case, not an edge case.
      */
     OcppConnect = 'ocpp-connect',
-    /**
-     * Let the installer pick one of the EEBUS peers discovered on the local
-     * network and trust its SKI.
-     *
-     * EEBUS is the third way a device reaches us: it is neither typed in as an
-     * IP address ({@link EnyoOnboardingV2InputValueType.IpAddress}) nor dialling
-     * out to our CSMS ({@link OcppConnect}). Heat pumps and wallboxes announce
-     * themselves over mDNS/SHIP and are addressed by their **SKI**, so pairing
-     * means *choosing one of the announced peers* — a decision only the
-     * installer standing in front of the device can make, since two identical
-     * heat pumps in one house differ only by manufacturer, model and the last
-     * bytes of their SKI.
-     *
-     * The host app renders the picker from the peers the hub discovered; the
-     * guide contributes the trigger label and the branches. Because the list
-     * comes from discovery, the guide must have scanned: either it keeps
-     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or it
-     * carries a {@link NetworkScan} block ahead of the pairing block —
-     * otherwise the picker opens on an empty list.
-     *
-     * Outcome `value`s MUST be {@link EnyoOnboardingV2EebusPairOutcome}
-     * members. The SKI the installer picked is recorded as the block's input
-     * value, so a finished run says *which* peer was paired, and later steps —
-     * a {@link DeviceTest}, for instance — can read it back under the block's
-     * id.
-     */
-    EebusPair = 'eebus-pair',
-    /**
-     * Show the installer every network device the run has found and let them
-     * pick the one being onboarded.
-     *
-     * A scan answers "is anything there?"; this answers "which of these is it?".
-     * {@link NetworkScan} branches on found/not-found but binds nothing, so a
-     * house with a dozen devices on the LAN leaves the run without knowing which
-     * one the installer is standing in front of — a decision only they can make,
-     * since two identical inverters differ by little more than their address.
-     *
-     * The picked device **binds the run**: it is recorded as the block's input
-     * value under the block's id, and it is what later steps resolve against —
-     * {@link EnyoOnboardingV2DeviceSelection.Current} on a {@link DeviceTest},
-     * and {@link EnyoOnboardingV2DynamicKind.DeviceIp} on a dynamic block.
-     *
-     * Like {@link EebusPair}, the picker renders what discovery turned up, so
-     * the guide must have scanned: either it keeps
-     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or it
-     * carries a {@link NetworkScan} block ahead of this one — otherwise the
-     * picker opens on an empty list.
-     *
-     * Binding is an address, not an appliance. To have the pick become something
-     * the energy manager can read or control, register an
-     * {@link EnyoOnboardingV2DeviceSelectHandler}: the host hands it the picked
-     * devices, awaits the appliance ids it answers with, and binds the run to
-     * them. Without a handler the block still works — the run takes `selected`
-     * and stays bound to the device — it just produces no appliance.
-     *
-     * Outcome `value`s MUST be {@link EnyoOnboardingV2DeviceSelectOutcome}
-     * members.
-     */
-    DeviceSelect = 'device-select',
 }
 
 /**
- * The possible results of an {@link EnyoOnboardingV2ActionKind.DeviceSelect}
- * block. Deliberately binary: either the run came away bound to a device or it
- * did not.
+ * The possible results of an {@link EnyoOnboardingV2DeviceSelectBlock}.
+ * Deliberately binary: either the run came away bound to a device or it did not.
  */
 export enum EnyoOnboardingV2DeviceSelectOutcome {
     /** The installer picked a device; the run is now bound to it. */
@@ -220,8 +193,7 @@ export enum EnyoOnboardingV2DeviceSelectOutcome {
 }
 
 /**
- * The possible results of an {@link EnyoOnboardingV2ActionKind.EebusPair}
- * block.
+ * The possible results of an {@link EnyoOnboardingV2EebusDeviceSelectBlock}.
  *
  * Three, not two: the two ways pairing fails need different guidance. Nothing
  * was discovered at all is a different conversation from "you picked the right
@@ -325,6 +297,8 @@ export enum EnyoOnboardingV2BlockType {
     AdditionalSetup = 'additional-setup',
     Credentials = 'credentials',
     Select = 'select',
+    DeviceSelect = 'device-select',
+    EebusDeviceSelect = 'eebus-device-select',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -555,12 +529,195 @@ export interface EnyoOnboardingV2ActionBlock extends EnyoOnboardingV2BlockBase {
     outcomes: EnyoOnboardingV2ActionOutcome[];
     /**
      * Which devices to hand to the app. Only meaningful for
-     * {@link EnyoOnboardingV2ActionKind.DeviceTest}; ignored by the other kinds,
-     * including {@link EnyoOnboardingV2ActionKind.DeviceSelect}, which always
-     * offers everything the run has found.
-     * Defaults to {@link EnyoOnboardingV2DeviceSelection.Detected}.
+     * {@link EnyoOnboardingV2ActionKind.DeviceTest} and ignored by the other
+     * kinds. Defaults to {@link EnyoOnboardingV2DeviceSelection.Detected}.
      */
     deviceSelection?: EnyoOnboardingV2DeviceSelection;
+}
+
+/**
+ * Fields shared by the two picker blocks
+ * ({@link EnyoOnboardingV2DeviceSelectBlock},
+ * {@link EnyoOnboardingV2EebusDeviceSelectBlock}).
+ *
+ * Both answer the same question — "which of these is it?" — and both own the
+ * screen they sit on rather than hiding behind a trigger button, which is why
+ * they carry their own {@link headline} and {@link description} instead of
+ * borrowing the step's title and a neighbouring text block.
+ */
+export interface EnyoOnboardingV2PickerBlockBase extends EnyoOnboardingV2BlockBase {
+    /**
+     * Translated heading of the picker screen (de/en), e.g. "Gerät auswählen".
+     *
+     * Optional: a step whose {@link EnyoOnboardingV2Step.title} already says it
+     * does not need to say it twice. Prefer setting it here over adding a
+     * separate headline block — a picker that is skipped
+     * ({@link autoSelectSingleMatch}) takes its own headline with it, whereas a
+     * neighbouring block would be left explaining a list nobody sees.
+     */
+    headline?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Translated explanation shown above the list (de/en) — how the installer
+     * tells the right entry from the wrong one, and what to do when theirs is
+     * missing.
+     *
+     * Same reasoning as {@link headline}: it belongs to the picker, so it
+     * disappears with it when the picker is skipped.
+     */
+    description?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Translated caption of the confirm control (de/en), e.g. "Übernehmen".
+     *
+     * Optional, and **not** a gate: the list is rendered as soon as the step is
+     * entered. This only names the button that commits the highlighted entry,
+     * and the host falls back to its own caption when it is absent.
+     */
+    label?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Skip the screen when exactly one candidate matches. Defaults to `true`.
+     *
+     * With one match the host binds it, fires the positive outcome and never
+     * renders the step — asking someone to confirm the only answer is a screen
+     * that teaches them to tap through screens. Two rules make that safe to
+     * rely on:
+     *
+     * - **Nothing else is skipped.** A skipped device-select still calls the
+     *   registered {@link EnyoOnboardingV2DeviceSelectHandler} (an EEBUS pick
+     *   still pairs and still calls
+     *   {@link EnyoOnboardingV2EebusDeviceSelectHandler}), and the run is still
+     *   bound to the result. Skipping is a rendering decision, not a semantic
+     *   one; the handler sees
+     *   {@link EnyoOnboardingV2DeviceSelectRequest.autoSelected} to tell the two
+     *   apart.
+     * - **No match never skips.** With nothing to pick the step renders its
+     *   empty state and the installer leaves through the `not-found` branch.
+     *   Auto-advancing there would flash troubleshooting past someone who never
+     *   saw why.
+     *
+     * Set it to `false` for a device the installer must positively identify —
+     * one of two identical meters on different circuits, say — where confirming
+     * the only candidate is the point.
+     */
+    autoSelectSingleMatch?: boolean;
+    /**
+     * The results; each is a routing handle needing exactly one outgoing
+     * transition.
+     */
+    outcomes: EnyoOnboardingV2ActionOutcome[];
+}
+
+/**
+ * A picker screen: every network device the run has found, so the installer can
+ * say which one is being onboarded.
+ *
+ * A {@link EnyoOnboardingV2ActionKind.NetworkScan} answers "is anything there?";
+ * this answers "which of these is it?". A scan branches on found/not-found but
+ * binds nothing, so a house with a dozen devices on the LAN leaves the run
+ * without knowing which one the installer is standing in front of — a decision
+ * only they can make, since two identical inverters differ by little more than
+ * their address.
+ *
+ * The pick **binds the run**: it is recorded as the block's input value under
+ * the block's id, and it is what later steps resolve against —
+ * {@link EnyoOnboardingV2DeviceSelection.Current} on a
+ * {@link EnyoOnboardingV2ActionKind.DeviceTest}, and
+ * {@link EnyoOnboardingV2DynamicKind.DeviceIp} on a dynamic block.
+ *
+ * Binding is an address, not an appliance. To have the pick become something
+ * the energy manager can read or control, register an
+ * {@link EnyoOnboardingV2DeviceSelectHandler}: the host hands it the picked
+ * devices, awaits the appliance ids it answers with, and binds the run to them.
+ * Without a handler the block still works — the run takes `selected` and stays
+ * bound to the device — it just produces no appliance.
+ *
+ * The list is what discovery turned up, so the guide must have scanned: either
+ * it keeps {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or
+ * it carries a {@link EnyoOnboardingV2ActionKind.NetworkScan} block ahead of
+ * this one — otherwise the picker opens on an empty list.
+ *
+ * Outcome `value`s MUST be {@link EnyoOnboardingV2DeviceSelectOutcome} members.
+ *
+ * **Give it a step of its own.** It is a screen, not a widget: a second
+ * decision block beside it offers a way past the pick, and
+ * {@link validateOnboardingGuideV2} rejects that combination.
+ */
+export interface EnyoOnboardingV2DeviceSelectBlock extends EnyoOnboardingV2PickerBlockBase {
+    type: EnyoOnboardingV2BlockType.DeviceSelect;
+    /**
+     * Offer only devices discovered through at least one of these channels;
+     * everything else is left out of the list and does not count towards
+     * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch}.
+     *
+     * Matched against {@link EnyoNetworkDevice.detectedAt}, which is a list — a
+     * device seen over both mDNS and Modbus matches a filter naming either. Omit
+     * the property to offer everything the run has found; an **empty array**
+     * filters everything out and is a validation error rather than a picker
+     * nobody can use.
+     */
+    detectedAt?: EnyoNetworkDeviceDetectedAtEnum[];
+}
+
+/**
+ * A picker screen: the EEBUS peers discovered on the local network, so the
+ * installer can pick the one to trust.
+ *
+ * EEBUS is the third way a device reaches us: it is neither typed in as an IP
+ * address ({@link EnyoOnboardingV2InputValueType.IpAddress}) nor dialling out to
+ * our CSMS ({@link EnyoOnboardingV2ActionKind.OcppConnect}). Heat pumps and
+ * wallboxes announce themselves over mDNS/SHIP and are addressed by their
+ * **SKI**, so pairing means *choosing one of the announced peers* — a decision
+ * only the installer standing in front of the device can make, since two
+ * identical heat pumps in one house differ only by manufacturer, model and the
+ * last bytes of their SKI.
+ *
+ * The SKI the installer picked is recorded as the block's input value, so a
+ * finished run says *which* peer was paired, and later steps — a
+ * {@link EnyoOnboardingV2ActionKind.DeviceTest}, for instance — can read it back
+ * under the block's id. Register an
+ * {@link EnyoOnboardingV2EebusDeviceSelectHandler} to turn the paired peer into
+ * appliances, exactly as {@link EnyoOnboardingV2DeviceSelectBlock} does for a
+ * network device.
+ *
+ * Most EEBUS devices only announce themselves once pairing is enabled in their
+ * own menu or portal, and many ask for a confirmation there while the handshake
+ * runs. That instruction belongs in a text/hint block on the preceding step —
+ * the app cannot do it for the installer.
+ *
+ * Because the list comes from discovery, the guide must have scanned: either it
+ * keeps {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or it
+ * carries a {@link EnyoOnboardingV2ActionKind.NetworkScan} block ahead of this
+ * one.
+ *
+ * Outcome `value`s MUST be {@link EnyoOnboardingV2EebusPairOutcome} members.
+ * Route `not-found` to troubleshooting and `failure` to a step describing the
+ * confirmation on the device; a retry must lead into a *second* picker step,
+ * since a back-edge onto the same step reads as a loop and ends the run.
+ *
+ * **Give it a step of its own**, for the same reason as its network-device
+ * counterpart.
+ */
+export interface EnyoOnboardingV2EebusDeviceSelectBlock extends EnyoOnboardingV2PickerBlockBase {
+    type: EnyoOnboardingV2BlockType.EebusDeviceSelect;
+    /**
+     * Offer only peers announcing one of these EEBUS device types; everything
+     * else is left out of the list and does not count towards
+     * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch}.
+     *
+     * This is what makes the skip useful in a real house: a heat-pump guide that
+     * filters on {@link EnyoEebusDeviceTypeEnum.HeatPumpAppliance} sees one
+     * candidate where the unfiltered list would show the wallbox and the
+     * inverter too, and so skips a screen instead of asking a question with an
+     * obvious answer.
+     *
+     * Matched against the SHIP device type the peer announced
+     * ({@link EebusDiscoveredDevice.deviceType}). A peer that announces nothing,
+     * or a type this SDK does not know, is treated as *some other type*: it
+     * survives an omitted filter and is excluded by any filter present, so a
+     * guide can never pair something it did not ask for. Omit the property to
+     * offer every discovered peer; an **empty array** filters everything out and
+     * is a validation error.
+     */
+    deviceTypes?: EnyoEebusDeviceTypeEnum[];
 }
 
 /**
@@ -969,7 +1126,9 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2AuthBlock
     | EnyoOnboardingV2AdditionalSetupBlock
     | EnyoOnboardingV2CredentialsBlock
-    | EnyoOnboardingV2SelectBlock;
+    | EnyoOnboardingV2SelectBlock
+    | EnyoOnboardingV2DeviceSelectBlock
+    | EnyoOnboardingV2EebusDeviceSelectBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -984,7 +1143,9 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2ActionBlock
     | EnyoOnboardingV2InputBlock
     | EnyoOnboardingV2AuthBlock
-    | EnyoOnboardingV2AdditionalSetupBlock;
+    | EnyoOnboardingV2AdditionalSetupBlock
+    | EnyoOnboardingV2DeviceSelectBlock
+    | EnyoOnboardingV2EebusDeviceSelectBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets
@@ -1085,8 +1246,11 @@ export interface EnyoOnboardingV2Step {
 }
 
 /**
- * A complete onboarding guide graph authored by an energy app. Vendor/model are
- * usually bound at registration/publish time and may be omitted here.
+ * A complete onboarding guide graph authored by an energy app.
+ *
+ * The vendor and model bindings ({@link EnyoOnboardingV2Guide.vendorId},
+ * {@link EnyoOnboardingV2Guide.modelIds}) are **not** an app's to fill in — see
+ * their own docs. An app authors the flow; enyo decides what it applies to.
  */
 export interface EnyoOnboardingV2Guide {
     /**
@@ -1134,9 +1298,10 @@ export interface EnyoOnboardingV2Guide {
      * A guide that opts out cannot rely on scan results, so
      * {@link EnyoOnboardingV2DeviceSelection.Detected} has nothing to select from
      * unless the guide runs its own
-     * {@link EnyoOnboardingV2ActionKind.NetworkScan} block first, and an
-     * {@link EnyoOnboardingV2ActionKind.EebusPair} block would offer the
-     * installer an empty list of peers.
+     * {@link EnyoOnboardingV2ActionKind.NetworkScan} block first, and a
+     * {@link EnyoOnboardingV2DeviceSelectBlock} or
+     * {@link EnyoOnboardingV2EebusDeviceSelectBlock} would open on an empty
+     * list.
      */
     requiresNetworkScan?: boolean;
     /** Optional translated summary shown in the library (de/en). */
@@ -1153,14 +1318,16 @@ export interface EnyoOnboardingV2Guide {
     steps: EnyoOnboardingV2Step[];
     /**
      * The appliance this guide is bound to — **required on**
-     * {@link EnyoOnboardingV2StartVariant.Maintenance}, and meaningless on every
-     * other variant.
+     * {@link EnyoOnboardingV2StartVariant.Maintenance} and
+     * {@link EnyoOnboardingV2StartVariant.OfflineReconnect}, and meaningless on
+     * every other variant.
      *
-     * A maintenance run services an appliance that already exists, so the
+     * Those two variants run against an appliance that already exists, so the
      * appliance is an input to the run rather than something it produces: the
      * host binds the run to this id and passes it on as
-     * {@link EnyoOnboardingV2DynamicRequest.applianceId} and
-     * {@link EnyoOnboardingV2AdditionalSetupRequest.applianceId} from the first
+     * {@link EnyoOnboardingV2DynamicRequest.applianceId},
+     * {@link EnyoOnboardingV2AdditionalSetupRequest.applianceId} and
+     * {@link EnyoOnboardingV2DeviceSelectRequest.applianceId} from the first
      * step onwards. The installation variants have nothing to bind — their
      * appliance is created by the run, if it is created at all — and a guide
      * that sets this anyway is warned about and the value ignored.
@@ -1171,16 +1338,17 @@ export interface EnyoOnboardingV2Guide {
      */
     applianceId?: string;
     /**
-     * Whether the end customer is told about this maintenance run — **only
-     * meaningful on** {@link EnyoOnboardingV2StartVariant.Maintenance}, and
-     * ignored on every other variant.
+     * Whether the end customer is told about this run — **only meaningful on**
+     * {@link EnyoOnboardingV2StartVariant.Maintenance} and
+     * {@link EnyoOnboardingV2StartVariant.OfflineReconnect}, and ignored on every
+     * other variant.
      *
-     * A maintenance run touches an appliance the customer already lives with:
-     * it may take the wallbox offline for a few minutes, change how the
-     * inverter behaves, or simply happen while nobody is watching. Set this to
-     * `true` when the customer should hear about it — the host sends them a
-     * notification for the run — and leave it unset when the work is invisible
-     * to them and a message would only be noise.
+     * Both touch an appliance the customer already lives with: the run may take
+     * the wallbox offline for a few minutes, change how the inverter behaves, or
+     * simply happen while nobody is watching. Set this to `true` when the
+     * customer should hear about it — the host sends them a notification for the
+     * run — and leave it unset when the work is invisible to them and a message
+     * would only be noise.
      *
      * Defaults to `false`: a guide says nothing unless it asks to. The
      * installation variants have no customer to notify — there is no appliance
@@ -1192,8 +1360,31 @@ export interface EnyoOnboardingV2Guide {
      * {@link validateOnboardingGuideV2} instead of by the compiler.
      */
     notifyUser?: boolean;
-    /** Optional vendor binding (catalog id). Usually set at publish time. */
+    /**
+     * Vendor binding (catalog id) — **do not set this.**
+     *
+     * Present on the type because the same interface describes a guide *as enyo
+     * stores it*, where the binding exists. An app authoring a guide is not the
+     * side that decides what it applies to: the binding is derived from the
+     * package the guide is served by and from the vendor catalog, and it is
+     * attached when the guide is registered. A value an app puts here is
+     * overwritten by that binding, so at best it is noise and at worst it is a
+     * catalog id that was renamed two releases ago, silently disagreeing with
+     * the one the host actually used.
+     *
+     * {@link validateOnboardingGuideV2} warns when it is set. To make a guide
+     * apply to a different vendor, change the registration — not the guide.
+     */
     vendorId?: string;
-    /** Optional model bindings (catalog ids). Usually set at publish time. */
+    /**
+     * Model bindings (catalog ids) — **do not set these.** Same reasoning as
+     * {@link vendorId}: enyo attaches the model bindings when the guide is
+     * registered, an app-supplied list is overwritten, and
+     * {@link validateOnboardingGuideV2} warns about it.
+     *
+     * A guide is written for a flow, not for a model list. When two models
+     * genuinely need different instructions, that is two guides, told apart by
+     * their {@link name} — not one guide trying to name the models it covers.
+     */
     modelIds?: string[];
 }

@@ -3,12 +3,15 @@
  * answer an app hands back when the host asks for its v2 onboarding guides.
  *
  * {@link validateOnboardingGuideV2} checks one guide's graph. This checks the
- * *set*: that every guide in it is publishable, that each one says which
- * vendor/model/start-variant it applies to, and that no two of them claim the
- * same one. Those last two only become checkable here, because a guide is now
- * selected out of an app's own answer rather than bound to a catalog entry at
- * publish time — a guide with no binding can never be chosen for a device, and
- * two guides with the same binding leave the host with no way to pick.
+ * *set*: that every guide in it is publishable and that no two of them use the
+ * same `name`, which is the handle an app addresses one specific guide by.
+ *
+ * It deliberately says nothing about vendor and model bindings. Those are
+ * enyo's — attached when a guide is registered, derived from the package serving
+ * it and the vendor catalog — so an app's answer cannot claim one, cannot
+ * collide on one, and should not carry one
+ * ({@link EnyoOnboardingV2Guide.vendorId}). A guide that sets them anyway is
+ * warned about by {@link validateOnboardingGuideV2}.
  *
  * `errors` mean the answer is not fit to return; `warnings` are advisory. Use
  * {@link validateOnboardingV2GuidesResult} for the non-throwing result, or
@@ -50,13 +53,6 @@ export interface OnboardingV2GuidesValidationResult {
 }
 
 /**
- * Placeholder used in a binding key for a guide that names no model — it applies
- * to every model of its vendor, and therefore collides with any other such guide
- * for the same vendor and start variant.
- */
-const ANY_MODEL = '*';
-
-/**
  * A short human-readable label for a guide, for use in messages.
  *
  * Prefers {@link EnyoOnboardingV2Guide.name} — it is the handle the author will
@@ -75,24 +71,8 @@ function guideLabel(guide: EnyoOnboardingV2Guide, index: number): string {
 }
 
 /**
- * Every (vendor, model, start variant) binding a guide claims.
- *
- * A guide with several `modelIds` claims one binding per model, so two guides
- * that overlap on a single model collide even when the rest of their model lists
- * differ.
- *
- * @param guide - The guide to derive bindings for.
- * @returns The binding keys, or an empty array when the guide names no vendor.
- */
-function bindingKeys(guide: EnyoOnboardingV2Guide): string[] {
-    if (!guide.vendorId) return [];
-    const models = guide.modelIds?.length ? guide.modelIds : [ANY_MODEL];
-    return models.map((modelId) => `${guide.vendorId}|${modelId}|${guide.startVariant}`);
-}
-
-/**
  * Validates a complete guides answer: the envelope, every guide in it, and the
- * bindings across them.
+ * `name` handles across them.
  *
  * Each guide is run through {@link validateOnboardingGuideV2}, and its errors
  * and warnings are surfaced here prefixed with the guide's position — pass the
@@ -145,10 +125,8 @@ export function validateOnboardingV2GuidesResult(
         );
     }
 
-    // Which guide(s) claimed each binding, so a collision can name both sides.
-    const claimedBy = new Map<string, string>();
-    // Same, for the explicit `name` handles — a duplicate makes an app unable to
-    // say which of the two it means.
+    // The explicit `name` handles — a duplicate makes an app unable to say which
+    // of the two guides it means.
     const namedBy = new Map<string, string>();
 
     for (const [i, guide] of result.guides.entries()) {
@@ -157,15 +135,6 @@ export function validateOnboardingV2GuidesResult(
         const guideResult = validateOnboardingGuideV2(guide, context);
         errors.push(...guideResult.errors.map((e) => `${at}: ${e}`));
         warnings.push(...guideResult.warnings.map((w) => `${at}: ${w}`));
-
-        if (!guide.vendorId) {
-            warnings.push(
-                `${at}: no vendorId — the host matches a run by vendor, model and start variant, ` +
-                    'so an unbound guide can never be selected.',
-            );
-        } else if (!guide.modelIds?.length) {
-            warnings.push(`${at}: no modelIds — this guide applies to every model of "${guide.vendorId}".`);
-        }
 
         const name = guide.name?.trim();
         if (name) {
@@ -177,18 +146,6 @@ export function validateOnboardingV2GuidesResult(
                 );
             } else {
                 namedBy.set(name, at);
-            }
-        }
-
-        for (const key of bindingKeys(guide)) {
-            const previous = claimedBy.get(key);
-            if (previous) {
-                errors.push(
-                    `${at}: binding "${key}" is already claimed by ${previous} — ` +
-                        'the host cannot choose between two guides for the same vendor, model and start variant.',
-                );
-            } else {
-                claimedBy.set(key, at);
             }
         }
     }

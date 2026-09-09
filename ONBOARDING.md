@@ -778,7 +778,7 @@ executor, and the guide-authoring tooling.
 | Routing | name-string routing (`branches.routes` → `targetStepName`) | explicit `transitions[]`: a source **handle** → a `target` |
 | Exits | implicit (last step / complete) | explicit terminals: `success` \| `support` \| `pause` (incl. the `enyo-todo` hand-off) |
 | Cross-flow | — | `start-variant` hand-off between a vendor/model's flows |
-| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup` \| `maintenance`) + `requiresNetworkScan` |
+| Entry situation | — | `startVariant` (`device-not-found` \| `device-found-config` \| `manual-setup` \| `maintenance` \| `offline-reconnect`) + `requiresNetworkScan` |
 | Lifecycle | **pushed** — the app saves/updates/removes guides, the host stores a copy | **pulled** — the app registers one handler, the host asks for the complete set |
 
 Both models are **multilingual**: every author-facing string is an
@@ -833,17 +833,28 @@ const guide = defineOnboardingGuideV2({
 const {ok, errors, warnings} = validateOnboardingGuideV2(guide);
 ```
 
-### Maintenance guides (`maintenance` + `applianceId`)
+### Appliance-bound guides (`maintenance`, `offline-reconnect`)
 
-Three of the four start variants describe a device on its way *into* the system:
+Three of the five start variants describe a device on its way *into* the system:
 not found yet (`device-not-found`), found but unconfigured (`device-found-config`),
-or entered by hand (`manual-setup`). The fourth is the opposite situation: the
-appliance is already installed, known and running, and the installer is coming
-back to it to service, reconfigure or reconnect it.
+or entered by hand (`manual-setup`). The other two start from the opposite
+situation — the appliance is already installed and known — and share every rule
+below:
 
-Because the appliance is the **input** to such a run rather than its result, a
-maintenance guide must name it — `applianceId` is **required** on
-`startVariant: 'maintenance'`, and ignored on every other variant:
+- **`maintenance`** — planned work on an appliance we can still reach: servicing
+  it, reconfiguring it, changing how it runs.
+- **`offline-reconnect`** — an appliance that used to work has stopped talking to
+  us, and someone is reconnecting it: the device changed its IP after a router
+  swap, dropped off the WiFi, lost its cloud token, or had its EEBUS pairing
+  cleared by a firmware update.
+
+They are separate variants because the host offers them in different situations
+and the flows differ: a reconnect guide starts with a scan and a picker, whereas a
+maintenance guide starts by talking to an appliance it can already reach.
+
+Because the appliance is the **input** to such a run rather than its result, both
+variants must name it — `applianceId` is **required** on `maintenance` and
+`offline-reconnect`, and ignored on every other variant:
 
 ```typescript
 const guide = defineOnboardingGuideV2({
@@ -857,11 +868,11 @@ const guide = defineOnboardingGuideV2({
 });
 ```
 
-`validateOnboardingGuideV2()` errors when a `maintenance` guide has no
+`validateOnboardingGuideV2()` errors when an appliance-bound guide has no
 `applianceId` (a blank string counts as missing) and warns when an installation
 guide carries one.
 
-`notifyUser` is the second maintenance-only field. A maintenance run touches an
+`notifyUser` is the second field these two variants own. Such a run touches an
 appliance the customer already lives with — it may take the wallbox offline for
 a few minutes or change how the inverter behaves — so set it to `true` when the
 customer should hear about it and the host sends them a notification for the
@@ -870,11 +881,22 @@ installation guide has nobody to notify (there is no appliance yet, and the
 installer is standing in front of the device), so setting it there is warned
 about and ignored.
 
+A reconnect guide usually **does** want the host's scan (`requiresNetworkScan` at
+its default) and a `device-select` or `eebus-device-select` picker: finding the
+device again is the whole job. What it must not do is create a second appliance
+for it. The run's existing `applianceId` reaches the handler on every pick
+(`EnyoOnboardingV2DeviceSelectRequest.applianceId`,
+`EnyoOnboardingV2EebusDeviceSelectRequest.applianceId`) — re-point that appliance
+at the device the installer picked and answer with the same id. A duplicate leaves
+the customer with two entries in the app and a history split across both.
+
 The binding is what the host passes on: `applianceId` reaches the app as
-`EnyoOnboardingV2DynamicRequest.applianceId` and
-`EnyoOnboardingV2AdditionalSetupRequest.applianceId` from the first step onwards.
-On an installation variant those two fields are populated only once an appliance
-happens to exist during the run; on a maintenance run they are known up front.
+`EnyoOnboardingV2DynamicRequest.applianceId`,
+`EnyoOnboardingV2AdditionalSetupRequest.applianceId` and
+`EnyoOnboardingV2DeviceSelectRequest.applianceId` from the first step onwards.
+On an installation variant those fields are populated only once an appliance
+happens to exist during the run; on an appliance-bound run they are known up
+front.
 
 ### Serving guides: the host pulls, the app never publishes
 
@@ -933,13 +955,16 @@ reason an installer sees no guide. `request.origin` says who is asking
 (`catalog-sync` | `onboarding-start` | `user-request`); `onboarding-start` is on
 the critical path of a screen.
 
-**Bind every guide.** The host selects a guide by matching `vendorId`, `modelIds`
-and `startVariant` against the run at hand. Under v1 those were bound at publish
-time; there is no publish time any more, so the guide must carry them itself. A
-guide without a `vendorId` can never be selected, and two guides claiming the same
-vendor + model + start variant collide — the host can pick neither.
-`validateOnboardingV2GuidesResult()` warns about the first and errors on the
-second, on top of running every guide through `validateOnboardingGuideV2()`.
+**Never fill in `vendorId` or `modelIds`.** They exist on `EnyoOnboardingV2Guide`
+because the same interface describes a guide *as enyo stores it*, where the
+bindings exist — but an app is not the side that decides what its guide applies
+to. enyo derives the binding from the package serving the guide and from the
+vendor catalog, and attaches it when the guide is registered. A value an app sets
+is overwritten: at best it is noise, at worst it is a catalog id that was renamed
+two releases ago and now disagrees with the binding actually used.
+`validateOnboardingGuideV2()` warns when either is set. To make a guide apply to
+a different vendor or model, change the registration — not the guide. Two models
+that need different instructions are two guides, told apart by their `name`.
 
 Registering the handler needs no permission. One handler per package: registering
 again replaces the previous one. `refreshOnboardingGuides()` asks the host to
@@ -1090,10 +1115,11 @@ no dynamic blocks registers nothing.
 | `hint` | `onboardingV2Block.hint` | callout (`important` \| `info` \| `warning`) |
 | `dynamic` | `onboardingV2Block.dynamic` | runtime-resolved value (`ocpp-url` \| `device-ip`) |
 | `choice` | `onboardingV2Block.choice` | single-select decision; each option is a routing handle |
-| `action` | `onboardingV2Block.action` | host capability (`network-scan` \| `connection-check` \| `device-test` \| `eebus-pair`); each outcome is a routing handle |
+| `action` | `onboardingV2Block.action` | host capability (`network-scan` \| `connection-check` \| `device-test` \| `ocpp-connect`); each outcome is a routing handle |
 | `action` (device test) | `onboardingV2Block.deviceTest` | hand detected devices to the energy app and branch on whether appliances were found or created |
 | `action` (OCPP) | `onboardingV2Block.ocppConnect` | wait for an OCPP charger to dial into enyo's CSMS; branches `connected` \| `timeout` |
-| `action` (EEBUS) | `onboardingV2Block.eebusPair` | let the installer pick a discovered EEBUS peer and trust its SKI; branches `paired` \| `not-found` \| `failure` |
+| `device-select` | `onboardingV2Block.deviceSelect` | its own screen: pick the network device being onboarded; skips itself when one device matches; branches `selected` \| `not-found` |
+| `eebus-device-select` | `onboardingV2Block.eebusDeviceSelect` | its own screen: pick a discovered EEBUS peer and trust its SKI, filtered by device type; skips itself when one peer matches; branches `paired` \| `not-found` \| `failure` |
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
@@ -1410,7 +1436,68 @@ must be wired: a charger that never calls home — wrong URL typed, no coverage 
 the garage — is the common case, and a guide without a `timeout` branch strands
 the installer on a spinner.
 
-### Pairing an EEBUS device (`eebus-pair`)
+### Picking the device (`device-select`)
+
+A scan answers "is anything there?"; a picker answers "which of these is it?". The
+run needs the second answer as much as the first: `network-scan` branches on
+found/not-found but binds nothing, so a house with a dozen devices on the LAN
+leaves the run not knowing which one the installer is standing in front of — and
+`deviceSelection: 'current'` and the `device-ip` dynamic block have nothing to
+resolve against.
+
+A `device-select` block is a **screen, not a button**. It carries its own
+`headline` and `description`, the list renders as soon as the step is entered, and
+it belongs on a step of its own — `validateOnboardingGuideV2()` rejects a second
+decision block beside it.
+
+```typescript
+onboardingV2Block.deviceSelect('pick', {
+  headline: t('Wechselrichter auswählen', 'Select the inverter'),
+  description: t(
+    'Vergleichen Sie die Seriennummer mit dem Typenschild am Gerät.',
+    'Compare the serial number with the type plate on the device.',
+  ),
+  detectedAt: [EnyoNetworkDeviceDetectedAtEnum.Modbus],   // optional filter
+  outcomes: [
+    {id: 'ok',   value: EnyoOnboardingV2DeviceSelectOutcome.Selected, label: t('Ausgewählt', 'Selected')},
+    {id: 'none', value: EnyoOnboardingV2DeviceSelectOutcome.NotFound, label: t('Nicht dabei', 'Not listed')},
+  ],
+})
+```
+
+**It skips itself when there is nothing to ask.** With `autoSelectSingleMatch` at
+its default (`true`) and exactly one device matching `detectedAt`, the host binds
+that device, fires `selected`, and never renders the step. Two rules make that
+safe to rely on:
+
+- **Nothing else is skipped.** The registered `EnyoOnboardingV2DeviceSelectHandler`
+  still runs and the run is still bound to the appliance ids it returns; the
+  request carries `autoSelected: true` so a support log can say whether a human
+  confirmed this device or the system inferred it.
+- **No match never skips.** With nothing to pick, the step renders its empty state
+  and the installer leaves through `not-found`. Auto-advancing there would flash
+  troubleshooting past someone who never saw why.
+
+Set `autoSelectSingleMatch: false` where confirming the only candidate *is* the
+point — one of two identical meters on different circuits, say.
+
+An empty `detectedAt: []` matches nothing and is a validation **error**; omit the
+property to offer everything the run found.
+
+The pick binds an **address**, not an appliance. Register
+`registerDeviceSelectHandler()` to turn it into something the energy manager can
+read or control:
+
+```typescript
+await energyApp.useOnboardingV2().registerDeviceSelectHandler(async (request) => ({
+  requestId: request.requestId,
+  // On an offline-reconnect run, re-point the existing appliance and answer with
+  // request.applianceId — do not create a second one.
+  applianceIds: await adoptDevices(request.devices, request.applianceId),
+}));
+```
+
+### Picking an EEBUS device (`eebus-device-select`)
 
 A heat pump or wallbox speaking EEBUS is neither typed in as an IP address nor
 dialling out to our CSMS: it announces itself over mDNS/SHIP and is addressed by
@@ -1420,17 +1507,31 @@ identical heat pumps in one house differ only by manufacturer, model and the las
 bytes of their SKI.
 
 ```typescript
-onboardingV2Block.eebusPair('pair', t('EEBUS-Gerät auswählen', 'Select the EEBUS device'), [
-  {id: 'ok',    value: EnyoOnboardingV2EebusPairOutcome.Paired,   label: t('Gerät gekoppelt', 'Device paired')},
-  {id: 'none',  value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Kein EEBUS-Gerät gefunden', 'No EEBUS device found')},
-  {id: 'error', value: EnyoOnboardingV2EebusPairOutcome.Failure,  label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
-])
+onboardingV2Block.eebusDeviceSelect('pair', {
+  headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
+  description: t(
+    'Geben Sie die Kopplung am Gerät frei und bestätigen Sie dort die Anfrage.',
+    'Enable pairing on the device and confirm the request there.',
+  ),
+  deviceTypes: [EnyoEebusDeviceTypeEnum.HeatPumpAppliance],
+  outcomes: [
+    {id: 'ok',    value: EnyoOnboardingV2EebusPairOutcome.Paired,   label: t('Gerät gekoppelt', 'Device paired')},
+    {id: 'none',  value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Kein EEBUS-Gerät gefunden', 'No EEBUS device found')},
+    {id: 'error', value: EnyoOnboardingV2EebusPairOutcome.Failure,  label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
+  ],
+})
 ```
 
-The host app renders the picker from the peers the hub discovered — manufacturer,
-model, SKI — and records the picked SKI as the block's input value, so a finished
-run says *which* peer was paired, not merely that pairing worked. The guide
-contributes the trigger label and the branches.
+**Filter by device type.** `deviceTypes` matches the SHIP `type` a peer announces
+in its discovery record (`EnyoEebusDeviceTypeEnum`), which is the only thing that
+tells a heat pump apart from the wallbox and the inverter before anything is
+paired. It is what makes the skip useful in a real house: a filtered heat-pump
+guide sees one candidate where the unfiltered list shows three, and skips the
+screen instead of asking a question with an obvious answer. A peer announcing
+nothing, or a type this SDK does not know, is treated as *some other type* — it
+survives an omitted filter and is excluded by any filter present, so a guide can
+never pair something it did not ask for. An empty `deviceTypes: []` is a
+validation **error**.
 
 Three outcomes, not two, because the two failure modes need different guidance:
 `not-found` means discovery turned up nothing (device off, other subnet, EEBUS not
@@ -1440,11 +1541,26 @@ up (the pairing was not confirmed on the device, or a PIN was rejected). Outcome
 `value`s are closed over `EnyoOnboardingV2EebusPairOutcome`, and a block without a
 `paired` branch is warned about — a successful pairing would have nowhere to go.
 
+Pairing is the host's job; turning the paired peer into appliances is the app's.
+Register a **separate** handler for it — an EEBUS peer is not an
+`EnyoNetworkDevice`, and neither handler is a fallback for the other:
+
+```typescript
+await energyApp.useOnboardingV2().registerEebusDeviceSelectHandler(async (request) => ({
+  requestId: request.requestId,
+  applianceIds: await adoptEebusPeer(request.peer, request.applianceId),
+}));
+```
+
+The handler is called only after the SHIP handshake has succeeded; a handshake
+that fails takes the `failure` branch without the app being asked. Throwing, or
+answering with `[]`, leaves the peer paired and the run on `paired` but unbound.
+
 Two authoring rules follow from how the list is produced:
 
 - **A scan must have happened.** Either keep `requiresNetworkScan` at its default,
-  or place a `network-scan` action ahead of the pairing block; otherwise the
-  picker opens on an empty list, and the validator warns.
+  or place a `network-scan` action ahead of the picker; otherwise it opens on an
+  empty list, and the validator warns.
 - **Put the device-side release in the step before.** Most EEBUS devices only
   announce themselves once pairing is enabled in their own menu or portal, and
   many ask for a confirmation there while the handshake runs. That belongs in a
@@ -1452,7 +1568,7 @@ Two authoring rules follow from how the list is produced:
 
 Retries are separate steps: a back-edge from `not-found` onto the same step reads
 as a loop and ends the run, so wire it to a "prüfen und erneut suchen" step that
-leads into a *second* pairing step, exactly as `ocpp-connect` does.
+leads into a *second* picker step, exactly as `ocpp-connect` does.
 
 ### Skipping the host's network scan (`requiresNetworkScan`)
 
@@ -1476,5 +1592,5 @@ defineOnboardingGuideV2({
 A guide that opts out has no scan results to work with, so `deviceSelection:
 'detected'` has nothing to select from — the validator warns about that
 combination unless the guide runs its own `network-scan` action first. The same
-applies to an `eebus-pair` block: without a scan there are no discovered peers to
-pick from.
+applies to a `device-select` or `eebus-device-select` block: without a scan the
+picker opens on an empty list and can only reach its `not-found` branch.

@@ -30,6 +30,8 @@ import type {
     EnyoOnboardingV2SetupSkipHandle,
     EnyoOnboardingV2Block,
     EnyoOnboardingV2ChoiceOption,
+    EnyoOnboardingV2DeviceSelectBlock,
+    EnyoOnboardingV2EebusDeviceSelectBlock,
     EnyoOnboardingV2DynamicKind,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2HintVariant,
@@ -320,14 +322,77 @@ export const onboardingV2Block = {
         outcomes,
     }),
     /**
-     * An EEBUS-pair action block: the installer picks one of the discovered
-     * EEBUS peers and the host trusts its SKI.
+     * A device-select picker: its own screen listing the network devices the run
+     * has found, so the installer can say which one is being onboarded.
      *
-     * A convenience wrapper over {@link onboardingV2Block.action} that pins the
-     * action kind. The picker is drawn from what mDNS discovery found, so the
-     * guide must have scanned — keep
-     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default or place
-     * a {@link EnyoOnboardingV2ActionKind.NetworkScan} block ahead of this one.
+     * Use it whenever a scan can turn up more than one candidate. A
+     * {@link onboardingV2Block.networkScan} branches on found/not-found but binds
+     * nothing, so without this the run does not know *which* device it is working
+     * on — and {@link EnyoOnboardingV2DeviceSelection.Current} and
+     * {@link EnyoOnboardingV2DynamicKind.DeviceIp} have nothing to resolve
+     * against.
+     *
+     * The block owns the step: give it one of its own, put the screen's wording
+     * in `headline`/`description` rather than in neighbouring blocks, and let it
+     * disappear when it has nothing to ask — with `autoSelectSingleMatch` left at
+     * its default, a single matching device is bound without rendering anything.
+     *
+     * The list is what discovery found, so the guide must have scanned: keep
+     * {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or place a
+     * {@link onboardingV2Block.networkScan} ahead of this one.
+     *
+     * Outcome `value`s must be {@link EnyoOnboardingV2DeviceSelectOutcome}
+     * members; route `not-found` to troubleshooting rather than to a step that
+     * assumes a device exists.
+     *
+     * Register an {@link EnyoOnboardingV2DeviceSelectHandler}
+     * ({@link EnergyAppOnboardingV2.registerDeviceSelectHandler}) to turn the pick
+     * into appliances — the host awaits it and binds the run to the ids it
+     * returns, whether or not the screen was shown. Without one the pick binds an
+     * address and nothing more.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param options - Screen wording, optional `detectedAt` filter, skip
+     *   behaviour, and the `selected` / `not-found` routing handles.
+     * @returns The device-select block.
+     *
+     * @example
+     * ```ts
+     * onboardingV2Block.deviceSelect('pick', {
+     *     headline: t('Gerät auswählen', 'Select the device'),
+     *     description: t(
+     *         'Vergleichen Sie die Seriennummer auf dem Typenschild.',
+     *         'Compare the serial number on the type plate.',
+     *     ),
+     *     detectedAt: [EnyoNetworkDeviceDetectedAtEnum.Modbus],
+     *     outcomes: [
+     *         {id: 'ok',   value: EnyoOnboardingV2DeviceSelectOutcome.Selected, label: t('Ausgewählt', 'Selected')},
+     *         {id: 'none', value: EnyoOnboardingV2DeviceSelectOutcome.NotFound, label: t('Nicht dabei', 'Not listed')},
+     *     ],
+     * });
+     * ```
+     */
+    deviceSelect: (
+        id: string,
+        options: Omit<EnyoOnboardingV2DeviceSelectBlock, 'id' | 'type'>,
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.DeviceSelect,
+        ...options,
+    }),
+    /**
+     * An EEBUS device-select picker: its own screen listing the discovered EEBUS
+     * peers, so the installer can pick the one to trust — the host pairs it and
+     * records its SKI.
+     *
+     * Filter it. `deviceTypes` is what turns this from "here are the six EEBUS
+     * devices in the house" into "here is your heat pump", and with one match it
+     * skips the screen entirely instead of asking a question with one possible
+     * answer.
+     *
+     * The picker is drawn from what mDNS discovery found, so the guide must have
+     * scanned — keep {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its
+     * default or place a {@link onboardingV2Block.networkScan} ahead of this one.
      *
      * Most EEBUS devices only announce themselves once pairing is enabled in
      * their own menu or portal, and many ask for a confirmation there while the
@@ -335,62 +400,39 @@ export const onboardingV2Block = {
      * preceding step — the app cannot do it for the installer.
      *
      * Outcome `value`s must be {@link EnyoOnboardingV2EebusPairOutcome} members;
-     * route `not-found` to troubleshooting and `failure` to a step describing
-     * the confirmation on the device. A retry must lead into a *second* pairing
-     * step: a back-edge onto the same step reads as a loop and ends the run.
+     * route `not-found` to troubleshooting and `failure` to a step describing the
+     * confirmation on the device. A retry must lead into a *second* picker step:
+     * a back-edge onto the same step reads as a loop and ends the run.
+     *
+     * Register an {@link EnyoOnboardingV2EebusDeviceSelectHandler}
+     * ({@link EnergyAppOnboardingV2.registerEebusDeviceSelectHandler}) to turn the
+     * paired peer into appliances.
      *
      * @param id - Stable block id, unique within the guide.
-     * @param label - Translated trigger button text (de/en).
-     * @param outcomes - The `paired` / `not-found` / `failure` results; each is a routing handle.
+     * @param options - Screen wording, optional `deviceTypes` filter, skip
+     *   behaviour, and the `paired` / `not-found` / `failure` routing handles.
+     * @returns The EEBUS device-select block.
+     *
+     * @example
+     * ```ts
+     * onboardingV2Block.eebusDeviceSelect('pair', {
+     *     headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
+     *     deviceTypes: [EnyoEebusDeviceTypeEnum.HeatPumpAppliance],
+     *     outcomes: [
+     *         {id: 'ok',    value: EnyoOnboardingV2EebusPairOutcome.Paired,   label: t('Gekoppelt', 'Paired')},
+     *         {id: 'none',  value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Nichts gefunden', 'Nothing found')},
+     *         {id: 'error', value: EnyoOnboardingV2EebusPairOutcome.Failure,  label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
+     *     ],
+     * });
+     * ```
      */
-    eebusPair: (
+    eebusDeviceSelect: (
         id: string,
-        label: EnyoOnboardingTranslatedContent[],
-        outcomes: EnyoOnboardingV2ActionOutcome[],
+        options: Omit<EnyoOnboardingV2EebusDeviceSelectBlock, 'id' | 'type'>,
     ): EnyoOnboardingV2Block => ({
         id,
-        type: EnyoOnboardingV2BlockType.Action,
-        action: EnyoOnboardingV2ActionKind.EebusPair,
-        label,
-        outcomes,
-    }),
-    /**
-     * A device-select block: the installer picks the device being onboarded from
-     * everything the run has found.
-     *
-     * Use it whenever a scan can turn up more than one candidate. A
-     * {@link block.networkScan} branches on found/not-found but binds nothing,
-     * so without this the run does not know *which* device it is working on —
-     * and {@link EnyoOnboardingV2DeviceSelection.Current} and
-     * {@link EnyoOnboardingV2DynamicKind.DeviceIp} have nothing to resolve
-     * against.
-     *
-     * The picker renders what discovery found, so the guide must have scanned:
-     * keep {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its default, or
-     * place a {@link block.networkScan} ahead of this one.
-     *
-     * Outcome `value`s must be {@link EnyoOnboardingV2DeviceSelectOutcome}
-     * members; route `not-found` to troubleshooting rather than to a step that
-     * assumes a device exists.
-     *
-     * Register an {@link EnyoOnboardingV2DeviceSelectHandler} to turn the pick
-     * into appliances — the host awaits it and binds the run to the ids it
-     * returns. Without one the pick binds an address and nothing more.
-     *
-     * @param id - Stable block id, unique within the guide.
-     * @param label - Translated trigger button text (de/en).
-     * @param outcomes - The `selected` / `not-found` results; each is a routing handle.
-     */
-    deviceSelect: (
-        id: string,
-        label: EnyoOnboardingTranslatedContent[],
-        outcomes: EnyoOnboardingV2ActionOutcome[],
-    ): EnyoOnboardingV2Block => ({
-        id,
-        type: EnyoOnboardingV2BlockType.Action,
-        action: EnyoOnboardingV2ActionKind.DeviceSelect,
-        label,
-        outcomes,
+        type: EnyoOnboardingV2BlockType.EebusDeviceSelect,
+        ...options,
     }),
     /**
      * An auth block: the installer signs into the energy app's own account
