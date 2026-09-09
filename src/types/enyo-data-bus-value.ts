@@ -964,6 +964,20 @@ export interface EnyoAvailablePowerCommandData {
      * Must be non-negative. The appliance must not exceed this envelope.
      */
     powerW: number;
+    /**
+     * Optional breakdown of what the granted envelope is meant for and at which
+     * power — the same "how much watt for what" vocabulary an appliance uses to
+     * announce its flexibility
+     * ({@link EnyoDataBusApplianceFlexibilityAnnouncementV1}), so a grant can be
+     * read against the announcement it answers.
+     *
+     * Advisory, and never a second limit: `powerW` alone bounds what the
+     * appliance may draw. The shares SHOULD NOT exceed `powerW` in sum, may be
+     * partial, and a given target SHOULD appear at most once. An appliance that
+     * does not understand a target should fall back to spending the envelope as
+     * it sees fit rather than refusing it.
+     */
+    targets?: EnyoFlexibilityTargetPower[];
     /** Optional reason why this command was issued */
     reason?: EnyoDataBusCommandReason;
 }
@@ -2410,7 +2424,8 @@ export interface EnyoPowerSourceShare {
 /**
  * V2 command announcing the available / maximum active-power envelope (in
  * Watts) a heatpump may draw, together with optional context describing what
- * the power should be used for ({@link EnyoHeatpumpControlPurposeEnum}) and
+ * the power should be used for ({@link EnyoHeatpumpControlPurposeEnum}), how it
+ * splits across targets ({@link EnyoAvailablePowerCommandData.targets}), and
  * where it comes from ({@link EnyoPowerSourceShare}). Supersedes the deprecated
  * {@link EnyoDataBusHeatpumpAvailablePowerAnnouncementV1}.
  *
@@ -2427,6 +2442,14 @@ export interface EnyoDataBusSetHeatpumpAvailablePowerV2 extends EnyoDataBusMessa
         /**
          * What the heatpump should use the announced power for (e.g. DHW boost,
          * pre-heating). Advisory — the appliance may still apply its own logic.
+         *
+         * This names a single intent for the whole envelope, and covers intents
+         * that are not a heat sink at all ({@link
+         * EnyoHeatpumpControlPurposeEnum.PreHeating}). To instead split the
+         * envelope across sinks — "1500 W for hot water, 800 W for the buffer
+         * tank" — use {@link EnyoAvailablePowerCommandData.targets}. The two may
+         * be sent together; they are separate vocabularies and neither is derived
+         * from the other.
          */
         purpose?: EnyoHeatpumpControlPurposeEnum;
         /**

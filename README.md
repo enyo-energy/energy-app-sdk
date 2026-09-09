@@ -3597,6 +3597,11 @@ Notes:
 - The same breakdown is available on category-level announcements via
   `context.targets` on `EnyoFlexibilityAnnouncementContext`, so the
   per-appliance and aggregated surfaces stay in step.
+- The V2 available-power commands carry the same breakdown in the other
+  direction: `targets` on `EnyoAvailablePowerCommandData` lets the energy manager
+  say what the granted envelope is meant for, using the same vocabulary, so a
+  grant can be read against the announcement it answers. It is advisory — the
+  command's `powerW` remains the only limit.
 
 ### Settings Management
 

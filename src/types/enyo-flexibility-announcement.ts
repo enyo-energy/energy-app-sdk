@@ -59,9 +59,10 @@ export enum EnyoFlexibilityHeatpumpTargetTypeEnum {
 }
 
 /**
- * What an announced share of flexibility is physically aimed at — the open
- * vocabulary behind the "how much watt for what" breakdown carried by
- * {@link EnyoFlexibilityTargetPower}.
+ * What a share of power is physically aimed at — the open vocabulary behind the
+ * "how much watt for what" breakdown carried by
+ * {@link EnyoFlexibilityTargetPower}, on flexibility announcements and on the
+ * available-power commands that answer them alike.
  *
  * The members present today all describe heat sinks, because thermal appliances
  * are the first ones to split their draw. The enum is deliberately **not**
@@ -126,13 +127,22 @@ export enum EnyoFlexibilityOptimizationModeEnum {
 // ─── Shared value objects ───────────────────────────────────
 
 /**
- * How much power the announced flexibility would draw for one target — one
- * entry of the "how much watt for what" breakdown behind an announcement.
+ * How much power is meant for one target — one entry of the "how much watt for
+ * what" breakdown.
  *
- * Purely informational context: the announcement's own energy figure stays
- * authoritative. A breakdown may be partial — its entries need not sum to the
- * appliance's full draw — but a given {@link target} SHOULD appear at most once
- * per breakdown.
+ * Used in both directions, with the same shape and the same vocabulary so the
+ * two can be read against each other:
+ *
+ * - **Appliance → manager**, on a flexibility announcement: what the announced
+ *   flexibility would be spent on.
+ * - **Manager → appliance**, on an available-power command
+ *   (`EnyoAvailablePowerCommandData.targets`): what the granted envelope is
+ *   meant for.
+ *
+ * Informational in both cases — the carrying message's own energy or power
+ * figure stays authoritative, and this breakdown never acts as a second limit. A
+ * breakdown may be partial, and a given {@link target} SHOULD appear at most
+ * once per breakdown.
  *
  * @example
  * ```typescript
