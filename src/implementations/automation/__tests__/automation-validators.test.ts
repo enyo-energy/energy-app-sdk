@@ -5,6 +5,7 @@ import {
     validateAutomation,
     validateAutomationForecast,
     validateAutomationTriggerData,
+    validateTrigger,
 } from '../automation-validators.js';
 import {
     EnyoAutomation,
@@ -15,6 +16,7 @@ import {
     EnyoAutomationTargetKindEnum,
     EnyoAutomationTriggerTypeEnum,
 } from '../../../types/enyo-automation.js';
+import {EnyoCurrencyEnum} from '../../../types/enyo-currency.js';
 
 const smartPlugAction: EnyoAutomationSmartPlugSwitchAction = {
     id: 'switch-pump',
@@ -76,11 +78,17 @@ describe('validateAction - smart plug min duration', () => {
         expect(() => validateAction(build(360))).not.toThrow();
     });
 
+    it('accepts short runtimes down to one minute', () => {
+        expect(() => validateAction(build(1))).not.toThrow();
+        expect(() => validateAction(build(2))).not.toThrow();
+        expect(() => validateAction(build(4))).not.toThrow();
+    });
+
     it('rejects values below the minimum, above the maximum, or off-step', () => {
-        expect(() => validateAction(build(1))).toThrow(AutomationValidationError);
         expect(() => validateAction(build(0))).toThrow(AutomationValidationError);
+        expect(() => validateAction(build(1.5))).toThrow(AutomationValidationError);
         expect(() => validateAction(build(365))).toThrow(AutomationValidationError);
-        expect(() => validateAction(build(7))).toThrow(/steps of 5/);
+        expect(() => validateAction(build(7))).toThrow(/multiple of 5/);
     });
 });
 
@@ -145,6 +153,253 @@ describe('validateAutomationTriggerData', () => {
     });
 });
 
+describe('validateTrigger - pv surplus below threshold', () => {
+    it('accepts a "turn off at X Watt" trigger', () => {
+        const automation = baseAutomation();
+        automation.trigger = {
+            type: EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold,
+            thresholdW: 3000,
+        };
+        expect(() => validateAutomation(automation)).not.toThrow();
+    });
+
+    it('rejects a negative threshold', () => {
+        const automation = baseAutomation();
+        automation.trigger = {
+            type: EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold,
+            thresholdW: -1,
+        };
+        expect(() => validateAutomation(automation)).toThrow(/PvSurplusBelowThreshold/);
+    });
+});
+
+describe('validateTrigger - below price limit', () => {
+    it('accepts a limit with and without an explicit currency', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                limitPerKwh: 0.2,
+            }),
+        ).not.toThrow();
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                limitPerKwh: 0.2,
+                currency: EnyoCurrencyEnum.EUR,
+            }),
+        ).not.toThrow();
+    });
+
+    it('accepts a negative limit, since dynamic prices can turn negative', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                limitPerKwh: -0.05,
+            }),
+        ).not.toThrow();
+    });
+
+    it('rejects a non-finite limit and an unknown currency', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                limitPerKwh: Number.NaN,
+            }),
+        ).toThrow(/limitPerKwh/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                limitPerKwh: 0.2,
+                currency: 'XXX' as EnyoCurrencyEnum,
+            }),
+        ).toThrow(/currency/);
+    });
+});
+
+describe('validateTrigger - cheapest share of day', () => {
+    it('accepts the cheapest 25 % of the day', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.CheapestShareOfDay,
+                sharePercent: 25,
+            }),
+        ).not.toThrow();
+    });
+
+    it('rejects shares outside 1-100 and non-integers', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.CheapestShareOfDay,
+                sharePercent: 0,
+            }),
+        ).toThrow(/sharePercent/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.CheapestShareOfDay,
+                sharePercent: 101,
+            }),
+        ).toThrow(/sharePercent/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.CheapestShareOfDay,
+                sharePercent: 25.5,
+            }),
+        ).toThrow(/sharePercent/);
+    });
+});
+
+describe('validateTrigger - schedule (Zeitplan)', () => {
+    it('accepts multiple windows with per-weekday selections', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [
+                    {startTimeOfDay: '06:00', endTimeOfDay: '08:00', daysOfWeek: [1, 2, 3, 4, 5]},
+                    {startTimeOfDay: '18:00', endTimeOfDay: '22:00', daysOfWeek: [1, 2, 3, 4, 5]},
+                    {startTimeOfDay: '00:00', endTimeOfDay: '23:59', daysOfWeek: [0]},
+                ],
+                timezone: 'Europe/Berlin',
+            }),
+        ).not.toThrow();
+    });
+
+    it('accepts a window without weekdays and one that wraps past midnight', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '22:00', endTimeOfDay: '06:00'}],
+            }),
+        ).not.toThrow();
+    });
+
+    it('rejects an empty window list', () => {
+        expect(() =>
+            validateTrigger({type: EnyoAutomationTriggerTypeEnum.Schedule, windows: []}),
+        ).toThrow(/at least one window/);
+    });
+
+    it('rejects malformed times and zero-length windows', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '6:00', endTimeOfDay: '08:00'}],
+            }),
+        ).toThrow(/startTimeOfDay/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '06:00', endTimeOfDay: '24:00'}],
+            }),
+        ).toThrow(/endTimeOfDay/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '06:00', endTimeOfDay: '06:00'}],
+            }),
+        ).toThrow(/same time of day/);
+    });
+
+    it('rejects invalid, empty or duplicated weekday lists', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '06:00', endTimeOfDay: '08:00', daysOfWeek: []}],
+            }),
+        ).toThrow(/must not be empty/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '06:00', endTimeOfDay: '08:00', daysOfWeek: [7]}],
+            }),
+        ).toThrow(/0 \(Sunday\) to 6 \(Saturday\)/);
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '06:00', endTimeOfDay: '08:00', daysOfWeek: [1, 1]}],
+            }),
+        ).toThrow(/duplicate day/);
+    });
+
+    it('rejects an unknown timezone', () => {
+        expect(() =>
+            validateTrigger({
+                type: EnyoAutomationTriggerTypeEnum.Schedule,
+                windows: [{startTimeOfDay: '06:00', endTimeOfDay: '08:00'}],
+                timezone: 'Mars/Olympus_Mons',
+            }),
+        ).toThrow(/IANA time zone/);
+    });
+});
+
+describe('validateAutomationTriggerData - price triggers', () => {
+    it('accepts below-price-limit metadata', () => {
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                pricePerKwh: -0.01,
+                limitPerKwh: 0.2,
+                currency: EnyoCurrencyEnum.EUR,
+            }),
+        ).not.toThrow();
+    });
+
+    it('accepts cheapest-share-of-day metadata', () => {
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.CheapestShareOfDay,
+                pricePerKwh: 0.12,
+                sharePercent: 25,
+                thresholdPricePerKwh: 0.15,
+                currency: EnyoCurrencyEnum.EUR,
+            }),
+        ).not.toThrow();
+    });
+
+    it('accepts pv-surplus-below-threshold metadata', () => {
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold,
+                surplusW: 500,
+                thresholdW: 3000,
+            }),
+        ).not.toThrow();
+    });
+
+    it('accepts schedule metadata and rejects a negative window index', () => {
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.Schedule,
+                windowIndex: 0,
+                windowStartIso: '2026-07-03T06:00:00.000Z',
+                windowEndIso: '2026-07-03T08:00:00.000Z',
+            }),
+        ).not.toThrow();
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.Schedule,
+                windowIndex: -1,
+            }),
+        ).toThrow(/windowIndex/);
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.Schedule,
+                windowStartIso: 'not-a-date',
+            }),
+        ).toThrow(/windowStartIso/);
+    });
+
+    it('rejects a missing currency on price metadata', () => {
+        expect(() =>
+            validateAutomationTriggerData({
+                triggerType: EnyoAutomationTriggerTypeEnum.BelowPriceLimit,
+                pricePerKwh: 0.1,
+                limitPerKwh: 0.2,
+                currency: undefined as unknown as EnyoCurrencyEnum,
+            }),
+        ).toThrow(/currency/);
+    });
+});
+
 describe('validateAutomationForecast', () => {
     const forecast = (entries: EnyoAutomationForecast['entries']): EnyoAutomationForecast => ({
         automationId: 'pool-pump',
@@ -173,6 +428,19 @@ describe('validateAutomationForecast', () => {
                 ]),
             ),
         ).toThrow(/expected 900s/);
+    });
+
+    it('accepts a 1-minute resolution forecast', () => {
+        expect(() =>
+            validateAutomationForecast({
+                automationId: 'pool-pump',
+                resolution: '1m',
+                entries: [
+                    {timestampIso: '2026-07-03T10:00:00.000Z', active: true},
+                    {timestampIso: '2026-07-03T10:01:00.000Z', active: false},
+                ],
+            }),
+        ).not.toThrow();
     });
 
     it('rejects an invalid timestamp', () => {

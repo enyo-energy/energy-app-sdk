@@ -7,12 +7,15 @@ import {
     EnyoAutomationMqttPlaceholderEnum,
     EnyoAutomationSchedulingModeEnum,
     EnyoAutomationSmartPlugSwitchAction,
+    EnyoAutomationScheduleTrigger,
     EnyoAutomationTargetKindEnum,
     EnyoAutomationTriggerData,
     EnyoAutomationTriggerTypeEnum,
 } from '../../types/enyo-automation.js';
+import {EnyoCurrencyEnum} from '../../types/enyo-currency.js';
 import {EnyoForecastResolution} from '../../types/enyo-data-bus-value.js';
 import {MqttQos} from '../../types/enyo-mqtt.js';
+import {parseTimeOfDay} from '../pricing/price-schedule-resolver.js';
 
 /**
  * Thrown when an automation, action or automation forecast violates one of the
@@ -26,12 +29,25 @@ export class AutomationValidationError extends Error {
     }
 }
 
-/** Minimum smart-plug on-duration, in minutes. */
-export const AUTOMATION_MIN_DURATION_MINUTES = 5;
+/**
+ * Minimum smart-plug on-duration, in minutes. Short runtimes below
+ * {@link AUTOMATION_DURATION_STEP_MINUTES} are allowed at a one-minute
+ * granularity, so a one-minute runtime is valid.
+ */
+export const AUTOMATION_MIN_DURATION_MINUTES = 1;
 /** Maximum smart-plug on-duration, in minutes (6 hours). */
 export const AUTOMATION_MAX_DURATION_MINUTES = 360;
-/** Step size the smart-plug on-duration must be a multiple of, in minutes. */
+/**
+ * Step size the smart-plug on-duration must be a multiple of, in minutes, once
+ * it exceeds {@link AUTOMATION_DURATION_STEP_MINUTES}. Durations at or below
+ * this value are free to use any whole minute (1, 2, 3, 4, 5).
+ */
 export const AUTOMATION_DURATION_STEP_MINUTES = 5;
+
+/** Minimum share of the day, in percent, a cheapest-share trigger may select. */
+export const AUTOMATION_MIN_CHEAPEST_SHARE_PERCENT = 1;
+/** Maximum share of the day, in percent, a cheapest-share trigger may select. */
+export const AUTOMATION_MAX_CHEAPEST_SHARE_PERCENT = 100;
 
 /** Duration in seconds of each {@link EnyoForecastResolution} value. */
 const FORECAST_RESOLUTION_SECONDS: Record<EnyoForecastResolution, number> = {
@@ -105,6 +121,39 @@ export function validateTrigger(trigger: EnyoAutomation['trigger']): void {
                     'PvSurplusThreshold trigger.thresholdW must be a finite number >= 0.',
                 );
             }
+            break;
+        case EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold:
+            if (typeof trigger.thresholdW !== 'number' || !Number.isFinite(trigger.thresholdW) || trigger.thresholdW < 0) {
+                throw new AutomationValidationError(
+                    'PvSurplusBelowThreshold trigger.thresholdW must be a finite number >= 0.',
+                );
+            }
+            break;
+        case EnyoAutomationTriggerTypeEnum.BelowPriceLimit:
+            // Negative limits are valid: dynamic prices can turn negative.
+            if (typeof trigger.limitPerKwh !== 'number' || !Number.isFinite(trigger.limitPerKwh)) {
+                throw new AutomationValidationError(
+                    'BelowPriceLimit trigger.limitPerKwh must be a finite number.',
+                );
+            }
+            if (trigger.currency !== undefined) {
+                requireEnumMember(trigger.currency, EnyoCurrencyEnum, 'BelowPriceLimit trigger.currency');
+            }
+            break;
+        case EnyoAutomationTriggerTypeEnum.CheapestShareOfDay:
+            if (
+                typeof trigger.sharePercent !== 'number' ||
+                !Number.isInteger(trigger.sharePercent) ||
+                trigger.sharePercent < AUTOMATION_MIN_CHEAPEST_SHARE_PERCENT ||
+                trigger.sharePercent > AUTOMATION_MAX_CHEAPEST_SHARE_PERCENT
+            ) {
+                throw new AutomationValidationError(
+                    `CheapestShareOfDay trigger.sharePercent must be an integer between ${AUTOMATION_MIN_CHEAPEST_SHARE_PERCENT} and ${AUTOMATION_MAX_CHEAPEST_SHARE_PERCENT}.`,
+                );
+            }
+            break;
+        case EnyoAutomationTriggerTypeEnum.Schedule:
+            validateScheduleTrigger(trigger);
             break;
         default:
             throw new AutomationValidationError(
@@ -212,13 +261,112 @@ export function validateAutomationTriggerData(trigger: EnyoAutomationTriggerData
     }
     switch (trigger.triggerType) {
         case EnyoAutomationTriggerTypeEnum.PvSurplusThreshold:
+        case EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold:
             requireFiniteNonNegative(trigger.surplusW, 'AutomationTriggerData.surplusW');
             requireFiniteNonNegative(trigger.thresholdW, 'AutomationTriggerData.thresholdW');
+            break;
+        case EnyoAutomationTriggerTypeEnum.BelowPriceLimit:
+            requireFinite(trigger.pricePerKwh, 'AutomationTriggerData.pricePerKwh');
+            requireFinite(trigger.limitPerKwh, 'AutomationTriggerData.limitPerKwh');
+            requireEnumMember(trigger.currency, EnyoCurrencyEnum, 'AutomationTriggerData.currency');
+            break;
+        case EnyoAutomationTriggerTypeEnum.CheapestShareOfDay:
+            requireFinite(trigger.pricePerKwh, 'AutomationTriggerData.pricePerKwh');
+            requireFinite(trigger.thresholdPricePerKwh, 'AutomationTriggerData.thresholdPricePerKwh');
+            if (
+                typeof trigger.sharePercent !== 'number' ||
+                !Number.isInteger(trigger.sharePercent) ||
+                trigger.sharePercent < AUTOMATION_MIN_CHEAPEST_SHARE_PERCENT ||
+                trigger.sharePercent > AUTOMATION_MAX_CHEAPEST_SHARE_PERCENT
+            ) {
+                throw new AutomationValidationError(
+                    `AutomationTriggerData.sharePercent must be an integer between ${AUTOMATION_MIN_CHEAPEST_SHARE_PERCENT} and ${AUTOMATION_MAX_CHEAPEST_SHARE_PERCENT}.`,
+                );
+            }
+            requireEnumMember(trigger.currency, EnyoCurrencyEnum, 'AutomationTriggerData.currency');
+            break;
+        case EnyoAutomationTriggerTypeEnum.Schedule:
+            if (trigger.windowIndex !== undefined && (!Number.isInteger(trigger.windowIndex) || trigger.windowIndex < 0)) {
+                throw new AutomationValidationError(
+                    'AutomationTriggerData.windowIndex must be an integer >= 0.',
+                );
+            }
+            requireOptionalIsoTimestamp(trigger.windowStartIso, 'AutomationTriggerData.windowStartIso');
+            requireOptionalIsoTimestamp(trigger.windowEndIso, 'AutomationTriggerData.windowEndIso');
             break;
         default:
             throw new AutomationValidationError(
                 `AutomationTriggerData.triggerType is invalid: ${(trigger as {triggerType?: unknown}).triggerType}.`,
             );
+    }
+}
+
+/**
+ * Validates the windows of a {@link EnyoAutomationTriggerTypeEnum.Schedule}
+ * ("Zeitplan") trigger: at least one window, well-formed `HH:mm` times that do
+ * not start and end at the same minute, weekday numbers in range, and a valid
+ * IANA timezone when given. Windows are a union and may overlap, so no overlap
+ * check is performed.
+ */
+function validateScheduleTrigger(trigger: EnyoAutomationScheduleTrigger): void {
+    if (!Array.isArray(trigger.windows) || trigger.windows.length === 0) {
+        throw new AutomationValidationError(
+            'Schedule trigger.windows must contain at least one window.',
+        );
+    }
+    trigger.windows.forEach((window, index) => {
+        const label = `Schedule trigger.windows[${index}]`;
+        if (!window || typeof window !== 'object') {
+            throw new AutomationValidationError(`${label} must be an object.`);
+        }
+        const start = parseTimeOfDay(window.startTimeOfDay);
+        if (start === null) {
+            throw new AutomationValidationError(
+                `${label}.startTimeOfDay must be a 24-hour 'HH:mm' time, got '${window.startTimeOfDay}'.`,
+            );
+        }
+        const end = parseTimeOfDay(window.endTimeOfDay);
+        if (end === null) {
+            throw new AutomationValidationError(
+                `${label}.endTimeOfDay must be a 24-hour 'HH:mm' time, got '${window.endTimeOfDay}'.`,
+            );
+        }
+        if (start === end) {
+            throw new AutomationValidationError(
+                `${label} must not start and end at the same time of day.`,
+            );
+        }
+        if (window.daysOfWeek !== undefined) {
+            if (!Array.isArray(window.daysOfWeek) || window.daysOfWeek.length === 0) {
+                throw new AutomationValidationError(
+                    `${label}.daysOfWeek must not be empty — omit it for 'every day'.`,
+                );
+            }
+            const seenDays = new Set<number>();
+            for (const day of window.daysOfWeek) {
+                if (!Number.isInteger(day) || day < 0 || day > 6) {
+                    throw new AutomationValidationError(
+                        `${label}.daysOfWeek must contain integers 0 (Sunday) to 6 (Saturday), got ${day}.`,
+                    );
+                }
+                if (seenDays.has(day)) {
+                    throw new AutomationValidationError(
+                        `${label}.daysOfWeek contains the duplicate day ${day}.`,
+                    );
+                }
+                seenDays.add(day);
+            }
+        }
+    });
+    if (trigger.timezone !== undefined) {
+        requireNonEmptyString(trigger.timezone, 'Schedule trigger.timezone');
+        try {
+            new Intl.DateTimeFormat('en-US', {timeZone: trigger.timezone});
+        } catch {
+            throw new AutomationValidationError(
+                `Schedule trigger.timezone must be a valid IANA time zone identifier, got '${trigger.timezone}'.`,
+            );
+        }
     }
 }
 
@@ -254,15 +402,19 @@ function validateSmartPlugSwitchAction(
         );
     }
     const {minDurationMinutes} = action;
-    if (
-        typeof minDurationMinutes !== 'number' ||
-        !Number.isInteger(minDurationMinutes) ||
-        minDurationMinutes < AUTOMATION_MIN_DURATION_MINUTES ||
-        minDurationMinutes > AUTOMATION_MAX_DURATION_MINUTES ||
-        minDurationMinutes % AUTOMATION_DURATION_STEP_MINUTES !== 0
-    ) {
+    // Short runtimes (1-5 minutes) are allowed at whole-minute granularity so a
+    // one-minute pulse can be configured; anything longer keeps the 5-minute step.
+    const isWholeMinutesInRange =
+        typeof minDurationMinutes === 'number' &&
+        Number.isInteger(minDurationMinutes) &&
+        minDurationMinutes >= AUTOMATION_MIN_DURATION_MINUTES &&
+        minDurationMinutes <= AUTOMATION_MAX_DURATION_MINUTES;
+    const matchesStep =
+        minDurationMinutes <= AUTOMATION_DURATION_STEP_MINUTES ||
+        minDurationMinutes % AUTOMATION_DURATION_STEP_MINUTES === 0;
+    if (!isWholeMinutesInRange || !matchesStep) {
         throw new AutomationValidationError(
-            `${label}.minDurationMinutes must be an integer between ${AUTOMATION_MIN_DURATION_MINUTES} and ${AUTOMATION_MAX_DURATION_MINUTES} in steps of ${AUTOMATION_DURATION_STEP_MINUTES}.`,
+            `${label}.minDurationMinutes must be an integer between ${AUTOMATION_MIN_DURATION_MINUTES} and ${AUTOMATION_MAX_DURATION_MINUTES}; values above ${AUTOMATION_DURATION_STEP_MINUTES} must be a multiple of ${AUTOMATION_DURATION_STEP_MINUTES}.`,
         );
     }
 }
@@ -292,6 +444,23 @@ function validatePayloadTemplate(template: string, label: string): void {
         throw new AutomationValidationError(
             `${label} is not valid JSON once placeholders are substituted.`,
         );
+    }
+}
+
+function requireOptionalIsoTimestamp(value: unknown, label: string): void {
+    if (value === undefined) {
+        return;
+    }
+    if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
+        throw new AutomationValidationError(
+            `${label} must be a valid ISO 8601 timestamp: ${String(value)}.`,
+        );
+    }
+}
+
+function requireFinite(value: unknown, label: string): void {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new AutomationValidationError(`${label} must be a finite number.`);
     }
 }
 

@@ -11,6 +11,7 @@ import {
     EnyoOnboardingV2OcppConnectOutcome,
     EnyoOnboardingV2PauseReason,
     EnyoOnboardingV2StartVariant,
+    type EnyoOnboardingV2AuthBlock,
     type EnyoOnboardingV2Block,
     type EnyoOnboardingV2Credential,
     type EnyoOnboardingV2SelectOption,
@@ -20,6 +21,7 @@ import {
 import type {EnergyAppPackagePublicFile} from '../../../energy-app-package-definition.js';
 import {definePublicFile} from '../../files/define-public-file.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../../types/enyo-device-test.js';
+import {EnyoOauthRedirectUrlPatternEnum} from '../../../types/enyo-authentication.js';
 import {EnyoEebusDeviceTypeEnum} from '../../../types/enyo-eebus.js';
 import {EnyoNetworkDeviceDetectedAtEnum} from '../../../types/enyo-network-device.js';
 import {
@@ -666,6 +668,58 @@ describe('auth blocks', () => {
         const result = validateOnboardingGuideV2(guide);
         expect(result.ok).toBe(false);
         expect(result.errors.some((e) => e.includes('at most one login'))).toBe(true);
+    });
+
+    it('carries a redirect-url filter through the block factory', () => {
+        const block = onboardingV2Block.auth(
+            'a1',
+            t('Anmelden', 'Sign in'),
+            {id: 'ok', label: t('OK', 'OK')},
+            {
+                redirectUrlFilter: {
+                    webOnly: true,
+                    pattern: EnyoOauthRedirectUrlPatternEnum.PathSegment,
+                },
+            },
+        );
+        expect(block).toMatchObject({
+            redirectUrlFilter: {webOnly: true, pattern: 'path-segment'},
+        });
+    });
+
+    it('accepts a login with a valid redirect-url filter', () => {
+        const guide = loginGuide();
+        const block = guide.steps[0]!.blocks[0] as EnyoOnboardingV2AuthBlock;
+        block.redirectUrlFilter = {
+            webOnly: true,
+            pattern: EnyoOauthRedirectUrlPatternEnum.QueryParam,
+        };
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(true);
+        expect(result.errors).toEqual([]);
+    });
+
+    it('rejects an unknown redirect-url pattern', () => {
+        const guide = loginGuide();
+        const block = guide.steps[0]!.blocks[0] as EnyoOnboardingV2AuthBlock;
+        block.redirectUrlFilter = {
+            pattern: 'fragment' as EnyoOauthRedirectUrlPatternEnum,
+        };
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('redirectUrlFilter.pattern is invalid'))).toBe(
+            true,
+        );
+    });
+
+    it('warns when the deprecated web flag contradicts the filter', () => {
+        const guide = loginGuide();
+        const block = guide.steps[0]!.blocks[0] as EnyoOnboardingV2AuthBlock;
+        block.requiresWebAuthentication = true;
+        block.redirectUrlFilter = {webOnly: false};
+        const result = validateOnboardingGuideV2(guide);
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('drop the deprecated flag'))).toBe(true);
     });
 
     it('warns when another decision block offers a way past the login', () => {

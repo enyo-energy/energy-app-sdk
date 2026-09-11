@@ -39,6 +39,7 @@ import type {
     EnyoOnboardingV2Transition,
 } from '../../types/enyo-onboarding-v2.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../types/enyo-device-test.js';
+import {EnyoOauthRedirectUrlPatternEnum} from '../../types/enyo-authentication.js';
 import {ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME} from '../../types/enyo-onboarding-v2-additional-setup.js';
 import type {EnergyAppPackagePublicFile} from '../../energy-app-package-definition.js';
 import {isImagePublicFile} from '../files/public-file-validators.js';
@@ -789,6 +790,11 @@ function validateEebusPairOutcomes(
     }
 }
 
+/** The redirect-URL patterns an auth block's `redirectUrlFilter` may name. */
+const REDIRECT_URL_PATTERNS: ReadonlySet<string> = new Set<string>(
+    Object.values(EnyoOauthRedirectUrlPatternEnum),
+);
+
 /**
  * Every block type that owns a decision — a picker shares a step with none of
  * them.
@@ -928,6 +934,37 @@ function validateAuthBlocks(
         }
         if (!block.outcome?.label?.length) {
             warnings.push(`${at}: auth block "${block.id}" outcome has no label.`);
+        }
+
+        const filter = block.redirectUrlFilter;
+        if (filter !== undefined) {
+            if (typeof filter !== 'object') {
+                errors.push(`${at}: auth block "${block.id}" redirectUrlFilter must be an object.`);
+            } else {
+                if (filter.webOnly !== undefined && typeof filter.webOnly !== 'boolean') {
+                    errors.push(
+                        `${at}: auth block "${block.id}" redirectUrlFilter.webOnly must be a boolean.`,
+                    );
+                }
+                if (
+                    filter.pattern !== undefined &&
+                    !REDIRECT_URL_PATTERNS.has(filter.pattern)
+                ) {
+                    errors.push(
+                        `${at}: auth block "${block.id}" redirectUrlFilter.pattern is invalid: ${filter.pattern}. ` +
+                            `Allowed values: ${[...REDIRECT_URL_PATTERNS].join(', ')}.`,
+                    );
+                }
+                if (
+                    block.requiresWebAuthentication === true &&
+                    filter.webOnly === false
+                ) {
+                    warnings.push(
+                        `${at}: auth block "${block.id}" sets requiresWebAuthentication but redirectUrlFilter.webOnly is false — ` +
+                            'the filter wins; drop the deprecated flag.',
+                    );
+                }
+            }
         }
     }
 

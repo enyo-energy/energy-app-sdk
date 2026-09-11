@@ -74,6 +74,40 @@ export enum EnyoHeatpumpApplianceHeatingRodUsageEnum {
 }
 
 /**
+ * How the installation stores thermal energy — which is what decides whether a
+ * buffer-tank entry and a domestic-hot-water entry describe two separate
+ * vessels or one shared one.
+ *
+ * A **combi storage** (Kombispeicher) is a single cylinder that serves both the
+ * heating buffer and domestic hot water, typically as a tank-in-tank or with an
+ * internal DHW coil. It is reported as one
+ * {@link EnyoHeatpumpApplianceBufferTank} *and* one
+ * {@link EnyoHeatpumpApplianceDomesticHotWater} entry sharing the same `index`,
+ * because both functions have their own setpoint and their own temperature —
+ * but the two entries are backed by the same water.
+ */
+export enum EnyoHeatpumpApplianceStorageTypeEnum {
+    /** No thermal store — the heatpump feeds the heating circuits directly. */
+    None = 'None',
+    /**
+     * A dedicated buffer tank and a dedicated domestic-hot-water cylinder, each
+     * its own physical vessel. This is the default: an omitted
+     * {@link EnyoHeatpumpApplianceMetadata.storageType} means `SeparateTanks`.
+     */
+    SeparateTanks = 'SeparateTanks',
+    /**
+     * One combi storage serving both the heating buffer and domestic hot water.
+     *
+     * Consumers must not treat the buffer and DHW entries as independent energy
+     * stores: their {@link EnyoHeatpumpApplianceBufferTank.whPerDegreeCelsius}
+     * and {@link EnyoHeatpumpApplianceDomesticHotWater.whPerDegreeCelsius}
+     * describe overlapping volume, so summing them overstates how much surplus
+     * the installation can absorb, and overheating one zone moves the other.
+     */
+    CombiStorage = 'CombiStorage',
+}
+
+/**
  * The type of heat emitter connected to a heating circuit. Influences the
  * flow temperatures the circuit operates at (floor heating typically runs at
  * lower temperatures than radiators).
@@ -85,7 +119,20 @@ export enum EnyoHeatpumpApplianceHeatingCircuitTypeEnum {
     FloorHeating = 'FloorHeating',
 }
 
+/**
+ * A domestic-hot-water zone of the installation.
+ *
+ * In a combi installation
+ * ({@link EnyoHeatpumpApplianceStorageTypeEnum.CombiStorage}) this describes the
+ * DHW half of the shared cylinder, and the {@link EnyoHeatpumpApplianceBufferTank}
+ * with the same {@link index} describes the buffer half of that same vessel.
+ */
 export interface EnyoHeatpumpApplianceDomesticHotWater {
+    /**
+     * Zero-based index of this DHW zone. Under
+     * {@link EnyoHeatpumpApplianceStorageTypeEnum.CombiStorage} it also links
+     * this zone to the buffer-tank entry sharing the same physical tank.
+     */
     index: number;
     tankSizeLiter?: number;
     /**
@@ -121,7 +168,20 @@ export interface EnyoHeatpumpApplianceDomesticHotWater {
     maxTemperatureC?: number;
 }
 
+/**
+ * A heating buffer tank of the installation.
+ *
+ * In a combi installation
+ * ({@link EnyoHeatpumpApplianceStorageTypeEnum.CombiStorage}) this describes the
+ * buffer half of the shared cylinder — see
+ * {@link EnyoHeatpumpApplianceMetadata.storageType}.
+ */
 export interface EnyoHeatpumpApplianceBufferTank {
+    /**
+     * Zero-based index of this buffer tank. Under
+     * {@link EnyoHeatpumpApplianceStorageTypeEnum.CombiStorage} it also links
+     * this tank to the DHW entry sharing the same physical vessel.
+     */
     index: number;
     tankSizeLiter?: number;
     /**
@@ -161,6 +221,70 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
     customName?: string;
 }
 
+/**
+ * The fitted thermal model of the building the heatpump heats.
+ *
+ * Produced by observing the installation rather than read from the device: an
+ * app derives the coefficients from measured outdoor temperature, room
+ * temperature and heat output over time, so the figures describe *this* house
+ * as it actually behaves, not its design values. They are what lets an EMS
+ * answer "how much heat does this building need at -5 °C" and "how long does it
+ * coast once the compressor stops" — the two questions behind every
+ * pre-heating, load-shifting or blocking decision.
+ *
+ * Treat the model as an estimate with an age: it drifts with the seasons, with
+ * occupancy, and after any change to the envelope or the hydraulics. Weigh it
+ * against {@link fittedAtMs} and re-fit rather than trusting an old fit
+ * indefinitely.
+ */
+export interface EnyoHeatpumpApplianceBuildingModel {
+    /**
+     * Heat loss coefficient of the building in Watts per Kelvin (W/K) — the
+     * steady-state heat output needed per Kelvin of difference between inside
+     * and outside.
+     *
+     * Multiply by the temperature difference for the heat demand: a building at
+     * 312 W/K holding 21 °C against an outdoor -5 °C needs roughly
+     * `312 * 26 ≈ 8.1 kW` of heat. Divide by the COP for the electrical input.
+     *
+     * This is the whole-building figure including ventilation losses, as fitted
+     * — not a per-square-metre or per-element U-value.
+     */
+    uaWPerK: number;
+    /**
+     * Heating limit temperature in °C (Heizgrenztemperatur) — the outdoor
+     * temperature above which the building needs no space heating, because
+     * solar and internal gains cover the losses on their own.
+     *
+     * Marks the boundary of the heating season for this building. Above it,
+     * space-heating demand is effectively zero and only domestic hot water
+     * remains, so an EMS should not plan pre-heating runs against a forecast
+     * that stays above this value.
+     */
+    heatingLimitC: number;
+    /**
+     * Thermal time constant of the building in hours — how long it takes the
+     * indoor temperature to fall to roughly 37 % (1/e) of an initial deviation
+     * once heating stops.
+     *
+     * The building's thermal inertia, and therefore how long it can be blocked
+     * before comfort suffers: a heavy house at 32 h coasts through an expensive
+     * evening almost unharmed, a light one at 8 h does not. It also bounds how
+     * far ahead pre-heating is worth placing — heat banked much earlier than
+     * this has leaked away before it is needed.
+     */
+    timeConstantH: number;
+    /**
+     * When this model was fitted, as epoch milliseconds.
+     *
+     * Its age is part of the reading: coefficients fitted last winter may no
+     * longer describe the building after insulation work, a new heating curve,
+     * or a change in how the house is used. Consumers should prefer a recent
+     * fit and may disregard a stale one.
+     */
+    fittedAtMs: number;
+}
+
 export interface EnyoHeatpumpApplianceMetadata {
     availableFeatures: EnyoHeatpumpApplianceAvailableFeaturesEnum[];
     mode?: EnyoHeatpumpApplianceModeEnum;
@@ -194,4 +318,29 @@ export interface EnyoHeatpumpApplianceMetadata {
      * (see {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingRod}).
      */
     heatingRodUsage?: EnyoHeatpumpApplianceHeatingRodUsageEnum;
+    /**
+     * How the installation stores thermal energy — separate buffer and DHW
+     * tanks, a single combi storage serving both, or no store at all.
+     *
+     * Set it to {@link EnyoHeatpumpApplianceStorageTypeEnum.CombiStorage} for a
+     * Kombispeicher and report the tank in both {@link bufferTanks} and
+     * {@link domesticHotWater} under the same `index`: the two zones have
+     * separate setpoints but share one body of water, so an EMS must plan them
+     * as one store rather than adding their capacities together.
+     *
+     * Defaults to {@link EnyoHeatpumpApplianceStorageTypeEnum.SeparateTanks}
+     * when omitted, so a combi installation has to declare itself — an
+     * unreported Kombispeicher is planned as two independent stores.
+     */
+    storageType?: EnyoHeatpumpApplianceStorageTypeEnum;
+    /**
+     * The fitted thermal model of the building this heatpump heats — its heat
+     * loss coefficient, heating limit and time constant, plus when the fit was
+     * made.
+     *
+     * Optional and absent until an app has observed the installation long
+     * enough to fit it; consumers must handle its absence rather than
+     * substituting design values for an unknown building.
+     */
+    building?: EnyoHeatpumpApplianceBuildingModel;
 }

@@ -24,6 +24,7 @@
 import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
 import type {EnyoEebusDeviceTypeEnum} from './enyo-eebus.js';
 import type {EnyoNetworkDeviceDetectedAtEnum} from './enyo-network-device.js';
+import type {EnyoOauthRedirectUrlFilter} from './enyo-authentication.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -922,8 +923,26 @@ export interface EnyoOnboardingV2AuthBlock extends EnyoOnboardingV2BlockBase {
      * {@link EnyoOauthAuthenticationStart.requiresWebAuthentication}, so an app
      * that registers its own redirect handler can confirm which mode it got
      * rather than inferring it from the URL's scheme.
+     *
+     * @deprecated Use {@link redirectUrlFilter}`.webOnly`, which expresses the
+     * same constraint and sits next to the URL-pattern one. Setting this flag
+     * stays supported and is equivalent to `{webOnly: true}`; when both are
+     * given, {@link redirectUrlFilter} wins.
      */
     requiresWebAuthentication?: boolean;
+    /**
+     * Constraints on the enyo callback URL the host generates for this login —
+     * `https`-only (`webOnly`) and/or the URL pattern the provider's OAuth app
+     * was registered with (`pattern`).
+     *
+     * Declare it when the provider is picky about `redirect_uri`: a mismatch
+     * fails at the authorization server with a generic "invalid redirect_uri",
+     * after the installer has already typed a password and with nothing on
+     * screen that points at the cause. The host applies the filter before the
+     * request reaches the app and reports what it applied as
+     * {@link EnyoOauthAuthenticationStart.redirectUrlFilter}.
+     */
+    redirectUrlFilter?: EnyoOauthRedirectUrlFilter;
     /** The one success handle; routed like any other outcome. */
     outcome: EnyoOnboardingV2AuthOutcome;
 }

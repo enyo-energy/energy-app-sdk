@@ -40,11 +40,80 @@ export interface EnyoUsernamePasswordAuthentication {
     additionalFields?: EnyoAuthenticationAdditionalField[];
 }
 
+/**
+ * How the host encodes the pending request into the enyo callback URL it hands
+ * out as {@link EnyoOauthAuthenticationStart.enyoRedirectUrl}.
+ *
+ * OAuth providers differ in what they accept as a registered `redirect_uri`:
+ * some match the URL exactly and reject anything carrying a query string,
+ * others match only the path prefix. Declaring the shape the provider's OAuth
+ * app was registered with avoids a generic "invalid redirect_uri" that only
+ * surfaces after the user has already typed a password.
+ */
+export enum EnyoOauthRedirectUrlPatternEnum {
+    /**
+     * The request id is carried as a query parameter, e.g.
+     * `https://api.enyo-energy.de/oauth-callback?from=<requestId>`. The host's
+     * default.
+     */
+    QueryParam = 'query-param',
+    /**
+     * The request id is carried as a trailing path segment, e.g.
+     * `https://api.enyo-energy.de/oauth-callback/<requestId>`. Use this for
+     * providers that reject a registered `redirect_uri` containing a query
+     * string.
+     */
+    PathSegment = 'path-segment',
+}
+
+/**
+ * Constraints a package puts on the enyo callback URL the host generates for an
+ * OAuth flow. Every field is optional — an omitted field leaves the choice to
+ * the host.
+ *
+ * These are properties of the *provider*, not preferences: set them because the
+ * vendor's OAuth app rejects the alternative, not because one shape looks
+ * tidier. The filter the host applied travels back with the request as
+ * {@link EnyoOauthAuthenticationStart.redirectUrlFilter}, so an app can confirm
+ * what it got instead of parsing the URL.
+ */
+export interface EnyoOauthRedirectUrlFilter {
+    /**
+     * Require an `https` callback URL rather than a custom app scheme such as
+     * `enyoapp://`, which forces the login to run in a web browser instead of an
+     * in-app / native flow.
+     *
+     * Set it when the provider will not accept a custom-scheme redirect. Many
+     * OAuth providers reject anything that is not `https`, so a redirect of
+     * `enyoapp://…` fails at the authorization server before the installer has
+     * typed a password, with nothing on screen that points at the cause. The
+     * native flow is the better experience where it works — it keeps the
+     * installer inside the app — so only turn this on when the provider forces
+     * it.
+     */
+    webOnly?: boolean;
+    /**
+     * Which {@link EnyoOauthRedirectUrlPatternEnum} the callback URL must
+     * follow. Omit to let the host choose (today: `QueryParam`).
+     */
+    pattern?: EnyoOauthRedirectUrlPatternEnum;
+}
+
 export interface EnyoOauthAuthentication {
     description?: EnyoPackageConfigurationTranslatedValue[];
     /** If the client id and client secret need to be provided by the user*/
     clientIdName?: EnyoPackageConfigurationTranslatedValue[];
     clientSecretName?: EnyoPackageConfigurationTranslatedValue[];
+    /**
+     * Constraints on the enyo callback URL the host generates for this flow —
+     * `https`-only and/or a specific URL pattern. The host applies them when
+     * building {@link EnyoOauthAuthenticationStart.enyoRedirectUrl}, before the
+     * request ever reaches the package's `listenForOauthStart` listener.
+     *
+     * Omit it to let the host pick, which is right unless the provider's OAuth
+     * app was registered with a redirect URI the default does not match.
+     */
+    redirectUrlFilter?: EnyoOauthRedirectUrlFilter;
 }
 
 /**
@@ -67,19 +136,31 @@ export interface EnyoOauthAuthenticationStart {
      * such as `enyoapp://`.
      *
      * Set by the host when the flow that started the login declared the
-     * constraint — today
-     * {@link EnyoOnboardingV2AuthBlock.requiresWebAuthentication} on an
-     * onboarding v2 auth block. It is reported here so a package building the
-     * provider's authorize URL can act on it explicitly: pick the matching
-     * registered OAuth client, or fail fast with a clear message instead of
-     * letting the authorization server answer "invalid redirect_uri" after the
-     * user has already typed a password.
+     * constraint. It is reported here so a package building the provider's
+     * authorize URL can act on it explicitly: pick the matching registered
+     * OAuth client, or fail fast with a clear message instead of letting the
+     * authorization server answer "invalid redirect_uri" after the user has
+     * already typed a password.
      *
      * Absent or `false` means the host chose the redirect itself and it may
      * carry a custom scheme. Prefer reading this flag over sniffing
      * {@link enyoRedirectUrl}'s scheme.
+     *
+     * @deprecated Read {@link redirectUrlFilter}`.webOnly` instead, which
+     * carries the same information alongside the URL-pattern constraint. The
+     * host keeps both in sync: whenever this flag is `true`,
+     * `redirectUrlFilter.webOnly` is `true` as well.
      */
     requiresWebAuthentication?: boolean;
+    /**
+     * The {@link EnyoOauthRedirectUrlFilter} the host applied when building
+     * {@link enyoRedirectUrl} — the resolved constraints, not the requested
+     * ones, so a package can confirm which callback shape it got rather than
+     * parsing the URL.
+     *
+     * Absent when the flow declared no constraints and the host chose freely.
+     */
+    redirectUrlFilter?: EnyoOauthRedirectUrlFilter;
 }
 
 export interface EnyoOauthAuthenticationRedirectUrlResponse {

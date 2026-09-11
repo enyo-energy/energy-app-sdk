@@ -59,7 +59,88 @@ export enum PreviewChargingScheduleUnavailableReasonEnum {
     /** The requested appliance was not found */
     ApplianceNotFound = 'appliance-not-found',
     /** The energy manager does not support the preview schedule feature */
-    FeatureNotSupported = 'feature-not-supported'
+    FeatureNotSupported = 'feature-not-supported',
+
+    // ── The charger cannot be steered ──────────────────────────────────────
+
+    /**
+     * The charger integration does not permit control — its
+     * {@link EnyoChargerApplianceMetadata.controlAllowed} is `false`, so the
+     * appliance is read-only/monitor-only and no schedule could be applied even
+     * if one were planned.
+     *
+     * A property of the *integration*, unlike
+     * {@link ControlDisabledByUser}.
+     */
+    ControlNotAllowed = 'control-not-allowed',
+    /**
+     * The user switched charger control off in the energy manager's general
+     * settings ({@link EnergyManagerSettingValues.chargerControl}). The
+     * integration could be steered; the user asked that it is not.
+     *
+     * Actionable: a consumer can point the user at the setting, which is why it
+     * is distinct from {@link ControlNotAllowed}.
+     */
+    ControlDisabledByUser = 'control-disabled-by-user',
+    /**
+     * The charger is offline / unreachable, so its state and power limits are
+     * unknown. Transient — a later request may succeed.
+     */
+    ApplianceOffline = 'appliance-offline',
+
+    // ── Nothing to plan for ────────────────────────────────────────────────
+
+    /**
+     * No vehicle is connected to the charger, so there is no session to plan.
+     */
+    NoVehicleConnected = 'no-vehicle-connected',
+    /**
+     * The {@link EnyoDataBusRequestPreviewChargingScheduleV1} named a
+     * `vehicleId` that is unknown to the system.
+     */
+    VehicleNotFound = 'vehicle-not-found',
+    /**
+     * The amount of energy to plan for could not be determined — the request
+     * carried neither `targetEnergyWh` nor a `vehicleId` whose battery state
+     * yields one.
+     */
+    NoTargetEnergy = 'no-target-energy',
+    /**
+     * The requested `completeByIso` deadline lies in the past or leaves too
+     * little time to deliver the target energy, so no schedule fits it.
+     */
+    DeadlineNotReachable = 'deadline-not-reachable',
+
+    // ── Nothing to optimize ────────────────────────────────────────────────
+
+    /**
+     * Tariff data exists but carries no time-varying prices (a flat tariff), so
+     * every slot costs the same and a cost-optimized plan cannot beat charging
+     * immediately.
+     *
+     * Distinct from {@link NoTariffData}, which means no prices at all.
+     */
+    TariffNotDynamic = 'tariff-not-dynamic',
+    /**
+     * The requested charging mode is not one this energy manager can plan a
+     * preview for.
+     */
+    ChargeModeNotSupported = 'charge-mode-not-supported',
+
+    // ── Everything else ────────────────────────────────────────────────────
+
+    /**
+     * The energy manager could not produce a preview right now — it is still
+     * starting up, busy, or in a temporary error state. Transient: a later
+     * request may succeed.
+     */
+    TemporarilyUnavailable = 'temporarily-unavailable',
+    /**
+     * No more specific reason applies. Prefer any of the members above; this
+     * exists so a sender never has to omit the field, and consumers should
+     * render it as a generic "not available right now".
+     */
+    Unknown = 'unknown',
 }
 
 /**

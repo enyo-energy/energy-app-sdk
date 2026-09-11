@@ -2962,17 +2962,21 @@ An `EnyoAutomation` is `{ id, name, enabled, trigger, actions[] }`. The pieces:
 
 | Concept | Type | Values / fields |
 | --- | --- | --- |
-| **Trigger** | `EnyoAutomationTriggerTypeEnum` | `PvSurplusThreshold` → `{ thresholdW }` (activate above, deactivate below) |
-| **Action — smart plug** | `EnyoAutomationActionTypeEnum.SmartPlugSwitch` | `{ applianceId, minDurationMinutes }` — `minDurationMinutes` is `5…360` in steps of `5` |
+| **Trigger — PV surplus above** | `EnyoAutomationTriggerTypeEnum.PvSurplusThreshold` | `{ thresholdW }` (activate above, deactivate below) |
+| **Trigger — PV surplus below** | `EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold` | `{ thresholdW }` — the inverse: active while surplus stays below, deactivates (turns the target **off**) as soon as `surplusW >= thresholdW` |
+| **Trigger — below price limit** | `EnyoAutomationTriggerTypeEnum.BelowPriceLimit` | `{ limitPerKwh, currency? }` — active while the current **full gross** price per kWh (incl. taxes, grid fees and all other components) is strictly below the limit; negative limits are allowed |
+| **Trigger — cheapest share of day** | `EnyoAutomationTriggerTypeEnum.CheapestShareOfDay` | `{ sharePercent }` — active during the cheapest `sharePercent` % of the day's price intervals (e.g. `25` for the cheapest 25 %); integer `1…100` |
+| **Trigger — schedule ("Zeitplan")** | `EnyoAutomationTriggerTypeEnum.Schedule` | `{ windows[], timezone? }` — each window is `{ startTimeOfDay, endTimeOfDay, daysOfWeek? }` in local `HH:mm` (`0` = Sunday … `6` = Saturday, omit for every day); windows may wrap past midnight and may overlap — the trigger is active while **any** window covers the current time |
+| **Action — smart plug** | `EnyoAutomationActionTypeEnum.SmartPlugSwitch` | `{ applianceId, minDurationMinutes }` — `minDurationMinutes` is `1…360`: whole minutes up to `5` (so a **1-minute** runtime is supported), multiples of `5` above that |
 | **Action — MQTT** | `EnyoAutomationActionTypeEnum.Mqtt` | `{ topic, payloadTemplate, updateChargingPvSurplus, publishOptions? }` |
 | **Scheduling** | `EnyoAutomationSchedulingModeEnum` | `Mandatory` (run exactly while active) or `Flexible` (Energy Manager may choose whether/when within the active window) |
 | **Target kind** | `EnyoAutomationTargetKindEnum` | `Load` (consumes power — counts in the energy balance) or `Signal` (control signal only) |
 
-The **MQTT** `payloadTemplate` is JSON that may embed the placeholders in `EnyoAutomationMqttPlaceholderEnum` — `{{state}}` (`on`/`off`), `{{surplusW}}`, `{{timestampIso}}`, `{{automationId}}` — which the platform substitutes before publishing.
+The **MQTT** `payloadTemplate` is JSON that may embed the placeholders in `EnyoAutomationMqttPlaceholderEnum` — `{{state}}` (`on`/`off`), `{{surplusW}}`, `{{pricePerKwh}}`, `{{timestampIso}}`, `{{automationId}}` — which the platform substitutes before publishing.
 
 Two things travel over the **data bus** vs. the **API**:
 
-- **Trigger state** is the data-bus message `AutomationTriggerV1` (`EnyoDataBusAutomationTriggerV1`): `{ automationId, data: { active, trigger } }`, where `trigger` is the per-type `EnyoAutomationTriggerData` (for PV surplus: `{ triggerType, surplusW, thresholdW }`).
+- **Trigger state** is the data-bus message `AutomationTriggerV1` (`EnyoDataBusAutomationTriggerV1`): `{ automationId, data: { active, trigger } }`, where `trigger` is the per-type `EnyoAutomationTriggerData` (PV surplus: `{ triggerType, surplusW, thresholdW }`; below-price-limit: `{ triggerType, pricePerKwh, limitPerKwh, currency }`; cheapest-share-of-day: `{ triggerType, pricePerKwh, sharePercent, thresholdPricePerKwh, currency }`; schedule: `{ triggerType, windowIndex?, windowStartIso?, windowEndIso? }`).
 - The **forecast** is a method — `publishAutomationForecast()` — not a data-bus message.
 
 ### ⚡ Guide: Energy Manager apps

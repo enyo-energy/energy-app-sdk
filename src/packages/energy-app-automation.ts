@@ -22,6 +22,14 @@ import {
  *   (via `useDataBus()`) whenever the configured threshold is crossed. Trigger
  *   state is a data-bus message, not a method on this package.
  *
+ * Supported triggers (see {@link EnyoAutomationTriggerTypeEnum}):
+ * `PvSurplusThreshold` (surplus above X W), `PvSurplusBelowThreshold` (turn the
+ * target off once the surplus reaches X W), `BelowPriceLimit` (price per kWh
+ * below a limit), `CheapestShareOfDay` (the cheapest N % of the day, e.g. 25 %)
+ * and `Schedule` (the "Zeitplan" trigger — one or more start/end time windows,
+ * each optionally restricted to certain weekdays). A provider registers each
+ * type it can evaluate independently.
+ *
  * @example
  * ```typescript
  * // A "pool pump on solar" automation the user created:
@@ -63,6 +71,42 @@ import {
  *         },
  *     },
  * }]);
+ *
+ * // A price-driven automation: run the pump during the cheapest 25 % of the day
+ * // for at least one minute per activation.
+ * const cheapHours: EnyoAutomation = {
+ *     id: 'pump-cheap-hours',
+ *     name: 'Pool pump in cheap hours',
+ *     enabled: true,
+ *     trigger: {type: EnyoAutomationTriggerTypeEnum.CheapestShareOfDay, sharePercent: 25},
+ *     actions: [
+ *         {
+ *             id: 'switch-pump',
+ *             type: EnyoAutomationActionTypeEnum.SmartPlugSwitch,
+ *             schedulingMode: EnyoAutomationSchedulingModeEnum.Flexible,
+ *             targetKind: EnyoAutomationTargetKindEnum.Load,
+ *             applianceId: 'shelly-pool-ch0',
+ *             minDurationMinutes: 1,
+ *         },
+ *     ],
+ * };
+ *
+ * // A "Zeitplan": weekday mornings and evenings, plus all day on Sunday.
+ * const schedule: EnyoAutomation['trigger'] = {
+ *     type: EnyoAutomationTriggerTypeEnum.Schedule,
+ *     windows: [
+ *         {startTimeOfDay: '06:00', endTimeOfDay: '08:00', daysOfWeek: [1, 2, 3, 4, 5]},
+ *         {startTimeOfDay: '18:00', endTimeOfDay: '22:00', daysOfWeek: [1, 2, 3, 4, 5]},
+ *         {startTimeOfDay: '00:00', endTimeOfDay: '23:59', daysOfWeek: [0]},
+ *     ],
+ *     timezone: 'Europe/Berlin',
+ * };
+ *
+ * // "Turn the heating rod off as soon as the PV surplus reaches 3 kW":
+ * const offOnSurplus: EnyoAutomation['trigger'] = {
+ *     type: EnyoAutomationTriggerTypeEnum.PvSurplusBelowThreshold,
+ *     thresholdW: 3000,
+ * };
  * ```
  */
 export interface EnergyAppAutomation {

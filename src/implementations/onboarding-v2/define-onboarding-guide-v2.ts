@@ -11,6 +11,7 @@
  */
 
 import type {EnyoOnboardingTranslatedContent} from '../../types/enyo-onboarding.js';
+import type {EnyoOauthRedirectUrlFilter} from '../../types/enyo-authentication.js';
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2BlockType,
@@ -447,8 +448,12 @@ export const onboardingV2Block = {
      * @param label - Translated sign-in button text (de/en).
      * @param outcome - The single success handle (`{id, label}`).
      * @param opts - Optional translated `help` naming the account that is needed,
-     *   and `requiresWebAuthentication` to force the login into a web browser
-     *   when the provider rejects a custom-scheme redirect such as `enyoapp://`.
+     *   and `redirectUrlFilter` to constrain the enyo callback URL the host
+     *   generates — `webOnly` when the provider rejects a custom-scheme redirect
+     *   such as `enyoapp://`, `pattern` when its OAuth app was registered with a
+     *   redirect URI that carries the request id as a path segment rather than a
+     *   query parameter. `requiresWebAuthentication` is the deprecated spelling
+     *   of `redirectUrlFilter.webOnly`.
      */
     auth: (
         id: string,
@@ -456,7 +461,9 @@ export const onboardingV2Block = {
         outcome: EnyoOnboardingV2AuthOutcome,
         opts?: {
             help?: EnyoOnboardingTranslatedContent[];
+            /** @deprecated Use `redirectUrlFilter.webOnly`. */
             requiresWebAuthentication?: boolean;
+            redirectUrlFilter?: EnyoOauthRedirectUrlFilter;
         },
     ): EnyoOnboardingV2Block => ({
         id,
@@ -465,6 +472,7 @@ export const onboardingV2Block = {
         outcome,
         help: opts?.help,
         requiresWebAuthentication: opts?.requiresWebAuthentication,
+        redirectUrlFilter: opts?.redirectUrlFilter,
     }),
     /**
      * A link block: a fixed URL the installer opens or copies.
