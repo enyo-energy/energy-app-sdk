@@ -98,6 +98,13 @@ export interface ApplianceConfig {
     smartPlug?: EnyoSmartPlugApplianceMetadata;
     availableFeatures?: EnyoApplianceAvailableFeaturesEnum[];
     /**
+     * Optional vendor- or integration-specific compatibility modes. Forwarded to
+     * {@link EnyoAppliance.compatibilityModes} when the appliance is created or
+     * updated. Omit to keep the stored value on an update; pass an explicit `[]`
+     * to clear it.
+     */
+    compatibilityModes?: string[];
+    /**
      * Optional identifier of the cloud-deployed energy app package that manages
      * this appliance. Forwarded to {@link EnyoAppliance.cloudPackageId} when the
      * appliance is created or updated.
@@ -312,7 +319,7 @@ export class ApplianceManager {
             airConditioning: appliance.airConditioning,
             heatingRod: appliance.heatingRod,
             smartPlug: appliance.smartPlug,
-            // Conditionally spread the two optional top-level fields that are NOT
+            // Conditionally spread the optional top-level fields that are NOT
             // covered by MERGEABLE_METADATA_KEYS. If they were always materialized
             // as explicit keys, an omitted (undefined) value would clobber the
             // stored value during mergeApplianceData's `{...existing, ...update}`
@@ -320,6 +327,7 @@ export class ApplianceManager {
             // while dropping omitted fields so the existing value is preserved.
             ...(appliance.cloudPackageId !== undefined && {cloudPackageId: appliance.cloudPackageId}),
             ...(appliance.availableFeatures !== undefined && {availableFeatures: appliance.availableFeatures}),
+            ...(appliance.compatibilityModes !== undefined && {compatibilityModes: appliance.compatibilityModes}),
         };
 
         let applianceData = newApplianceData;
@@ -890,6 +898,11 @@ export interface PartialEnyoAppliance {
     smartPlug?: Partial<EnyoSmartPlugApplianceMetadata>;
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
+    /**
+     * Optional list of vendor- or integration-specific compatibility modes that
+     * are active for this appliance. Mirrors {@link EnyoAppliance.compatibilityModes}.
+     */
+    compatibilityModes?: string[];
     /**
      * Optional identifier of the cloud-deployed energy app package that manages
      * this appliance. Mirrors {@link EnyoAppliance.cloudPackageId}.

@@ -70,7 +70,8 @@ export class InMemoryApplianceManager extends ApplianceManager {
 
         // Build the incoming appliance data covering every ApplianceConfig field.
         // The two optional top-level fields that are NOT shallow-merged by
-        // mergeApplianceData (`cloudPackageId`, `availableFeatures`) are only
+        // mergeApplianceData (`cloudPackageId`, `availableFeatures`,
+        // `compatibilityModes`) are only
         // materialized when provided so an omitted value cannot clobber the stored
         // one during an update; pass an explicit value (e.g. `[]`) to clear them.
         const newApplianceData: Omit<EnyoAppliance, 'id'> = {
@@ -89,6 +90,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
             heatingRod: appliance.heatingRod,
             ...(appliance.cloudPackageId !== undefined && {cloudPackageId: appliance.cloudPackageId}),
             ...(appliance.availableFeatures !== undefined && {availableFeatures: appliance.availableFeatures}),
+            ...(appliance.compatibilityModes !== undefined && {compatibilityModes: appliance.compatibilityModes}),
         };
 
         // On update, merge onto the stored appliance so type-specific metadata and

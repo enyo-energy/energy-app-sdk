@@ -295,6 +295,14 @@ export interface EnyoAppliance {
     /** Optional custom name for the appliance, defined by the user */
     customName?: string;
     /**
+     * Optional list of vendor- or integration-specific compatibility modes that
+     * are active for this appliance. Each entry is a free-form, non-localized
+     * identifier describing a behavioural deviation the appliance requires
+     * (e.g. a firmware quirk workaround or a legacy protocol dialect).
+     * Consumers that do not know a given mode should ignore it.
+     */
+    compatibilityModes?: string[];
+    /**
      * Optional identifier of the cloud-deployed energy app package that manages
      * this appliance. Set when the appliance is provisioned and operated by a
      * cloud package (e.g. {@link EnyoApplianceConnectionType.Cloud}), so that
