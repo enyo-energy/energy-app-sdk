@@ -18,6 +18,10 @@ import {
     PreviewChargingScheduleCostComparison,
     PreviewChargingScheduleUnavailableReasonEnum
 } from "./enyo-energy-manager.js";
+import {
+    EnyoVehicleSocSourceEnum,
+    EnyoVehicleSocUnavailableReasonEnum
+} from "./enyo-vehicle.js";
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
@@ -688,6 +692,10 @@ export enum EnyoDataBusMessageEnum {
     StopAirConditioningV1 = 'StopAirConditioningV1',
     ChangeAirConditioningOptimizationModeV1 = 'ChangeAirConditioningOptimizationModeV1',
     VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
+    /** Request the current or estimated state of charge of a vehicle, by vehicle id. */
+    RequestVehicleSocEstimateV1 = 'RequestVehicleSocEstimateV1',
+    /** Answer to {@link RequestVehicleSocEstimateV1} — the estimate with its age and source, or why none could be given. */
+    VehicleSocEstimateResponseV1 = 'VehicleSocEstimateResponseV1',
     /** V2 control command: announce the available/max power (W) envelope to a charger. Supersedes {@link EnyoDataBusMessageEnum.ChangeChargingPowerV1}. */
     SetChargerAvailablePowerV2 = 'SetChargerAvailablePowerV2',
     /** V2 control command: announce the available/max power (W) envelope to a heatpump, with purpose and power-source context. Supersedes {@link EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1}. */
@@ -1733,6 +1741,25 @@ export interface EnyoDataBusEnergyManagementChargingStateV1 extends EnyoDataBusM
 /**
  * Request message to get a preview of the optimized charging schedule.
  * Sent when user wants to see the charging plan before starting.
+ *
+ * **How much energy to plan for** can be said three ways, and the energy
+ * manager resolves them in this order:
+ *
+ * 1. {@link data.targetEnergyWh} — an explicit figure, used as given.
+ * 2. {@link data.startSocPercent} and {@link data.targetSocPercent} together
+ *    with the vehicle's `batterySizeKwh`, which is what the charging screen
+ *    draws its progress bar from.
+ * 3. {@link data.vehicleId} alone — the host falls back to the vehicle's own
+ *    state of charge and standing charge limit.
+ *
+ * When none of them yields a figure the response carries
+ * {@link PreviewChargingScheduleUnavailableReasonEnum.NoTargetEnergy}.
+ *
+ * **The price ceiling should match the one the session will actually run
+ * under**, otherwise the preview shows a plan the real session will not follow.
+ * It is spelled exactly as on {@link EnyoDataBusStartChargeV1}: a
+ * {@link data.priceLimitMode} naming which of the two ceiling values is read,
+ * or no mode at all for no ceiling.
  */
 export interface EnyoDataBusRequestPreviewChargingScheduleV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -1746,6 +1773,53 @@ export interface EnyoDataBusRequestPreviewChargingScheduleV1 extends EnyoDataBus
         targetEnergyWh?: number;
         /** Alternative vehicle id instead of targetEnergyWh*/
         vehicleId?: string;
+        /**
+         * State of charge to plan from, in percent (0-100) — the host's
+         * estimate as the user corrected it on the charging screen.
+         *
+         * Only useful together with {@link targetSocPercent} and a
+         * {@link vehicleId} whose `batterySizeKwh` is known: percent is not
+         * energy until there is a battery size to multiply it by. A preview
+         * asked with a start but no target cannot size the session and falls
+         * back to the next resolution step.
+         */
+        startSocPercent?: number;
+        /**
+         * State of charge the previewed session should reach, in percent
+         * (0-100). Defaults to the vehicle's standing charge limit when
+         * omitted.
+         */
+        targetSocPercent?: number;
+        /**
+         * Which price ceiling to plan against, or omitted for **no ceiling**.
+         * Same vocabulary as
+         * {@link EnyoDataBusStartChargeV1.data.priceLimitMode}.
+         *
+         * Only affects the {@link EnyoChargeModeEnum.CostOptimized} result — it
+         * is the only mode that imports, so it is the only one a ceiling can
+         * change. The other modes' entries in
+         * {@link PreviewChargingScheduleModeResult} are unaffected, which is
+         * what makes the side-by-side comparison meaningful.
+         */
+        priceLimitMode?: EnyoPriceLimitModeEnum;
+        /**
+         * Absolute ceiling in **cents per kWh** to plan against. Only read
+         * while {@link priceLimitMode} is
+         * {@link EnyoPriceLimitModeEnum.CtPerKwh}.
+         */
+        priceLimitCtPerKwh?: number;
+        /**
+         * Relative ceiling — plan to import only during the cheapest share of
+         * the day, in percent, integer 1 to 100. Only read while
+         * {@link priceLimitMode} is
+         * {@link EnyoPriceLimitModeEnum.CheapestShare}.
+         *
+         * A preview under a relative ceiling is a snapshot: the share is taken
+         * over the prices known when the request is answered, so the plan
+         * changes once the next day's prices publish. Do not cache it past the
+         * price horizon.
+         */
+        priceLimitSharePercent?: number;
         /** Target completion time as ISO timestamp (optional) */
         completeByIso?: string;
         /** Charger max power setting in Watts for cost comparison (optional) */
@@ -3076,6 +3150,112 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
          * the session against it.
          */
         measuredAtIso?: string;
+        /**
+         * Where this reading came from. Set it when you know — a value the car
+         * reported and one derived from energy delivered since plug-in are not
+         * interchangeable, and the app tells the user which it is showing.
+         */
+        source?: EnyoVehicleSocSourceEnum;
+    };
+}
+
+/**
+ * Request the current or estimated state of charge of a vehicle, by id.
+ *
+ * The pull counterpart to {@link EnyoDataBusVehicleSocUpdateV1}: that message
+ * is published when a source happens to have a new reading, which is the wrong
+ * shape for "the user just opened the charging screen and needs a number now".
+ * Whoever can answer replies with a
+ * {@link EnyoDataBusVehicleSocEstimateResponseV1} carrying the same
+ * {@link data.requestId}.
+ *
+ * A responder may answer from a stored reading or go and fetch a fresh one —
+ * the request says how old a value the caller will accept, not how to obtain
+ * it.
+ *
+ * ```typescript
+ * energyApp.useDataBus().sendMessage([{
+ *     type: 'message',
+ *     message: 'RequestVehicleSocEstimateV1',
+ *     data: {requestId, vehicleId, maxAgeMs: 15 * 60 * 1000},
+ * }]);
+ * ```
+ */
+export interface EnyoDataBusRequestVehicleSocEstimateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.RequestVehicleSocEstimateV1;
+    data: {
+        /** Unique request identifier the response must echo back. */
+        requestId: string;
+        /** ID of the vehicle whose state of charge is wanted. */
+        vehicleId: string;
+        /**
+         * Oldest reading the caller will accept, in milliseconds. A stored
+         * value older than this is not returned — the responder answers
+         * {@link EnyoVehicleSocUnavailableReasonEnum.ReadingTooOld} instead, or
+         * fetches a fresh one if it can.
+         *
+         * Omitted means any age is acceptable; the caller judges for itself
+         * from {@link EnyoDataBusVehicleSocEstimateResponseV1.data.measuredAtIso}.
+         * A planner sizing a session wants minutes; a screen showing a
+         * last-known figure is happy with hours.
+         */
+        maxAgeMs?: number;
+        /**
+         * ID of the charger the vehicle is plugged into, when known. Lets a
+         * responder that can only read the car over the cable — a wallbox
+         * speaking ISO 15118, a charge point reporting SoC in its meter
+         * values — find the right one without guessing.
+         */
+        applianceId?: string;
+    };
+}
+
+/**
+ * Answer to a {@link EnyoDataBusRequestVehicleSocEstimateV1}.
+ *
+ * Shaped like the preview response: {@link data.available} says whether there
+ * is an answer at all, and the reading or the reason follows. **No answer is an
+ * ordinary outcome**, not an error — plenty of vehicles have no source that can
+ * report their charge, and a caller has to cope without one rather than assume
+ * a number.
+ */
+export interface EnyoDataBusVehicleSocEstimateResponseV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.VehicleSocEstimateResponseV1;
+    data: {
+        /** The {@link EnyoDataBusRequestVehicleSocEstimateV1.data.requestId} this answers. */
+        requestId: string;
+        /** ID of the vehicle the answer is about. */
+        vehicleId: string;
+        /** Whether a state of charge could be given. */
+        available: boolean;
+        /**
+         * State of charge of the traction battery in percent (0-100). Only
+         * present while {@link available} is `true`.
+         */
+        socPercent?: number;
+        /**
+         * When {@link socPercent} was taken, ISO 8601 — not when this response
+         * was sent. Always set alongside a value: a percentage without an age
+         * cannot be aged out, and is shown to the user as current however old
+         * it is.
+         */
+        measuredAtIso?: string;
+        /** Where the reading came from, when the responder can attribute it. */
+        source?: EnyoVehicleSocSourceEnum;
+        /**
+         * Total usable capacity of the traction battery in kWh, if known.
+         * Included because a percentage is not energy without it, and the
+         * caller would otherwise need a second round trip to size a session.
+         */
+        batterySizeKwh?: number;
+        /**
+         * Why no value could be given. Only present while {@link available} is
+         * `false`; see {@link EnyoVehicleSocUnavailableReasonEnum} for which of
+         * them are worth retrying.
+         */
+        unavailableReason?: EnyoVehicleSocUnavailableReasonEnum;
     };
 }
 

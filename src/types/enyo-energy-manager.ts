@@ -101,8 +101,9 @@ export enum PreviewChargingScheduleUnavailableReasonEnum {
     VehicleNotFound = 'vehicle-not-found',
     /**
      * The amount of energy to plan for could not be determined — the request
-     * carried neither `targetEnergyWh` nor a `vehicleId` whose battery state
-     * yields one.
+     * carried no `targetEnergyWh`, no usable `startSocPercent` /
+     * `targetSocPercent` pair (which needs the vehicle's `batterySizeKwh` to
+     * become energy), and no `vehicleId` whose battery state yields one.
      */
     NoTargetEnergy = 'no-target-energy',
     /**
@@ -126,6 +127,19 @@ export enum PreviewChargingScheduleUnavailableReasonEnum {
      * preview for.
      */
     ChargeModeNotSupported = 'charge-mode-not-supported',
+    /**
+     * A price ceiling was requested that no slot in the planning window meets,
+     * so a cost-optimized plan would import nothing at all.
+     *
+     * Actionable, which is why it is distinct from
+     * {@link DeadlineNotReachable}: the deadline is fine and the charger is
+     * fine — the user's limit is simply below every price on offer, and a
+     * consumer can say so and offer to raise it. Applies to both spellings of
+     * a ceiling: a `priceLimitCtPerKwh` under the cheapest slot, or a
+     * `priceLimitSharePercent` whose share contains no usable slot before the
+     * deadline.
+     */
+    PriceLimitNotReachable = 'price-limit-not-reachable',
 
     // ── Everything else ────────────────────────────────────────────────────
 
