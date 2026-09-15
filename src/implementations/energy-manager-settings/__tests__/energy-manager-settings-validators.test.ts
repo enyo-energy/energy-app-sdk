@@ -9,7 +9,7 @@ import {
     type EnergyManagerSettingValues,
     type EnergyManagerSettingsState,
 } from '../../../types/enyo-energy-manager-settings.js';
-import {EnyoChargeModeEnum} from '../../../types/enyo-data-bus-value.js';
+import {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from '../../../types/enyo-data-bus-value.js';
 import {
     assertValidEnergyManagerSettingsState,
     EnergyManagerSettingsValidationError,
@@ -125,7 +125,8 @@ describe('validateEnergyManagerSettingsState — price limit (ct/kWh)', () => {
     const priceState = (priceLimitCtPerKwh: number) =>
         state({
             chargerControl: true,
-            defaultChargeMode: EnyoChargeModeEnum.PriceLimit,
+            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
+            priceLimitMode: EnyoPriceLimitModeEnum.CtPerKwh,
             priceLimitCtPerKwh,
         });
 
@@ -151,6 +152,65 @@ describe('validateEnergyManagerSettingsState — price limit (ct/kWh)', () => {
         const {ok, warnings} = validateEnergyManagerSettingsState(priceState(700));
         expect(ok).toBe(true);
         expect(warnings.some((w) => w.includes('cents per kWh, not EUR per kWh'))).toBe(true);
+    });
+});
+
+describe('validateEnergyManagerSettingsState — price limit (share of day)', () => {
+    const shareState = (priceLimitSharePercent: number) =>
+        validateEnergyManagerSettingsState(state({
+            chargerControl: true,
+            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
+            priceLimitMode: EnyoPriceLimitModeEnum.CheapestShare,
+            priceLimitSharePercent,
+        }));
+
+    it('accepts the common cheapest-quarter setting', () => {
+        const {ok, warnings} = shareState(25);
+        expect(ok).toBe(true);
+        expect(warnings).toEqual([]);
+    });
+
+    it('rejects a fractional share — a share of the day is a whole percentage', () => {
+        const {ok, errors} = shareState(25.5);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('integer'))).toBe(true);
+    });
+
+    it('rejects 0, which selects no hours at all rather than capping a price', () => {
+        const {ok, errors} = shareState(0);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('priceLimitSharePercent'))).toBe(true);
+    });
+
+    it('rejects a share above 100', () => {
+        expect(shareState(101).ok).toBe(false);
+    });
+
+    it('warns at 100, which is indistinguishable from having no ceiling', () => {
+        const {ok, warnings} = shareState(100);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('no ceiling at all'))).toBe(true);
+    });
+
+    it('rejects a mode that is not an EnyoPriceLimitModeEnum member', () => {
+        const {ok, errors} = validateEnergyManagerSettingsState(state({
+            chargerControl: true,
+            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
+            priceLimitMode: 'cheapest' as EnyoPriceLimitModeEnum,
+        }));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('EnyoPriceLimitModeEnum'))).toBe(true);
+    });
+
+    it('warns when the ceiling stored is not the one the mode reads', () => {
+        const {warnings} = validateEnergyManagerSettingsState(state({
+            chargerControl: true,
+            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
+            priceLimitMode: EnyoPriceLimitModeEnum.CheapestShare,
+            priceLimitCtPerKwh: 7,
+        }));
+        expect(warnings.some((w) => w.includes(EnergyManagerSettingEnum.PriceLimitCtPerKwh)))
+            .toBe(true);
     });
 });
 
@@ -434,8 +494,8 @@ describe('getEnergyManagerSettingDependency', () => {
             equals: true,
         });
         expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.PriceLimitCtPerKwh)).toEqual({
-            requires: EnergyManagerSettingEnum.DefaultChargeMode,
-            equals: EnyoChargeModeEnum.PriceLimit,
+            requires: EnergyManagerSettingEnum.PriceLimitMode,
+            equals: EnyoPriceLimitModeEnum.CtPerKwh,
         });
         expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh)).toEqual({
             requires: EnergyManagerSettingEnum.BatteryEvDischargeMode,

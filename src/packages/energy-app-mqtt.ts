@@ -6,6 +6,8 @@ import {
     MqttPublishOptions,
     MqttMessage,
     EnyoMqttAvailableConnectionDetails,
+    EnyoMqttBrokerEnableOptions,
+    EnyoMqttBrokerEnableResult,
 } from "../types/enyo-mqtt.js";
 
 /**
@@ -90,6 +92,38 @@ export interface EnergyAppMqtt {
      * ```
      */
     getAvailableConnectionDetails: () => Promise<EnyoMqttAvailableConnectionDetails>;
+
+    /**
+     * Request that the SDK-provided local MQTT broker be enabled.
+     *
+     * The local broker is not guaranteed to be running: the host may keep it
+     * switched off until an installed app actually needs it. Call this before
+     * {@link connectInternal} or {@link getAvailableConnectionDetails} when the
+     * app depends on the local broker, and treat a non-enabled outcome as a
+     * normal runtime state rather than an error — the host may require a user
+     * or installer confirmation, or refuse the request by policy.
+     *
+     * The call is idempotent: if the broker is already running it resolves with
+     * {@link EnyoMqttBrokerEnableStatus.AlreadyEnabled} without restarting it.
+     *
+     * @param options - Optional reason shown with the request and a wait timeout
+     * @returns The outcome of the request, including the broker connection details when it is running
+     *
+     * @example
+     * ```typescript
+     * const result = await mqtt.requestBrokerEnable({
+     *     reason: 'Publish inverter readings to the local home automation system',
+     * });
+     *
+     * if (!result.enabled) {
+     *     console.warn(`Local broker not available (${result.status}): ${result.message ?? ''}`);
+     *     return;
+     * }
+     *
+     * const client = await mqtt.connectInternal();
+     * ```
+     */
+    requestBrokerEnable: (options?: EnyoMqttBrokerEnableOptions) => Promise<EnyoMqttBrokerEnableResult>;
 }
 
 /**

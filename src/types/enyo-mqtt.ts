@@ -122,6 +122,58 @@ export interface EnyoMqttAvailableConnectionDetails {
 }
 
 /**
+ * Outcome of a request to enable the SDK-provided local MQTT broker.
+ * Returned by {@link EnergyAppMqtt.requestBrokerEnable}.
+ */
+export enum EnyoMqttBrokerEnableStatus {
+    /** The broker was disabled and has been started as a result of this request */
+    Enabled = 'enabled',
+    /** The broker was already running; nothing had to be changed */
+    AlreadyEnabled = 'already-enabled',
+    /** The request was recorded but the broker is not running yet (e.g. it awaits a user or installer confirmation) */
+    Pending = 'pending',
+    /** The request was denied (e.g. the broker is disabled by policy or the app lacks the required permission) */
+    Rejected = 'rejected',
+}
+
+/**
+ * Options for requesting that the SDK-provided local MQTT broker be enabled.
+ */
+export interface EnyoMqttBrokerEnableOptions {
+    /**
+     * Human readable reason why the app needs the broker.
+     * May be surfaced to the user or written to the host log when the request
+     * requires a confirmation, so keep it short and specific
+     * (e.g. "Publish inverter readings to the local home automation system").
+     */
+    reason?: string;
+    /**
+     * Maximum time in milliseconds to wait for the broker to become available
+     * before resolving with {@link EnyoMqttBrokerEnableStatus.Pending}.
+     * When omitted, the runtime default is used.
+     */
+    timeout?: number;
+}
+
+/**
+ * Result of a {@link EnergyAppMqtt.requestBrokerEnable} call.
+ */
+export interface EnyoMqttBrokerEnableResult {
+    /** Outcome of the request */
+    status: EnyoMqttBrokerEnableStatus;
+    /** Whether the broker is running and accepting connections now */
+    enabled: boolean;
+    /**
+     * Connection details of the now-running local broker.
+     * Only set when {@link enabled} is true; equivalent to the `local` entry of
+     * {@link EnergyAppMqtt.getAvailableConnectionDetails}.
+     */
+    connection?: EnyoMqttAvailableConnectionDetail;
+    /** Optional explanation, primarily useful for the `Pending` and `Rejected` outcomes */
+    message?: string;
+}
+
+/**
  * Represents an incoming MQTT message received on a subscribed topic.
  */
 export interface MqttMessage {

@@ -779,24 +779,101 @@ await appliances.removeById(applianceId);
 
 #### `useVehicle(): EnergyAppVehicle`
 
-Access electric vehicle information:
+Access electric vehicles and the charging behaviour configured on them:
 
 ```typescript
 const vehicles = energyApp.useVehicle();
 
 // Get all vehicles
-const vehicleList = await vehicles.getVehicles();
+const vehicleList = await vehicles.list();
 
 // Get vehicle details
-const vehicle = await vehicles.getVehicleById(vehicleId);
+const vehicle = await vehicles.getById(vehicleId);
 
-// Update vehicle state
-await vehicles.updateVehicleState(vehicleId, {
-    batteryLevel: 80,
-    isPluggedIn: true,
-    estimatedRange: 320
-});
+// How this car wants to be charged — the behaviour travels with the car,
+// not with the wallbox it happens to be plugged into
+vehicle?.defaultChargeMode;          // EnyoChargeModeEnum
+vehicle?.defaultChargeLimitPercent;  // target SoC for every session
+vehicle?.priceLimitMode;             // how the ceiling is expressed, or none
+vehicle?.priceLimitCtPerKwh;         // ct/kWh ceiling, under 'ct-per-kwh'
+vehicle?.priceLimitSharePercent;     // cheapest n % of the day, under 'cheapest-share'
+vehicle?.immediateReserveKwh;        // full-power reserve before any mode
+vehicle?.departureTimeHHmm;          // daily deadline, wall-clock "07:30"
+vehicle?.departureTimezone;          // IANA zone the time is read in
+
+// State of charge is a reading with an age, not a property of the car
+const soc = await vehicles.getSoc(vehicleId);
+if (soc && Date.now() - Date.parse(soc.measuredAtIso) < 60 * 60 * 1000) {
+    console.log(`${soc.socPercent} % as of ${soc.measuredAtIso}`);
+}
 ```
+
+`EnergyAppVehicle` is read-only — there is no `update()`. An app that can read
+the car (ISO 15118, a manufacturer integration, OCPP meter values carrying SoC)
+**writes a state of charge by publishing `VehicleSocUpdateV1` on the data bus**,
+and the host makes it readable through `getSoc()`:
+
+```typescript
+energyApp.useDataBus().sendMessage([{
+    type: 'message',
+    message: 'VehicleSocUpdateV1',
+    data: {
+        vehicleId,
+        socPercent: 62,
+        // omit only when the reading came straight off the wire
+        measuredAtIso: new Date().toISOString(),
+    },
+}]);
+```
+
+That message is the only write path for a state of charge; it needs the
+`SendDataBusValues` permission. `getSoc()` resolves to `undefined` when nothing
+is known — an ordinary answer for a car with no SoC source, not an error.
+
+##### Charge modes
+
+Three modes, one meaning each, identical with and without a dynamic tariff — a
+tariff changes only what happens *inside* a mode:
+
+| UI (German) | `EnyoChargeModeEnum` | Behaviour |
+|---|---|---|
+| **Sofort laden** | `Immediate` | Full power, no optimisation, no deadline. |
+| **Nur Sonne** | `PriceLimit` | Strictly PV surplus. Never imports, has no deadline, never has to finish "in time". A price ceiling is meaningless here and is ignored. |
+| **Sonne zuerst** | `CostOptimized` | PV first; whatever is missing by the deadline comes from the grid — in the cheapest hours with a dynamic tariff, as late as possible without one. Takes an **optional** ceiling. |
+
+- **The ceiling belongs to `CostOptimized`**, the only mode that imports at all,
+  and it is optional there: "Preisgrenze: Aus" is a normal answer, not a missing
+  value — spelled as `priceLimitMode` being absent.
+- **A ceiling has two spellings**, picked by `priceLimitMode`
+  (`EnyoPriceLimitModeEnum`) and mutually exclusive:
+  `ct-per-kwh` reads `priceLimitCtPerKwh` ("never above 25 ct/kWh"), while
+  `cheapest-share` reads `priceLimitSharePercent` ("only the cheapest 25 % of
+  the day"). An absolute ceiling says exactly what the user pays but may select
+  no hours at all on a uniformly expensive day; a relative one always selects
+  some hours but says nothing about what they cost. A relative ceiling ranks the
+  intervals *known* for the day, so its effective threshold moves as later
+  prices publish — re-evaluate it instead of resolving it once at session start.
+- **`PriceLimit` without a ceiling is strict PV-only** — an instruction, not an
+  under-specified state. It exists as its own mode rather than as "`CostOptimized`
+  at 0 ct" because the 0 ct spelling breaks the moment wholesale prices go
+  negative, which is exactly when the customer would be glad to import.
+- **An immediate reserve runs ahead of every mode.** With
+  `immediateReserveKwh > 0` on the vehicle, the session charges at full power
+  until that much energy has gone in — counted from the SoC at plug-in — and
+  only then hands over to the selected mode. That includes "Nur Sonne": the
+  driver may have to leave unexpectedly and the sun is not a guarantee.
+
+The values reach an app already resolved, per session, on `StartChargeV1`
+(`startSocPercent`, `targetSocPercent`, `priceLimitMode` + the ceiling it names)
+and on `ChangeChargeModeV1` (the ceiling only — the plug-in SoC is fixed for the
+duration of a session and a mode change must never move it). The host merges
+session, vehicle and wallbox first, so an app never reproduces the precedence
+rules.
+
+The house-wide `EnergyManagerSettingEnum.DefaultChargeMode`, `PriceLimitMode`,
+`PriceLimitCtPerKwh`, `PriceLimitSharePercent` and `CostOptimizedTarget` are
+being retired — the default mode becomes per-wallbox, the ceiling and the
+deadline per-vehicle — but keep honouring them until the migration has run.
 
 #### `useCharge(): EnergyAppCharge`
 
@@ -1152,6 +1229,24 @@ await client.publish('control/pump', 'on', /* qos */ 1, /* retain */ false);
 
 For external brokers use `connectToExternalBroker(brokerUrl, options)`. Requires the `Mqtt` permission.
 
+The SDK broker may be switched off until an app needs it. Ask for it before connecting:
+
+```typescript
+const result = await mqtt.requestBrokerEnable({
+    reason: 'Publish inverter readings to the local home automation system',
+});
+
+if (!result.enabled) {
+    // `pending` (awaiting confirmation) or `rejected` (policy / permission) — not an error
+    console.warn(`Local broker unavailable: ${result.status}`);
+    return;
+}
+
+console.log(`Broker ready at ${result.connection?.url}`);
+```
+
+The call is idempotent — an already running broker resolves with `already-enabled`.
+
 #### `useBluetooth(): EnergyAppBluetooth`
 
 Scan for BLE peripherals and perform GATT read / write / notify against them.
@@ -1269,7 +1364,9 @@ A closed, SDK-defined set of user-facing controls the active energy manager hono
 | `HeatingRodMode` | `pv-surplus-only` \| `boost` |
 | `ChargerControl` | boolean |
 | `DefaultChargeMode` | `EnyoChargeModeEnum` |
-| `PriceLimitCtPerKwh` | number, **ct/kWh** (`7` = 7 ct/kWh) |
+| `PriceLimitMode` | `ct-per-kwh` \| `cheapest-share` (absent = no ceiling) |
+| `PriceLimitCtPerKwh` | number, **ct/kWh** (`7` = 7 ct/kWh; only under `ct-per-kwh`) |
+| `PriceLimitSharePercent` | integer **%** of the day (`25` = cheapest quarter; only under `cheapest-share`) |
 | `CostOptimizedTarget` | wall-clock `"07:30"` + IANA timezone |
 
 An energy manager declares what it honours, next to `registerFeatures()`:
@@ -1310,8 +1407,9 @@ Three things to get right:
 
 - **Absent is not `false`.** `undefined` means unsupported or never chosen; `false` means the user switched it off. Check `supported` first, then the value — collapsing the two steers hardware someone deliberately disabled.
 - **How the battery may feed a charging EV is one mode plus its parameter.** `BatteryEvDischargeMode` picks the strategy; `BatteryEvDischargeFixedWh` and `BatteryEvDischargeSocLimitPercent` are read only under their own mode. `block-discharge` (actively hold the battery back) and `unmanaged` (do not intervene either way) are **not** synonyms.
-- **Eight settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `priceLimitCtPerKwh` only applies under `price-limit`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
+- **Ten settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `priceLimitCtPerKwh` only applies under `priceLimitMode: 'ct-per-kwh'`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
 - **`priceLimitCtPerKwh` is in cents**, unlike the SDK's machine-readable price fields (`electricityPricePerKwh`, EUR/kWh). Divide by 100 when comparing. `validateEnergyManagerSettingsState()` warns on values outside a plausible ct band, which catches the mix-up.
+- **A price ceiling is one mode plus its parameter**, the same shape as the battery-to-EV one. `PriceLimitMode` picks how the ceiling is expressed — an absolute `ct-per-kwh` or a relative `cheapest-share` — and each value is read only under its own mode; the mode being absent means no ceiling at all. A relative ceiling ranks the price intervals *known* for the day and treats the cheapest `n` % as importable (the same rule as the `cheapest-share-of-day` automation trigger), so its effective threshold moves when tomorrow's prices publish — re-evaluate it rather than resolving it once.
 
 #### `useElectricityTariff(): EnergyAppElectricityTariff`
 

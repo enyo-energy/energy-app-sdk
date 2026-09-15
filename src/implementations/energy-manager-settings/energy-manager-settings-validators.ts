@@ -8,9 +8,9 @@
  *    an IANA zone, a price that is not a finite number. These fail at planning
  *    time, in the dark, on the night the charge was supposed to happen.
  * 2. **Values that can never take effect.** A heating-rod mode stored while rod
- *    control is off, a price limit while the default charge mode is
- *    cost-optimized. Nothing rejects these — they simply do nothing, which reads
- *    to a user as "the app ignored me".
+ *    control is off, a ct/kWh ceiling while the price limit is expressed as a
+ *    share of the day. Nothing rejects these — they simply do nothing, which
+ *    reads to a user as "the app ignored me".
  *
  * The second class is why {@link ENERGY_MANAGER_SETTING_DEPENDENCIES} exists as
  * data: the gate tree is checked here rather than restated by every surface.
@@ -32,7 +32,7 @@ import type {
     EnergyManagerSettingValues,
     EnergyManagerSettingsState,
 } from '../../types/enyo-energy-manager-settings.js';
-import {EnyoChargeModeEnum} from '../../types/enyo-data-bus-value.js';
+import {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from '../../types/enyo-data-bus-value.js';
 
 /**
  * Thrown by {@link assertValidEnergyManagerSettingsState} when a state fails
@@ -103,6 +103,21 @@ const HEATING_ROD_MODES: ReadonlySet<string> = new Set(
     Object.values(EnergyManagerHeatingRodModeEnum),
 );
 const CHARGE_MODES: ReadonlySet<string> = new Set(Object.values(EnyoChargeModeEnum));
+const PRICE_LIMIT_MODES: ReadonlySet<string> = new Set(Object.values(EnyoPriceLimitModeEnum));
+
+/**
+ * The band a relative price ceiling must lie in, in percent of the day.
+ *
+ * Matches the automation validators' `AUTOMATION_MIN/MAX_CHEAPEST_SHARE_PERCENT`
+ * on purpose: "the cheapest 25 % of the day" means the same thing whether it
+ * drives a charging session or an automation, and a user who learns one band
+ * should not meet a different one elsewhere.
+ *
+ * `0` is excluded because it selects no hours at all — that is "never import",
+ * which is {@link EnyoChargeModeEnum.PriceLimit}, not a ceiling.
+ */
+const PRICE_LIMIT_SHARE_MIN_PERCENT = 1;
+const PRICE_LIMIT_SHARE_MAX_PERCENT = 100;
 
 /**
  * True when `timezone` is an IANA zone this runtime recognises.
@@ -151,6 +166,9 @@ function gateValue(
  *   zone the runtime resolves (**error**).
  * - `priceLimitCtPerKwh` is a finite number (**error**), and lies in a plausible
  *   ct/kWh band (**warning** — catches a EUR/kWh value in a ct/kWh field).
+ * - `priceLimitMode` holds an enum member (**error**).
+ * - `priceLimitSharePercent` is an integer in 1…100 (**error**), and not `100`
+ *   (**warning** — the whole day counts as cheap, so it is no ceiling at all).
  * - `batteryEvDischargeMode` holds an enum member (**error**).
  * - `batteryEvDischargeFixedWh` is a finite non-negative number (**error**), and
  *   is neither `0` nor a negligible positive figure (**warning** — the first
@@ -239,6 +257,34 @@ export function validateEnergyManagerSettingsState(
                 `\`priceLimitCtPerKwh\` is ${values.priceLimitCtPerKwh}, outside the plausible ` +
                     `${PRICE_LIMIT_MIN_CT}…${PRICE_LIMIT_MAX_CT} ct/kWh band — this field is in ` +
                     'cents per kWh, not EUR per kWh.',
+            );
+        }
+    }
+
+    if (values.priceLimitMode !== undefined && !PRICE_LIMIT_MODES.has(values.priceLimitMode)) {
+        errors.push(
+            `\`priceLimitMode\` "${values.priceLimitMode}" is not an EnyoPriceLimitModeEnum member.`,
+        );
+    }
+
+    if (values.priceLimitSharePercent !== undefined) {
+        const share = values.priceLimitSharePercent;
+        if (typeof share !== 'number' || !Number.isFinite(share)) {
+            errors.push('`priceLimitSharePercent` must be a finite number when set.');
+        } else if (!Number.isInteger(share)) {
+            errors.push(
+                `\`priceLimitSharePercent\` is ${share}; a share of the day is a whole ` +
+                    'percentage and must be an integer.',
+            );
+        } else if (share < PRICE_LIMIT_SHARE_MIN_PERCENT || share > PRICE_LIMIT_SHARE_MAX_PERCENT) {
+            errors.push(
+                `\`priceLimitSharePercent\` is ${share}; it is a percentage of the day and must ` +
+                    `lie between ${PRICE_LIMIT_SHARE_MIN_PERCENT} and ${PRICE_LIMIT_SHARE_MAX_PERCENT}.`,
+            );
+        } else if (share === PRICE_LIMIT_SHARE_MAX_PERCENT) {
+            warnings.push(
+                '`priceLimitSharePercent` is 100, which treats the whole day as cheap and so ' +
+                    'imposes no ceiling at all. Leave `priceLimitMode` unset to say that outright.',
             );
         }
     }

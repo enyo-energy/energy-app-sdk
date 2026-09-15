@@ -500,15 +500,99 @@ export enum EnyoChargingStopReason {
 }
 
 /**
- * Mode for charging session
+ * Mode for a charging session.
+ *
+ * Three modes, one meaning each, identical with and without a dynamic tariff —
+ * the tariff changes only what happens *inside* a mode, never which modes
+ * exist. The user-facing German names map one to one:
+ *
+ * | UI | Member | Behaviour |
+ * |---|---|---|
+ * | Sofort laden | {@link Immediate} | full power, no optimisation |
+ * | Nur Sonne | {@link PriceLimit} | strictly PV surplus, never imports |
+ * | Sonne zuerst | {@link CostOptimized} | PV first, grid tops up by the deadline |
+ *
+ * **An immediate reserve runs ahead of every mode.** When the vehicle carries
+ * `immediateReserveKwh > 0` (see `EnyoVehicle`), the session first charges at
+ * full power until that much energy has gone in — counted from the state of
+ * charge at plug-in — and only then hands over to the selected mode. This
+ * applies to {@link PriceLimit} too: the point of the reserve is that the
+ * driver may have to leave unexpectedly, and the sun is not a guarantee.
  */
 export enum EnyoChargeModeEnum {
-    /** Start charging immediately at maximum rate */
+    /**
+     * "Sofort laden" — charge at the highest power the car and the wallbox
+     * jointly allow, immediately, with no optimisation and no deadline.
+     */
     Immediate = 'immediate',
-    /** Optimize charging schedule for lowest cost */
+    /**
+     * "Sonne zuerst" — PV surplus first; whatever is still missing by
+     * `completeChargeAtIso` is imported from the grid, in the cheapest hours
+     * with a dynamic tariff and as late as possible without one.
+     *
+     * This is the only mode that imports, so it is the only one a price
+     * ceiling applies to: it takes an **optional**
+     * {@link EnyoDataBusStartChargeV1.data.priceLimitCtPerKwh}, and no ceiling
+     * is a normal answer rather than a missing one.
+     */
     CostOptimized = 'cost-optimized',
-    /** Optimize charging schedule for a maximum price limit, for example 7 ct grid or pv production */
+    /**
+     * "Nur Sonne" — strictly PV surplus. No grid energy, ever, for this
+     * session. There is no deadline and the session never has to finish "in
+     * time"; it charges what the sun delivers and stops when it does not.
+     *
+     * A price ceiling is meaningless here and must be ignored if one is sent.
+     *
+     * Strict PV-only is its own answer rather than "{@link CostOptimized} at
+     * 0 ct" because the 0 ct spelling fails the moment wholesale prices go
+     * negative — which is precisely when the customer would be glad to import.
+     */
     PriceLimit = 'price-limit',
+}
+
+/**
+ * How a price ceiling for grid energy is expressed.
+ *
+ * The two spellings answer the same question — "which grid energy is cheap
+ * enough to charge from?" — in the two ways a user thinks about it, and they
+ * are mutually exclusive: the mode says which of the accompanying values is
+ * read, exactly as {@link EnergyManagerBatteryEvDischargeModeEnum} does for the
+ * battery-to-vehicle parameters.
+ *
+ * No mode at all means **no ceiling**, which is a deliberate and common answer
+ * ("Preisgrenze: Aus") rather than a missing value.
+ *
+ * Both spellings resolve to the same thing at planning time: an absolute price
+ * per kWh above which the session does not import. A relative ceiling simply
+ * resolves late, against the prices actually known for the day.
+ *
+ * A ceiling only applies under {@link EnyoChargeModeEnum.CostOptimized} — the
+ * only mode that imports at all.
+ */
+export enum EnyoPriceLimitModeEnum {
+    /**
+     * Absolute ceiling: never import above `priceLimitCtPerKwh` cents per kWh.
+     *
+     * Says exactly what the user pays at most, and is independent of how the
+     * rest of the day looks — on a uniformly expensive day it may mean the car
+     * does not charge from the grid at all.
+     */
+    CtPerKwh = 'ct-per-kwh',
+    /**
+     * Relative ceiling: import only during the cheapest `priceLimitSharePercent`
+     * of the day — `25` is the cheapest quarter.
+     *
+     * The intervals known for the day are ranked and the cheapest share is
+     * treated as importable, the same rule
+     * {@link EnyoAutomationCheapestShareOfDayTrigger} applies. Note "the day"
+     * is the prices *known* at evaluation time: before the next day's prices
+     * publish, the share is taken over a shorter horizon and the resulting
+     * threshold moves when they arrive.
+     *
+     * Always yields some importable hours, which an absolute ceiling does not —
+     * but it says nothing about what those hours cost.
+     */
+    CheapestShare = 'cheapest-share',
 }
 
 /**
@@ -1264,6 +1348,36 @@ export interface EnyoDataBusChangeChargeModeV1 extends EnyoDataBusMessage {
          * plan against.
          */
         completeChargeAtIso?: string;
+        /**
+         * New ceiling for grid energy in **cents per kWh**, with the same
+         * meaning and the same unit as
+         * {@link EnyoDataBusStartChargeV1.data.priceLimitCtPerKwh} — `25` is
+         * 25 ct/kWh and negative values are legal. Only read while
+         * {@link priceLimitMode} is {@link EnyoPriceLimitModeEnum.CtPerKwh}.
+         *
+         * Only the ceiling can change mid-session. There are deliberately no
+         * `startSocPercent` / `targetSocPercent` counterparts here: the state
+         * of charge at plug-in is fixed for the duration of a session, and a
+         * mode change must never move it.
+         */
+        priceLimitCtPerKwh?: number;
+        /**
+         * Which ceiling field to read from now on, or omitted for **no
+         * ceiling**.
+         *
+         * Omitting it here means the session continues without a ceiling — it
+         * does not mean "keep the previous one". A mode change carries the
+         * complete new ceiling or none at all, so the two are never ambiguous.
+         */
+        priceLimitMode?: EnyoPriceLimitModeEnum;
+        /**
+         * New relative ceiling — the cheapest share of the day to import in,
+         * in percent, integer 1 to 100. Same meaning as
+         * {@link EnyoDataBusStartChargeV1.data.priceLimitSharePercent}, and
+         * only read while {@link priceLimitMode} is
+         * {@link EnyoPriceLimitModeEnum.CheapestShare}.
+         */
+        priceLimitSharePercent?: number;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };
@@ -1303,6 +1417,67 @@ export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
         chargeMode: EnyoChargeModeEnum;
         /** ISO timestamp for target completion time (optional) */
         completeChargeAtIso?: string;
+        /**
+         * State of charge the vehicle had when it was plugged in, in percent
+         * (0-100).
+         *
+         * The host's estimate as the user corrected it. Fixed for the whole
+         * session, because it describes a moment and not a preference — see
+         * {@link EnyoDataBusChangeChargeModeV1}, which deliberately cannot
+         * move it.
+         *
+         * Together with {@link targetSocPercent} and the vehicle's battery
+         * size this is what tells a planner how much energy the session owes;
+         * {@link completeChargeAtIso} only says by when.
+         */
+        startSocPercent?: number;
+        /**
+         * State of charge the session must reach, in percent (0-100).
+         *
+         * The vehicle's standing charge limit unless the user overrode it for
+         * this one session. Omitted means the app should charge to whatever
+         * limit it would otherwise apply.
+         */
+        targetSocPercent?: number;
+        /**
+         * Ceiling for grid energy in **cents per kWh** — `25` means
+         * 25 ct/kWh, matching the figure the user types and every other
+         * ct-native field in the settings vocabulary.
+         *
+         * Note this differs from the SDK's machine-readable price fields such
+         * as {@link EnyoDiagnosticsActionReason.electricityPricePerKwh}, which
+         * are in EUR/kWh. Divide by 100 when comparing the two — a unit mix-up
+         * here is off by 100x and entirely plausible-looking on both sides.
+         *
+         * Negative values are legal: wholesale prices go negative, and "only
+         * import when I am paid to" is a real preference.
+         *
+         * Only read while {@link priceLimitMode} is
+         * {@link EnyoPriceLimitModeEnum.CtPerKwh}. Under
+         * {@link EnyoChargeModeEnum.PriceLimit} it must be ignored — that mode
+         * imports nothing at all.
+         */
+        priceLimitCtPerKwh?: number;
+        /**
+         * Which of the two ceiling fields to read, or omitted for **no
+         * ceiling** — a deliberate and common answer rather than a missing
+         * value.
+         *
+         * Only meaningful under {@link EnyoChargeModeEnum.CostOptimized}.
+         */
+        priceLimitMode?: EnyoPriceLimitModeEnum;
+        /**
+         * Relative ceiling: import only during the cheapest share of the day,
+         * in percent — `25` is the cheapest quarter. Integer, 1 to 100.
+         *
+         * Only read while {@link priceLimitMode} is
+         * {@link EnyoPriceLimitModeEnum.CheapestShare}. Rank the price
+         * intervals known for the day and treat the cheapest `n` percent of
+         * them as importable; the resulting threshold moves as later prices
+         * publish, so re-evaluate rather than resolving it once at session
+         * start.
+         */
+        priceLimitSharePercent?: number;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };
@@ -2853,9 +3028,32 @@ export interface EnyoDataBusChangeAirConditioningOptimizationModeV1 extends Enyo
 }
 
 /**
- * Informational message reporting the current state of charge of an electric vehicle.
- * Published whenever an updated SoC reading becomes available — typically while the
- * vehicle is plugged in or when the vehicle reports its SoC via a connected service.
+ * Informational message reporting the state of charge of an electric vehicle.
+ *
+ * **This message is the write path for a state of charge.** `EnergyAppVehicle`
+ * is read-only by design — there is no `vehicles.update()` — so an app that can
+ * read the car (a wallbox speaking ISO 15118, a manufacturer integration, an
+ * OCPP charge point reporting SoC in its meter values) publishes what it knows
+ * here and the host ingests it. Reading it back is
+ * `useVehicle().getSoc(vehicleId)`, which answers with the reading and its age
+ * or with `undefined` when nothing is known.
+ *
+ * Publish one whenever an updated reading becomes available — typically while
+ * the vehicle is plugged in, or when a connected service reports it.
+ *
+ * ```typescript
+ * energyApp.useDataBus().sendMessage([{
+ *     type: 'message',
+ *     message: 'VehicleSocUpdateV1',
+ *     data: {
+ *         vehicleId,
+ *         socPercent: 62,
+ *         measuredAtIso: new Date().toISOString(),
+ *     },
+ * }]);
+ * ```
+ *
+ * Requires the `SendDataBusValues` permission.
  */
 export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -2867,6 +3065,17 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
         socPercent: number;
         /** Total usable capacity of the vehicle's traction battery in kWh, if known */
         batterySizeKwh?: number;
+        /**
+         * When the reading was actually taken, ISO 8601. Omitted means "as of
+         * now" and the host stamps its receive time.
+         *
+         * Set it whenever the value did not come straight off the wire — a
+         * cloud integration polling on an interval, a cached value replayed
+         * after a reconnect. A reading whose age is wrong is worse than no
+         * reading: it is presented to the user as current and a planner sizes
+         * the session against it.
+         */
+        measuredAtIso?: string;
     };
 }
 
