@@ -1,4 +1,25 @@
-import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
+import {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from "./enyo-data-bus-value.js";
+
+/**
+ * Where the vehicle on a charging session came from.
+ *
+ * Kept apart from "is {@link EnyoCharge.vehicleId} set" because the two answer
+ * different questions: a manually assigned session and a recognised one both
+ * carry an id, but only the recognised one says anything about the wallbox's
+ * ability to identify cars.
+ */
+export enum EnyoChargeVehicleAssignmentEnum {
+    /** The charger or an integration recognised the car on its own. */
+    Detected = 'detected',
+    /** A user picked the car, either at plug-in or afterwards in the history. */
+    Manual = 'manual',
+    /**
+     * No car is assigned. A normal outcome rather than a fault — plenty of
+     * wallboxes cannot identify a vehicle, and the history offers this as
+     * something to fix rather than reporting it as an error.
+     */
+    Unknown = 'unknown',
+}
 
 /**
  * Status of a charging session
@@ -120,6 +141,77 @@ export interface EnyoCharge {
     chargeMode?: EnyoChargeModeEnum;
     /** Target completion time for the charging session as an ISO 8601 timestamp */
     completeAtIsoTimestamp?: string;
+    /**
+     * State of charge at plug-in, in percent (0-100) — the host's estimate as
+     * the user corrected it.
+     *
+     * Fixed for the session, because it describes a moment and not a
+     * preference. The charging screen draws its progress bar from here to
+     * {@link targetSocPercent}.
+     *
+     * This is the recorded counterpart of
+     * {@link EnyoDataBusStartChargeV1.data.startSocPercent}: the command says
+     * what the session was asked for, the charge says what it ran with.
+     */
+    startSocPercent?: number;
+    /**
+     * State of charge this session was to reach, in percent (0-100). The
+     * vehicle's standing charge limit unless the user overrode it for this one
+     * session.
+     */
+    targetSocPercent?: number;
+    /**
+     * How the grid price ceiling that governed this session was expressed, or
+     * omitted when there was **no ceiling** — recorded so the history can say
+     * why a session waited instead of charging.
+     *
+     * Decides which of {@link priceLimitCtPerKwh} and
+     * {@link priceLimitSharePercent} applied; the other was ignored.
+     */
+    priceLimitMode?: EnyoPriceLimitModeEnum;
+    /**
+     * The absolute ceiling that applied, in **cents per kWh** (`25` is
+     * 25 ct/kWh). Only meaningful while {@link priceLimitMode} is
+     * {@link EnyoPriceLimitModeEnum.CtPerKwh}.
+     */
+    priceLimitCtPerKwh?: number;
+    /**
+     * The relative ceiling that applied — the cheapest share of the day the
+     * session was allowed to import in, in percent. Only meaningful while
+     * {@link priceLimitMode} is {@link EnyoPriceLimitModeEnum.CheapestShare}.
+     *
+     * Note this records the *setting*, not the price threshold it resolved to:
+     * that threshold moved as prices published, so it is not a property of the
+     * session.
+     */
+    priceLimitSharePercent?: number;
+    /**
+     * How this session found its vehicle — see
+     * {@link EnyoChargeVehicleAssignmentEnum}. Absent on sessions recorded
+     * before the distinction existed; treat that as
+     * {@link EnyoChargeVehicleAssignmentEnum.Unknown} only when
+     * {@link vehicleId} is unset too.
+     */
+    vehicleAssignment?: EnyoChargeVehicleAssignmentEnum;
+    /**
+     * Charging power the user dialled for this session, in **Watts**.
+     *
+     * Only meaningful under {@link EnyoChargeModeEnum.Immediate}, where how
+     * fast to charge is the customer's call rather than the energy manager's.
+     * Recorded on the session so reopening it shows the figure actually in
+     * force.
+     *
+     * Watts, matching
+     * {@link EnyoAvailablePowerCommandData.powerW} — note the SDK's other
+     * charging ceilings do not agree on a unit:
+     * {@link EnyoChargeScheduleEntry.limitAmpere} is in Amperes and the
+     * superseded {@link EnyoDataBusChangeChargingPowerV1} is in kW.
+     *
+     * **Not a second limit.** The energy manager's power envelope
+     * ({@link EnyoDataBusSetChargerAvailablePowerV2}) still bounds the session;
+     * this is what the user asked for within it.
+     */
+    maxChargingPowerW?: number;
 }
 
 /**
@@ -172,4 +264,10 @@ export interface EnyoChargeFilter {
     chargingCardId?: string;
     /** Filter by vehicle */
     vehicleId?: string;
+    /**
+     * Filter by how the session found its vehicle. Mainly useful for
+     * {@link EnyoChargeVehicleAssignmentEnum.Unknown} — the sessions a user
+     * can still be asked to assign a car to.
+     */
+    vehicleAssignment?: EnyoChargeVehicleAssignmentEnum;
 }

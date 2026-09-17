@@ -1486,6 +1486,26 @@ export interface EnyoDataBusStartChargeV1 extends EnyoDataBusMessage {
          * start.
          */
         priceLimitSharePercent?: number;
+        /**
+         * Charging power the user asked for, in **Watts**.
+         *
+         * Only meaningful under {@link EnyoChargeModeEnum.Immediate}, where how
+         * fast to charge is the customer's call rather than the energy
+         * manager's; the optimised modes derive their own power from the plan.
+         *
+         * Watts, matching {@link EnyoAvailablePowerCommandData.powerW} — the
+         * SDK's other charging ceilings disagree on units
+         * ({@link EnyoChargeScheduleEntry.limitAmpere} is Amperes, the
+         * superseded {@link EnyoDataBusChangeChargingPowerV1} is kW), so do not
+         * assume.
+         *
+         * **The opening figure, not a standing one.** The energy manager's
+         * envelope ({@link EnyoDataBusSetChargerAvailablePowerV2}) still bounds
+         * the session and overrides this as soon as it arrives; this is what
+         * the user asked for within it. Omitted means "as fast as the car and
+         * the wallbox jointly allow".
+         */
+        maxChargingPowerW?: number;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
     };

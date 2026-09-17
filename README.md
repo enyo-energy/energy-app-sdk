@@ -928,6 +928,24 @@ StartTransaction returns the running session instead of opening a second one.
 `save()` remains a whole-object update for a session that already exists; it
 offers no uniqueness guarantee, so do not open sessions with it.
 
+**A session records the answers it ran under**, so a listener sees what the
+customer actually chose rather than only what the charger measured:
+
+| Field | Meaning |
+|---|---|
+| `startSocPercent` / `targetSocPercent` | The SoC the session started from and was to reach. Fixed for the session. |
+| `priceLimitMode` | Which ceiling applied — `ct-per-kwh`, `cheapest-share`, or absent for none. |
+| `priceLimitCtPerKwh` / `priceLimitSharePercent` | The ceiling itself, read according to the mode. |
+| `maxChargingPowerW` | The power the user dialled, in **Watts**. `Immediate` only. |
+| `vehicleAssignment` | `detected` \| `manual` \| `unknown` — how the session found its car. |
+
+These mirror the fields on `StartChargeV1`: the command says what a session was
+asked for, the charge says what it ran with. `maxChargingPowerW` is the opening
+figure only — the energy manager's `SetChargerAvailablePowerV2` envelope still
+bounds the session and overrides it. Watch the units: this one is watts, while
+`EnyoChargeScheduleEntry.limitAmpere` is amperes and the superseded
+`ChangeChargingPowerV1` is kW.
+
 React to charging sessions as they happen:
 
 ```typescript
