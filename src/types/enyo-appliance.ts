@@ -221,6 +221,80 @@ export enum EnyoApplianceAvailableFeaturesEnum {
     LimitPowerConsumption = 'LimitPowerConsumption',
     /** If the appliance can limit its power production (active power fed into the grid/site) */
     LimitPowerProduction = 'LimitPowerProduction',
+    /**
+     * If the appliance runs on its own battery rather than mains power — a
+     * wireless room sensor, a battery-backed gateway, a radio button — and
+     * therefore reports {@link EnyoAppliance.batteryState}.
+     *
+     * Worth declaring rather than inferring from a reading having arrived: a
+     * consumer needs to know it should watch for a flat battery before the
+     * first reading, and a device whose battery reporting is intermittent
+     * would otherwise appear and disappear from a maintenance list.
+     *
+     * Nothing to do with a home storage battery — that is an appliance of type
+     * {@link EnyoApplianceTypeEnum.Storage}, whose runtime values are
+     * {@link EnyoBatteryState}.
+     */
+    BatteryPowered = 'BatteryPowered',
+}
+
+/**
+ * The state of an appliance's **own** power source, for appliances that run on
+ * a battery rather than mains power.
+ *
+ * Not to be confused with {@link EnyoBatteryState}, which is the runtime state
+ * of a *home storage* battery — an appliance in its own right, measured in kWh
+ * and priced. This type is about keeping a sensor alive: a wireless room sensor
+ * that goes quiet because its cell died looks exactly like one that went
+ * offline, and only this tells the two apart before someone goes looking.
+ *
+ * Reported by appliances declaring
+ * {@link EnyoApplianceAvailableFeaturesEnum.BatteryPowered}.
+ */
+export interface EnyoApplianceBatteryState {
+    /**
+     * Remaining charge in percent (0-100), when the device reports a level.
+     *
+     * Many battery devices report only a coarse level or nothing at all — a
+     * cell's voltage barely moves until it is nearly flat. Omit it rather than
+     * deriving a percentage from voltage, and use {@link low} to say what
+     * actually matters.
+     */
+    levelPercent?: number;
+    /**
+     * Whether the device considers its battery low and in need of replacement.
+     *
+     * The load-bearing field: it is what a maintenance view lists and what a
+     * notification fires on. Set it from whatever the device reports — a
+     * dedicated low-battery flag, a voltage threshold, a level below the
+     * vendor's cut-off — rather than leaving a consumer to pick a threshold
+     * against {@link levelPercent} it cannot calibrate.
+     */
+    low?: boolean;
+    /** Battery voltage in Volts, when the device reports it. */
+    voltageV?: number;
+    /**
+     * Whether the battery is currently being charged, for devices that are
+     * rechargeable or run on mains with battery backup.
+     *
+     * Omitted means not known, which is not the same as `false` — most
+     * primary-cell devices simply cannot say.
+     */
+    charging?: boolean;
+    /**
+     * Whether the battery can be replaced or recharged by the user. `false`
+     * marks a sealed device that must be swapped out entirely, which changes
+     * what a low-battery warning should tell the user to do.
+     */
+    replaceable?: boolean;
+    /**
+     * When the reading was taken, ISO 8601.
+     *
+     * Battery devices report rarely — hourly, daily, or only when something
+     * changes — so a level without an age says nothing about whether the
+     * device is still alive. Always set it.
+     */
+    measuredAtIso?: string;
 }
 
 export enum EnyoApplianceTopologyFeatureEnum {
@@ -261,6 +335,15 @@ export interface EnyoAppliance {
      * metadata (e.g. `charger.availableFeatures`).
      */
     availableFeatures?: EnyoApplianceAvailableFeaturesEnum[];
+    /**
+     * State of the appliance's own battery, for appliances that run on one —
+     * see {@link EnyoApplianceAvailableFeaturesEnum.BatteryPowered}.
+     *
+     * Absent on mains-powered appliances, and on battery-powered ones that
+     * have not reported yet. This is the appliance's power source, not a home
+     * storage battery's contents; for those see {@link EnyoBatteryState}.
+     */
+    batteryState?: EnyoApplianceBatteryState;
     /**
      * Automation action types this appliance can be the target of. Set by the
      * owning app when it {@link save}s the appliance — e.g. a Shelly SmartPlug

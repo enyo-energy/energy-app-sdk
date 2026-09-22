@@ -167,8 +167,33 @@ export interface WeatherForecastEntry {
     cloudAreaPercent?: number;
     /** Weather symbol representing the forecasted weather condition */
     symbol?: EnyoWeatherSymbolEnum;
-    /** Global horizontal irradiance in W/m² */
+    /**
+     * Global horizontal irradiance in W/m².
+     *
+     * Total shortwave radiation received by a horizontal surface — the sum of
+     * the diffuse part and the horizontal projection of the direct part
+     * (`GHI = DHI + DNI * cos(zenith)`).
+     */
     globalHorizontalIrradiance?: number;
+    /**
+     * Direct normal irradiance (DNI) in W/m².
+     *
+     * Beam radiation arriving from the direction of the sun, measured on a
+     * surface held perpendicular to the sun's rays. Together with
+     * {@link WeatherForecastEntry.diffuseHorizontalIrradiance} it allows
+     * transposing the forecast onto an arbitrarily tilted plane (plane of
+     * array), which a single GHI value cannot do.
+     */
+    directNormalIrradiance?: number;
+    /**
+     * Diffuse horizontal irradiance (DHI) in W/m².
+     *
+     * The part of the radiation on a horizontal surface that has been scattered
+     * by the atmosphere and clouds, i.e. everything that does not arrive
+     * directly from the sun's disc. See
+     * {@link WeatherForecastEntry.directNormalIrradiance}.
+     */
+    diffuseHorizontalIrradiance?: number;
 }
 
 /**

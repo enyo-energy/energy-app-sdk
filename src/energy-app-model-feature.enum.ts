@@ -60,6 +60,21 @@ export enum EnergyAppModelFeatureEnum {
     /** The accumulated energy consumption can be read out */
     EnergyConsumptionReadout = 'energy-consumption-readout',
 
+    // Vehicle
+
+    /** The car's state of charge can be read remotely (manufacturer cloud, ISO 15118) */
+    VehicleSocReadout = 'vehicle-soc-readout',
+    /** Charging can be started and stopped through the car rather than the wallbox */
+    VehicleChargeStartStop = 'vehicle-charge-start-stop',
+    /** The car's target state of charge or charging current can be set remotely */
+    VehicleChargeLimit = 'vehicle-charge-limit',
+    /** The car's position can be read, so "is it at home?" can be answered */
+    VehicleLocationReadout = 'vehicle-location-readout',
+    /** The car's odometer reading can be read */
+    VehicleOdometerReadout = 'vehicle-odometer-readout',
+    /** Cabin or battery preconditioning can be triggered remotely */
+    VehiclePreconditioning = 'vehicle-preconditioning',
+
     // Smart Plug
 
     /** The plug can be switched on and off */

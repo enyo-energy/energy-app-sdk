@@ -1,4 +1,5 @@
 import {
+    EnyoApplianceBatteryState,
     EnyoApplianceErrorCode,
     EnyoApplianceStateEnum,
     EnyoApplianceStatusEnum,
@@ -22,6 +23,10 @@ import {
     EnyoVehicleSocSourceEnum,
     EnyoVehicleSocUnavailableReasonEnum
 } from "./enyo-vehicle.js";
+import type {
+    EnyoCalibrationRequestOriginEnum,
+    EnyoCalibrationRun
+} from "./enyo-calibration.js";
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
@@ -30,6 +35,7 @@ import {EnyoSmartPlugApplianceStateEnum} from "./enyo-smart-plug-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
 import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
+import type {EnyoEnergyDistributionSnapshot} from "./enyo-energy-distribution.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -106,6 +112,76 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     HomeConsumptionHigh = 'home-consumption-high',
     /** Command issued to optimize self-consumption */
     SelfConsumptionOptimization = 'self-consumption-optimization',
+    /**
+     * Nothing left to deliver — the run's energy (or temperature, or state of
+     * charge) target is met.
+     *
+     * STATED by whoever owns the goal, never inferred from a progress bar
+     * reaching 100 %: a measured delivery can overshoot a target that was
+     * revised mid-session, and a session can be complete while its last meter
+     * reading still lags. Pair it with
+     * {@link EnyoEnergyDistributionParticipant.progress} — this type is the only
+     * thing that may put a participant into
+     * {@link EnyoDistributionParticipantStateEnum.Complete}.
+     */
+    SessionComplete = 'session-complete',
+    /**
+     * The appliance itself is holding: a car that suspended the session because
+     * its own battery is full, a heat pump that wants no heat.
+     *
+     * The appliance's own decision, not the energy manager's — told apart from
+     * {@link SupplyExhausted} (the manager had nothing to give) and
+     * {@link NothingConnected} (there is no load at all).
+     */
+    AppliancePaused = 'appliance-paused',
+    /**
+     * There is nothing to serve: no car on the cable, no load on the socket.
+     *
+     * Distinct from {@link AppliancePaused}, where a load exists and is holding.
+     * A participant in this state has no goal, so it carries no progress.
+     */
+    NothingConnected = 'nothing-connected',
+    /** Past the deadline this run was allowed to use — the window has closed. */
+    DeadlinePassed = 'deadline-passed',
+    /**
+     * The plan deliberately deferred this slot's energy to a cheaper one it DID
+     * schedule. Only a price-ranking planner may state this; set
+     * {@link EnyoDataBusCommandReason.electricityPricePerKwh} to the price of the
+     * slot being waited for so the text can name the saving.
+     */
+    WaitingForCheaperSlot = 'waiting-for-cheaper-slot',
+    /**
+     * The slot's price is above the limit the owner set for THIS appliance.
+     *
+     * Told apart from {@link ElectricityPriceAboveThreshold}, which is a
+     * site-level or manager-level threshold: this one names the owner's own
+     * per-appliance ceiling, and the sentence should say so.
+     */
+    AboveOwnPriceLimit = 'above-own-price-limit',
+    /**
+     * There is power available, but less than the appliance's minimum operating
+     * point — switching it on would not be executable.
+     * {@link EnyoDataBusCommandReason.powerW} is the power that was available.
+     */
+    BelowMinPower = 'below-min-power',
+    /**
+     * Another appliance of the same category holds the turn — two chargers
+     * sharing one supply, and this one is waiting its go.
+     */
+    OtherApplianceTurn = 'other-appliance-turn',
+    /**
+     * The energy manager cut the ask because the supply it was allowed to draw
+     * from ran out. The manager's own statement about scarcity, and never a
+     * claim about price or sun.
+     */
+    SupplyExhausted = 'supply-exhausted',
+    /**
+     * Outside every window of the owner's schedule — the "Zeitplan" said not now.
+     *
+     * The owner's own rule, which is why it outranks price and surplus: if every
+     * other constraint were lifted, the appliance would still stay off.
+     */
+    OutsideSchedule = 'outside-schedule',
 }
 
 /**
@@ -132,6 +208,19 @@ export enum EnyoDataBusCommandReasonCategoryEnum {
     Temperature = 'temperature',
     /** Driven by self-consumption optimization. */
     SelfConsumptionOptimization = 'self-consumption-optimization',
+    /**
+     * Driven by where the run itself stands — finished, paused by the appliance,
+     * nothing connected, or past its deadline. Says something about the JOB, not
+     * about price, sun or the grid.
+     */
+    SessionState = 'session-state',
+    /**
+     * Driven by scarcity between appliances — the supply ran out, another
+     * appliance holds the turn, or the power left is below this one's minimum.
+     * Told apart from {@link PvSurplus}, which is specifically about who got the
+     * sun.
+     */
+    Contention = 'contention',
     /** Any reason not covered by the categories above. */
     Other = 'other',
 }
@@ -646,6 +735,8 @@ export enum EnyoDataBusMessageEnum {
     EnergyManagementChargingStateV1 = 'EnergyManagementChargingStateV1',
     RequestPreviewChargingScheduleV1 = 'RequestPreviewChargingScheduleV1',
     PreviewChargingScheduleResponseV1 = 'PreviewChargingScheduleResponseV1',
+    /** Who the energy manager is serving in the current slot, in what order, how far each participant is toward its own goal, and why. */
+    EnergyDistributionSnapshotV1 = 'EnergyDistributionSnapshotV1',
     PvForecastV1 = 'PvForecastV1',
     BatteryForecastV1 = 'BatteryForecastV1',
     HomeConsumptionForecastV1 = 'HomeConsumptionForecastV1',
@@ -696,6 +787,10 @@ export enum EnyoDataBusMessageEnum {
     RequestVehicleSocEstimateV1 = 'RequestVehicleSocEstimateV1',
     /** Answer to {@link RequestVehicleSocEstimateV1} — the estimate with its age and source, or why none could be given. */
     VehicleSocEstimateResponseV1 = 'VehicleSocEstimateResponseV1',
+    /** Ask an app to start a calibration run on one of its appliances. */
+    RequestCalibrationV1 = 'RequestCalibrationV1',
+    /** A calibration run opened, advanced, or reached a verdict. */
+    CalibrationStatusUpdateV1 = 'CalibrationStatusUpdateV1',
     /** V2 control command: announce the available/max power (W) envelope to a charger. Supersedes {@link EnyoDataBusMessageEnum.ChangeChargingPowerV1}. */
     SetChargerAvailablePowerV2 = 'SetChargerAvailablePowerV2',
     /** V2 control command: announce the available/max power (W) envelope to a heatpump, with purpose and power-source context. Supersedes {@link EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1}. */
@@ -1035,6 +1130,15 @@ export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
          * to report.
          */
         errorCodes?: EnyoApplianceErrorCode[];
+        /**
+         * New state of the appliance's own battery, for appliances declaring
+         * {@link EnyoApplianceAvailableFeaturesEnum.BatteryPowered}.
+         *
+         * Publish it when the level changes meaningfully or the low flag
+         * flips — not on every reading. A battery device that reports hourly
+         * would otherwise fill the bus with a number that moves once a month.
+         */
+        batteryState?: EnyoApplianceBatteryState;
     };
 }
 
@@ -1870,6 +1974,27 @@ export interface EnyoDataBusPreviewChargingScheduleResponseV1 extends EnyoDataBu
 }
 
 /**
+ * The energy manager's picture of the current slot: every participant it serves,
+ * in served order, with its own goal progress and the reason it is in the state
+ * it is.
+ *
+ * Published by an energy manager through
+ * `useEnergyManager().publishEnergyDistribution()` rather than by sending this
+ * message by hand — the publisher validates the payload first. Consumers should
+ * likewise prefer `getEnergyDistribution()` / `listenForEnergyDistribution()`;
+ * this interface is the wire format they rest on.
+ *
+ * Site-wide, so it carries no `applianceId`: the appliance rows are inside
+ * {@link EnyoEnergyDistributionSnapshot.participants}, alongside the household
+ * and feed-in rows that belong to no appliance at all.
+ */
+export interface EnyoDataBusEnergyDistributionSnapshotV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.EnergyDistributionSnapshotV1;
+    data: EnyoEnergyDistributionSnapshot;
+}
+
+/**
  * Result for a single charging mode in a preview charging schedule response.
  * Contains the schedule and optional cost comparison for one specific charging mode.
  */
@@ -2555,6 +2680,17 @@ export interface EnyoTemperatureSensorValue {
     temperatureC: number;
     /** Optional target temperature in Celsius */
     targetTemperatureC?: number;
+    /**
+     * Current **relative** humidity in percent (0-100), for sensors that
+     * measure it — not absolute humidity in g/m³.
+     *
+     * Omitted means the sensor does not report humidity, or did not this time.
+     * Whether a sensor measures it at all is declared once on
+     * {@link EnyoTemperatureSensor.measuresHumidity}, so a consumer can lay out
+     * a humidity tile before the first reading arrives rather than inferring it
+     * from a value's presence.
+     */
+    humidityPercent?: number;
 }
 
 /**
@@ -3276,6 +3412,62 @@ export interface EnyoDataBusVehicleSocEstimateResponseV1 extends EnyoDataBusMess
          * them are worth retrying.
          */
         unavailableReason?: EnyoVehicleSocUnavailableReasonEnum;
+    };
+}
+
+/**
+ * Ask an app to start a calibration run on one of its appliances.
+ *
+ * The bus counterpart of {@link EnyoCalibrationHandler}: the cockpit's
+ * "calibrate now", an onboarding step, or the host refreshing a result it
+ * marked stale. The app answers by opening a run and publishing
+ * {@link EnyoDataBusCalibrationStatusUpdateV1} messages for it — there is no
+ * separate acceptance message on the bus, because a run appearing in
+ * {@link EnyoCalibrationStatusEnum.Running} *is* the acceptance, and a refusal
+ * shows up as a status carrying unsatisfied requirements.
+ */
+export interface EnyoDataBusRequestCalibrationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.RequestCalibrationV1;
+    /** ID of the appliance to calibrate. */
+    applianceId: string;
+    data: {
+        /** Correlates this request with the run that answers it. */
+        requestId: string;
+        /** Who asked. */
+        origin: EnyoCalibrationRequestOriginEnum;
+        /**
+         * Whether a user is at the device and can be asked to act. A run
+         * needing someone to plug a car in is worth offering during onboarding
+         * and pointless in the background.
+         */
+        userPresent?: boolean;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * A calibration run opened, advanced, or reached a verdict.
+ *
+ * Published by the owning app on every transition, so the cockpit and the
+ * energy manager see a long run progress rather than only its outcome. The
+ * whole run travels each time rather than a delta: a subscriber that joins
+ * mid-run, or misses a message, still has the complete picture.
+ */
+export interface EnyoDataBusCalibrationStatusUpdateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.CalibrationStatusUpdateV1;
+    /** ID of the appliance the run is about. */
+    applianceId: string;
+    data: {
+        /** The run as it now stands. */
+        run: EnyoCalibrationRun;
+        /**
+         * The {@link EnyoDataBusRequestCalibrationV1} this run answers, when it
+         * was started by a request rather than by the app itself.
+         */
+        requestId?: string;
     };
 }
 

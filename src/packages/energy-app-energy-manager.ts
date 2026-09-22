@@ -1,5 +1,6 @@
 import {EnergyManagerFeatureEnum, EnergyManagerInfo} from "../types/enyo-energy-manager.js";
 import {EnyoDiagnosticsControlPlan} from "../types/enyo-diagnostics.js";
+import {EnyoEnergyDistributionSnapshot} from "../types/enyo-energy-distribution.js";
 import type {
     EnergyManagerSettingEnum,
     EnergyManagerSettingValues,
@@ -211,4 +212,133 @@ export interface EnergyAppEnergyManager {
      * @param subscriptionId - The id returned when the listener was registered.
      */
     unsubscribeEnergyManagerSettings(subscriptionId: string): void;
+
+    /**
+     * Only for Energy Manager Energy Apps: publishes who is being served right
+     * now, in what order, how far each participant is toward its own goal, and
+     * why — the data behind the cockpit's energy-distribution card.
+     *
+     * Publish once per allocation cycle and on every slot boundary. The snapshot
+     * is a complete picture of the slot: an appliance that asked for nothing
+     * belongs in it with {@link EnyoDistributionParticipantStateEnum.NotAsking}
+     * and a reason, because a row that silently disappears reads, to an owner, as
+     * an appliance that stopped existing.
+     *
+     * Build the snapshot with {@link EnergyDistributionSnapshotBuilder} rather
+     * than by hand — it orders the rows, stamps the timestamps and keeps the
+     * no-goal rows free of a progress bar. The payload is validated with
+     * {@link validateEnergyDistributionSnapshot} before it goes on the bus, and
+     * an invalid one throws rather than being published half-true.
+     *
+     * Declare {@link EnergyManagerFeatureEnum.EnergyDistributionView} through
+     * {@link registerFeatures} as well, so the cockpit only offers the card where
+     * an energy manager actually fills it.
+     *
+     * @param snapshot - The current slot's participants, in served order.
+     *
+     * @example
+     * ```typescript
+     * const em = energyApp.useEnergyManager();
+     *
+     * const snapshot = new EnergyDistributionSnapshotBuilder()
+     *     .addAppliance({
+     *         rank: 0,
+     *         applianceId: 'charger-1',
+     *         applianceType: EnyoApplianceTypeEnum.Charger,
+     *         name: 'Wallbox Garage',
+     *         state: EnyoDistributionParticipantStateEnum.Drawing,
+     *         powerW: 7400,
+     *         reason: enriched({type: EnyoDataBusCommandReasonTypeEnum.PvSurplusAvailable}),
+     *         progress: makeProgress({
+     *             unit: EnyoDistributionProgressUnitEnum.Energy,
+     *             current: 8400,
+     *             target: 22000,
+     *         }),
+     *     })
+     *     .addHousehold({powerW: 620, name: 'Haushalt'})
+     *     .addFeedIn({powerW: -1300, name: 'Einspeisung'})
+     *     .build({slotStartMs: slotStart, nowMs: Date.now()});
+     *
+     * em.publishEnergyDistribution(snapshot);
+     * ```
+     */
+    publishEnergyDistribution(snapshot: EnyoEnergyDistributionSnapshot): void;
+
+    /**
+     * Reads the energy manager's most recently published distribution snapshot.
+     *
+     * For the cold start: an app, a display or a cockpit that comes up between
+     * two cycles would otherwise show an empty card until the next publish. Pair
+     * it with {@link listenForEnergyDistribution} — read once, then follow.
+     *
+     * Returns `null` when no energy manager is configured, or when one is but has
+     * not published a snapshot yet (it does not implement the feature, or it has
+     * not finished its first cycle). Both are valid states, not errors: check
+     * {@link EnergyManagerInfo.features} for
+     * {@link EnergyManagerFeatureEnum.EnergyDistributionView} to tell "will never
+     * come" apart from "not yet".
+     *
+     * @returns Promise resolving to the latest snapshot, or `null`.
+     *
+     * @example
+     * ```typescript
+     * const em = energyApp.useEnergyManager();
+     * const snapshot = await em.getEnergyDistribution();
+     * if (snapshot) render(snapshot);
+     * const id = em.listenForEnergyDistribution(render);
+     * ```
+     */
+    getEnergyDistribution(): Promise<EnyoEnergyDistributionSnapshot | null>;
+
+    /**
+     * Registers a listener called on every distribution snapshot the energy
+     * manager publishes.
+     *
+     * The event carries the **complete** picture of the slot, so a listener never
+     * merges against what it saw before — render it as it arrives. Snapshots
+     * arrive roughly once per allocation cycle; a consumer that redraws on each
+     * one is doing the right thing.
+     *
+     * Several listeners may be registered; each call returns its own subscription
+     * id for {@link unsubscribeEnergyDistribution}.
+     *
+     * @param listener - Callback invoked with each published snapshot.
+     * @returns The subscription id.
+     *
+     * @example
+     * ```typescript
+     * const em = energyApp.useEnergyManager();
+     * const id = em.listenForEnergyDistribution((snapshot) => {
+     *     for (const participant of snapshot.participants) {
+     *         console.log(participant.rank, participant.name, participant.powerW);
+     *     }
+     * });
+     *
+     * // later
+     * em.unsubscribeEnergyDistribution(id);
+     * ```
+     */
+    listenForEnergyDistribution(
+        listener: EnergyDistributionListener
+    ): string;
+
+    /**
+     * Cancels a subscription created with {@link listenForEnergyDistribution}.
+     *
+     * Unknown ids are ignored, so teardown is safe to call unconditionally.
+     *
+     * @param subscriptionId - The id returned when the listener was registered.
+     */
+    unsubscribeEnergyDistribution(subscriptionId: string): void;
 }
+
+/**
+ * Callback invoked with each energy-distribution snapshot an energy manager
+ * publishes. Registered through
+ * {@link EnergyAppEnergyManager.listenForEnergyDistribution}.
+ *
+ * @param snapshot - The complete picture of the slot, in served order.
+ */
+export type EnergyDistributionListener = (
+    snapshot: EnyoEnergyDistributionSnapshot
+) => void;

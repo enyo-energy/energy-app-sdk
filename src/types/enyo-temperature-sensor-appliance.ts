@@ -26,6 +26,20 @@ export interface EnyoTemperatureSensor {
     name: EnyoApplianceSensorName[];
     /** Optional type classification of the sensor */
     type?: EnyoTemperatureSensorTypeEnum;
+    /**
+     * Whether this sensor also measures relative humidity, reported as
+     * {@link EnyoTemperatureSensorValue.humidityPercent}.
+     *
+     * Declared here rather than inferred from whether a reading happens to
+     * carry a value: a consumer laying out a sensor screen needs to know
+     * before the first reading arrives, and a sensor that reports humidity
+     * intermittently would otherwise flicker in and out of the UI.
+     *
+     * Absent means unknown, not `false` — plenty of integrations predate the
+     * flag, so fall back to whatever the readings carry rather than hiding a
+     * value that is plainly there.
+     */
+    measuresHumidity?: boolean;
 }
 
 /**

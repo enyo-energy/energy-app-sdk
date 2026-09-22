@@ -32,6 +32,7 @@ import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
+import {EnergyAppCalibration} from "./packages/energy-app-calibration.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
@@ -143,6 +144,8 @@ export interface EnyoEnergyAppSdk {
     useDiagnostics: () => EnergyAppDiagnostics;
     /** Get the Learning Phase API for registering and tracking learning phases */
     useLearningPhase: () => EnergyAppLearningPhase;
+    /** Get the Calibration API for reporting what an appliance was proven to do */
+    useCalibration: () => EnergyAppCalibration;
     /** Get the WiFi API for scanning and listing known SSIDs */
     useWifi: () => EnergyAppWifi;
     /** Get the UDP communication API for binding sockets and exchanging datagrams */

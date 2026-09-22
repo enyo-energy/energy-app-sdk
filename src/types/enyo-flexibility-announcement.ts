@@ -14,6 +14,7 @@
 // strings, so the enums stay wire-compatible while giving callers named members.
 
 import {EnyoApplianceTypeEnum} from './enyo-appliance.js';
+import {EnyoDistributionProgressUnitEnum} from './enyo-energy-distribution.js';
 
 /**
  * Point in time inside the flexibility model, as epoch milliseconds.
@@ -277,6 +278,57 @@ export interface EnyoFlexibilityAnnouncementContext {
      * alone.
      */
     storageCanHold?: boolean;
+    /**
+     * What this run is FOR — the goal it is driving toward, and where it stands now.
+     *
+     * The announcement's own energy figure states what is STILL NEEDED and shrinks
+     * every cycle as the appliance fills; this does not. Without the pair, no
+     * consumer can tell a target that shrank from one that was always small, and a
+     * progress bar built on the remaining energy stays flat for a session that is
+     * nearly done.
+     *
+     * Stated by the manager that owns the goal — it always knows it: a charger has
+     * `deliveredWh` beside the session's required energy, a battery has its state of
+     * charge beside the ceiling it may charge to, a heat pump has its tank
+     * temperature beside the target. Never back-computed from granted watts.
+     *
+     * {@link EnyoDistributionProgress.percent} is deliberately NOT part of this: the
+     * announcer states the facts, and the publisher computes the bar once, with
+     * `makeProgress()`.
+     *
+     * @example
+     * ```typescript
+     * // A charging session: 8.4 kWh delivered of the 22 kWh the session needs.
+     * context: {
+     *     progress: {
+     *         unit: EnyoDistributionProgressUnitEnum.Energy,
+     *         start: 0,
+     *         current: 8400,
+     *         target: 22000,
+     *     },
+     * }
+     * ```
+     */
+    progress?: EnyoFlexibilityProgress;
+}
+
+/**
+ * The goal a run is driving toward, as the manager that owns it states it — the
+ * announcement-side half of {@link EnyoDistributionProgress}, without the derived
+ * `percent`.
+ */
+export interface EnyoFlexibilityProgress {
+    /** The unit {@link start}, {@link current} and {@link target} are expressed in. */
+    unit: EnyoDistributionProgressUnitEnum;
+    /**
+     * Where the run began — the bar's zero. Absent means zero, which is right for an
+     * energy target and wrong for a tank that started at 20 °C.
+     */
+    start?: number;
+    /** Where the run stands now, measured. */
+    current: number;
+    /** The goal it is driving to. Must differ from {@link start}. */
+    target: number;
 }
 
 // ─── Category announcements ─────────────────────────────────

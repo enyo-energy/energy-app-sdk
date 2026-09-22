@@ -64,6 +64,12 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [BatteryCommandForecast](#batterycommandforecast)
   - [HeatpumpForecast](#heatpumpforecast)
   - [Validators](#validators)
+- [Energy Distribution Snapshot](#energy-distribution-snapshot)
+  - [What the snapshot states](#what-the-snapshot-states)
+  - [Stating the goal on an announcement](#stating-the-goal-on-an-announcement)
+  - [Publishing a snapshot](#publishing-a-snapshot)
+  - [Consuming a snapshot](#consuming-a-snapshot)
+  - [Helpers and validation](#helpers-and-validation)
 - [Dynamic Grid Fees & Tariff Bonuses](#dynamic-grid-fees--tariff-bonuses)
   - [The rule that shapes this API](#the-rule-that-shapes-this-api)
   - [Publishing a dynamic grid fee](#publishing-a-dynamic-grid-fee)
@@ -830,6 +836,126 @@ That message is the only write path for a state of charge; it needs the
 `SendDataBusValues` permission. `getSoc()` resolves to `undefined` when nothing
 is known — an ordinary answer for a car with no SoC source, not an error.
 
+##### Car integrations: pairing a vehicle
+
+A package in the `vehicle` category talks to a manufacturer's cloud and links
+one of its cars to a vehicle the user already created. It does not invent
+vehicles and it does not go looking for them — the flow starts with the user:
+
+1. The user signs into the vendor account (`useAuthentication()`, OAuth or
+   credentials).
+2. The user picks one of their vehicles in the enyo app and chooses this
+   package to link it to. Which packages are offered comes from the brand
+   declared in `compatibility` — see below.
+3. The host calls the handler registered with `onPairVehicle()`.
+4. The handler finds the matching car in the account and answers.
+
+```typescript
+const vehicles = energyApp.useVehicle();
+
+vehicles.onPairVehicle(async (vehicle, selection) => {
+    const cars = await vendorApi.listVehicles();
+
+    // Several cars in the account and nothing to tell them apart —
+    // hand the choice back to the user instead of guessing
+    if (cars.length > 1 && !selection) {
+        return {
+            paired: false,
+            failureReason: EnyoVehiclePairFailureReasonEnum.SelectionRequired,
+            candidates: cars.map(c => ({
+                externalId: c.id,
+                displayName: c.name,
+                vin: c.vin,
+            })),
+        };
+    }
+
+    const car = selection
+        ? cars.find(c => c.id === selection.externalId)
+        : cars[0];
+
+    if (!car) {
+        return {
+            paired: false,
+            failureReason: EnyoVehiclePairFailureReasonEnum.NoMatchingVehicle,
+        };
+    }
+
+    startPolling(car.id, vehicle.id);
+    return {
+        paired: true,
+        externalId: car.id,
+        vin: car.vin,
+        displayName: car.name,
+        // only what you actually read — an invented figure is planned against
+        batterySizeKwh: car.batteryKwh,
+        maxChargingPowerKw: car.maxChargeKw,
+    };
+});
+```
+
+The handler is called a second time with `selection` after the user picks from
+`candidates`. A package serving single-car accounts can ignore the parameter.
+
+Once paired, the package has the `vehicleId` it was always missing and publishes
+readings the normal way — `VehicleSocUpdateV1`, keyed by that id. Nothing about
+the write path changes.
+
+**Unlinking works from both sides.** The user can unlink one car or sign out of
+the vendor account; the package can drop a link it can no longer serve:
+
+```typescript
+// The user unlinked a car, deleted the vehicle, or signed out.
+// The link is already gone — this is a notification, not a veto.
+vehicles.onUnpairVehicle(async (link, reason) => {
+    stopPolling(link.externalId);
+    if (reason !== EnyoVehicleUnpairReasonEnum.SignOut) {
+        await vendorApi.revokeVehicleAccess(link.externalId);
+    }
+});
+
+// The car vanished from the vendor account, or the subscription lapsed.
+// Does NOT call onUnpairVehicle — the package already knows.
+await vehicles.unpairVehicle(vehicleId);
+
+// Handlers only fire on change, so pick the links back up after a restart
+for (const link of await vehicles.listLinkedVehicles()) {
+    startPolling(link.externalId, link.vehicleId);
+}
+```
+
+`listLinkedVehicles()` is not a convenience: without it a package that restarted
+has no idea which cars it is responsible for, and sits idle on a vehicle the
+user believes is connected.
+
+**`signOut()` cascades.** Signing out drops every link the package holds, with
+one `onUnpairVehicle` call per link carrying
+`EnyoVehicleUnpairReasonEnum.SignOut`. The vendor session is already gone at
+that point, so stop polling rather than call the vendor's API.
+
+Pairing needs the `VehicleIntegration` permission; reading vehicles needs only
+`Vehicle`.
+
+##### Declaring supported brands
+
+Car integrations declare brands, not model lines — the vendor's cloud serves
+every car in the account and the line-up changes yearly. An empty `models`
+array with `default: true` reads as "every car of this brand":
+
+```typescript
+categories: [EnergyAppPackageCategory.Vehicle],
+compatibility: [{
+    vendorName: 'Tesla',
+    default: true,
+    models: [],
+}],
+```
+
+Declare per-model entries only where support genuinely differs, and set
+`features` honestly — a brand whose API only reports SoC
+(`VehicleSocReadout`) should not look like one that can also start a charge
+(`VehicleChargeStartStop`). See `EnergyAppModelFeatureEnum`'s vehicle group.
+
 ##### Charge modes
 
 Three modes, one meaning each, identical with and without a dynamic tariff — a
@@ -1205,6 +1331,120 @@ await learningPhase.completeLearningPhase(heatpumpPhaseId);
 // Remove a learning phase
 await learningPhase.removeLearningPhase(phaseId);
 ```
+
+#### `useCalibration(): EnergyAppCalibration`
+
+Report what an appliance was **proven** to do. An appliance's `availableFeatures`
+is a claim the app writes from a model database or a register map; a calibration
+run is the proof. A wallbox that advertises phase switching and fails to switch,
+or a heat pump wired for SG Ready with nothing on the terminals, is exactly what
+the claim cannot catch. Both are kept: the claim tells onboarding what to expect,
+the run tells an energy manager what it may rely on.
+
+Supported for batteries, wallboxes, inverters, heat pumps and heating rods.
+
+**A run is a lifecycle, not a call** — unlike `useDeviceTest()`, where the
+handler's promise is the whole protocol. A battery calibration is a
+charge/discharge cycle measured in hours, so the app opens a run, reports
+progress against it, and closes it with a verdict:
+
+```typescript
+const calibration = energyApp.useCalibration();
+
+const runId = await calibration.startRun({ applianceId: 'battery-1' });
+
+await calibration.reportProgress(runId, {
+    progressPercent: 40,
+    currentStep: [
+        { language: 'de', value: 'Batterie wird entladen' },
+        { language: 'en', value: 'Discharging the battery' },
+    ],
+});
+
+await calibration.completeRun(runId, {
+    confirmedFeatures: [
+        EnyoCalibratedFeatureEnum.BatteryGridCharging,
+        EnyoCalibratedFeatureEnum.BatteryUsableCapacity,
+    ],
+});
+```
+
+Always close a run you opened. An app that crashes mid-run leaves it `running`
+forever, which reads to a user as a device that has been calibrating for three
+days — report `Interrupted` on restart when you find one of your own runs still
+open.
+
+Read it back, or react to anyone's run:
+
+```typescript
+const status = await calibration.getStatus('battery-1');   // undefined when never reported
+if (status?.status === EnyoCalibrationStatusEnum.Succeeded) {
+    console.log(status.confirmedFeatures);
+}
+
+const id = calibration.listenForCalibrationStatusChange(async (run) => { /* … */ });
+```
+
+**Statuses**
+
+| Status | Meaning |
+|---|---|
+| `not-supported` | This appliance has no run to offer. Stop asking; don't show a control. |
+| `not-calibrated` | Possible, but something is missing — see `requirements`. |
+| `ready` | Every prerequisite holds; a run could start now. |
+| `running` | In progress. See `progressPercent` / `currentStep`. |
+| `succeeded` | Finished; `confirmedFeatures` holds what it proved. |
+| `failed` | Did not finish; `failureReason` says whether retrying helps. |
+| `stale` | A past success that no longer describes the device (firmware, hardware, rewiring). |
+
+Four things to get right:
+
+- **`undefined` is not `not-supported`.** No run at all means nobody has said anything; `not-supported` means someone said no. Only the second justifies hiding the feature.
+- **Succeeding and confirming nothing is a real result.** `confirmedFeatures: []` says the run completed and proved nothing — quite different from the field being absent, which means it never got far enough to say.
+- **Declare prerequisites even when you never run.** `reportRequirements()` is what turns "not calibrated" into "needs at least 30 % state of charge", which a user can act on.
+- **Omit `progressPercent` rather than guessing.** A bar that sits at 10 % for three hours is worse than a spinner and an honest `currentStep`.
+
+An app that can be asked to calibrate — from the cockpit, or an onboarding step —
+registers a handler. Answer promptly with an *acceptance*, not a result; refusing
+with unsatisfied `requirements` is a normal answer and more useful than starting a
+run that is bound to fail:
+
+```typescript
+calibration.listenForCalibrationRequest(async (request) => {
+    if (soc < 30) {
+        return {
+            requestId: request.requestId,
+            accepted: false,
+            requirements: [{
+                key: 'min-soc',
+                satisfied: false,
+                description: [
+                    { language: 'de', value: 'Mindestens 30 % Ladestand nötig' },
+                    { language: 'en', value: 'Needs at least 30 % state of charge' },
+                ],
+            }],
+        };
+    }
+    return { requestId: request.requestId, accepted: true, runId: await calibration.startRun({
+        applianceId: request.applianceId,
+        requestId: request.requestId,
+    }) };
+});
+```
+
+`EnyoCalibratedFeatureEnum` is deliberately its own flat vocabulary rather than
+the per-type `availableFeatures` enums — those describe claims and change for
+reasons unrelated to what a run can prove. Members are prefixed by device class,
+and `validateCalibrationRun()` rejects a run reporting a feature from another
+class, along with the self-contradictory states the optional fields otherwise
+allow (features on a failed run, a failure reason on a successful one, a run
+that ended before it began).
+
+Not to be confused with a **learning phase**: that is open-ended data gathering
+with no pass/fail and no feature list. The two compose — a calibration run may
+open a learning phase while it settles.
+
+Writing requires the `Calibration` permission; reading status requires none.
 
 ### Networking & Protocols
 
@@ -2106,6 +2346,30 @@ await applianceManager.updateApplianceState(
 | `dispose()` | Release SDK listeners. |
 
 Identifier strategies are exported from the package — typical choices match on serial number, hostname, or a composite of `manufacturer + model + sn`.
+
+### Battery-powered appliances
+
+An appliance that runs on its own cell — a wireless room sensor, a radio button, a battery-backed gateway — declares `EnyoApplianceAvailableFeaturesEnum.BatteryPowered` and reports `EnyoAppliance.batteryState`:
+
+```typescript
+await appliances.save({
+    // …
+    availableFeatures: [EnyoApplianceAvailableFeaturesEnum.BatteryPowered],
+    batteryState: {
+        levelPercent: 62,
+        low: false,
+        replaceable: true,
+        measuredAtIso: new Date().toISOString(),
+    },
+});
+```
+
+Publish changes on `ApplianceStateUpdateV1` (`data.batteryState`) when the level moves meaningfully or `low` flips — not on every reading, or a sensor reporting hourly fills the bus with a number that changes once a month.
+
+- **This is not a home storage battery.** `EnyoApplianceBatteryState` is about keeping a sensor alive; `EnyoBatteryState` is the runtime state of a `Storage` appliance, in kWh and priced. The names are close and the concepts are unrelated.
+- **`low` is the load-bearing field, not `levelPercent`.** A primary cell's voltage barely moves until it is nearly flat, so many devices report only a coarse level or none at all. Set `low` from whatever the device actually says rather than leaving a consumer to pick a threshold it cannot calibrate.
+- **Declare the feature even before the first reading.** It is how a maintenance view knows to watch for a flat battery, and it keeps a device whose reporting is intermittent from appearing and disappearing from that list.
+- **Always set `measuredAtIso`.** These devices report rarely, so a level without an age says nothing about whether the device is still alive — which is the question a low battery is usually asked alongside.
 
 ## Network Devices & Access Recovery
 
@@ -3268,6 +3532,141 @@ try {
     }
 }
 ```
+
+## Energy Distribution Snapshot
+
+Answers the question an owner actually asks in front of the cockpit: **who is getting the power right now, in what order, how far along are they, and why?**
+
+An energy manager publishes one snapshot per allocation cycle (and on every slot boundary). Each row is a participant: the appliances it steers, plus the household draw and the feed-in that no plan owns. Every row carries a signed power, a reason ready to render in the user's language, and — where the participant has a goal — how far toward that goal it is.
+
+**Required permission:** `EnergyManager` (to publish). Reading is open to any app.
+
+### What the snapshot states
+
+The model has one rule, and everything else follows from it: **every number is stated by whoever owns it, and carried through verbatim.**
+
+| Fact | Owned by | Never |
+|---|---|---|
+| `rank` — who was served first | the component that ordered the allocation | re-derived from a category precedence the consumer knows |
+| `progress` — the goal and where the run stands | the appliance manager that owns the goal | back-computed from granted watts, or from a remaining-energy figure |
+| `state: Complete` | a stated `SessionComplete` reason | inferred from `percent >= 100` |
+| `reason` + its translation | whoever took the decision | invented per consumer |
+
+The two that bite hardest:
+
+**A remaining energy is not a goal.** An announcement states what is *still needed*, and that shrinks every cycle as the appliance fills. A required energy falling from 20 kWh to 2 kWh looks exactly like a target that was always 2 kWh — so a bar built on it stays flat for a session that is nearly done. That is why the goal is stated separately, on the announcement, by the manager that knows it.
+
+**A full bar is not a finished run.** A measured delivery overshoots a target that was revised mid-session, and a session can be complete while its last meter reading still lags. `Complete` comes from the stated `SessionComplete` cause, and `validateEnergyDistributionSnapshot()` rejects a snapshot that claims otherwise.
+
+Rows with **no** goal — household draw, feed-in, a charger with no car plugged in — simply carry no `progress`. That is an answer, not missing data: the card renders them without a bar.
+
+### Stating the goal on an announcement
+
+Managers put the goal on their flexibility announcement, in the unit the owner sees:
+
+```typescript
+// Charger: 8.4 kWh delivered of the 22 kWh this session needs.
+context: {
+    progress: {
+        unit: EnyoDistributionProgressUnitEnum.Energy,
+        start: 0,
+        current: session.deliveredWh,
+        target: session.requiredWh,
+    },
+},
+
+// Battery: 58 % now, heading for the 70 % ceiling the owner set, from 52 % at the start.
+context: {
+    progress: {
+        unit: EnyoDistributionProgressUnitEnum.StateOfCharge,
+        start: 52,
+        current: 58,
+        target: 70,
+    },
+},
+
+// Heat pump: a DHW tank at 31 °C that started at 20 °C and is heading for 48 °C.
+context: {
+    progress: {
+        unit: EnyoDistributionProgressUnitEnum.Temperature,
+        start: 20,
+        current: 31,
+        target: 48,
+    },
+},
+```
+
+`start` is the bar's zero, and it matters everywhere except energy: without it, a cold tank at 20 °C heading for 48 °C draws a 42 % bar before anything has happened.
+
+### Publishing a snapshot
+
+```typescript
+const em = energyApp.useEnergyManager();
+em.registerFeatures([EnergyManagerFeatureEnum.EnergyDistributionView]);
+
+const snapshot = new EnergyDistributionSnapshotBuilder()
+    .addAppliance({
+        rank: 0,                                  // the order the allocation actually used
+        applianceId: 'charger-1',
+        applianceType: EnyoApplianceTypeEnum.Charger,
+        name: 'Wallbox Garage',
+        state: EnyoDistributionParticipantStateEnum.Drawing,
+        powerW: 7400,
+        reason: enrichedPvSurplusReason,
+        progress: makeProgress({
+            unit: EnyoDistributionProgressUnitEnum.Energy,
+            current: 8400,
+            target: 22000,
+        }),
+    })
+    .addAppliance({
+        rank: 1,
+        applianceId: 'charger-2',
+        applianceType: EnyoApplianceTypeEnum.Charger,
+        name: 'Wallbox Hof',
+        state: EnyoDistributionParticipantStateEnum.NotAsking,
+        powerW: 0,
+        reason: enrich({type: EnyoDataBusCommandReasonTypeEnum.NothingConnected}),
+        // no car, so no goal, so no bar
+    })
+    .addHousehold({powerW: 620, name: 'Haushalt'})
+    .addFeedIn({powerW: -1300, name: 'Einspeisung'})
+    .build({slotStartMs: slotStart});
+
+em.publishEnergyDistribution(snapshot);
+```
+
+Include **every** appliance the energy manager knows about, including the ones that asked for nothing — with `NotAsking` or `Skipped` and a reason. A row that silently disappears reads, to an owner, as an appliance that stopped existing.
+
+The publisher validates before sending, so an invalid snapshot throws rather than going out half-true.
+
+### Consuming a snapshot
+
+Read once for the cold start, then follow:
+
+```typescript
+const em = energyApp.useEnergyManager();
+
+const current = await em.getEnergyDistribution();   // null: none configured, or none published yet
+if (current) render(current);
+
+const id = em.listenForEnergyDistribution(render);
+energyApp.onShutdown(() => em.unsubscribeEnergyDistribution(id));
+```
+
+Each event carries the **complete** picture of the slot — render it as it arrives rather than merging it into what you had. To tell "will never come" apart from "not yet", check `EnergyManagerInfo.features` for `EnergyDistributionView`.
+
+### Helpers and validation
+
+| Helper | What it does |
+|---|---|
+| `makeProgress({unit, start?, current, target})` | Builds an `EnyoDistributionProgress` with `percent` computed — `(current − start) / (target − start)`, clamped to 0–100. The single definition of how full a bar is, so no two consumers disagree by a rounding rule. |
+| `progressPercent(input)` | The same arithmetic on its own, for a caller that already holds a stated triple. |
+| `progressFromAnnouncement(stated)` | Turns a manager's announced goal into a participant's progress, adding nothing but the percentage. |
+| `EnergyDistributionSnapshotBuilder` | Assembles the snapshot: orders rows by stated rank, stamps the timestamps, and keeps the measured rows structurally free of a bar. |
+| `validateEnergyDistributionSnapshot(snapshot)` | Throws `EnergyDistributionValidationError` on the first violated invariant — duplicate ranks, a bar on a household row, a `Complete` without a stated `SessionComplete`, a percentage that does not follow from its own numbers, a "skipped" row still drawing power. |
+
+New reason types came with this surface, so a skipped row can say *why* instead of falling back to a generic "scheduled optimization": `SessionComplete`, `AppliancePaused`, `NothingConnected`, `DeadlinePassed`, `WaitingForCheaperSlot`, `AboveOwnPriceLimit`, `BelowMinPower`, `OtherApplianceTurn`, `SupplyExhausted`, `OutsideSchedule` — grouped by the new `SessionState` and `Contention` reason categories.
 
 ## Dynamic Grid Fees & Tariff Bonuses
 

@@ -223,3 +223,240 @@ export interface EnyoVehicleSoc {
      */
     source?: EnyoVehicleSocSourceEnum;
 }
+
+/**
+ * Why a vehicle could not be paired with a car-integration app.
+ *
+ * Carried by an {@link EnyoVehiclePairResult} whose `paired` is `false`. The
+ * members are deliberately separate so the enyo app can tell the user what to
+ * do instead of "pairing failed": {@link NotAuthenticated} sends them to a sign
+ * in, {@link SelectionRequired} opens a picker, and
+ * {@link TemporarilyUnavailable} is the only one worth retrying unchanged.
+ */
+export enum EnyoVehiclePairFailureReasonEnum {
+    /**
+     * The package has no usable session with the vendor's cloud — the user has
+     * not signed in yet, or the stored token expired and could not be
+     * refreshed. Resolve it through {@link EnergyAppAuthentication}, then pair
+     * again.
+     */
+    NotAuthenticated = 'not-authenticated',
+    /**
+     * The signed-in account holds more than one car and the handler cannot tell
+     * which one the user meant. The result carries
+     * {@link EnyoVehiclePairResult.candidates}; the host asks the user to pick
+     * and calls the handler again with an {@link EnyoVehiclePairSelection}.
+     *
+     * Not a failure in the usual sense — the pairing is paused for a question,
+     * not abandoned.
+     */
+    SelectionRequired = 'selection-required',
+    /**
+     * The account is reachable and unambiguous, but holds no car matching the
+     * vehicle the user picked. Typically the wrong vendor account, or a car
+     * that was sold.
+     */
+    NoMatchingVehicle = 'no-matching-vehicle',
+    /**
+     * The car exists in the account but this package cannot work with it — an
+     * unsupported model line, or a car whose vendor subscription does not
+     * include remote data.
+     */
+    VehicleNotSupported = 'vehicle-not-supported',
+    /**
+     * The car is already paired with a different {@link EnyoVehicle}. Unpair
+     * the other one first; a single car reporting into two vehicle records
+     * gives the user two half-correct charge histories.
+     */
+    AlreadyPaired = 'already-paired',
+    /**
+     * The vendor's cloud could not be reached, rate-limited the request, or the
+     * package is still starting up. Transient: pairing again later may succeed.
+     */
+    TemporarilyUnavailable = 'temporarily-unavailable',
+    /**
+     * No more specific reason applies. Prefer any of the members above; this
+     * exists so a handler never has to omit the field.
+     */
+    Unknown = 'unknown',
+}
+
+/**
+ * One car from the vendor account that could be the one the user meant.
+ *
+ * Offered by a handler that found several and cannot choose — see
+ * {@link EnyoVehiclePairFailureReasonEnum.SelectionRequired}. The fields exist
+ * to let a user recognise their own car in a list, so fill in whatever the
+ * vendor API gives you rather than the bare minimum.
+ */
+export interface EnyoVehiclePairCandidate {
+    /**
+     * The package's own stable identifier for this car — typically the vendor
+     * account's vehicle id. Echoed back in {@link EnyoVehiclePairSelection}
+     * once the user has picked.
+     */
+    externalId: string;
+    /** What to show the user, e.g. `"Model Y (weiß)"`. */
+    displayName: string;
+    /** Vehicle identification number, when the vendor API exposes one. */
+    vin?: string;
+    /** Manufacturer as the vendor reports it, e.g. `"Tesla"`. */
+    manufacturer?: string;
+    /** Model line as the vendor reports it, e.g. `"Model Y Long Range"`. */
+    model?: string;
+}
+
+/**
+ * The user's answer to a {@link EnyoVehiclePairFailureReasonEnum.SelectionRequired}.
+ *
+ * Passed as the second argument to {@link EnyoVehiclePairHandler} on the second
+ * call. Absent on the first call — a handler serving single-car accounts can
+ * ignore the parameter entirely.
+ */
+export interface EnyoVehiclePairSelection {
+    /**
+     * The {@link EnyoVehiclePairCandidate.externalId} the user picked. Always
+     * one the handler itself offered.
+     */
+    externalId: string;
+}
+
+/**
+ * What a car-integration app answers when asked to pair a vehicle.
+ *
+ * The attribute fields are not decoration: the vendor's cloud usually knows the
+ * car's battery size and charging limits better than the user does, and the
+ * host may use them to fill in an {@link EnyoVehicle} the user left sparse.
+ * Only send a value you actually read — an invented `batterySizeKwh` is planned
+ * against as if it were measured.
+ */
+export interface EnyoVehiclePairResult {
+    /**
+     * Whether the car is now paired. `true` requires {@link externalId};
+     * `false` should carry a {@link failureReason}.
+     */
+    paired: boolean;
+    /**
+     * The package's own stable identifier for the paired car — the vendor
+     * account's vehicle id rather than the VIN, because not every vendor API
+     * exposes a VIN and a link must survive losing one field.
+     *
+     * Required when {@link paired} is `true`. It is what
+     * {@link EnyoLinkedVehicle.externalId} carries from then on.
+     */
+    externalId?: string;
+    /** Vehicle identification number, when the vendor API exposes one. */
+    vin?: string;
+    /**
+     * What the package calls the car. Shown to the user to confirm the right
+     * one was found — "wir haben *Model Y (weiß)* verbunden".
+     */
+    displayName?: string;
+    /** Manufacturer as read from the vendor, e.g. `"Tesla"`. */
+    manufacturer?: string;
+    /** Model line as read from the vendor, e.g. `"Model Y Long Range"`. */
+    model?: string;
+    /** Usable traction battery capacity in kWh, as read from the vendor. */
+    batterySizeKwh?: number;
+    /** The highest charging power the car accepts, in kW, as read from the vendor. */
+    maxChargingPowerKw?: number;
+    /** How many phases the car charges over — typically `1` or `3`. */
+    numberOfPhases?: number;
+    /**
+     * Why pairing did not happen. Set whenever {@link paired} is `false`;
+     * omitting it leaves the enyo app with nothing to tell the user.
+     */
+    failureReason?: EnyoVehiclePairFailureReasonEnum;
+    /**
+     * The cars the user could have meant, when {@link failureReason} is
+     * {@link EnyoVehiclePairFailureReasonEnum.SelectionRequired}. Ignored for
+     * every other reason.
+     */
+    candidates?: EnyoVehiclePairCandidate[];
+}
+
+/**
+ * A live link between an {@link EnyoVehicle} and a car in the package's vendor
+ * account.
+ *
+ * Returned by `useVehicle().listLinkedVehicles()`, which is how a package that
+ * has just restarted learns which cars it is responsible for.
+ */
+export interface EnyoLinkedVehicle {
+    /** The {@link EnyoVehicle.id} this link points at. */
+    vehicleId: string;
+    /**
+     * The package's own identifier for the car, as returned in
+     * {@link EnyoVehiclePairResult.externalId}.
+     */
+    externalId: string;
+    /** Vehicle identification number, when one was reported at pairing. */
+    vin?: string;
+    /** What the package called the car at pairing time. */
+    displayName?: string;
+    /** When the link was established, ISO 8601. */
+    pairedAtIso: string;
+}
+
+/**
+ * Why a link is being torn down.
+ *
+ * A handler usually does the same thing regardless — stop polling, drop cached
+ * state — but the reason decides whether the vendor session is still usable:
+ * on {@link SignOut} it is already gone, on {@link UserRequest} it is not.
+ */
+export enum EnyoVehicleUnpairReasonEnum {
+    /** The user unlinked this one car in the enyo app. Other links survive. */
+    UserRequest = 'user-request',
+    /**
+     * The user signed out of the vendor account. Every link this package holds
+     * is being torn down, one call per link, and the session is gone — do not
+     * try to tell the vendor's cloud anything.
+     */
+    SignOut = 'sign-out',
+    /** The {@link EnyoVehicle} itself was deleted in the enyo app. */
+    VehicleDeleted = 'vehicle-deleted',
+    /** No more specific reason applies. */
+    Unknown = 'unknown',
+}
+
+/**
+ * The handler the host calls when the user links one of their vehicles to this
+ * package.
+ *
+ * Called with the {@link EnyoVehicle} the user picked — the handler's job is to
+ * find the matching car in the vendor account it is signed into and answer with
+ * an {@link EnyoVehiclePairResult}.
+ *
+ * On the first call `selection` is absent. A handler whose account holds
+ * several cars answers
+ * {@link EnyoVehiclePairFailureReasonEnum.SelectionRequired} with
+ * {@link EnyoVehiclePairResult.candidates}; the host asks the user and calls
+ * the handler a second time with their pick.
+ *
+ * Someone is waiting on a screen — answer promptly, and prefer
+ * {@link EnyoVehiclePairFailureReasonEnum.TemporarilyUnavailable} over blocking
+ * on a slow vendor API.
+ */
+export type EnyoVehiclePairHandler = (
+    vehicle: EnyoVehicle,
+    selection?: EnyoVehiclePairSelection
+) => Promise<EnyoVehiclePairResult>;
+
+/**
+ * The handler the host calls when a link is torn down from the outside — the
+ * user unlinking one car, or signing out of the vendor account.
+ *
+ * Stop polling the car and drop any cached state for it. The link is already
+ * gone by the time the handler runs, so this is a notification rather than a
+ * veto: rejecting the promise does not keep the link alive, it only tells the
+ * host the cleanup failed.
+ *
+ * **Not called for an unpair the package itself requested** through
+ * `useVehicle().unpairVehicle()` — the package already knows, and calling back
+ * into it would invite a loop.
+ */
+export type EnyoVehicleUnpairHandler = (
+    link: EnyoLinkedVehicle,
+    reason: EnyoVehicleUnpairReasonEnum
+) => Promise<void>;

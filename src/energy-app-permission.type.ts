@@ -58,7 +58,9 @@ export enum EnergyAppPermissionTypeEnum {
     FirmwareRegistry = 'FirmwareRegistry',
     GridFeeRegister = 'GridFeeRegister',
     GridFeeUse = 'GridFeeUse',
-    CommandLog = 'CommandLog'
+    CommandLog = 'CommandLog',
+    Calibration = 'Calibration',
+    VehicleIntegration = 'VehicleIntegration'
 }
 
 /**

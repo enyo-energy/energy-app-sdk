@@ -20,6 +20,12 @@ export enum EnergyAppPackageCategory {
     SmartPlug = 'smart-plug',
     HeatingRod = 'heating-rod',
     GridOperator = 'grid-operator',
+    /**
+     * Integrations that talk to a car — typically a manufacturer cloud API —
+     * and link it to one of the user's vehicles. See `EnergyAppVehicle`'s
+     * `onPairVehicle` for how the link is made.
+     */
+    Vehicle = 'vehicle',
     Other = 'other',
 }
 
@@ -277,7 +283,17 @@ export interface EnergyAppPackageCompatibilityModel {
 export interface EnergyAppPackageCompatibilityVendor {
     /** Human-readable vendor name (e.g. "SolarEdge", "Fronius") */
     vendorName: string;
-    /** Models from this vendor that the package supports */
+    /**
+     * Models from this vendor that the package supports.
+     *
+     * May be empty for a package whose support is brand-wide rather than
+     * model-by-model — the usual case for a
+     * {@link EnergyAppPackageCategory.Vehicle} integration, where the vendor's
+     * cloud API serves every car in the account and the model lines change
+     * yearly. An empty array together with `default: true` reads as "every
+     * device of this brand"; listing models you have not actually tested is
+     * worse than listing none.
+     */
     models: EnergyAppPackageCompatibilityModel[];
     /**
      * Marks this package as the default Energy App for the vendor when no

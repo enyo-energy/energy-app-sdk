@@ -80,6 +80,10 @@ export * from './types/enyo-charge.js'
 export * from './packages/energy-app-charge.js'
 export * from './types/enyo-vehicle.js'
 export * from './packages/energy-app-vehicle.js'
+export * from './types/enyo-calibration.js'
+export * from './packages/energy-app-calibration.js'
+export * from './implementations/calibration/calibration-validators.js'
+export * from './types/enyo-temperature-sensor-appliance.js'
 export * from './types/enyo-battery-appliance.js'
 export * from './types/enyo-heatpump-appliance.js'
 export * from './types/enyo-inverter-appliance.js'
@@ -130,6 +134,11 @@ export * from './packages/energy-app-appliance-energy-manager-forecast.js';
 export * from './implementations/appliance-command-forecast/appliance-command-forecast-validators.js';
 
 export * from './implementations/energy-manager-diagnostics/energy-manager-diagnostics-validators.js';
+
+export * from './types/enyo-energy-distribution.js';
+export * from './implementations/energy-distribution/energy-distribution-progress.js';
+export * from './implementations/energy-distribution/energy-distribution-snapshot-builder.js';
+export * from './implementations/energy-distribution/energy-distribution-validators.js';
 
 export * from './types/enyo-battery-state.js';
 export * from './packages/energy-app-battery.js';

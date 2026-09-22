@@ -501,7 +501,8 @@ export interface HeatpumpPowerTimeseriesResponse extends TimeseriesResponseBase 
 
 /**
  * A single entry in the temperature sensor timeseries.
- * Contains per-sensor average temperature readings for a single time bucket.
+ * Contains per-sensor average temperature readings for a single time bucket,
+ * and relative humidity for the sensors that measure it.
  */
 export interface TemperatureSensorTimeseriesEntry extends TimeseriesEntryBase {
     /** Array of sensor readings for this bucket */
@@ -518,6 +519,16 @@ export interface TemperatureSensorTimeseriesEntry extends TimeseriesEntryBase {
         deltaK: number;
         /** Average target temperature in degrees Celsius for this bucket, if applicable */
         averageTargetTemperatureC?: number;
+        /**
+         * Average **relative** humidity in percent (0-100) for this bucket, for
+         * sensors that measure it. Absent for sensors that do not — see
+         * {@link EnyoTemperatureSensor.measuresHumidity}.
+         */
+        averageHumidityPercent?: number;
+        /** Minimum relative humidity in percent observed in this bucket, when humidity is reported. */
+        minHumidityPercent?: number;
+        /** Maximum relative humidity in percent observed in this bucket, when humidity is reported. */
+        maxHumidityPercent?: number;
     }[];
 }
 
@@ -540,6 +551,11 @@ export interface TemperatureSensorTimeseriesResponse extends TimeseriesResponseB
         averageTemperatureC: number;
         /** Average target temperature in degrees Celsius across the full period, if applicable */
         averageTargetTemperatureC?: number;
+        /**
+         * Average **relative** humidity in percent (0-100) across the full
+         * period, for sensors that measure it.
+         */
+        averageHumidityPercent?: number;
     }[];
 }
 

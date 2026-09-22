@@ -33,4 +33,24 @@ export interface EnyoGridConnectionPoint {
      * operator.
      */
     powerLimitW: number;
+    /**
+     * Soft grid power limit, in kilowatts (kW), that consumers should try to
+     * stay within.
+     *
+     * Where {@link EnyoGridConnectionPoint.powerLimitW} is the hard physical
+     * and contractual ceiling, this is a *desired* — and typically lower —
+     * target: the user, installer or grid operator would like grid import and
+     * export to remain below it, for example to reduce peak charges or to
+     * honour a voluntary curtailment agreement.
+     *
+     * Best-effort, not a guarantee: exceeding it is permitted when no other
+     * option exists (e.g. an uncontrollable load), whereas `powerLimitW` must
+     * never be exceeded. Consumers should therefore treat it as an
+     * optimisation objective rather than a constraint that can fail hard.
+     *
+     * Note the unit: kilowatts, unlike the watt-based `powerLimitW`.
+     * `undefined` means no soft limit is configured, in which case only
+     * `powerLimitW` applies.
+     */
+    desiredKwLimit?: number;
 }

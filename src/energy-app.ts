@@ -34,6 +34,7 @@ import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
+import {EnergyAppCalibration} from "./packages/energy-app-calibration.js";
 import {EnergyAppWifi} from "./packages/energy-app-wifi.js";
 import {EnergyAppUdp} from "./packages/energy-app-udp.js";
 import {EnergyAppGridConnectionPoint} from "./packages/energy-app-grid-connection-point.js";
@@ -380,6 +381,17 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useLearningPhase(): EnergyAppLearningPhase {
         return this.energyAppSdk.useLearningPhase();
+    }
+
+    /**
+     * Gets the Calibration API for reporting what an appliance was proven to do.
+     * Provides methods to open, advance and close calibration runs for
+     * batteries, wallboxes, inverters, heat pumps and heating rods, to declare
+     * their prerequisites, and to answer host requests to calibrate.
+     * @returns The Calibration API instance
+     */
+    public useCalibration(): EnergyAppCalibration {
+        return this.energyAppSdk.useCalibration();
     }
 
     /**

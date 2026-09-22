@@ -79,6 +79,16 @@ export interface EnergyAppAuthentication {
     /**
      * Signs the user out and updates the authentication state.
      * This will trigger any registered sign-out listeners.
+     *
+     * For a package in the {@link EnergyAppPackageCategory.Vehicle} category
+     * signing out also **drops every vehicle link the package holds**: the
+     * host calls the handler registered with `useVehicle().onUnpairVehicle()`
+     * once per link, with
+     * {@link EnyoVehicleUnpairReasonEnum.SignOut}, before clearing them. The
+     * vendor session is already gone at that point, so the handler should stop
+     * polling rather than try to tell the vendor's cloud anything. Without the
+     * cascade a package would keep publishing readings for cars it can no
+     * longer read.
      */
     signOut(): void;
 

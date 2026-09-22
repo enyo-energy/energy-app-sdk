@@ -45,6 +45,21 @@ export enum EnergyManagerFeatureEnum {
     /** Prioritize cooling when PV generation is high */
     ClimateControlSolarDrivenCooling = 'climate-control-solar-driven-cooling',
 
+    // Transparency
+
+    /**
+     * The energy manager publishes an energy-distribution snapshot — who is being
+     * served in the current slot, in what order, how far each participant is
+     * toward its own goal, and why.
+     *
+     * Declare this only if the app actually calls
+     * `useEnergyManager().publishEnergyDistribution()`. The cockpit reads the
+     * feature list to decide whether to offer the card at all, so declaring it
+     * without publishing leaves the user looking at an empty panel with no way to
+     * tell whether it is broken or merely quiet.
+     */
+    EnergyDistributionView = 'energy-distribution-view',
+
 }
 
 /**
