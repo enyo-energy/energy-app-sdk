@@ -21,6 +21,7 @@ export * from './implementations/network-devices/network-access-guard.js'
 export * from './implementations/network-devices/network-device-manager.js'
 export * from './implementations/storage/storage-schedule-handler.js'
 export * from './enyo-package-channel.js';
+export * from './enyo-energy-app-environment.js';
 export * from './types/enyo-timeseries.js';
 export * from './types/enyo-energy-manager.js';
 export * from './packages/energy-app-energy-manager.js';

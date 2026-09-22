@@ -212,8 +212,14 @@ Energy Apps follow a specific lifecycle managed by the enyo system:
 const energyApp = new EnergyApp();
 
 // Register startup callback
-energyApp.register((packageName, version) => {
-    console.log(`${packageName} v${version} started`);
+energyApp.register((packageName, version, channel, deviceId, environment) => {
+    console.log(`${packageName} v${version} started on ${deviceId} (${channel}, ${environment})`);
+
+    // e.g. skip hardware access when running in the developer portal simulation
+    if (environment === EnyoEnergyAppEnvironment.DeveloperPortalSimulation) {
+        console.log('Running in simulation - using mocked devices');
+    }
+
     energyApp.updateEnergyAppState(EnergyAppStateEnum.Running);
 });
 

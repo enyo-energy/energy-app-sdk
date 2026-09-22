@@ -20,6 +20,7 @@ import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
 import {EnergyAppOnboardingV2} from "./packages/energy-app-onboarding-v2.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
+import {EnyoEnergyAppEnvironment} from "./enyo-energy-app-environment.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
@@ -63,7 +64,7 @@ import {UseFetchOptions} from "./types/enyo-fetch.js";
  * @example
  * ```ts
  * const app = new EnergyApp();
- * app.register((packageName, version, channel, deviceId) => {
+ * app.register((packageName, version, channel, deviceId, environment) => {
  *   // perform initialization
  * });
  * ```
@@ -105,7 +106,13 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         this.energyAppSdk.updateEnergyAppState(state)
     }
 
-    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>) {
+    /**
+     * Registers the package with the enyo system.
+     * @param callback - Invoked once the package is initialized with the package name,
+     *   the installed package version, the {@link EnyoPackageChannel} it was installed from,
+     *   the id of the device it runs on and the {@link EnyoEnergyAppEnvironment} it is executed in
+     */
+    public register(callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string, environment: EnyoEnergyAppEnvironment) => void | Promise<void>) {
         // This registers the package with the enyo system
         this.energyAppSdk.register(callback);
     }

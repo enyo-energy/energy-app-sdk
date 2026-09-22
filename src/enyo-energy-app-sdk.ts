@@ -18,6 +18,7 @@ import {EnergyAppOnboarding} from "./packages/energy-app-onboarding.js";
 import {EnergyAppOnboardingV2} from "./packages/energy-app-onboarding-v2.js";
 import {EnergyAppTimeseries} from "./packages/energy-app-timeseries.js";
 import {EnyoPackageChannel} from "./enyo-package-channel.js";
+import {EnyoEnergyAppEnvironment} from "./enyo-energy-app-environment.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
@@ -64,8 +65,13 @@ export enum EnergyAppStateEnum {
  * network operations, storage, and device communication.
  */
 export interface EnyoEnergyAppSdk {
-    /** Register a callback that gets called when the package is initialized */
-    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string) => void | Promise<void>) => void;
+    /**
+     * Register a callback that gets called when the package is initialized.
+     * The callback receives the package name, its version, the release channel it
+     * was installed from, the id of the device it runs on and the
+     * {@link EnyoEnergyAppEnvironment} the app is executed in.
+     */
+    register: (callback: (packageName: string, version: number, channel: EnyoPackageChannel, deviceId: string, environment: EnyoEnergyAppEnvironment) => void | Promise<void>) => void;
     /** health check - returns the current date to check if alive */
     healthcheck: () => Date;
     /** Register a callback that gets called when the system is shutting down */
