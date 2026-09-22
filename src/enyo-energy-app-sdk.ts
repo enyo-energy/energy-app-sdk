@@ -22,6 +22,7 @@ import {EnyoEnergyAppEnvironment} from "./enyo-energy-app-environment.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
+import {EnergyAppWeatherHistory} from "./packages/energy-app-weather-history.js";
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppDynamicPriceForecast} from "./packages/energy-app-dynamic-price-forecast.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
@@ -128,6 +129,8 @@ export interface EnyoEnergyAppSdk {
     useElectricityTariff: () => EnergyAppElectricityTariff;
     /** Get the Weather Forecasting API for managing weather forecast providers and retrieving weather forecasts */
     useWeatherForecasting: () => EnergyAppWeatherForecasting;
+    /** Get the Weather History API for managing weather history providers and retrieving observed weather for a past interval */
+    useWeatherHistory: () => EnergyAppWeatherHistory;
     /** Get the PV Forecasting API for managing PV forecast providers and retrieving PV forecasts */
     usePvForecasting: () => EnergyAppPvForecasting;
     /** Get the Dynamic Price Forecast API for publishing and consuming forward-looking electricity price forecasts */
