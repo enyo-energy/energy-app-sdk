@@ -33,6 +33,8 @@ export enum EnergyAppPermissionTypeEnum {
     EnergyPrices = 'EnergyPrices',
     WeatherForecastRegister = 'WeatherForecastRegister',
     WeatherForecastUse = 'WeatherForecastUse',
+    WeatherHistoryRegister = 'WeatherHistoryRegister',
+    WeatherHistoryUse = 'WeatherHistoryUse',
     PvForecastRegister = 'PvForecastRegister',
     PvForecastUse = 'PvForecastUse',
     DynamicPriceForecastRegister = 'DynamicPriceForecastRegister',

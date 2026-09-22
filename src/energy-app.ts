@@ -24,6 +24,7 @@ import {EnyoEnergyAppEnvironment} from "./enyo-energy-app-environment.js";
 import {EnergyAppEnergyManager} from "./packages/energy-app-energy-manager.js";
 import {EnergyAppElectricityTariff} from "./packages/energy-app-electricity-tariff.js";
 import {EnergyAppWeatherForecasting} from "./packages/energy-app-weather-forecasting.js";
+import {EnergyAppWeatherHistory} from "./packages/energy-app-weather-history.js";
 import {EnergyAppPvForecasting} from "./packages/energy-app-pv-forecasting.js";
 import {EnergyAppDynamicPriceForecast} from "./packages/energy-app-dynamic-price-forecast.js";
 import {EnergyAppPvSystem} from "./packages/energy-app-pv-system.js";
@@ -266,6 +267,16 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useWeatherForecasting(): EnergyAppWeatherForecasting {
         return this.energyAppSdk.useWeatherForecasting();
+    }
+
+    /**
+     * Gets the Weather History API for managing weather history providers and retrieving observed weather data.
+     * Provides methods to register/deregister weather history providers, list available providers,
+     * and fetch the outdoor temperature for a past time interval by zip code or coordinates.
+     * @returns The Weather History API instance
+     */
+    public useWeatherHistory(): EnergyAppWeatherHistory {
+        return this.energyAppSdk.useWeatherHistory();
     }
 
     /**

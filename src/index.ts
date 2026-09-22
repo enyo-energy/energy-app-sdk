@@ -33,6 +33,8 @@ export * from './packages/energy-app-electricity-tariff.js';
 export * from './types/enyo-pv-forecast.js';
 export * from './types/enyo-forecasting.js';
 export * from './packages/energy-app-weather-forecasting.js';
+export * from './types/enyo-weather-history.js';
+export * from './packages/energy-app-weather-history.js';
 export * from './packages/energy-app-pv-forecasting.js';
 export * from './packages/energy-app-dynamic-price-forecast.js';
 export * from './types/enyo-pv-system.js';

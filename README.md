@@ -375,6 +375,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`EnergyManager`**: Run as the active energy manager
 - **`EnergyManagerInfo`**: Read information about the active energy manager
 - **`WeatherForecastRegister`** / **`WeatherForecastUse`**: Publish / consume weather forecasts
+- **`WeatherHistoryRegister`** / **`WeatherHistoryUse`**: Publish / consume observed (past) weather data
 - **`PvForecastRegister`** / **`PvForecastUse`**: Publish / consume PV forecasts
 - **`DynamicPriceForecastRegister`** / **`DynamicPriceForecastUse`**: Publish / consume dynamic-price forecasts
 - **`PvSystemRegister`** / **`PvSystemUse`**: Register / read PV system configuration
@@ -1768,6 +1769,86 @@ const byCoords = await weather.getWeatherForecastByCoordinates('wx-prod', 48.13,
 ```
 
 Publishers need `WeatherForecastRegister`; consumers need `WeatherForecastUse`.
+
+#### `useWeatherHistory(): EnergyAppWeatherHistory`
+
+The backward-looking counterpart. Where forecasting says what the weather *will* do, this says what it
+*did* between two timestamps — temperature, wind, cloud cover and solar irradiance. That is what you
+need to correlate measured consumption with the weather that drove it, build heating-degree-day
+statistics, check measured PV production against the irradiance that was actually available, or train
+a consumption model on outdoor conditions.
+
+```typescript
+const weatherHistory = energyApp.useWeatherHistory();
+
+await weatherHistory.registerHistory({
+    historyId: 'dwd-archive',
+    name: 'DWD Climate Archive',
+    vendor: 'Deutscher Wetterdienst',
+    availableHistoryDays: 730,
+    availableMeasures: [
+        WeatherHistoryMeasureEnum.OutdoorTemperature,
+        WeatherHistoryMeasureEnum.WindSpeed,
+        WeatherHistoryMeasureEnum.GlobalHorizontalIrradiance,
+    ],
+});
+
+const temperatures = await weatherHistory.getOutdoorTemperature('dwd-archive', {
+    fromIso: '2026-01-15T00:00:00Z',
+    untilIso: '2026-01-16T00:00:00Z',
+    resolution: WeatherHistoryResolutionEnum.OneHour,  // optional, defaults to the provider's
+});
+
+temperatures.averageCelsius;   // time-weighted mean over the interval
+temperatures.minCelsius;
+temperatures.maxCelsius;
+temperatures.readings;         // [{ timestampIso, outdoorTemperatureCelsius }, …]
+```
+
+The interval is half-open — `fromIso` included, `untilIso` excluded — so consecutive intervals line
+up without double-counting the boundary. A `resolution` finer than the provider's is filled by
+linear interpolation, a coarser one aggregated as a time-weighted average.
+
+Reaching further back than the archive goes is **not** an error: you get the covered part plus
+`coveredFromIso` / `coveredUntilIso` telling you where the data actually began and ended, and an
+interval the provider holds nothing for returns empty `readings` with no aggregates.
+
+No location is passed: the registered provider resolves the device's own location through
+`useLocation()`, so a consumer only states the interval it wants.
+
+For anything beyond temperature — irradiance, wind, cloud cover — use `getWeatherHistory`, which
+returns every requested measure per bucket:
+
+```typescript
+const history = await weatherHistory.getWeatherHistory('open-meteo-archive', {
+    fromIso: '2026-01-15T00:00:00Z',
+    untilIso: '2026-01-16T00:00:00Z',
+    resolution: WeatherHistoryResolutionEnum.OneHour,
+    measures: [                                    // optional, defaults to everything held
+        WeatherHistoryMeasureEnum.GlobalHorizontalIrradiance,
+        WeatherHistoryMeasureEnum.WindSpeed,
+        WeatherHistoryMeasureEnum.CloudArea,
+    ],
+});
+
+history.measures;      // what actually came back
+history.readings;      // [{ timestampIso, globalHorizontalIrradiance, windSpeedMs, … }, …]
+history.statistics?.[WeatherHistoryMeasureEnum.WindSpeed]?.averageValue;
+```
+
+Field names and units mirror `WeatherForecastEntry` one to one — `outdoorTemperatureCelsius`,
+`windSpeedMs`, `cloudAreaPercent` (0–100), `symbol`, and `globalHorizontalIrradiance` /
+`directNormalIrradiance` / `diffuseHorizontalIrradiance` in W/m² — so an observed series and a
+forecast series concatenate into one timeline without translation. Every measure on a reading is
+optional: you get what the provider holds and you asked for, and a measure it does not hold is simply
+absent rather than an error.
+
+Aggregates per measure live in `statistics`, keyed by `WeatherHistoryMeasureEnum`. `averageValue` is
+time-weighted; for the irradiance measures it is a mean power density in W/m², so multiply by the
+covered duration in hours to get received energy in Wh/m². `symbol` is categorical and therefore
+never appears in `statistics`.
+
+Publishers need `WeatherHistoryRegister`; consumers need `WeatherHistoryUse`.
 
 #### `usePvForecasting(): EnergyAppPvForecasting`
 
