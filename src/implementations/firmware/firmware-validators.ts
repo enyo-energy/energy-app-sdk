@@ -25,6 +25,7 @@ import type {
     EnergyAppPackageFirmwareFile,
     EnergyAppPackageFirmwareMode,
 } from '../../energy-app-package-definition.js';
+import {EnergyAppPackageCompatibilityStatus} from '../../energy-app-package-definition.js';
 import {EnergyAppPermissionTypeEnum} from '../../energy-app-permission.type.js';
 import {resolveNextFirmware} from './define-firmware-file.js';
 
@@ -346,11 +347,12 @@ function findDanglingSources(files: EnergyAppPackageFirmwareFile[]): string[] {
 
 /**
  * Reports vendors and models referenced by firmware entries that the package
- * does not declare in its `compatibility` list.
+ * does not declare in its `compatibility` list, or that it declares as
+ * {@link EnergyAppPackageCompatibilityStatus.NotCompatible}.
  *
  * @param files - All declared firmware entries.
  * @param compatibility - The package's declared vendors and models.
- * @returns One warning per unknown vendor or model.
+ * @returns One warning per unknown or explicitly incompatible vendor or model.
  */
 function findUnknownCompatibility(
     files: EnergyAppPackageFirmwareFile[],
@@ -363,17 +365,33 @@ function findUnknownCompatibility(
     const models = new Set(
         compatibility.flatMap(vendor => vendor.models.map(model => model.modelName)),
     );
+    const incompatibleVendors = new Set(
+        compatibility
+            .filter(vendor => vendor.status === EnergyAppPackageCompatibilityStatus.NotCompatible)
+            .map(vendor => vendor.vendorName),
+    );
+    const incompatibleModels = new Set(
+        compatibility.flatMap(vendor =>
+            vendor.models
+                .filter(model => model.status === EnergyAppPackageCompatibilityStatus.NotCompatible)
+                .map(model => model.modelName),
+        ),
+    );
 
     for (const [index, file] of files.entries()) {
         const at = describe(file, index);
 
         if (file.vendorName && !vendors.has(file.vendorName)) {
             warnings.push(`${at}: vendorName "${file.vendorName}" is not listed in compatibility.`);
+        } else if (file.vendorName && incompatibleVendors.has(file.vendorName)) {
+            warnings.push(`${at}: vendorName "${file.vendorName}" is declared as not-compatible.`);
         }
 
         for (const model of file.modelNames ?? []) {
             if (!models.has(model)) {
                 warnings.push(`${at}: modelName "${model}" is not listed in compatibility.`);
+            } else if (incompatibleModels.has(model)) {
+                warnings.push(`${at}: modelName "${model}" is declared as not-compatible.`);
             }
         }
     }

@@ -30,6 +30,22 @@ export interface ModbusRtuOptions {
 }
 
 /**
+ * Which register bank an RTU read addresses, and therefore which Modbus
+ * function code goes on the wire.
+ *
+ * Holding and input registers are two separate address spaces: a device may
+ * answer register 30001 as an input register and hold something entirely
+ * different — or nothing at all — at the same address in the holding bank.
+ * Reading the wrong bank yields an illegal-data-address exception, not a
+ * timeout, so this is a correctness knob rather than a recovery one.
+ */
+export type ModbusRtuRegisterType =
+    /** Holding registers, read with function code 3 (`mbpoll -t 4`). */
+    | 'holding'
+    /** Input registers, read with function code 4 (`mbpoll -t 3`). */
+    | 'input';
+
+/**
  * Request parameters for reading Modbus RTU registers.
  */
 export interface ModbusRtuReadRegistersRequest {
@@ -39,6 +55,14 @@ export interface ModbusRtuReadRegistersRequest {
     startRegister: number;
     /** Number of consecutive registers to read */
     count: number;
+    /**
+     * Which register bank to read from.
+     *
+     * `'holding'` issues function code 3 and `'input'` issues function code 4.
+     * Defaults to `'holding'` when omitted, which is what every existing caller
+     * gets today.
+     */
+    registerType?: ModbusRtuRegisterType;
 }
 
 /**
@@ -67,9 +91,15 @@ export interface ModbusRtuWriteRegistersRequest {
  * Provides methods for reading and writing registers over a serial connection.
  */
 export interface EnergyAppModbusRtuInstance {
-    /** Read register values from the connected Modbus RTU device */
+    /**
+     * Read register values from the connected Modbus RTU device.
+     *
+     * Reads holding registers (function code 3) unless the request sets
+     * {@link ModbusRtuReadRegistersRequest.registerType} to `'input'`, which
+     * reads input registers with function code 4 instead.
+     */
     readRegisters: (request: ModbusRtuReadRegistersRequest) => Promise<ModbusRtuReadRegistersResponse>;
-    /** Write register values to the connected Modbus RTU device */
+    /** Write register values to the connected Modbus RTU device (holding registers only) */
     writeRegisters: (request: ModbusRtuWriteRegistersRequest) => Promise<void>;
 }
 

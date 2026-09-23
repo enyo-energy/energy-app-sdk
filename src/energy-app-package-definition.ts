@@ -231,6 +231,24 @@ export interface EnergyAppPackagePermission {
 }
 
 /**
+ * Whether a declared compatibility entry means "this works" or "this is known
+ * not to work".
+ *
+ * Used by {@link EnergyAppPackageCompatibilityVendor.status} and
+ * {@link EnergyAppPackageCompatibilityModel.status} so a package can
+ * list a vendor or model it has explicitly tested and found unsupported,
+ * instead of silently leaving it out. The enyo Store and onboarding flows can
+ * then tell the user "this device is not supported by this app" rather than
+ * showing nothing at all.
+ */
+export enum EnergyAppPackageCompatibilityStatus {
+    /** The package supports this vendor or model. */
+    Compatible = 'compatible',
+    /** The package has been verified **not** to work with this vendor or model. */
+    NotCompatible = 'not-compatible',
+}
+
+/**
  * A specific device model supported by an Energy App package.
  * the concrete models the package has been verified to work with.
  */
@@ -267,6 +285,16 @@ export interface EnergyAppPackageCompatibilityModel {
     /** Optional internal note explaining model-specific caveats or limitations */
     internalComment?: string;
     /**
+     * Whether this model is supported or explicitly unsupported.
+     *
+     * Defaults to {@link EnergyAppPackageCompatibilityStatus.Compatible} when
+     * omitted, so existing definitions keep their meaning. Set it to
+     * {@link EnergyAppPackageCompatibilityStatus.NotCompatible} to document a
+     * model you have tested and found not to work — use
+     * {@link internalComment} to say why.
+     */
+    status?: EnergyAppPackageCompatibilityStatus;
+    /**
      * Important capabilities this specific model supports (e.g. charging the
      * battery from grid, limiting the charge, or forcing a heat pump DHW boost).
      * Lets the enyo Store and onboarding flows surface accurate, model-level
@@ -295,6 +323,16 @@ export interface EnergyAppPackageCompatibilityVendor {
      * worse than listing none.
      */
     models: EnergyAppPackageCompatibilityModel[];
+    /**
+     * Whether this vendor is supported or explicitly unsupported.
+     *
+     * Defaults to {@link EnergyAppPackageCompatibilityStatus.Compatible} when
+     * omitted. Set it to
+     * {@link EnergyAppPackageCompatibilityStatus.NotCompatible} to declare a
+     * brand the package is known not to work with; individual models may still
+     * override it with their own {@link EnergyAppPackageCompatibilityModel.status}.
+     */
+    status?: EnergyAppPackageCompatibilityStatus;
     /**
      * Marks this package as the default Energy App for the vendor when no
      * concrete model has been selected.
