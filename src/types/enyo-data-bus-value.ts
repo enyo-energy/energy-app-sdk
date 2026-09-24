@@ -135,6 +135,32 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      */
     AppliancePaused = 'appliance-paused',
     /**
+     * The appliance started drawing on its own initiative, outside the
+     * allocation: a heat pump running a defrost cycle, an owner who plugged in
+     * and pressed start by hand, an appliance following its own comfort logic.
+     *
+     * The mirror image of {@link AppliancePaused} — the appliance's own
+     * decision, but to draw rather than to hold. The manager re-plans around
+     * it, so the rows below it get less until it stops. This is the reason a
+     * {@link EnyoDistributionParticipantStateEnum.DrawingOutsidePlan} row
+     * states; set {@link EnyoDataBusCommandReason.powerW} to the draw the
+     * manager is planning around.
+     */
+    ApplianceInitiatedDraw = 'appliance-initiated-draw',
+    /**
+     * Power was released for the appliance to use whenever it sees fit, and it
+     * has not taken it up (yet) — "freigegeben, sie entscheidet selbst, wann".
+     *
+     * A statement about a permission the manager granted, not about scarcity:
+     * told apart from {@link SupplyExhausted} and {@link OtherApplianceTurn},
+     * which are refusals. This is the reason a
+     * {@link EnyoDistributionParticipantStateEnum.Offered} row states; set
+     * {@link EnyoDataBusCommandReason.powerW} to the power on offer, and
+     * {@link EnyoEnergyDistributionParticipant.offerEndsAtIso} to when it
+     * lapses.
+     */
+    PowerOffered = 'power-offered',
+    /**
      * There is nothing to serve: no car on the cable, no load on the socket.
      *
      * Distinct from {@link AppliancePaused}, where a load exists and is holding.

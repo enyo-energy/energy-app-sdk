@@ -1,5 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
+    AirConditioningForecast,
+    AirConditioningForecastScheduleEntry,
     ApplianceForecastResolutionEnum,
     BatteryCommandForecast,
     BatteryCommandForecastDirectionEnum,
@@ -11,10 +13,19 @@ import {
     HeatingRodForecastScheduleEntry,
     HeatpumpForecast,
     HeatpumpForecastScheduleEntry,
+    SmartPlugForecast,
+    SmartPlugForecastScheduleEntry,
 } from '../../../types/enyo-appliance-command-forecast.js';
+import {
+    EnyoAirConditioningApplianceModeEnum,
+    EnyoAirConditioningOptimizationModeEnum,
+} from '../../../types/enyo-air-conditioning-appliance.js';
+import {EnyoAutomationTriggerTypeEnum} from '../../../types/enyo-automation.js';
 import {EnyoChargeModeEnum} from '../../../types/enyo-data-bus-value.js';
+import {EnyoSmartPlugApplianceStateEnum} from '../../../types/enyo-smart-plug-appliance.js';
 import {
     ApplianceCommandForecastValidationError,
+    validateAirConditioningForecast,
     validateBatteryCommandForecast,
     validateBatterySchedule,
     validateChargerForecast,
@@ -23,6 +34,8 @@ import {
     validateHeatpumpForecast,
     validateHeatpumpSchedule,
     validateHeatpumpScheduleEntry,
+    validateSmartPlugForecast,
+    validateSmartPlugSchedule,
 } from '../appliance-command-forecast-validators.js';
 
 function chargerEntry(
@@ -45,6 +58,18 @@ function batteryEntry(
 function heatpumpEntry(
     overrides: Partial<HeatpumpForecastScheduleEntry> = {},
 ): HeatpumpForecastScheduleEntry {
+    return {seconds: 0, ...overrides};
+}
+
+function smartPlugEntry(
+    overrides: Partial<SmartPlugForecastScheduleEntry> = {},
+): SmartPlugForecastScheduleEntry {
+    return {seconds: 0, state: EnyoSmartPlugApplianceStateEnum.Off, ...overrides};
+}
+
+function airConditioningEntry(
+    overrides: Partial<AirConditioningForecastScheduleEntry> = {},
+): AirConditioningForecastScheduleEntry {
     return {seconds: 0, ...overrides};
 }
 
@@ -618,5 +643,235 @@ describe('validateHeatingRodForecast', () => {
             ],
         };
         expect(() => validateHeatingRodForecast(forecast)).toThrow(/powerW/);
+    });
+});
+
+describe('validateSmartPlugForecast', () => {
+    it('rejects a forecast with no schedule', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+        } as SmartPlugForecast;
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(
+            /must contain at least one entry/,
+        );
+    });
+
+    it('accepts a plain on/off schedule', () => {
+        const forecast: SmartPlugForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                smartPlugEntry({seconds: 0, state: EnyoSmartPlugApplianceStateEnum.Off}),
+                smartPlugEntry({seconds: 60, state: EnyoSmartPlugApplianceStateEnum.On}),
+            ],
+        };
+        expect(() => validateSmartPlugForecast(forecast)).not.toThrow();
+    });
+
+    it('accepts a schedule carrying trigger type, automation id, power and min-duration hold', () => {
+        const forecast: SmartPlugForecast = {
+            resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+            channelIndex: 1,
+            relativeSchedule: [
+                smartPlugEntry({
+                    seconds: 0,
+                    state: EnyoSmartPlugApplianceStateEnum.On,
+                    triggerType: EnyoAutomationTriggerTypeEnum.PvSurplusThreshold,
+                    automationId: 'automation-1',
+                    powerW: 1200,
+                }),
+                smartPlugEntry({
+                    seconds: 900,
+                    state: EnyoSmartPlugApplianceStateEnum.On,
+                    triggerType: EnyoAutomationTriggerTypeEnum.PvSurplusThreshold,
+                    automationId: 'automation-1',
+                    powerW: 1200,
+                    minDurationHold: true,
+                }),
+            ],
+            estimatedSavings: {costSavings: 0.12, currency: 'EUR'},
+        };
+        expect(() => validateSmartPlugForecast(forecast)).not.toThrow();
+    });
+
+    it('rejects an entry without a relay state', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [{seconds: 0}],
+        } as SmartPlugForecast;
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(/state is required/);
+    });
+
+    it('rejects an unknown relay state', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [{seconds: 0, state: 'Maybe'}],
+        } as unknown as SmartPlugForecast;
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(
+            ApplianceCommandForecastValidationError,
+        );
+    });
+
+    it('rejects an unknown trigger type', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                {
+                    seconds: 0,
+                    state: EnyoSmartPlugApplianceStateEnum.On,
+                    triggerType: 'when-i-feel-like-it',
+                },
+            ],
+        } as unknown as SmartPlugForecast;
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(/triggerType is invalid/);
+    });
+
+    it('rejects an empty automation id', () => {
+        const forecast: SmartPlugForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [smartPlugEntry({seconds: 0, automationId: ''})],
+        };
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(/automationId/);
+    });
+
+    it('rejects a negative expected power value', () => {
+        const forecast: SmartPlugForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [smartPlugEntry({seconds: 0, powerW: -5})],
+        };
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(/powerW/);
+    });
+
+    it('rejects a non-integer channel index', () => {
+        const forecast: SmartPlugForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            channelIndex: 1.5,
+            relativeSchedule: [smartPlugEntry({seconds: 0})],
+        };
+        expect(() => validateSmartPlugForecast(forecast)).toThrow(/channelIndex/);
+    });
+
+    it('rejects entries that do not match the declared resolution', () => {
+        expect(() =>
+            validateSmartPlugSchedule(
+                [smartPlugEntry({seconds: 0}), smartPlugEntry({seconds: 120})],
+                ApplianceForecastResolutionEnum.OneMinute,
+            ),
+        ).toThrow(/must be exactly 60s after the previous entry/);
+    });
+});
+
+describe('validateAirConditioningForecast', () => {
+    it('rejects a forecast with no schedule', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+        } as AirConditioningForecast;
+        expect(() => validateAirConditioningForecast(forecast)).toThrow(
+            /must contain at least one entry/,
+        );
+    });
+
+    it('accepts a forecast that carries only the forecasted room temperature', () => {
+        const forecast: AirConditioningForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                airConditioningEntry({seconds: 0, roomTemperatureC: 24}),
+                airConditioningEntry({seconds: 60, roomTemperatureC: 23}),
+            ],
+        };
+        expect(() => validateAirConditioningForecast(forecast)).not.toThrow();
+    });
+
+    it('accepts a forecast that mixes mode, optimization mode, temperatures and available power', () => {
+        const forecast: AirConditioningForecast = {
+            resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+            roomIndex: 0,
+            relativeSchedule: [
+                airConditioningEntry({
+                    seconds: 0,
+                    powerW: 1500,
+                    mode: EnyoAirConditioningApplianceModeEnum.Cooling,
+                    optimizationMode: EnyoAirConditioningOptimizationModeEnum.PvSurplus,
+                    targetTemperatureC: 22,
+                    roomTemperatureC: 26,
+                    availablePowerActive: true,
+                }),
+                airConditioningEntry({
+                    seconds: 900,
+                    powerW: 0,
+                    mode: EnyoAirConditioningApplianceModeEnum.Idle,
+                    roomTemperatureC: 22,
+                }),
+            ],
+            estimatedSavings: {costSavings: 0.48, currency: 'EUR'},
+        };
+        expect(() => validateAirConditioningForecast(forecast)).not.toThrow();
+    });
+
+    it('rejects an unknown operating mode', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [{seconds: 0, mode: 'Freezing'}],
+        } as unknown as AirConditioningForecast;
+        expect(() => validateAirConditioningForecast(forecast)).toThrow(/mode is invalid/);
+    });
+
+    it('rejects an unknown optimization mode', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [{seconds: 0, optimizationMode: 'Turbo'}],
+        } as unknown as AirConditioningForecast;
+        expect(() => validateAirConditioningForecast(forecast)).toThrow(
+            /optimizationMode is invalid/,
+        );
+    });
+
+    it('propagates per-entry temperature range errors', () => {
+        const forecast: AirConditioningForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [
+                airConditioningEntry({seconds: 0, targetTemperatureC: 9999}),
+            ],
+        };
+        expect(() => validateAirConditioningForecast(forecast)).toThrow(
+            /targetTemperatureC/,
+        );
+    });
+
+    it('rejects a negative available-power value', () => {
+        const forecast: AirConditioningForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [airConditioningEntry({seconds: 0, powerW: -100})],
+        };
+        expect(() => validateAirConditioningForecast(forecast)).toThrow(/powerW/);
+    });
+
+    it('rejects a negative room index', () => {
+        const forecast: AirConditioningForecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            roomIndex: -1,
+            relativeSchedule: [airConditioningEntry({seconds: 0})],
+        };
+        expect(() => validateAirConditioningForecast(forecast)).toThrow(/roomIndex/);
+    });
+});
+
+describe('ChargerForecastScheduleEntry.priceCtPerKwh', () => {
+    it('accepts a per-slot price, negative ones included', () => {
+        const forecast: ChargerForecast = {
+            resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+            relativeSchedule: [
+                chargerEntry({seconds: 0, powerW: 11_000, priceCtPerKwh: 14.2}),
+                chargerEntry({seconds: 900, powerW: 11_000, priceCtPerKwh: -1.5}),
+            ],
+        };
+        expect(() => validateChargerForecast(forecast)).not.toThrow();
+    });
+
+    it('rejects a price that is not a number', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.OneMinute,
+            relativeSchedule: [{seconds: 0, powerW: 11_000, priceCtPerKwh: '14 ct'}],
+        } as unknown as ChargerForecast;
+        expect(() => validateChargerForecast(forecast)).toThrow(/priceCtPerKwh/);
     });
 });

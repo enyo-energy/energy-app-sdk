@@ -125,6 +125,27 @@ export interface EnyoChargerApplianceMetadata {
      */
     maxChargingPowerKw?: number;
     /**
+     * Lowest power the charger can hold a session at, in kilowatts.
+     *
+     * The floor below which a session cannot be throttled but only paused —
+     * typically 6 A on one phase (≈ 1.4 kW). Consumers mark it on the power
+     * scale so an owner can see why a plan pauses instead of trickling, and
+     * the EMS must not issue a non-zero setpoint below it.
+     */
+    minChargingPowerKw?: number;
+    /**
+     * Surplus at which the EMS switches this charger to three phases, in
+     * kilowatts.
+     *
+     * The threshold the manager itself applies (typically ≈ 4.1 kW, the point
+     * at which three-phase minimum current becomes coverable). Stated on the
+     * appliance so a consumer can mark it on the same scale as
+     * {@link minChargingPowerKw} and {@link maxChargingPowerKw} rather than
+     * hard-coding a number that only the EMS knows. Absent on chargers that
+     * cannot switch phases.
+     */
+    phaseSwitchThresholdKw?: number;
+    /**
      * Granularity, in Amperes, at which the charging current limit can be set
      * on this charger. Any current limit the EMS issues should be a multiple of
      * this step.

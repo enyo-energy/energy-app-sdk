@@ -4,7 +4,7 @@
  * energy-manager app uses to declare the **command plans** it intends to
  * apply to its appliances over the upcoming horizon.
  *
- * Three appliance families are supported today:
+ * Six appliance families are supported today:
  *  - **Chargers** — {@link ChargerForecast}: relative phase / power schedule
  *    plus optional {@link ChargerForecast.chargeMode} and
  *    {@link ChargerForecast.chargeActive} flags describing the strategy the
@@ -17,6 +17,18 @@
  *    whose entries carry the forecasted DHW / room / buffer-tank
  *    temperatures together with planned DHW-boost / pre-heating /
  *    buffer-boost flags and the available-power announcement at each slot.
+ *  - **Heating rods** — {@link HeatingRodForecast}: a single relative
+ *    schedule whose entries carry the forecasted target temperature
+ *    together with the planned heating flag and the available-power
+ *    announcement at each slot.
+ *  - **Smart plugs** — {@link SmartPlugForecast}: a single relative
+ *    schedule of planned on/off slots, each carrying the
+ *    {@link EnyoAutomationTriggerTypeEnum trigger type} and the
+ *    automation id that motivate the switching decision.
+ *  - **Air conditioning** — {@link AirConditioningForecast}: a single
+ *    relative schedule whose entries carry the planned operating /
+ *    optimization mode, the target and forecasted room temperatures and
+ *    the available-power announcement at each slot.
  *
  * Every forecast carries an optional {@link ApplianceForecastEstimatedSavings}
  * payload so consumers can rank competing plans.
@@ -24,12 +36,22 @@
  * Publishing happens through
  * {@link EnergyAppApplianceEnergyManagerForecast.publishChargerForecast},
  * {@link EnergyAppApplianceEnergyManagerForecast.publishBatteryForecast},
- * and {@link EnergyAppApplianceEnergyManagerForecast.publishHeatpumpForecast}.
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishHeatpumpForecast},
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishHeatingRodForecast},
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishSmartPlugForecast},
+ * and
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishAirConditioningForecast}.
  * The transport / fan-out is an internal detail of the runtime SDK and
  * not exposed to apps.
  */
 
+import {
+    EnyoAirConditioningApplianceModeEnum,
+    EnyoAirConditioningOptimizationModeEnum,
+} from './enyo-air-conditioning-appliance.js';
+import {EnyoAutomationTriggerTypeEnum} from './enyo-automation.js';
 import {EnyoChargeModeEnum} from './enyo-data-bus-value.js';
+import {EnyoSmartPlugApplianceStateEnum} from './enyo-smart-plug-appliance.js';
 
 /**
  * Optional metadata describing the estimated savings of a forecasted
@@ -117,6 +139,21 @@ export interface ChargerForecastScheduleEntry {
      * when phase switching is not supported.
      */
     numberOfPhases?: 1 | 2 | 3;
+    /**
+     * Expected grid price during this slot, in cents per kWh — what makes
+     * this window the one the plan picked.
+     *
+     * Per entry rather than once per plan, so every planned window can
+     * explain itself ("02:00 – 03:40 · 14 ct") instead of a consumer
+     * re-joining the schedule against a price stream and rounding the
+     * boundaries differently. Complements
+     * {@link ApplianceForecastEstimatedSavings}, which is one figure for the
+     * plan as a whole.
+     *
+     * May be negative (a negative-price hour is exactly when a plan wants to
+     * charge). Absent means the publisher has no price for the slot.
+     */
+    priceCtPerKwh?: number;
 }
 
 /**
@@ -470,4 +507,217 @@ export interface HeatingRodForecast extends ApplianceForecastMetadata {
      * entry.
      */
     relativeSchedule: HeatingRodForecastScheduleEntry[];
+}
+
+// =============================================================================
+// Smart plug
+// =============================================================================
+
+/**
+ * One entry of a smart plug's relative schedule.
+ *
+ * The entry packs every per-slot piece of information the energy-manager
+ * forecast carries for a smart plug (relay / socket): the planned relay
+ * state, the trigger that motivates it, the automation the decision
+ * originates from, and the expected power draw. The state becomes
+ * effective {@link seconds} after the forecast becomes effective and
+ * stays effective until the next entry's `seconds` is reached.
+ *
+ * Unlike the modulating appliances, a smart plug is a pure on/off load:
+ * {@link state} is therefore **required** on every entry — there is no
+ * "carry the previous value" fallback for the relay itself. The
+ * remaining fields are optional and carry no information for the slot
+ * when omitted.
+ */
+export interface SmartPlugForecastScheduleEntry {
+    /**
+     * Seconds from the moment the forecast becomes effective at which
+     * this entry becomes active. `0` for the first entry; subsequent
+     * entries must be spaced by exactly the forecast's
+     * {@link ApplianceForecastMetadata.resolution}.
+     */
+    seconds: number;
+    /**
+     * Planned relay state for this slot — `On` while the publisher
+     * intends the connected load to be powered, `Off` otherwise.
+     * Required on every entry.
+     */
+    state: EnyoSmartPlugApplianceStateEnum;
+    /**
+     * The trigger type that motivates {@link state} for this slot — the
+     * *why* behind the planned switching decision, using the same
+     * vocabulary as the automations the user composes in the platform
+     * (e.g. `pv-surplus-threshold` when the slot is planned because PV
+     * surplus is forecasted above the user's threshold,
+     * `cheapest-share-of-day` when it falls into the cheapest price
+     * window).
+     *
+     * Omit when the decision has no automation-shaped motivation (e.g. a
+     * manual override or a plain energy-manager optimisation). Consumers
+     * must treat this as explanatory metadata only — the authoritative
+     * command for the slot is {@link state}.
+     */
+    triggerType?: EnyoAutomationTriggerTypeEnum;
+    /**
+     * Id of the automation whose evaluation produced this slot, when the
+     * plan was derived from a concrete user automation. Pairs with
+     * {@link triggerType}: the trigger type says *what kind* of
+     * condition drives the slot, this says *which* configured rule.
+     */
+    automationId?: string;
+    /**
+     * Expected electrical power draw in Watts of the connected load
+     * while the relay is `On` at this slot. Non-negative when present;
+     * publishers should omit it rather than send `0` for an `On` slot
+     * whose consumption they cannot estimate.
+     */
+    powerW?: number;
+    /**
+     * Whether this slot is planned only to honour the minimum runtime
+     * the user configured on the automation action
+     * ({@link EnyoAutomationSmartPlugSwitchAction.minDurationMinutes})
+     * rather than because the trigger condition itself is forecasted to
+     * hold. `true` marks a "tail" slot the publisher would otherwise
+     * have switched off.
+     */
+    minDurationHold?: boolean;
+}
+
+/**
+ * Forecasted command plan for a smart plug appliance, published via
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishSmartPlugForecast}.
+ *
+ * A smart plug forecast is a **single** relative schedule of planned
+ * on/off slots. Each entry carries the planned relay state together with
+ * the {@link SmartPlugForecastScheduleEntry.triggerType trigger} and
+ * {@link SmartPlugForecastScheduleEntry.automationId automation} that
+ * motivate it, so a consumer can render "off until 13:00, then on for
+ * two hours because PV surplus is above 2000 W" without re-deriving the
+ * reasoning.
+ *
+ * The schedule must start at `seconds = 0` so the appliance has an
+ * authoritative "right now" state, and consecutive entries must be
+ * spaced by exactly the forecast's
+ * {@link ApplianceForecastMetadata.resolution}.
+ */
+export interface SmartPlugForecast extends ApplianceForecastMetadata {
+    /**
+     * Relative schedule of forecast entries. Sorted ascending by
+     * `seconds`, starting at `seconds = 0`. Must contain at least one
+     * entry.
+     */
+    relativeSchedule: SmartPlugForecastScheduleEntry[];
+    /**
+     * Zero-based index of the plug's channel this forecast applies to,
+     * for multi-channel devices (e.g. a two-socket Shelly). Omit for
+     * single-channel plugs.
+     */
+    channelIndex?: number;
+}
+
+// =============================================================================
+// Air conditioning
+// =============================================================================
+
+/**
+ * One entry of an air conditioning unit's relative schedule.
+ *
+ * The entry packs every per-slot piece of information the energy-manager
+ * forecast carries for an air conditioning unit: the planned operating
+ * mode, the target and forecasted room temperatures, the optimization
+ * mode the plan was built for, and the available-power announcement. The
+ * setpoint becomes active {@link seconds} after the forecast becomes
+ * effective and stays active until the next entry's `seconds` is
+ * reached.
+ *
+ * Every field other than {@link seconds} is optional — an entry may
+ * describe only temperatures, only the mode, only power, or any
+ * combination. A field that is omitted carries no information for that
+ * slot (it is **not** "set to zero / idle"); the previous entry's value
+ * should be treated as still in effect.
+ */
+export interface AirConditioningForecastScheduleEntry {
+    /**
+     * Seconds from the moment the forecast becomes effective at which
+     * this entry becomes active. `0` for the first entry; subsequent
+     * entries must be spaced by exactly the forecast's
+     * {@link ApplianceForecastMetadata.resolution}.
+     */
+    seconds: number;
+    /**
+     * Planned available electrical power in Watts the energy manager
+     * intends to make available to the unit during this slot. The unit
+     * is free to consume up to this value — and free to consume less if
+     * it cannot use it all. Non-negative when present.
+     */
+    powerW?: number;
+    /**
+     * Planned operating mode for this slot — `Cooling`, `Heating`, or
+     * `Idle` while the publisher intends the unit to stand still.
+     */
+    mode?: EnyoAirConditioningApplianceModeEnum;
+    /**
+     * Energy-optimization mode the plan for this slot was built for —
+     * `PvSurplus` while the slot is meant to soak up surplus, `Boost`
+     * while comfort takes precedence. Independent of {@link mode}.
+     */
+    optimizationMode?: EnyoAirConditioningOptimizationModeEnum;
+    /**
+     * Target room temperature in °C the unit is planned to drive toward
+     * at this slot. Plausible range: [-50, 150].
+     */
+    targetTemperatureC?: number;
+    /**
+     * Forecasted room temperature in °C at this slot — the temperature
+     * the publisher expects the room to actually reach under this plan.
+     * Plausible range: [-50, 150].
+     */
+    roomTemperatureC?: number;
+    /**
+     * Whether the publisher is announcing available power for this slot
+     * — `true` when the energy-manager decision for the slot is
+     * "available power", meaning {@link powerW} doubles as the
+     * available-power offer to the unit (which is free to consume up to
+     * that value), `false` (or omitted) otherwise.
+     *
+     * This flag is independent of {@link mode} and may coexist with any
+     * of its values.
+     */
+    availablePowerActive?: boolean;
+}
+
+/**
+ * Forecasted command plan for an air conditioning appliance, published
+ * via
+ * {@link EnergyAppApplianceEnergyManagerForecast.publishAirConditioningForecast}.
+ *
+ * An air conditioning forecast is a **single** relative schedule whose
+ * entries carry the planned mode, the target / forecasted room
+ * temperatures and the available-power announcement together. One entry
+ * per slot keeps the temperature trajectory and the mode decisions
+ * aligned by construction.
+ *
+ * Multi-room (multi-split) units are forecasted **one room at a time**:
+ * set {@link roomIndex} and publish one forecast per room, mirroring the
+ * {@link EnyoAirConditioningApplianceRoom.index room indices} reported
+ * on the appliance metadata.
+ *
+ * The schedule must start at `seconds = 0` so the appliance has an
+ * authoritative "right now" entry, and consecutive entries must be
+ * spaced by exactly the forecast's
+ * {@link ApplianceForecastMetadata.resolution}.
+ */
+export interface AirConditioningForecast extends ApplianceForecastMetadata {
+    /**
+     * Relative schedule of forecast entries. Sorted ascending by
+     * `seconds`, starting at `seconds = 0`. Must contain at least one
+     * entry.
+     */
+    relativeSchedule: AirConditioningForecastScheduleEntry[];
+    /**
+     * Zero-based index of the room / indoor unit this forecast applies
+     * to, matching {@link EnyoAirConditioningApplianceRoom.index}. Omit
+     * for single-room units.
+     */
+    roomIndex?: number;
 }

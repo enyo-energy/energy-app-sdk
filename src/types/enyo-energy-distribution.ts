@@ -43,6 +43,11 @@ export enum EnyoDistributionParticipantKindEnum {
 /**
  * What a participant is doing in the current slot.
  *
+ * The three "drawing" cases are deliberately separate states rather than a state plus flags:
+ * {@link Drawing} follows the allocation, {@link DrawingOutsidePlan} ignores it, and
+ * {@link Offered} has been allowed to draw and has not started. A row can only be in one of
+ * them, which is what makes the set renderable without a second rule.
+ *
  * {@link Complete} is reached ONLY on a stated
  * {@link EnyoDataBusCommandReasonTypeEnum.SessionComplete} — never because
  * {@link EnyoDistributionProgress.percent} hit 100. The two disagree routinely: a meter reading
@@ -52,8 +57,30 @@ export enum EnyoDistributionParticipantKindEnum {
 export enum EnyoDistributionParticipantStateEnum {
     /** Drawing power in this slot — {@link EnyoEnergyDistributionParticipant.powerW} is positive. */
     Drawing = 'drawing',
+    /**
+     * Drawing power the plan did not allocate to it — the appliance decided on its own (a
+     * defrost cycle, a manual start, its own comfort logic). The manager re-plans around it;
+     * the other participants get less until it stops.
+     *
+     * STATED, and mutually exclusive with {@link Drawing}: a row is either following the
+     * allocation or it is not. A consumer must not derive this by comparing measured power
+     * against a command forecast — an appliance whose app publishes no forecast could then
+     * never be shown as off-plan, and a forecast one cycle stale would paint a perfectly
+     * planned run as a deviation. Only the manager knows which draw it allocated.
+     */
+    DrawingOutsidePlan = 'drawing-outside-plan',
     /** Supplying power in this slot (a discharging battery) — `powerW` is negative. */
     Supplying = 'supplying',
+    /**
+     * Power was released for it to use at its own discretion, and it is not using it (yet).
+     *
+     * A good state, not a warning: the manager made power available and left the timing to the
+     * appliance ("freigegeben — sie entscheidet selbst, wann"). Distinct from
+     * {@link NotAsking}, which is a participant with nothing to ask for, and from
+     * {@link Skipped}, which asked and did not get it. `powerW` is `0` — the offer is not a
+     * draw; {@link EnyoEnergyDistributionParticipant.offerEndsAtIso} says how long it stands.
+     */
+    Offered = 'offered',
     /** Asked for power and did not get it this slot; `reason` says who or what took it. */
     Skipped = 'skipped',
     /** Did not ask at all — no car on the cable, outside its schedule, no heat wanted. */
@@ -96,6 +123,18 @@ export interface EnyoDistributionProgress {
      * display cannot disagree with each other by a rounding or clamping rule.
      */
     percent: number;
+    /**
+     * When the plan expects {@link target} to be reached (ISO 8601).
+     *
+     * STATED, because it is the planner's own arithmetic: it follows from the power the plan
+     * intends to give this participant over the coming slots, which no consumer holds. The
+     * remaining distance to the target can be subtracted from the triple above; the *time*
+     * cannot.
+     *
+     * Absent means the plan does not say when — a consumer then shows the remainder without a
+     * time, rather than guessing one from the current power.
+     */
+    targetReachedAtIso?: string;
 }
 
 /**
@@ -146,6 +185,60 @@ export interface EnyoEnergyDistributionParticipant {
      * goal to be part-way through.
      */
     progress?: EnyoDistributionProgress;
+    /**
+     * When the plan next gives this participant power (ISO 8601).
+     *
+     * STATED, and the single most load-bearing optional field on this row: it makes every
+     * "wartet · ab 11:05" subline — and the card's "Als Nächstes" header, which is simply the
+     * earliest `plannedStartIso` among the rows that are not running — correct without a
+     * consumer holding a second stream of command forecasts and replaying a relative schedule
+     * against the timestamp it was published at.
+     *
+     * Absent means the plan does not give it power again today, which is what a consumer then
+     * says. It is phrased on the participant rather than on the appliance forecast on purpose:
+     * rows that are not appliances have no forecast at all, and a {@link
+     * EnyoDistributionParticipantKindEnum.FeedIn} row that expects to export from 17:40 states
+     * it here.
+     *
+     * Must not be before {@link EnyoEnergyDistributionSnapshot.slotStartIso} — it is the *next*
+     * start, not a past one.
+     */
+    plannedStartIso?: string;
+    /**
+     * The participant this one is queued behind — its {@link rank}.
+     *
+     * Lets a consumer draw the dependency ("wartet auf Speicher") without parsing it out of the
+     * reason sentence. Must name the rank of another row in the same snapshot, never this row's
+     * own.
+     */
+    waitingForRank?: number;
+    /**
+     * When the offer expires (ISO 8601). Only on
+     * {@link EnyoDistributionParticipantStateEnum.Offered} rows.
+     *
+     * Absent on an `Offered` row means the offer stands with no stated end — the consumer shows
+     * the release without a countdown rather than inventing one.
+     */
+    offerEndsAtIso?: string;
+    /**
+     * Of {@link powerW}, how much is locally generated (W) — the "4,8 kW Sonne" half of the
+     * split under a row.
+     *
+     * STATED per row, because the snapshot's totals cannot be solved for it: with one signed
+     * `powerW` per participant and a single site-level {@link
+     * EnyoDistributionParticipantKindEnum.GridImport} row, two appliances drawing while the
+     * site imports have no recoverable split.
+     *
+     * A magnitude, so never negative, and only meaningful on a row that is drawing. When both
+     * halves are stated they add up to {@link powerW}; stating only one leaves the other
+     * unknown rather than zero.
+     */
+    pvPowerW?: number;
+    /**
+     * Of {@link powerW}, how much is imported from the grid (W) — the "6,2 kW Netz" half of the
+     * split. See {@link pvPowerW} for why it is stated rather than derived.
+     */
+    gridPowerW?: number;
 }
 
 /**

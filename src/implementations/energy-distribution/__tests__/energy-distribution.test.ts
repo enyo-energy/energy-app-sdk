@@ -227,3 +227,225 @@ describe('validateEnergyDistributionSnapshot', () => {
             .toThrow(/must be at or after slotStartIso/);
     });
 });
+
+describe('the waterfall fields', () => {
+    /** A waiting heatpump row, the shape every test below varies one field of. */
+    const waitingRow = () => ({
+        rank: 1,
+        applianceId: 'heatpump-1',
+        applianceType: EnyoApplianceTypeEnum.Heatpump,
+        name: 'Wärmepumpe',
+        state: EnyoDistributionParticipantStateEnum.NotAsking,
+        powerW: 0,
+        reason: {type: EnyoDataBusCommandReasonTypeEnum.OtherApplianceTurn},
+    });
+
+    it('carries a planned start, a dependency and a target time through the builder', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({
+                ...chargerRow(8400, 22000),
+                progress: makeProgress({
+                    unit: EnyoDistributionProgressUnitEnum.Energy,
+                    current: 8400,
+                    target: 22000,
+                    targetReachedAtIso: '2026-09-20T12:40:00.000Z',
+                }),
+                pvPowerW: 4800,
+                gridPowerW: 2600,
+            })
+            .addAppliance({
+                ...waitingRow(),
+                plannedStartIso: '2026-09-20T11:05:00.000Z',
+                waitingForRank: 0,
+            })
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).not.toThrow();
+        expect(snapshot.participants[0]!.progress?.targetReachedAtIso).toBe(
+            '2026-09-20T12:40:00.000Z',
+        );
+        expect(snapshot.participants[0]!.pvPowerW).toBe(4800);
+        expect(snapshot.participants[1]!.plannedStartIso).toBe('2026-09-20T11:05:00.000Z');
+        expect(snapshot.participants[1]!.waitingForRank).toBe(0);
+    });
+
+    it('lets a feed-in row state when it expects to export', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance(chargerRow(8400, 22000))
+            .addFeedIn({
+                powerW: 0,
+                name: 'Einspeisung',
+                plannedStartIso: '2026-09-20T17:40:00.000Z',
+            })
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).not.toThrow();
+        expect(snapshot.participants[1]!.plannedStartIso).toBe('2026-09-20T17:40:00.000Z');
+    });
+
+    it('rejects a planned start that lies before the slot being described', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance(chargerRow(8400, 22000))
+            .addAppliance({...waitingRow(), plannedStartIso: '2026-09-20T09:05:00.000Z'})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /plannedStartIso .* is before the slot/,
+        );
+    });
+
+    it('rejects a dependency on a rank no row holds', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance(chargerRow(8400, 22000))
+            .addAppliance({...waitingRow(), waitingForRank: 7})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /names no participant in this snapshot/,
+        );
+    });
+
+    it('rejects a row queued behind itself', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance(chargerRow(8400, 22000))
+            .addAppliance({...waitingRow(), waitingForRank: 1})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /cannot be queued behind itself/,
+        );
+    });
+
+    it('accepts an off-plan draw as a drawing state', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({
+                ...waitingRow(),
+                rank: 0,
+                state: EnyoDistributionParticipantStateEnum.DrawingOutsidePlan,
+                powerW: 1800,
+                reason: {
+                    type: EnyoDataBusCommandReasonTypeEnum.ApplianceInitiatedDraw,
+                    powerW: 1800,
+                },
+            })
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).not.toThrow();
+    });
+
+    it('rejects an off-plan draw with a negative power — that is supplying', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({
+                ...waitingRow(),
+                rank: 0,
+                state: EnyoDistributionParticipantStateEnum.DrawingOutsidePlan,
+                powerW: -1800,
+                reason: {type: EnyoDataBusCommandReasonTypeEnum.ApplianceInitiatedDraw},
+            })
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /drawing-outside-plan.*negative/,
+        );
+    });
+
+    it('accepts an offer with its expiry, and holds it to powerW=0', () => {
+        const offered = {
+            ...waitingRow(),
+            rank: 0,
+            state: EnyoDistributionParticipantStateEnum.Offered,
+            reason: {type: EnyoDataBusCommandReasonTypeEnum.PowerOffered, powerW: 2000},
+            offerEndsAtIso: '2026-09-20T14:00:00.000Z',
+        };
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance(offered)
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).not.toThrow();
+        expect(snapshot.participants[0]!.offerEndsAtIso).toBe('2026-09-20T14:00:00.000Z');
+
+        const drawing = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({...offered, powerW: 1500})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+        expect(() => validateEnergyDistributionSnapshot(drawing)).toThrow(
+            /state='offered' must carry powerW=0/,
+        );
+    });
+
+    it('refuses an offer expiry on a row that was never offered anything', () => {
+        const builder = new EnergyDistributionSnapshotBuilder();
+        expect(() =>
+            builder.addAppliance({
+                ...waitingRow(),
+                rank: 0,
+                offerEndsAtIso: '2026-09-20T14:00:00.000Z',
+            }),
+        ).toThrow(RangeError);
+
+        // And the validator catches a hand-built payload that bypassed the builder.
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({...waitingRow(), rank: 0})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+        snapshot.participants[0]!.offerEndsAtIso = '2026-09-20T14:00:00.000Z';
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            EnergyDistributionValidationError,
+        );
+    });
+
+    it('rejects a PV / grid split that does not add up to the row it describes', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({...chargerRow(8400, 22000), pvPowerW: 4800, gridPowerW: 1000})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /does not add up to powerW=7400/,
+        );
+    });
+
+    it('accepts one half of the split on its own — an unknown share is not zero', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({...chargerRow(8400, 22000), pvPowerW: 4800})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).not.toThrow();
+    });
+
+    it('rejects a split on a supplying row', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({
+                rank: 0,
+                applianceId: 'battery-1',
+                applianceType: EnyoApplianceTypeEnum.Storage,
+                name: 'Hausbatterie',
+                state: EnyoDistributionParticipantStateEnum.Supplying,
+                powerW: -1200,
+                reason: {type: EnyoDataBusCommandReasonTypeEnum.SelfConsumptionOptimization},
+                pvPowerW: 1200,
+            })
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /a supplying row has none/,
+        );
+    });
+
+    it('rejects a share larger than the whole', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance({...chargerRow(8400, 22000), gridPowerW: 9000})
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /exceeds powerW=7400/,
+        );
+    });
+
+    it('rejects an unparseable target time', () => {
+        const snapshot = new EnergyDistributionSnapshotBuilder()
+            .addAppliance(chargerRow(8400, 22000))
+            .build({slotStartMs: SLOT_START_MS, nowMs: NOW_MS});
+        snapshot.participants[0]!.progress!.targetReachedAtIso = 'ca. 12:40';
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(
+            /targetReachedAtIso/,
+        );
+    });
+});

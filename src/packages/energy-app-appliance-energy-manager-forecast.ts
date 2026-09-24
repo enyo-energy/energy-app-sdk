@@ -1,8 +1,10 @@
 import {
+    AirConditioningForecast,
     BatteryCommandForecast,
     ChargerForecast,
     HeatingRodForecast,
     HeatpumpForecast,
+    SmartPlugForecast,
 } from '../types/enyo-appliance-command-forecast.js';
 
 /**
@@ -11,7 +13,7 @@ import {
  * The energy manager (or any orchestrator app) uses this package to
  * declare the **command plans** it intends to apply to its appliances
  * over the upcoming horizon — *not* what it predicts the appliance will
- * do on its own. Three appliance families are supported today:
+ * do on its own. Six appliance families are supported today:
  *
  *  - **Chargers** — phase / power schedule
  *    ({@link ChargerForecast}).
@@ -26,6 +28,13 @@ import {
  *    the forecasted target temperature together with the planned heating
  *    flag and the available-power announcement at each slot
  *    ({@link HeatingRodForecast}).
+ *  - **Smart plugs** — a single relative schedule of planned on/off
+ *    slots, each carrying the trigger type and automation id that
+ *    motivate the switching decision ({@link SmartPlugForecast}).
+ *  - **Air conditioning** — a single relative schedule whose entries
+ *    carry the planned operating / optimization mode, the target and
+ *    forecasted room temperatures and the available-power announcement
+ *    at each slot ({@link AirConditioningForecast}).
  *
  * Every forecast optionally carries
  * {@link ApplianceForecastEstimatedSavings} so downstream consumers can
@@ -122,5 +131,48 @@ export interface EnergyAppApplianceEnergyManagerForecast {
     publishHeatingRodForecast(
         applianceId: string,
         forecast: HeatingRodForecast,
+    ): Promise<void>;
+
+    /**
+     * Publishes the command-plan forecast for a smart plug (relay /
+     * switchable socket). The forecast carries a single relative
+     * schedule of planned on/off slots; each entry pairs the planned
+     * relay state with the trigger type and automation id that motivate
+     * it, so consumers can explain *why* the plug is planned to switch
+     * without re-deriving the reasoning.
+     *
+     * Validates {@link forecast} against the invariants documented on
+     * {@link SmartPlugForecast}.
+     *
+     * @param applianceId - The smart plug appliance the forecast applies to.
+     * @param forecast - The command-plan forecast and its metadata.
+     * @throws {ApplianceCommandForecastValidationError} If the forecast
+     *   is malformed.
+     */
+    publishSmartPlugForecast(
+        applianceId: string,
+        forecast: SmartPlugForecast,
+    ): Promise<void>;
+
+    /**
+     * Publishes the command-plan forecast for an air conditioning unit.
+     * The forecast carries a single relative schedule whose entries pack
+     * the planned operating mode and optimization mode together with the
+     * target / forecasted room temperatures and the available-power
+     * announcement at each slot. Multi-room (multi-split) units are
+     * forecasted one room at a time via
+     * {@link AirConditioningForecast.roomIndex}.
+     *
+     * Validates {@link forecast} against the invariants documented on
+     * {@link AirConditioningForecast}.
+     *
+     * @param applianceId - The air conditioning appliance the forecast applies to.
+     * @param forecast - The command-plan forecast and its metadata.
+     * @throws {ApplianceCommandForecastValidationError} If the forecast
+     *   is malformed.
+     */
+    publishAirConditioningForecast(
+        applianceId: string,
+        forecast: AirConditioningForecast,
     ): Promise<void>;
 }

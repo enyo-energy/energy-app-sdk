@@ -234,6 +234,24 @@ export interface EnergyAppEnergyManager {
      * {@link registerFeatures} as well, so the cockpit only offers the card where
      * an energy manager actually fills it.
      *
+     * State the facts only the manager holds, rather than leaving a consumer to
+     * reconstruct them from a second stream:
+     * {@link EnyoEnergyDistributionParticipant.plannedStartIso} (when the plan
+     * next serves a row — this is also what a card's "next up" line is built
+     * from), {@link EnyoEnergyDistributionParticipant.waitingForRank} (the row it
+     * is queued behind), {@link EnyoDistributionProgress.targetReachedAtIso} (when
+     * the goal is expected to be met) and the
+     * {@link EnyoEnergyDistributionParticipant.pvPowerW} /
+     * {@link EnyoEnergyDistributionParticipant.gridPowerW} split. Use
+     * {@link EnyoDistributionParticipantStateEnum.DrawingOutsidePlan} for an
+     * appliance that started on its own and
+     * {@link EnyoDistributionParticipantStateEnum.Offered} for power released at
+     * the appliance's discretion — both carry their own reason type
+     * ({@link EnyoDataBusCommandReasonTypeEnum.ApplianceInitiatedDraw},
+     * {@link EnyoDataBusCommandReasonTypeEnum.PowerOffered}), and both still need
+     * an enriched {@link EnyoDataBusCommandReason.translation}: a consumer renders
+     * the sentence the manager wrote and invents no wording of its own.
+     *
      * @param snapshot - The current slot's participants, in served order.
      *
      * @example

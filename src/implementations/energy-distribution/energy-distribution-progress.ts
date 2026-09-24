@@ -21,6 +21,13 @@ export interface EnergyDistributionProgressInput {
     current: number;
     /** The goal it is driving to. */
     target: number;
+    /**
+     * When the plan expects {@link target} to be reached (ISO 8601) — the planner's own
+     * arithmetic over the power it intends to give this run, which no consumer can redo.
+     * Carried through to {@link EnyoDistributionProgress.targetReachedAtIso} untouched; omit it
+     * when the plan does not say.
+     */
+    targetReachedAtIso?: string;
 }
 
 /**
@@ -43,7 +50,8 @@ export interface EnergyDistributionProgressInput {
  * A full bar is NOT the same as a finished run: completion is stated with
  * {@link EnyoDataBusCommandReasonTypeEnum.SessionComplete}, never inferred from this number.
  *
- * @param input - The stated facts: unit, optional start, current and target.
+ * @param input - The stated facts: unit, optional start, current and target, and optionally
+ *   when the plan expects the target to be reached.
  * @returns The progress object, ready to put on a participant.
  * @throws {RangeError} When `target` equals `start`, or when any value is not finite — a bar
  *   with no distance to travel has no meaningful fill, and silently reporting `0` or `100` for
@@ -80,6 +88,9 @@ export function makeProgress(input: EnergyDistributionProgressInput): EnyoDistri
         percent: progressPercent(input),
     };
     if (input.start !== undefined) progress.start = input.start;
+    if (input.targetReachedAtIso !== undefined) {
+        progress.targetReachedAtIso = input.targetReachedAtIso;
+    }
     return progress;
 }
 

@@ -38,6 +38,25 @@ export interface EnergyDistributionApplianceRow {
      * no car, a pump that wants no heat. Absent means "no bar", which is an answer.
      */
     progress?: EnyoDistributionProgress;
+    /**
+     * When the plan next gives this appliance power (ISO 8601). State it on every row that is
+     * waiting: it is what makes the "wartet · ab 11:05" subline and the card's "Als Nächstes"
+     * header exact instead of replayed from a command forecast. Absent means not planned
+     * again today.
+     */
+    plannedStartIso?: string;
+    /** The {@link rank} of the participant this one is queued behind ("wartet auf Speicher"). */
+    waitingForRank?: number;
+    /**
+     * When a released offer expires (ISO 8601). Only on
+     * {@link EnyoDistributionParticipantStateEnum.Offered} rows — the builder rejects it
+     * anywhere else rather than letting an offer nobody made reach a consumer.
+     */
+    offerEndsAtIso?: string;
+    /** Of {@link powerW}, how much is locally generated (W) — the "Sonne" half of the split. */
+    pvPowerW?: number;
+    /** Of {@link powerW}, how much is imported (W) — the "Netz" half of the split. */
+    gridPowerW?: number;
 }
 
 /** A row for something measured rather than planned: household draw, feed-in, grid import. */
@@ -57,6 +76,15 @@ export interface EnergyDistributionMeasuredRow {
      * and feed-in alike: neither is a decision the energy manager took.
      */
     reason?: EnyoDataBusCommandReason;
+    /**
+     * When the plan next expects this row to have power flowing (ISO 8601) — a feed-in row
+     * that expects to export from 17:40 states it here.
+     *
+     * This is why the field lives on the participant rather than on an appliance forecast:
+     * household, feed-in and grid-import rows have no forecast to replay, so without it their
+     * tracks stay empty.
+     */
+    plannedStartIso?: string;
 }
 
 /** When the snapshot describes. */
@@ -130,8 +158,11 @@ export class EnergyDistributionSnapshotBuilder {
      * {@link EnyoDistributionParticipantStateEnum.Skipped} and a reason that says why. A row
      * that is simply left out reads, to an owner, as an appliance that stopped existing.
      *
-     * @param row - The appliance's rank, identity, state, power, reason and optional progress.
+     * @param row - The appliance's rank, identity, state, power, reason and optional progress,
+     *   planned start, dependency, offer expiry and PV / grid split.
      * @returns This builder, for chaining.
+     * @throws {RangeError} When `offerEndsAtIso` is given for a row that is not
+     *   {@link EnyoDistributionParticipantStateEnum.Offered}.
      */
     addAppliance(row: EnergyDistributionApplianceRow): this {
         const participant: EnyoEnergyDistributionParticipant = {
@@ -145,6 +176,18 @@ export class EnergyDistributionSnapshotBuilder {
             reason: row.reason,
         };
         if (row.progress !== undefined) participant.progress = row.progress;
+        if (row.plannedStartIso !== undefined) participant.plannedStartIso = row.plannedStartIso;
+        if (row.waitingForRank !== undefined) participant.waitingForRank = row.waitingForRank;
+        if (row.offerEndsAtIso !== undefined) {
+            if (row.state !== EnyoDistributionParticipantStateEnum.Offered) {
+                throw new RangeError(
+                    `offerEndsAtIso was given for '${row.name}' but its state is '${row.state}'; only an '${EnyoDistributionParticipantStateEnum.Offered}' row has an offer to expire.`,
+                );
+            }
+            participant.offerEndsAtIso = row.offerEndsAtIso;
+        }
+        if (row.pvPowerW !== undefined) participant.pvPowerW = row.pvPowerW;
+        if (row.gridPowerW !== undefined) participant.gridPowerW = row.gridPowerW;
         this.participants.push(participant);
         return this;
     }
@@ -153,7 +196,7 @@ export class EnergyDistributionSnapshotBuilder {
      * Adds the household row — everything the house draws that the energy manager does not
      * steer. Measured, never planned, so it carries no progress bar.
      *
-     * @param row - Power, name, and optionally an explicit rank and reason.
+     * @param row - Power, name, and optionally an explicit rank, reason and planned start.
      * @returns This builder, for chaining.
      */
     addHousehold(row: EnergyDistributionMeasuredRow): this {
@@ -164,7 +207,8 @@ export class EnergyDistributionSnapshotBuilder {
      * Adds the feed-in row — power leaving the site. The residual of the balance rather than a
      * goal anyone is working toward, so it carries no progress bar.
      *
-     * @param row - Power (negative when exporting), name, and optionally rank and reason.
+     * @param row - Power (negative when exporting), name, and optionally rank, reason and
+     *   planned start — a feed-in row that expects to export from 17:40 states it.
      * @returns This builder, for chaining.
      */
     addFeedIn(row: EnergyDistributionMeasuredRow): this {
@@ -175,7 +219,7 @@ export class EnergyDistributionSnapshotBuilder {
      * Adds the grid-import row — power bought to cover what the site could not supply itself.
      * Measured, so it carries no progress bar.
      *
-     * @param row - Power, name, and optionally rank and reason.
+     * @param row - Power, name, and optionally rank, reason and planned start.
      * @returns This builder, for chaining.
      */
     addGridImport(row: EnergyDistributionMeasuredRow): this {
@@ -214,7 +258,7 @@ export class EnergyDistributionSnapshotBuilder {
         kind: EnyoDistributionParticipantKindEnum,
         row: EnergyDistributionMeasuredRow,
     ): this {
-        this.participants.push({
+        const participant: EnyoEnergyDistributionParticipant = {
             kind,
             rank: row.rank ?? this.participants.length,
             name: row.name,
@@ -225,7 +269,9 @@ export class EnergyDistributionSnapshotBuilder {
             reason: row.reason ?? {
                 type: EnyoDataBusCommandReasonTypeEnum.SelfConsumptionOptimization,
             },
-        });
+        };
+        if (row.plannedStartIso !== undefined) participant.plannedStartIso = row.plannedStartIso;
+        this.participants.push(participant);
         return this;
     }
 }

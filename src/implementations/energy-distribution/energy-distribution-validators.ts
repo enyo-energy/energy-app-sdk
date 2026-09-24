@@ -28,6 +28,12 @@ export class EnergyDistributionValidationError extends Error {
 const PERCENT_TOLERANCE = 0.2;
 
 /**
+ * How far a stated PV / grid split may drift from the row's own `powerW`, in Watts — enough for
+ * a publisher that rounds its halves to whole Watts, not enough to hide a mis-stated share.
+ */
+const POWER_SPLIT_TOLERANCE_W = 1;
+
+/**
  * Validates an {@link EnyoEnergyDistributionSnapshot}. Throws the first violation encountered.
  *
  * The invariants are not style rules — each one is a way the card has been able to tell an owner
@@ -46,11 +52,23 @@ const PERCENT_TOLERANCE = 0.2;
  *    {@link EnyoDataBusCommandReasonTypeEnum.SessionComplete}. This is the load-bearing one: a
  *    publisher that reads "done" off a full bar reports a session finished while its target is
  *    merely overshot, and reports one unfinished when the meter lags.
- *  - The sign of `powerW` agrees with the state: `Drawing` is not negative, `Supplying` is not
- *    positive, and a row that is `Skipped`, `NotAsking` or `Complete` draws nothing.
+ *  - The sign of `powerW` agrees with the state: `Drawing` and `DrawingOutsidePlan` are not
+ *    negative, `Supplying` is not positive, and a row that is `Skipped`, `NotAsking`, `Offered`
+ *    or `Complete` draws nothing — an offer that has not been taken up is not a draw.
  *  - `progress.percent` agrees with `start` / `current` / `target` within
  *    {@link PERCENT_TOLERANCE}, so a hand-built bar cannot disagree with its own numbers.
  *  - Every `reason` carries a `type`, and every participant a non-empty `name`.
+ *  - `plannedStartIso`, `offerEndsAtIso` and `progress.targetReachedAtIso` parse as ISO 8601,
+ *    and `plannedStartIso` is not before the slot it is stated in — a "next start" in the past
+ *    is a stale plan being rendered as an imminent one.
+ *  - `offerEndsAtIso` appears only on
+ *    {@link EnyoDistributionParticipantStateEnum.Offered} rows: an expiry on a row that was
+ *    never offered anything describes an offer nobody made.
+ *  - `waitingForRank` names another row of the same snapshot, never itself — a dependency
+ *    pointing at a row that is not there cannot be drawn, and one pointing at itself is a cycle.
+ *  - `pvPowerW` / `gridPowerW` are non-negative, neither exceeds `powerW`, and when both are
+ *    stated they add up to it: a split that does not sum to the row's own power tells the owner
+ *    two different figures for one draw.
  *
  * @param snapshot - The payload to check.
  * @throws {EnergyDistributionValidationError} On the first violated invariant.
@@ -86,13 +104,54 @@ export function validateEnergyDistributionSnapshot(
     for (let i = 0; i < snapshot.participants.length; i++) {
         const participant = snapshot.participants[i]!;
         const path = `participants[${i}]`;
-        validateParticipant(participant, path);
+        validateParticipant(participant, path, slotStartMs);
         if (ranksSeen.has(participant.rank)) {
             throw new EnergyDistributionValidationError(
                 `${path}.rank=${participant.rank} is duplicated; each participant needs its own position.`,
             );
         }
         ranksSeen.add(participant.rank);
+    }
+
+    validateWaitingForRanks(snapshot, ranksSeen);
+}
+
+/**
+ * Checks every stated {@link EnyoEnergyDistributionParticipant.waitingForRank} against the ranks
+ * actually present, once all of them are known.
+ *
+ * A dependency is only renderable if the row it points at is in the same snapshot: "wartet auf
+ * Speicher" drawn from a rank nobody holds leaves the consumer with a sentence it cannot
+ * complete, and a row waiting for itself is a cycle the card would follow forever.
+ *
+ * @param snapshot - The payload being validated.
+ * @param ranksSeen - The ranks of every row in it.
+ * @throws {EnergyDistributionValidationError} On a dangling or self-referential dependency.
+ */
+function validateWaitingForRanks(
+    snapshot: EnyoEnergyDistributionSnapshot,
+    ranksSeen: Set<number>,
+): void {
+    for (let i = 0; i < snapshot.participants.length; i++) {
+        const participant = snapshot.participants[i]!;
+        const waitingFor = participant.waitingForRank;
+        if (waitingFor === undefined) continue;
+        const path = `participants[${i}]`;
+        if (!Number.isInteger(waitingFor) || waitingFor < 0) {
+            throw new EnergyDistributionValidationError(
+                `${path}.waitingForRank must be a non-negative integer, got ${String(waitingFor)}.`,
+            );
+        }
+        if (waitingFor === participant.rank) {
+            throw new EnergyDistributionValidationError(
+                `${path}.waitingForRank=${waitingFor} is this row's own rank — a participant cannot be queued behind itself.`,
+            );
+        }
+        if (!ranksSeen.has(waitingFor)) {
+            throw new EnergyDistributionValidationError(
+                `${path}.waitingForRank=${waitingFor} names no participant in this snapshot; the dependency cannot be drawn.`,
+            );
+        }
     }
 }
 
@@ -101,11 +160,14 @@ export function validateEnergyDistributionSnapshot(
  *
  * @param participant - The row to check.
  * @param path - Where it sits in the payload, for the error message.
+ * @param slotStartMs - Start of the slot the snapshot describes, so a stated next start can be
+ *   checked against it.
  * @throws {EnergyDistributionValidationError} On the first violated invariant.
  */
 function validateParticipant(
     participant: EnyoEnergyDistributionParticipant,
     path: string,
+    slotStartMs: number,
 ): void {
     if (!participant || typeof participant !== 'object') {
         throw new EnergyDistributionValidationError(`${path} must be an object.`);
@@ -142,6 +204,8 @@ function validateParticipant(
     validateReason(participant, path);
     validatePowerSign(participant, path);
     validateProgressOf(participant, path);
+    validateTiming(participant, path, slotStartMs);
+    validatePowerSplit(participant, path);
 }
 
 /**
@@ -220,9 +284,11 @@ function validatePowerSign(
     path: string,
 ): void {
     const {state, powerW} = participant;
-    if (state === EnyoDistributionParticipantStateEnum.Drawing && powerW < 0) {
+    const isDrawingState = state === EnyoDistributionParticipantStateEnum.Drawing
+        || state === EnyoDistributionParticipantStateEnum.DrawingOutsidePlan;
+    if (isDrawingState && powerW < 0) {
         throw new EnergyDistributionValidationError(
-            `${path}.state='drawing' but powerW=${powerW} is negative (that is supplying).`,
+            `${path}.state='${state}' but powerW=${powerW} is negative (that is supplying).`,
         );
     }
     if (state === EnyoDistributionParticipantStateEnum.Supplying && powerW > 0) {
@@ -232,6 +298,7 @@ function validatePowerSign(
     }
     const isIdle = state === EnyoDistributionParticipantStateEnum.Skipped
         || state === EnyoDistributionParticipantStateEnum.NotAsking
+        || state === EnyoDistributionParticipantStateEnum.Offered
         || state === EnyoDistributionParticipantStateEnum.Complete;
     if (isIdle && powerW !== 0) {
         throw new EnergyDistributionValidationError(
@@ -295,6 +362,109 @@ function validateProgress(progress: EnyoDistributionProgress, path: string): voi
         throw new EnergyDistributionValidationError(
             `${path}.percent=${progress.percent} does not follow from start=${start}, current=${progress.current}, target=${progress.target} (expected ${expected}). Build it with makeProgress().`,
         );
+    }
+}
+
+/**
+ * Checks the stated times on a row: when the plan next serves it, when an offer runs out, and
+ * when its goal is expected to be reached.
+ *
+ * `plannedStartIso` is the field every subline and the card's "Als Nächstes" header is built
+ * from, so a malformed or stale one is not cosmetic: a next start that lies before the slot
+ * being described is a plan from an earlier cycle, and rendering it reads to an owner as a run
+ * about to begin when it has already been re-planned.
+ *
+ * @param participant - The row to check.
+ * @param path - Where it sits in the payload, for the error message.
+ * @param slotStartMs - Start of the slot the snapshot describes.
+ * @throws {EnergyDistributionValidationError} On an unparseable timestamp, a next start before
+ *   the slot, or an offer expiry on a row that was never offered anything.
+ */
+function validateTiming(
+    participant: EnyoEnergyDistributionParticipant,
+    path: string,
+    slotStartMs: number,
+): void {
+    if (participant.plannedStartIso !== undefined) {
+        const plannedStartMs = parseIsoOrThrow(
+            participant.plannedStartIso,
+            `${path}.plannedStartIso`,
+        );
+        if (plannedStartMs < slotStartMs) {
+            throw new EnergyDistributionValidationError(
+                `${path}.plannedStartIso (${participant.plannedStartIso}) is before the slot it is stated in; it names the NEXT time the plan serves this row, not a past one.`,
+            );
+        }
+    }
+
+    if (participant.offerEndsAtIso !== undefined) {
+        if (participant.state !== EnyoDistributionParticipantStateEnum.Offered) {
+            throw new EnergyDistributionValidationError(
+                `${path}.offerEndsAtIso is set but state='${participant.state}' — only an '${EnyoDistributionParticipantStateEnum.Offered}' row has an offer to expire.`,
+            );
+        }
+        parseIsoOrThrow(participant.offerEndsAtIso, `${path}.offerEndsAtIso`);
+    }
+
+    if (participant.progress?.targetReachedAtIso !== undefined) {
+        parseIsoOrThrow(
+            participant.progress.targetReachedAtIso,
+            `${path}.progress.targetReachedAtIso`,
+        );
+    }
+}
+
+/**
+ * Checks the PV / grid split of a row's power.
+ *
+ * The split is what lets a row say "4,8 kW Sonne · 6,2 kW Netz", so the one thing it must never
+ * do is contradict the row's own `powerW`: an owner shown a total and two halves that add up to
+ * something else has been told two different figures for one draw. Both halves are magnitudes
+ * of a draw, so a supplying row has no split to state.
+ *
+ * @param participant - The row to check.
+ * @param path - Where it sits in the payload, for the error message.
+ * @throws {EnergyDistributionValidationError} On a negative half, a half larger than the row's
+ *   power, a split on a supplying row, or two halves that do not sum to `powerW`.
+ */
+function validatePowerSplit(
+    participant: EnyoEnergyDistributionParticipant,
+    path: string,
+): void {
+    const {pvPowerW, gridPowerW, powerW} = participant;
+    if (pvPowerW === undefined && gridPowerW === undefined) return;
+
+    if (powerW < 0) {
+        throw new EnergyDistributionValidationError(
+            `${path} carries a pvPowerW / gridPowerW split but powerW=${powerW} is negative — the split describes where a DRAW comes from, and a supplying row has none.`,
+        );
+    }
+
+    for (const [value, field] of [
+        [pvPowerW, 'pvPowerW'],
+        [gridPowerW, 'gridPowerW'],
+    ] as const) {
+        if (value === undefined) continue;
+        validateFiniteNumber(value, `${path}.${field}`);
+        if (value < 0) {
+            throw new EnergyDistributionValidationError(
+                `${path}.${field}=${value} must not be negative; it is a share of powerW, not a direction.`,
+            );
+        }
+        if (value > powerW + POWER_SPLIT_TOLERANCE_W) {
+            throw new EnergyDistributionValidationError(
+                `${path}.${field}=${value} exceeds powerW=${powerW}; a share cannot be larger than the whole.`,
+            );
+        }
+    }
+
+    if (pvPowerW !== undefined && gridPowerW !== undefined) {
+        const sum = pvPowerW + gridPowerW;
+        if (Math.abs(sum - powerW) > POWER_SPLIT_TOLERANCE_W) {
+            throw new EnergyDistributionValidationError(
+                `${path}.pvPowerW (${pvPowerW}) + gridPowerW (${gridPowerW}) = ${sum} does not add up to powerW=${powerW}. State only one half if the other is unknown — an unknown share is not zero.`,
+            );
+        }
     }
 }
 

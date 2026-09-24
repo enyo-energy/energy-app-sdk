@@ -63,10 +63,14 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [ChargerForecast](#chargerforecast)
   - [BatteryCommandForecast](#batterycommandforecast)
   - [HeatpumpForecast](#heatpumpforecast)
+  - [HeatingRodForecast](#heatingrodforecast)
+  - [SmartPlugForecast](#smartplugforecast)
+  - [AirConditioningForecast](#airconditioningforecast)
   - [Validators](#validators)
 - [Energy Distribution Snapshot](#energy-distribution-snapshot)
   - [What the snapshot states](#what-the-snapshot-states)
   - [Stating the goal on an announcement](#stating-the-goal-on-an-announcement)
+  - [What a row states for the waterfall view](#what-a-row-states-for-the-waterfall-view)
   - [Publishing a snapshot](#publishing-a-snapshot)
   - [Consuming a snapshot](#consuming-a-snapshot)
   - [Helpers and validation](#helpers-and-validation)
@@ -171,7 +175,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Forecast heatpump DHW tank temperature | [`HeatpumpDhwTemperatureForecast`](#heatpumpdhwtemperatureforecast) |
 | Forecast air conditioning electrical consumption | [`AirConditioningConsumptionForecast`](#airconditioningconsumptionforecast) |
 | Forecast air conditioning room temperature | [`AirConditioningRoomTemperatureForecast`](#airconditioningroomtemperatureforecast) |
-| Announce a charger / battery / heatpump command plan you **intend to apply** | [`useApplianceEnergyManagerForecast()`](#useapplianceenergymanagerforecast-energyappapplianceenergymanagerforecast) |
+| Announce a charger / battery / heatpump / heating-rod / smart-plug / air-conditioning command plan you **intend to apply** | [`useApplianceEnergyManagerForecast()`](#useapplianceenergymanagerforecast-energyappapplianceenergymanagerforecast) |
 | Talk to an EEBUS / SHIP / SPINE device | [`useEebus()`](#useeebus-energyappeebus) |
 | Speak MQTT (SDK broker or external) | [`useMqtt()`](#usemqtt-energyappmqtt) |
 | Scan or talk to Bluetooth LE peripherals | [`useBluetooth()`](#usebluetooth-energyappbluetooth) |
@@ -3234,7 +3238,7 @@ energyApp.onShutdown(async () => {
 
 ## Appliance Energy-Manager Forecast
 
-The [Forecasting](#forecasting) module above predicts what an appliance will **do** based on history. The Appliance Energy-Manager Forecast package goes the other way: it lets an energy-manager app declare what it **intends to command** each appliance to do over the upcoming horizon, plus the temperature trajectories its commands are expected to produce. Three appliance families are supported today — chargers, batteries, and heatpumps — and the heatpump payload can carry any combination of DHW boost, room pre-heating, buffer-tank boost, and a relative power-announcement schedule in one call.
+The [Forecasting](#forecasting) module above predicts what an appliance will **do** based on history. The Appliance Energy-Manager Forecast package goes the other way: it lets an energy-manager app declare what it **intends to command** each appliance to do over the upcoming horizon, plus the temperature trajectories its commands are expected to produce. Six appliance families are supported today — chargers, batteries, heatpumps, heating rods, smart plugs, and air conditioning units — and the heatpump payload can carry any combination of DHW boost, room pre-heating, buffer-tank boost, and a relative power-announcement schedule in one call.
 
 How the runtime fans these forecasts out to subscribers (data bus, RPC, …) is an internal implementation detail of the SDK runtime — apps just call `publish*` and the SDK takes care of the rest.
 
@@ -3251,6 +3255,9 @@ const forecasts = energyApp.useApplianceEnergyManagerForecast();
 | `publishChargerForecast(applianceId, forecast: ChargerForecast)` | Publish the planned phase / power schedule for a charger. |
 | `publishBatteryForecast(applianceId, forecast: BatteryCommandForecast)` | Publish the planned charge / discharge / auto cadence for a battery. |
 | `publishHeatpumpForecast(applianceId, forecast: HeatpumpForecast)` | Publish any combination of DHW boost / room pre-heating / buffer-tank boost / power-announcement schedule for a heatpump. |
+| `publishHeatingRodForecast(applianceId, forecast: HeatingRodForecast)` | Publish the planned target temperature / heating / available-power schedule for a heating rod. |
+| `publishSmartPlugForecast(applianceId, forecast: SmartPlugForecast)` | Publish the planned on/off schedule for a smart plug, including the trigger type behind each slot. |
+| `publishAirConditioningForecast(applianceId, forecast: AirConditioningForecast)` | Publish the planned mode / target-temperature / available-power schedule for an air conditioning unit. |
 
 Every call validates the payload first and rejects with `ApplianceCommandForecastValidationError` if any invariant is broken — `publish*` never goes through the runtime with malformed data.
 
@@ -3298,6 +3305,14 @@ Per-entry invariants:
 - `seconds`: finite, non-negative; first entry `= 0`; subsequent entries strictly increasing.
 - `powerW`: finite, non-negative (`0` means "pause").
 - `numberOfPhases`: optional; if set, must be `1`, `2`, or `3`.
+- `priceCtPerKwh`: optional; finite — **may be negative**, since a negative-price hour is exactly when a plan wants to charge. It is the expected grid price for that slot, so each planned window can explain itself („02:00 – 03:40 · 14 ct") instead of a consumer re-joining the schedule against a price stream and rounding the boundaries differently. `estimatedSavings` stays what it was: one figure for the plan as a whole.
+
+Two charger facts belong on the appliance rather than on a forecast, and `EnyoChargerApplianceMetadata` now states them alongside `maxChargingPowerKw`:
+
+- `minChargingPowerKw` — the lowest power a session can be held at (typically ≈ 1.4 kW at 6 A on one phase). Below it a plan can only pause, not trickle; the EMS must not issue a non-zero setpoint under it.
+- `phaseSwitchThresholdKw` — the surplus at which the EMS switches this charger to three phases (typically ≈ 4.1 kW). Absent on chargers that cannot switch.
+
+Both are for marking on the same power scale a consumer already draws from `maxChargingPowerKw`, instead of hard-coding thresholds only the EMS knows.
 
 ### BatteryCommandForecast
 
@@ -3386,6 +3401,141 @@ Per-family invariants:
 - **`powerAnnouncementSchedule`** — relative schedule (seconds-since-effective), first entry at `seconds = 0`, strictly increasing thereafter; per-entry `powerW` finite and non-negative.
 - **Temperature trajectories** — strictly increasing `timestampIso`; `temperatureC ∈ [−50, 150]`.
 
+### HeatingRodForecast
+
+A **single** relative schedule whose entries pack every per-slot decision at once: the forecasted target temperature, whether the rod is planned to heat, and the announced available power. One entry per slot keeps the temperature trajectory and the heating decisions aligned by construction.
+
+```typescript
+import {
+    ApplianceForecastResolutionEnum,
+    HeatingRodForecast,
+} from '@enyo-energy/energy-app-sdk';
+
+const forecast: HeatingRodForecast = {
+    resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+    relativeSchedule: [
+        { seconds: 0,    powerW: 2000, temperatureC: 48, heatingActive: true,  availablePowerActive: true  },
+        { seconds: 900,  powerW: 3000, temperatureC: 55, heatingActive: true,  availablePowerActive: true  },
+        { seconds: 1800, powerW: 0,    temperatureC: 60, heatingActive: false                              },
+    ],
+    estimatedSavings: { costSavings: 0.27, currency: 'EUR' },
+};
+
+await forecasts.publishHeatingRodForecast('heating-rod-1', forecast);
+```
+
+Per-entry invariants:
+
+- `seconds`: finite, non-negative; first entry `= 0`; consecutive entries spaced by exactly `resolution` (60s / 900s).
+- `powerW`: optional; finite and non-negative when present. It is the power the energy manager makes **available** — the rod may consume less.
+- `temperatureC`: optional; `∈ [−50, 150]`.
+- `heatingActive` / `availablePowerActive`: optional and independent of each other — both may be `true` for the same slot.
+
+### SmartPlugForecast
+
+A smart plug is a pure on/off load, so its forecast is a **single** relative schedule of planned switching slots. Every entry carries the planned relay `state` **plus the trigger that motivates it** — the same trigger vocabulary the user composes automations from ([`EnyoAutomationTriggerTypeEnum`](#-the-model)) — and the id of the automation the decision came from. A consumer can therefore render *"off until 13:00, then on for two hours because PV surplus is above 2000 W"* without re-deriving the reasoning.
+
+```typescript
+import {
+    ApplianceForecastResolutionEnum,
+    EnyoAutomationTriggerTypeEnum,
+    EnyoSmartPlugApplianceStateEnum,
+    SmartPlugForecast,
+} from '@enyo-energy/energy-app-sdk';
+
+const forecast: SmartPlugForecast = {
+    resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+    // Optional: which socket of a multi-channel plug this plan is for.
+    channelIndex: 0,
+    relativeSchedule: [
+        // Right now: off — surplus is still below the user's threshold.
+        { seconds: 0,    state: EnyoSmartPlugApplianceStateEnum.Off },
+        // In 15 minutes: on, because PV surplus is forecasted above the threshold.
+        {
+            seconds: 900,
+            state: EnyoSmartPlugApplianceStateEnum.On,
+            triggerType: EnyoAutomationTriggerTypeEnum.PvSurplusThreshold,
+            automationId: 'pool-pump-on-surplus',
+            powerW: 1200,
+        },
+        // In 30 minutes: still on — only to honour the 10-minute minimum runtime.
+        {
+            seconds: 1800,
+            state: EnyoSmartPlugApplianceStateEnum.On,
+            triggerType: EnyoAutomationTriggerTypeEnum.PvSurplusThreshold,
+            automationId: 'pool-pump-on-surplus',
+            powerW: 1200,
+            minDurationHold: true,
+        },
+    ],
+    estimatedSavings: { costSavings: 0.12, currency: 'EUR' },
+};
+
+await forecasts.publishSmartPlugForecast('smart-plug-1', forecast);
+```
+
+Per-entry invariants:
+
+- `seconds`: finite, non-negative; first entry `= 0`; consecutive entries spaced by exactly `resolution` (60s / 900s).
+- `state`: **required** on every entry — `On` or `Off`. Unlike the modulating appliances there is no "carry the previous value" fallback for the relay itself.
+- `triggerType`: optional; must be a member of `EnyoAutomationTriggerTypeEnum` (`pv-surplus-threshold`, `pv-surplus-below-threshold`, `below-price-limit`, `cheapest-share-of-day`, `schedule`). Explanatory metadata only — the authoritative command for the slot is `state`.
+- `automationId`: optional non-empty string — *which* configured rule produced the slot (`triggerType` says what *kind* of condition drives it).
+- `powerW`: optional; finite and non-negative — the expected draw of the connected load while `On`. Omit it rather than sending `0` for an `On` slot whose consumption is unknown.
+- `minDurationHold`: optional boolean — `true` marks a "tail" slot kept on only to honour the automation's `minDurationMinutes`.
+
+Forecast-level `channelIndex` is optional and must be a non-negative integer.
+
+### AirConditioningForecast
+
+A **single** relative schedule whose entries pack the planned operating mode, the optimization mode the plan was built for, the target and forecasted room temperatures, and the available-power announcement. Multi-split units are forecasted **one room at a time** — set `roomIndex` to the room index reported on the appliance metadata and publish one forecast per room.
+
+```typescript
+import {
+    AirConditioningForecast,
+    ApplianceForecastResolutionEnum,
+    EnyoAirConditioningApplianceModeEnum,
+    EnyoAirConditioningOptimizationModeEnum,
+} from '@enyo-energy/energy-app-sdk';
+
+const forecast: AirConditioningForecast = {
+    resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+    roomIndex: 0,
+    relativeSchedule: [
+        // Right now: pre-cool the living room on PV surplus.
+        {
+            seconds: 0,
+            powerW: 1500,
+            mode: EnyoAirConditioningApplianceModeEnum.Cooling,
+            optimizationMode: EnyoAirConditioningOptimizationModeEnum.PvSurplus,
+            targetTemperatureC: 22,
+            roomTemperatureC: 26,
+            availablePowerActive: true,
+        },
+        // In 15 minutes: target reached, coast.
+        {
+            seconds: 900,
+            powerW: 0,
+            mode: EnyoAirConditioningApplianceModeEnum.Idle,
+            roomTemperatureC: 22,
+        },
+    ],
+    estimatedSavings: { costSavings: 0.48, currency: 'EUR', co2SavingsGrams: 140 },
+};
+
+await forecasts.publishAirConditioningForecast('air-conditioning-1', forecast);
+```
+
+Per-entry invariants:
+
+- `seconds`: finite, non-negative; first entry `= 0`; consecutive entries spaced by exactly `resolution` (60s / 900s).
+- `powerW`: optional; finite and non-negative — the power the energy manager makes **available**; the unit may consume less.
+- `mode`: optional; `Idle` / `Cooling` / `Heating`.
+- `optimizationMode`: optional; `PvSurplus` / `Boost`. Independent of `mode`.
+- `targetTemperatureC` / `roomTemperatureC`: optional; `∈ [−50, 150]`.
+- `availablePowerActive`: optional boolean; independent of `mode`.
+
+Forecast-level `roomIndex` is optional and must be a non-negative integer.
+
 ### Validators
 
 The validators that `publish*` runs internally are exported as standalone pure functions so apps can validate forecasts while building them — for instance, to surface user-facing errors in a planning UI before holding the forecast in state.
@@ -3395,6 +3545,9 @@ import {
     validateChargerForecast,
     validateBatteryCommandForecast,
     validateHeatpumpForecast,
+    validateHeatingRodForecast,
+    validateSmartPlugForecast,
+    validateAirConditioningForecast,
     ApplianceCommandForecastValidationError,
 } from '@enyo-energy/energy-app-sdk';
 
@@ -3407,7 +3560,7 @@ try {
 }
 ```
 
-Granular helpers are exported alongside the top-level validators: `validateChargerSchedule`, `validateBatterySchedule`, `validateDhwBoostWindows`, `validateRoomPreHeatingWindows`, `validateBufferTankBoostWindows`, `validatePowerAnnouncementSchedule`, `validateTemperatureForecast`.
+Granular helpers are exported alongside the top-level validators: `validateChargerSchedule`, `validateBatterySchedule`, `validateDhwBoostWindows`, `validateRoomPreHeatingWindows`, `validateBufferTankBoostWindows`, `validatePowerAnnouncementSchedule`, `validateTemperatureForecast`, `validateHeatingRodSchedule`, `validateHeatingRodScheduleEntry`, `validateSmartPlugSchedule`, `validateSmartPlugScheduleEntry`, `validateAirConditioningSchedule`, `validateAirConditioningScheduleEntry`.
 
 ## Automations
 
@@ -3685,6 +3838,78 @@ context: {
 
 `start` is the bar's zero, and it matters everywhere except energy: without it, a cold tank at 20 °C heading for 48 °C draws a 42 % bar before anything has happened.
 
+### What a row states for the waterfall view
+
+The „Wasserfall" screen draws one row per participant with a time track and a detail box under it. Six optional fields carry the facts only the energy manager holds — each one replaces something a consumer would otherwise have to guess:
+
+| Field | On | What it makes exact |
+|---|---|---|
+| `plannedStartIso` | any row | „wartet · ab 11:05", and the card's „Als Nächstes" header — which is simply the earliest `plannedStartIso` among the rows that are not running. Absent = not planned again today. |
+| `waitingForRank` | any row | „wartet auf Speicher" — the `rank` of the row this one is queued behind, instead of parsing it out of the reason sentence. |
+| `offerEndsAtIso` | `Offered` rows | when a released offer lapses. |
+| `progress.targetReachedAtIso` | rows with a goal | „erreicht ca. 11:05" / „fertig ca. 12:40". The remaining distance can be subtracted from the triple; the *time* follows from the planned power over the coming slots, which is the planner's own arithmetic. |
+| `pvPowerW` / `gridPowerW` | drawing rows | „4,8 kW Sonne · 6,2 kW Netz". Unsolvable from the totals: one signed `powerW` per row plus a single site-level `GridImport` row cannot be split back out when two appliances draw while the site imports. |
+
+`plannedStartIso` is stated on the **participant**, not on the appliance's command forecast, precisely so the rows that have no forecast can use it — a `FeedIn` row that expects to export from 17:40 says so there.
+
+Two states join the enum, and both are stated rather than derived:
+
+| State | Means | Why it cannot be derived |
+|---|---|---|
+| `DrawingOutsidePlan` | Drawing power the plan did not allocate — a defrost cycle, a manual start, the appliance's own comfort logic. The manager re-plans around it and the rows below get less until it stops. | Comparing measured power against a command forecast is guesswork twice over: an appliance whose app publishes no forecast could never be shown as off-plan, and a forecast one cycle stale paints a perfectly planned run as a deviation. |
+| `Offered` | Power was released for it to use at its own discretion, and it is not using it yet — „freigegeben, sie entscheidet selbst, wann". A good state, not a warning. | It used to be `NotAsking` plus a sentence, with the *window* recovered from `HeatpumpForecast.availablePowerActive` — so only a heatpump could ever show one. Now a heating rod, a smart plug or a charger can. |
+
+`DrawingOutsidePlan` carries positive power like `Drawing`; `Offered` carries `powerW = 0` (an offer is not a draw) and may carry `offerEndsAtIso`. Both are mutually exclusive with `Drawing` on purpose: a row is either following the allocation or it is not, so a consumer needs no second rule to tell them apart.
+
+Each new state needs its **sentence** like every other: enrich `reason.translation` per language before publishing. Two reason types exist for them — `ApplianceInitiatedDraw` (set `reason.powerW` to the draw being planned around) and `PowerOffered` (set `reason.powerW` to the power on offer).
+
+```typescript
+const snapshot = new EnergyDistributionSnapshotBuilder()
+    .addAppliance({
+        rank: 0,
+        applianceId: 'heatpump-1',
+        applianceType: EnyoApplianceTypeEnum.Heatpump,
+        name: 'Wärmepumpe',
+        state: EnyoDistributionParticipantStateEnum.DrawingOutsidePlan,
+        powerW: 1800,
+        reason: enrich({
+            type: EnyoDataBusCommandReasonTypeEnum.ApplianceInitiatedDraw,
+            powerW: 1800,
+        }),
+        pvPowerW: 1800,
+        gridPowerW: 0,
+    })
+    .addAppliance({
+        rank: 1,
+        applianceId: 'heating-rod-1',
+        applianceType: EnyoApplianceTypeEnum.HeatingRod,
+        name: 'Heizstab',
+        state: EnyoDistributionParticipantStateEnum.Offered,
+        powerW: 0,                                   // an offer is not a draw
+        reason: enrich({type: EnyoDataBusCommandReasonTypeEnum.PowerOffered, powerW: 2000}),
+        offerEndsAtIso: '2026-09-20T14:00:00.000Z',
+    })
+    .addAppliance({
+        rank: 2,
+        applianceId: 'charger-1',
+        applianceType: EnyoApplianceTypeEnum.Charger,
+        name: 'Wallbox Garage',
+        state: EnyoDistributionParticipantStateEnum.NotAsking,
+        powerW: 0,
+        reason: enrich({type: EnyoDataBusCommandReasonTypeEnum.OtherApplianceTurn}),
+        plannedStartIso: '2026-09-20T11:05:00.000Z',  // "wartet · ab 11:05"
+        waitingForRank: 1,                            // "wartet auf Heizstab"
+    })
+    .addFeedIn({
+        powerW: 0,
+        name: 'Einspeisung',
+        plannedStartIso: '2026-09-20T17:40:00.000Z',  // "kurz ab 17:40"
+    })
+    .build({slotStartMs: slotStart});
+```
+
+The validator holds these to the same standard as the rest: `plannedStartIso` may not predate the slot it is stated in (a stale plan rendered as an imminent one), `waitingForRank` must name another row of the same snapshot and never itself, `offerEndsAtIso` only appears on an `Offered` row, and a stated PV / grid split must add up to the row's own `powerW` — state one half alone if the other is unknown, because an unknown share is not zero.
+
 ### Publishing a snapshot
 
 ```typescript
@@ -3747,13 +3972,13 @@ Each event carries the **complete** picture of the slot — render it as it arri
 
 | Helper | What it does |
 |---|---|
-| `makeProgress({unit, start?, current, target})` | Builds an `EnyoDistributionProgress` with `percent` computed — `(current − start) / (target − start)`, clamped to 0–100. The single definition of how full a bar is, so no two consumers disagree by a rounding rule. |
+| `makeProgress({unit, start?, current, target, targetReachedAtIso?})` | Builds an `EnyoDistributionProgress` with `percent` computed — `(current − start) / (target − start)`, clamped to 0–100. The single definition of how full a bar is, so no two consumers disagree by a rounding rule. |
 | `progressPercent(input)` | The same arithmetic on its own, for a caller that already holds a stated triple. |
 | `progressFromAnnouncement(stated)` | Turns a manager's announced goal into a participant's progress, adding nothing but the percentage. |
 | `EnergyDistributionSnapshotBuilder` | Assembles the snapshot: orders rows by stated rank, stamps the timestamps, and keeps the measured rows structurally free of a bar. |
-| `validateEnergyDistributionSnapshot(snapshot)` | Throws `EnergyDistributionValidationError` on the first violated invariant — duplicate ranks, a bar on a household row, a `Complete` without a stated `SessionComplete`, a percentage that does not follow from its own numbers, a "skipped" row still drawing power. |
+| `validateEnergyDistributionSnapshot(snapshot)` | Throws `EnergyDistributionValidationError` on the first violated invariant — duplicate ranks, a bar on a household row, a `Complete` without a stated `SessionComplete`, a percentage that does not follow from its own numbers, a "skipped" row still drawing power, a next start in the past, a dependency on a rank nobody holds, a PV / grid split that does not add up. |
 
-New reason types came with this surface, so a skipped row can say *why* instead of falling back to a generic "scheduled optimization": `SessionComplete`, `AppliancePaused`, `NothingConnected`, `DeadlinePassed`, `WaitingForCheaperSlot`, `AboveOwnPriceLimit`, `BelowMinPower`, `OtherApplianceTurn`, `SupplyExhausted`, `OutsideSchedule` — grouped by the new `SessionState` and `Contention` reason categories.
+New reason types came with this surface, so a skipped row can say *why* instead of falling back to a generic "scheduled optimization": `SessionComplete`, `AppliancePaused`, `NothingConnected`, `DeadlinePassed`, `WaitingForCheaperSlot`, `AboveOwnPriceLimit`, `BelowMinPower`, `OtherApplianceTurn`, `SupplyExhausted`, `OutsideSchedule` — grouped by the new `SessionState` and `Contention` reason categories. `ApplianceInitiatedDraw` and `PowerOffered` came with the waterfall states above.
 
 ## Dynamic Grid Fees & Tariff Bonuses
 
