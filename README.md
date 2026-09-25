@@ -4453,6 +4453,100 @@ Notes:
   grant can be read against the announcement it answers. It is advisory — the
   command's `powerW` remains the only limit.
 
+#### Announcing Power Flexibility
+
+`ApplianceFlexibilityAnnouncementV2` is the **power-based** sibling of the
+announcement above. Where V1 says "4 kWh by 14:00", V2 says "I can draw
+800–2300 W, you may start me any time between 10:00 and 14:00, and I will then
+run for up to 90 minutes".
+
+Which one to send is decided by the demand, not by preference:
+
+| | Send V1 | Send V2 |
+| --- | --- | --- |
+| The appliance owes a known amount of energy by a deadline | ✅ | |
+| The appliance can absorb power, and the energy falls out of how long it runs | | ✅ |
+| Example | A charging session that needs 22 kWh by 07:00 | A heat pump that will take surplus into its tank |
+
+V2 deliberately has **no `kWh` field**. An energy figure would be read as
+authoritative the moment it existed, and the message would collapse back into V1
+with extra fields. An appliance that knows its energy sends V1.
+
+**The window is a trigger window, not a run window.**
+`availableFromIsoTimestamp` and `availableUntilIsoTimestamp` bound when the run
+may be *started*. `durationMinutes` says how long it then runs — a run started
+one minute before the window closes may still be drawing power long afterwards.
+
+```typescript
+import {
+    EnergyApp,
+    EnyoFlexibilityTargetEnum,
+} from '@enyo-energy/energy-app-sdk';
+
+const energyApp = new EnergyApp();
+const dataBus = energyApp.useDataBus();
+
+dataBus.sendMessage([{
+    type: 'message',
+    message: 'ApplianceFlexibilityAnnouncementV2',
+    applianceId: 'heatpump-1',
+    data: {
+        flexibility: {
+            // Modulating compressor: 800 W to 2300 W in 100 W steps.
+            power: {minWatt: 800, maxWatt: 2300, stepWatt: 100},
+            // May be started any time this morning ...
+            availableFromIsoTimestamp: '2025-10-01T10:00:00Z',
+            availableUntilIsoTimestamp: '2025-10-01T14:00:00Z',
+            // ... and then runs for up to 90 minutes, 20 at the very least.
+            durationMinutes: 90,
+            minDurationMinutes: 20,
+            // What the power would go into. Required here, unlike in V1.
+            targets: [
+                {target: EnyoFlexibilityTargetEnum.DomesticHotWater, powerW: 1500},
+                {target: EnyoFlexibilityTargetEnum.BufferTank, powerW: 800},
+            ],
+        },
+    },
+}]);
+```
+
+Integrations built on the SDK's integration base classes can publish the same
+message without assembling the envelope by hand:
+
+```typescript
+class MyHeatpump extends HeatpumpIntegrationEnergyApp {
+    private announce(): void {
+        this.publishFlexibilityAnnouncement('heatpump-1', {
+            power: {minWatt: 800, maxWatt: 2300, stepWatt: 100},
+            availableUntilIsoTimestamp: '2025-10-01T14:00:00Z',
+            durationMinutes: 90,
+            targets: [
+                {target: EnyoFlexibilityTargetEnum.DomesticHotWater, powerW: 1500},
+            ],
+        });
+    }
+}
+```
+
+Notes:
+
+- `power` is a band (`minWatt` / `maxWatt` / `stepWatt`), not a single figure,
+  because a modulating appliance is *placed*, not switched. A fixed-power
+  appliance states the same value for both bounds and a `stepWatt` equal to the
+  band's width.
+- `targets` is **required** here. V1 has no need of it — `kWh` is authoritative
+  there and the breakdown is decoration. V2 has no energy figure, so the targets
+  are the substance of the announcement.
+- `durationMinutes` omitted means the appliance sets no limit of its own and is
+  expected to stop itself when it is satisfied. `minDurationMinutes` is the
+  shortest run still worth starting — below it, a consumer filling a short gap
+  should leave the appliance alone rather than cycle it.
+- `context.progress` is worth setting precisely because there is no energy
+  figure: without it a consumer cannot tell a run that has nearly finished from
+  one that has barely started.
+- V1 is unchanged and remains fully supported. V2 is an additive sibling, not a
+  migration.
+
 #### Explaining Why a Command Was Issued
 
 Every data bus command can carry an `EnyoDataBusCommandReason`. Its `type`

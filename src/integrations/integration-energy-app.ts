@@ -1,6 +1,7 @@
 import {EnergyApp} from "../energy-app.js";
 import {
     EnyoCommandAcknowledgeAnswerEnum,
+    EnyoDataBusApplianceFlexibilityAnnouncementV2,
     EnyoDataBusCommandAcknowledgeV1,
     EnyoDataBusGridOperatorPowerLimitationExecutedV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
@@ -249,6 +250,55 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
             applianceId,
             timestampIso: new Date().toISOString(),
             data
+        };
+        this.useDataBus().sendMessage([msg]);
+    }
+
+    /**
+     * Publishes an `ApplianceFlexibilityAnnouncementV2` — the power-based
+     * flexibility announcement: a draw the appliance offers inside a trigger
+     * window, with no fixed energy attached.
+     *
+     * Use this when the appliance can absorb power but owes no particular
+     * amount of energy — a heat pump that will take surplus into its tank, an
+     * air conditioner that can pre-cool. When the appliance instead owes a
+     * known `kWh` by a deadline, send an `ApplianceFlexibilityAnnouncementV1`
+     * rather than this; see
+     * {@link EnyoDataBusApplianceFlexibilityAnnouncementV2} for the full
+     * distinction.
+     *
+     * Publish again whenever the offer changes — the announcement describes the
+     * appliance right now, and a consumer keeps the last one it saw.
+     *
+     * @param applianceId - The appliance making the offer.
+     * @param flexibility - The power band, the window it may be triggered in,
+     *   optionally how long it may then run, and what the power is for. See
+     *   {@link EnyoDataBusApplianceFlexibilityAnnouncementV2.data.flexibility}.
+     *
+     * @example
+     * ```typescript
+     * this.publishFlexibilityAnnouncement('heatpump-1', {
+     *     power: {minWatt: 800, maxWatt: 2300, stepWatt: 100},
+     *     availableUntilIsoTimestamp: '2025-10-01T14:00:00Z',
+     *     durationMinutes: 90,
+     *     targets: [
+     *         {target: EnyoFlexibilityTargetEnum.DomesticHotWater, powerW: 1500},
+     *     ],
+     * });
+     * ```
+     */
+    public publishFlexibilityAnnouncement(
+        applianceId: string,
+        flexibility: EnyoDataBusApplianceFlexibilityAnnouncementV2['data']['flexibility']
+    ): void {
+        const msg: EnyoDataBusApplianceFlexibilityAnnouncementV2 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.ApplianceFlexibilityAnnouncementV2,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            data: {flexibility}
         };
         this.useDataBus().sendMessage([msg]);
     }

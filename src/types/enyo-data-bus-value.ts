@@ -30,7 +30,13 @@ import type {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
-import type {EnyoFlexibilityTargetEnum, EnyoFlexibilityTargetPower} from "./enyo-flexibility-announcement.js";
+import type {
+    EnyoFlexibilityHeatpumpTargetTypeEnum,
+    EnyoFlexibilityPowerBand,
+    EnyoFlexibilityProgress,
+    EnyoFlexibilityTargetEnum,
+    EnyoFlexibilityTargetPower
+} from "./enyo-flexibility-announcement.js";
 import {EnyoSmartPlugApplianceStateEnum} from "./enyo-smart-plug-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
@@ -738,6 +744,8 @@ export enum EnyoDataBusMessageEnum {
     MeterValuesUpdateV1 = 'MeterValuesUpdateV1',
     BatteryValuesUpdateV1 = 'BatteryValuesUpdateV1',
     ApplianceFlexibilityAnnouncementV1 = 'ApplianceFlexibilityAnnouncementV1',
+    /** Power-based flexibility: a draw the appliance offers inside a trigger window, with no fixed energy. */
+    ApplianceFlexibilityAnnouncementV2 = 'ApplianceFlexibilityAnnouncementV2',
     ApplianceStateUpdateV1 = 'ApplianceStateUpdateV1',
     HeatpumpValuesUpdateV1 = 'HeatpumpValuesUpdateV1',
     HeatingRodValuesUpdateV1 = 'HeatingRodValuesUpdateV1',
@@ -1123,6 +1131,150 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataB
                  * full draw — and a given target SHOULD appear at most once.
                  */
                 targets: EnyoFlexibilityTargetPower[];
+            };
+        }
+    }
+}
+
+/**
+ * An appliance announces a *power* it can absorb inside a window, with no fixed
+ * energy attached.
+ *
+ * The power-based counterpart to
+ * {@link EnyoDataBusApplianceFlexibilityAnnouncementV1}. V1 answers "how much
+ * energy do I owe, and by when" — the right shape for a charging session with a
+ * target. This one answers "how much can I draw, when may you start me, and how
+ * long may I run" — the right shape for a heat pump that can take surplus into a
+ * tank without ever owing a particular number of kWh.
+ *
+ * Which to send is decided by the demand, not by preference:
+ *
+ * - **Energy is fixed, timing is not** → V1. The appliance owes `kWh` by a
+ *   deadline and the decision maker schedules it.
+ * - **Power is offered, energy falls out of it** → V2. There is no amount the
+ *   appliance is owed; running it longer simply uses more.
+ *
+ * Deliberately no `kWh` field: an energy figure here would be read as
+ * authoritative the moment it exists, and the announcement would collapse back
+ * into V1 with extra fields. An appliance that knows its energy should send V1.
+ *
+ * **The window is a trigger window, not a run window.**
+ * {@link data.flexibility.availableFromIsoTimestamp} and
+ * {@link data.flexibility.availableUntilIsoTimestamp} bound when the run may be
+ * *started*; {@link data.flexibility.durationMinutes} says how long it then
+ * runs, and a run started at the end of the window may finish well past it.
+ *
+ * @example
+ * ```typescript
+ * dataBus.sendMessage([{
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.ApplianceFlexibilityAnnouncementV2,
+ *     applianceId: 'heatpump-1',
+ *     data: {
+ *         flexibility: {
+ *             // Modulating compressor: 800 W to 2300 W in 100 W steps.
+ *             power: {minWatt: 800, maxWatt: 2300, stepWatt: 100},
+ *             // May be started any time this morning ...
+ *             availableFromIsoTimestamp: '2025-10-01T10:00:00Z',
+ *             availableUntilIsoTimestamp: '2025-10-01T14:00:00Z',
+ *             // ... and then runs for up to 90 minutes, 20 at the very least.
+ *             durationMinutes: 90,
+ *             minDurationMinutes: 20,
+ *             // What the power would go into.
+ *             targets: [
+ *                 {target: EnyoFlexibilityTargetEnum.DomesticHotWater, powerW: 1500},
+ *                 {target: EnyoFlexibilityTargetEnum.BufferTank, powerW: 800},
+ *             ],
+ *         },
+ *     },
+ * }]);
+ * ```
+ */
+export interface EnyoDataBusApplianceFlexibilityAnnouncementV2 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ApplianceFlexibilityAnnouncementV2;
+    /** ID of the appliance */
+    applianceId: string;
+    data: {
+        flexibility: {
+            /**
+             * Power envelope the appliance offers, in Watts — `minWatt`,
+             * `maxWatt` and the `stepWatt` granularity between them.
+             *
+             * A band rather than a single figure because a modulating appliance
+             * is placed, not switched: a decision maker with surplus to spend
+             * needs to know it may run the compressor at 1200 W rather than
+             * choosing between 2300 W and nothing. A fixed-power appliance
+             * states the same value for both bounds and a `stepWatt` equal to
+             * the band's width.
+             */
+            power: EnyoFlexibilityPowerBand;
+            /**
+             * Earliest the run may be triggered, ISO 8601. Omitted means it may
+             * be triggered immediately.
+             */
+            availableFromIsoTimestamp?: string;
+            /**
+             * Latest the run may be triggered, ISO 8601.
+             *
+             * A trigger deadline, not a completion deadline — a run started one
+             * minute before this may still be drawing power long afterwards.
+             * See {@link durationMinutes} for how long.
+             */
+            availableUntilIsoTimestamp: string;
+            /**
+             * How long the run may last once triggered, in minutes.
+             *
+             * Omitted means the appliance sets no limit of its own and the
+             * decision maker may run it for as long as the window and its own
+             * budget allow — the appliance is expected to stop itself when the
+             * tank, the room or the battery is satisfied.
+             */
+            durationMinutes?: number;
+            /**
+             * Shortest contiguous run still worth starting, in minutes.
+             *
+             * Below this the run costs more than it returns — a compressor that
+             * spends its first ten minutes getting up to temperature gains
+             * nothing from a five-minute slot, and a decision maker filling a
+             * short gap should leave it alone rather than cycle it.
+             */
+            minDurationMinutes?: number;
+            /**
+             * What the offered power would go into, and how much of it each
+             * target would draw — e.g. a heat pump splitting between the
+             * domestic hot water tank and the heating buffer tank.
+             *
+             * Required here, unlike on
+             * {@link EnyoDataBusApplianceFlexibilityAnnouncementV1} where it is
+             * optional context beside an authoritative `kWh`: this message has
+             * no energy figure, so the targets are the substance of the
+             * announcement rather than a decoration on it. A given target
+             * SHOULD appear at most once, and the entries' `powerW` SHOULD sit
+             * inside {@link power}.
+             */
+            targets: EnyoFlexibilityTargetPower[];
+            /**
+             * Optional extra context for the consumer of this announcement.
+             * Nested so further context keys can be added without changing the
+             * message shape again.
+             */
+            context?: {
+                /**
+                 * For heat pumps: what the flexibility is aimed at. Narrower
+                 * than {@link targets}, and shared with the category-level
+                 * announcement so both surfaces speak one vocabulary.
+                 */
+                heatpumpTargetType?: EnyoFlexibilityHeatpumpTargetTypeEnum;
+                /**
+                 * What the run is driving toward and where it stands now — a
+                 * tank at 38 °C heading for 50 °C.
+                 *
+                 * Worth setting precisely because this message carries no
+                 * energy figure: without it a consumer cannot tell a run that
+                 * has nearly finished from one that has barely started.
+                 */
+                progress?: EnyoFlexibilityProgress;
             };
         }
     }
@@ -3359,7 +3511,7 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
  * energyApp.useDataBus().sendMessage([{
  *     type: 'message',
  *     message: 'RequestVehicleSocEstimateV1',
- *     data: {requestId, vehicleId, maxAgeMs: 15 * 60 * 1000},
+ *     data: {requestId, vehicleId, maxAgeMs: 15 * 60 * 1000, targetSocPercent: 80},
  * }]);
  * ```
  */
@@ -3390,6 +3542,20 @@ export interface EnyoDataBusRequestVehicleSocEstimateV1 extends EnyoDataBusMessa
          * values — find the right one without guessing.
          */
         applianceId?: string;
+        /**
+         * State of charge the caller is planning towards, in percent (0-100) —
+         * the session's target as in
+         * {@link EnyoDataBusStartChargeV1.data.targetSocPercent}, not
+         * a limit on the answer.
+         *
+         * Told to the responder because what the estimate is *for* changes how
+         * much trouble is worth taking to get it: a stored reading already at
+         * or above the target answers the question without waking the car,
+         * while one far below it justifies a fresh fetch. Omitted means the
+         * responder decides on its own; the reading returned is the same
+         * either way.
+         */
+        targetSocPercent?: number;
     };
 }
 
