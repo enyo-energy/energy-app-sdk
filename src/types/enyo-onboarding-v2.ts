@@ -719,6 +719,31 @@ export interface EnyoOnboardingV2EebusDeviceSelectBlock extends EnyoOnboardingV2
      * is a validation error.
      */
     deviceTypes?: EnyoEebusDeviceTypeEnum[];
+    /**
+     * Offer only peers announcing one of these vendors; everything else is left
+     * out of the list and does not count towards
+     * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch}.
+     *
+     * The companion of {@link deviceTypes} for the case that filter cannot
+     * separate: a house with two EEBUS heat pumps, or a guide that is written
+     * for one manufacturer's device and would otherwise offer a competitor's as
+     * a candidate for its own pairing flow. Both filters are **conjunctive** —
+     * a peer must satisfy every filter present to be offered.
+     *
+     * Matched against the vendor the peer announced
+     * ({@link EebusDiscoveredDevice.brand}, the SHIP `brand` TXT key),
+     * **case-insensitively and ignoring surrounding whitespace**, since the
+     * spelling is whatever the firmware ships. It is otherwise an exact match,
+     * not a substring one: `KEBA` does not match `KEBA AG`, so list the
+     * spellings a vendor is known to announce rather than hoping for one.
+     *
+     * A peer that announces no vendor is treated the same way an unknown device
+     * type is: it survives an omitted filter and is excluded by any filter
+     * present, so a guide can never pair something it did not ask for. Omit the
+     * property to offer peers of every vendor; an **empty array** filters
+     * everything out and is a validation error.
+     */
+    vendors?: string[];
 }
 
 /**

@@ -1119,7 +1119,7 @@ no dynamic blocks registers nothing.
 | `action` (device test) | `onboardingV2Block.deviceTest` | hand detected devices to the energy app and branch on whether appliances were found or created |
 | `action` (OCPP) | `onboardingV2Block.ocppConnect` | wait for an OCPP charger to dial into enyo's CSMS; branches `connected` \| `timeout` |
 | `device-select` | `onboardingV2Block.deviceSelect` | its own screen: pick the network device being onboarded; skips itself when one device matches; branches `selected` \| `not-found` |
-| `eebus-device-select` | `onboardingV2Block.eebusDeviceSelect` | its own screen: pick a discovered EEBUS peer and trust its SKI, filtered by device type; skips itself when one peer matches; branches `paired` \| `not-found` \| `failure` |
+| `eebus-device-select` | `onboardingV2Block.eebusDeviceSelect` | its own screen: pick a discovered EEBUS peer and trust its SKI, filtered by device type and/or vendor; skips itself when one peer matches; branches `paired` \| `not-found` \| `failure` |
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
@@ -1514,6 +1514,7 @@ onboardingV2Block.eebusDeviceSelect('pair', {
     'Enable pairing on the device and confirm the request there.',
   ),
   deviceTypes: [EnyoEebusDeviceTypeEnum.HeatPumpAppliance],
+  vendors: ['Vaillant'],
   outcomes: [
     {id: 'ok',    value: EnyoOnboardingV2EebusPairOutcome.Paired,   label: t('Gerät gekoppelt', 'Device paired')},
     {id: 'none',  value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Kein EEBUS-Gerät gefunden', 'No EEBUS device found')},
@@ -1532,6 +1533,20 @@ nothing, or a type this SDK does not know, is treated as *some other type* — i
 survives an omitted filter and is excluded by any filter present, so a guide can
 never pair something it did not ask for. An empty `deviceTypes: []` is a
 validation **error**.
+
+**Filter by vendor.** `vendors` matches the SHIP `brand` a peer announces,
+case-insensitively and ignoring surrounding whitespace, but otherwise exactly —
+`KEBA` does not match `KEBA AG`, so list the spellings a vendor is known to
+announce. Use it where the device type cannot separate the candidates (a house
+with two EEBUS heat pumps) or where a guide written for one manufacturer would
+otherwise offer a competitor's device to its own pairing flow. It combines with
+`deviceTypes` **conjunctively** — a peer must satisfy every filter present — and
+a peer announcing no vendor is excluded by any `vendors` filter, the same way an
+unknown device type is. An empty `vendors: []` is a validation **error**.
+
+The vendor a peer announced is passed on to the handler as `request.peer.brand`,
+so an app serving several manufacturers does not have to re-read discovery to
+decide what kind of appliance to build.
 
 Three outcomes, not two, because the two failure modes need different guidance:
 `not-found` means discovery turned up nothing (device off, other subnet, EEBUS not

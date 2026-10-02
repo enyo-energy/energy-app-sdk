@@ -88,7 +88,13 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
     /** If the Charger supprots a pv surplus mode */
     PvSurplusMode = 'PvSurplusMode',
     /** If the charger supports switching between three-phase and one-phase charging */
-    ThreeToOnePhaseSwitch = 'ThreeToOnePhaseSwitch'
+    ThreeToOnePhaseSwitch = 'ThreeToOnePhaseSwitch',
+    /**
+     * If the charger requires the vehicle to be disconnected before a new charge can be started.
+     * Once the charger is in {@link EnyoChargerApplianceStatusEnum.Finishing}, no new charge can be
+     * started remotely; the customer has to unplug the vehicle and plug it in again.
+     */
+    DisconnectToRestartCharge = 'DisconnectToRestartCharge'
 }
 
 /**

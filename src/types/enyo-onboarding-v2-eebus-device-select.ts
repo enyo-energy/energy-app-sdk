@@ -50,6 +50,17 @@ export interface EnyoOnboardingV2EebusPeer {
     /** Brand or model the peer advertised, if any. */
     deviceModel?: string;
     /**
+     * The vendor the peer announced during discovery (the SHIP `brand` TXT
+     * key), verbatim and untranslated, if any.
+     *
+     * The same claim {@link EnyoOnboardingV2EebusDeviceSelectBlock.vendors}
+     * filters the picker by, passed on so a handler that serves several
+     * manufacturers can pick the right appliance shape without re-reading
+     * discovery. Case and spelling are the firmware's — compare
+     * case-insensitively. Absent means the peer announced no vendor.
+     */
+    brand?: string;
+    /**
      * The device type the peer announced, when it announced one this SDK knows.
      *
      * The same claim {@link EnyoOnboardingV2EebusDeviceSelectBlock.deviceTypes}
@@ -121,7 +132,8 @@ export interface EnyoOnboardingV2EebusDeviceSelectRequest {
     /**
      * `true` when the host paired on the installer's behalf because exactly one
      * peer matched the block's
-     * {@link EnyoOnboardingV2EebusDeviceSelectBlock.deviceTypes} filter and
+     * {@link EnyoOnboardingV2EebusDeviceSelectBlock.deviceTypes} and
+     * {@link EnyoOnboardingV2EebusDeviceSelectBlock.vendors} filters and
      * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch} was left on —
      * the screen was never rendered.
      *

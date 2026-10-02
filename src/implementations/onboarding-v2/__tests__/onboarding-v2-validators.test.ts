@@ -865,6 +865,32 @@ describe('eebus-device-select blocks', () => {
         expect(result.errors.some((e) => e.includes('more than once'))).toBe(true);
     });
 
+    it('rejects an empty vendors filter, which could only ever reach not-found', () => {
+        const guide = eebusGuide(
+            EnyoOnboardingV2EebusPairOutcome.Paired,
+            EnyoOnboardingV2EebusPairOutcome.NotFound,
+            EnyoOnboardingV2EebusPairOutcome.Failure,
+        );
+        (guide.steps[0]!.blocks[0] as {vendors?: string[]}).vendors = [];
+
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('empty `vendors` filter'))).toBe(true);
+    });
+
+    it('accepts a vendors filter that names a brand', () => {
+        const guide = eebusGuide(
+            EnyoOnboardingV2EebusPairOutcome.Paired,
+            EnyoOnboardingV2EebusPairOutcome.NotFound,
+            EnyoOnboardingV2EebusPairOutcome.Failure,
+        );
+        (guide.steps[0]!.blocks[0] as {vendors?: string[]}).vendors = ['Vaillant'];
+
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(errors).toEqual([]);
+        expect(ok).toBe(true);
+    });
+
     it('warns when the positive branch is missing', () => {
         const result = validateOnboardingGuideV2(
             eebusGuide(

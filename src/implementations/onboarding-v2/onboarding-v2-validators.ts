@@ -831,9 +831,9 @@ function isPickerBlock(
  *   it would either be skipped along with it or offer a way past the pick. Both
  *   are errors rather than warnings, because there is no reading of the step
  *   that behaves sensibly.
- * - **An empty filter is not a filter.** `detectedAt: []` / `deviceTypes: []`
- *   match nothing, so the picker can only ever reach its `not-found` branch.
- *   Omitting the property is how "no filter" is expressed.
+ * - **An empty filter is not a filter.** `detectedAt: []` / `deviceTypes: []` /
+ *   `vendors: []` match nothing, so the picker can only ever reach its
+ *   `not-found` branch. Omitting the property is how "no filter" is expressed.
  * - **A picker that renders should say something.** With neither a headline of
  *   its own nor a step title, the installer gets a bare list — a warning, since
  *   the host has a default caption.
@@ -887,6 +887,12 @@ function validatePickerBlocks(
                 errors.push(
                     `${at}: ${label(block)} has an empty \`deviceTypes\` filter, which matches no peer — ` +
                         'omit the property to offer every discovered peer.',
+                );
+            }
+            if (block.vendors && block.vendors.length === 0) {
+                errors.push(
+                    `${at}: ${label(block)} has an empty \`vendors\` filter, which matches no peer — ` +
+                        'omit the property to offer peers of every vendor.',
                 );
             }
         }

@@ -193,6 +193,15 @@ export interface EnyoTariffPriceEntry {
     timestampIso: string;
     /** Price per kWh for this interval, in the tariff's currency. */
     pricePerKwh: number;
+    /**
+     * Optional gross grid fee per kWh contained in {@link pricePerKwh}, in the
+     * tariff's currency (not cent).
+     *
+     * Informational only: it breaks down the price, it is **never added** to it.
+     * {@link pricePerKwh} is always the total price. Only meaningful when the
+     * series declares {@link EnyoPriceComponentEnum.GridFee} in its `includes`.
+     */
+    gridFeeGrossPerKwh?: number;
 }
 
 /**

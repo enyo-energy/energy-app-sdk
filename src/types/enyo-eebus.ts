@@ -84,6 +84,19 @@ export interface EebusDiscoveredDevice {
     ski: string;
     /** Human-readable device name advertised during discovery */
     deviceName?: string;
+    /**
+     * The vendor the peer announced in its SHIP record (the `brand` TXT key),
+     * verbatim and untranslated — e.g. `Vaillant`, `KEBA`, `Viessmann`.
+     *
+     * The peer's own claim, made before anything is paired, which is what makes
+     * it usable as a discovery filter next to {@link deviceType}: see
+     * {@link EnyoOnboardingV2EebusDeviceSelectBlock.vendors}. Spelling and case
+     * are whatever the firmware ships, so compare case-insensitively rather
+     * than with `===`.
+     *
+     * Absent when the peer advertises no `brand`.
+     */
+    brand?: string;
     /** IP address or hostname of the device */
     host: string;
     /** Port number for the SHIP connection */

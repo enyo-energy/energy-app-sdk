@@ -389,7 +389,11 @@ export const onboardingV2Block = {
      * Filter it. `deviceTypes` is what turns this from "here are the six EEBUS
      * devices in the house" into "here is your heat pump", and with one match it
      * skips the screen entirely instead of asking a question with one possible
-     * answer.
+     * answer. `vendors` narrows it further, by the `brand` a peer announces —
+     * use it where the device type cannot separate the candidates (two EEBUS
+     * heat pumps in one house), or where the guide is written for one
+     * manufacturer and must not offer a competitor's device. The two filters are
+     * conjunctive: a peer must satisfy both to be offered.
      *
      * The picker is drawn from what mDNS discovery found, so the guide must have
      * scanned — keep {@link EnyoOnboardingV2Guide.requiresNetworkScan} at its
@@ -410,8 +414,9 @@ export const onboardingV2Block = {
      * paired peer into appliances.
      *
      * @param id - Stable block id, unique within the guide.
-     * @param options - Screen wording, optional `deviceTypes` filter, skip
-     *   behaviour, and the `paired` / `not-found` / `failure` routing handles.
+     * @param options - Screen wording, optional `deviceTypes` and `vendors`
+     *   filters, skip behaviour, and the `paired` / `not-found` / `failure`
+     *   routing handles.
      * @returns The EEBUS device-select block.
      *
      * @example
@@ -419,6 +424,7 @@ export const onboardingV2Block = {
      * onboardingV2Block.eebusDeviceSelect('pair', {
      *     headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
      *     deviceTypes: [EnyoEebusDeviceTypeEnum.HeatPumpAppliance],
+     *     vendors: ['Vaillant'],
      *     outcomes: [
      *         {id: 'ok',    value: EnyoOnboardingV2EebusPairOutcome.Paired,   label: t('Gekoppelt', 'Paired')},
      *         {id: 'none',  value: EnyoOnboardingV2EebusPairOutcome.NotFound, label: t('Nichts gefunden', 'Nothing found')},

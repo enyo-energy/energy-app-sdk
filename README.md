@@ -184,7 +184,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | List known WiFi SSIDs in range | [`useWifi()`](#usewifi-energyappwifi) |
 | Query historical timeseries (PV, battery, meter, …) | [`useTimeseries()`](#usetimeseries-energyapptimeseries) |
 | Read site location (zip or coordinates) | [`useLocation()`](#uselocation-energyapplocation) |
-| Read grid connection point (fuse, phases, max power) | [`useGridConnectionPoint()`](#usegridconnectionpoint-energyappgridconnectionpoint) |
+| Read grid connection point (fuse, phases, max power, charger limit) | [`useGridConnectionPoint()`](#usegridconnectionpoint-energyappgridconnectionpoint) |
 | Retrieve secrets from the developer org secret store | [`useSecretManager()`](#usesecretmanager-energyappsecretmanager) |
 | Submit energy-manager diagnostics | [`useDiagnostics()`](#usediagnostics-energyappdiagnostics) |
 | Register a weather / PV / dynamic-price forecast provider | [`useWeatherForecasting()`](#useweatherforecasting-energyappweatherforecasting) / [`usePvForecasting()`](#usepvforecasting-energyapppvforecasting) / [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast) |
@@ -1592,13 +1592,18 @@ if (full) console.log(`lat=${full.latitude} lon=${full.longitude}`);
 
 #### `useGridConnectionPoint(): EnergyAppGridConnectionPoint`
 
-Read the site's grid connection details — main fuse rating, number of phases, and the maximum allowed grid power. Use this to size dispatch envelopes and avoid violating the contractual cap.
+Read the site's grid connection details — main fuse rating, number of phases, the maximum allowed grid power, and the total power that load balancing may allocate to EV chargers. Use this to size dispatch envelopes and avoid violating the contractual cap.
+
+`chargerLimitW` is optional: when it is not configured, load balancing falls back to `DEFAULT_CHARGER_LIMIT_W` (11 kW).
 
 ```typescript
+import {DEFAULT_CHARGER_LIMIT_W} from "@enyo-energy/energy-app-sdk";
+
 const gcp = energyApp.useGridConnectionPoint();
 const point = await gcp.getGridConnectionPoint();
 if (point) {
     console.log(`Fuse ${point.fuseAmpere}A across ${point.numberOfPhases} phases`);
+    console.log(`Charger limit ${point.chargerLimitW ?? DEFAULT_CHARGER_LIMIT_W} W`);
 }
 ```
 
@@ -1723,6 +1728,14 @@ await tariffs.publishPrices(EnyoTariffDirectionEnum.Consumption, {
     includes: [EnyoPriceComponentEnum.GridFee],   // ← we folded the fee in ourselves
     entries,
 });
+```
+
+An entry may carry an optional `gridFeeGrossPerKwh`: the gross grid fee **contained in**
+`pricePerKwh`, in currency units per kWh. It is a breakdown only — `pricePerKwh` is always the
+total, so never compute `pricePerKwh + gridFeeGrossPerKwh`.
+
+```typescript
+entries.push({ timestampIso: '2026-05-23T10:00:00Z', pricePerKwh: 0.31, gridFeeGrossPerKwh: 0.09 });
 ```
 
 **Calling `setTariff` is the activation signal.** Return `AuthenticationRequired` or

@@ -53,4 +53,26 @@ export interface EnyoGridConnectionPoint {
      * `powerLimitW` applies.
      */
     desiredKwLimit?: number;
+    /**
+     * Maximum active power, in watts (W), that the load balancing may allocate
+     * to EV chargers in total at this grid connection point.
+     *
+     * This caps the charging power distributed across all connected wallboxes,
+     * independently of what the grid connection as a whole could deliver: it
+     * lets an installer keep headroom for the rest of the household, or honour
+     * a charger-specific limit agreed with the grid operator (e.g. §14a EnWG
+     * style restrictions).
+     *
+     * Optional. When `undefined`, load balancing assumes the default of
+     * {@link DEFAULT_CHARGER_LIMIT_W} (11 kW).
+     */
+    chargerLimitW?: number;
 }
+
+/**
+ * Default total charger power limit, in watts (W), applied by load balancing
+ * when {@link EnyoGridConnectionPoint.chargerLimitW} is not configured.
+ *
+ * 11 kW corresponds to the common three-phase 16 A wallbox rating.
+ */
+export const DEFAULT_CHARGER_LIMIT_W = 11000;
