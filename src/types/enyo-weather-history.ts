@@ -182,13 +182,32 @@ export enum WeatherHistoryMeasureEnum {
 export interface WeatherHistoryReading {
     /** Start of the bucket this reading applies to, in ISO format */
     timestampIso: string;
-    /** Observed outdoor temperature in degrees Celsius */
+    /**
+     * Observed outdoor temperature in degrees Celsius.
+     *
+     * Value at the start of the bucket (hourly source); at coarser
+     * resolutions, the time-weighted mean over the bucket.
+     */
     outdoorTemperatureCelsius?: number;
-    /** Observed wind speed in meters per second */
+    /**
+     * Observed wind speed in meters per second.
+     *
+     * Value at the start of the bucket (hourly source); at coarser
+     * resolutions, the time-weighted mean over the bucket.
+     */
     windSpeedMs?: number;
-    /** Observed cloud coverage area as a percentage (0-100) */
+    /**
+     * Observed cloud coverage area as a percentage (0-100).
+     *
+     * Value at the start of the bucket (hourly source); at coarser
+     * resolutions, the time-weighted mean over the bucket.
+     */
     cloudAreaPercent?: number;
-    /** Weather symbol describing the observed condition */
+    /**
+     * Weather symbol describing the observed condition.
+     *
+     * Value at the start of the bucket (hourly source).
+     */
     symbol?: EnyoWeatherSymbolEnum;
     /**
      * Global horizontal irradiance in W/m².
@@ -197,6 +216,10 @@ export interface WeatherHistoryReading {
      * the diffuse part and the horizontal projection of the direct part
      * (`GHI = DHI + DNI * cos(zenith)`). This is the quantity to correlate
      * with measured PV production.
+     *
+     * Mean over the bucket starting at `timestampIso`, i.e.
+     * `[timestampIso, timestampIso + resolution)`. Not the value at that
+     * moment, and not the mean of the preceding hour.
      */
     globalHorizontalIrradiance?: number;
     /**
@@ -207,6 +230,10 @@ export interface WeatherHistoryReading {
      * {@link WeatherHistoryReading.diffuseHorizontalIrradiance} it allows
      * transposing the observation onto an arbitrarily tilted plane (plane of
      * array), which a single GHI value cannot do.
+     *
+     * Mean over the bucket starting at `timestampIso`, i.e.
+     * `[timestampIso, timestampIso + resolution)`. Not the value at that
+     * moment, and not the mean of the preceding hour.
      */
     directNormalIrradiance?: number;
     /**
@@ -216,6 +243,10 @@ export interface WeatherHistoryReading {
      * scattered by the atmosphere and clouds, i.e. everything that did not
      * arrive directly from the sun's disc. See
      * {@link WeatherHistoryReading.directNormalIrradiance}.
+     *
+     * Mean over the bucket starting at `timestampIso`, i.e.
+     * `[timestampIso, timestampIso + resolution)`. Not the value at that
+     * moment, and not the mean of the preceding hour.
      */
     diffuseHorizontalIrradiance?: number;
 }

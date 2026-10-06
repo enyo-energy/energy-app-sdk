@@ -249,6 +249,7 @@ Every Energy App must be defined using `defineEnergyAppPackage()`:
 import {
     defineEnergyAppPackage,
     EnergyAppPackageCategory,
+    EnergyAppPackageOptionsDeviceDetectionModbusModeEnum,
     EnergyAppPermissionTypeEnum
 } from '@enyo-energy/energy-app-sdk';
 
@@ -291,11 +292,22 @@ const packageDef = defineEnergyAppPackage({
         },
         deviceDetection: {
             modbus: [{
+                // Optional, only on the first entry: how the entries and their matching
+                // values combine. Default: RegistersOr_MatchingValuesOr.
+                mode: EnergyAppPackageOptionsDeviceDetectionModbusModeEnum.RegistersAnd_MatchingValuesOr,
                 unitIds: [1],
                 registerAddress: 40001,
                 registerSize: 2,
                 type: 'string',
                 matchingValues: ['SolarMax', 'SMA']
+            }, {
+                unitIds: [1],
+                // `registerType` defaults to 'holding'; use 'input' for function code 4.
+                registerType: 'input',
+                registerAddress: 30053,
+                registerSize: 2,
+                type: 'UInt32BE',
+                matchingValues: ['9401', '9402']
             }],
             mdns: [{
                 // The Envoy advertises under a vendor-specific service type; without
@@ -1859,6 +1871,11 @@ Field names and units mirror `WeatherForecastEntry` one to one — `outdoorTempe
 forecast series concatenate into one timeline without translation. Every measure on a reading is
 optional: you get what the provider holds and you asked for, and a measure it does not hold is simply
 absent rather than an error.
+
+`timestampIso` is the **start** of the bucket a reading or forecast entry covers. The irradiance
+fields are the mean over `[timestampIso, timestampIso + resolution)` — not the value at that moment,
+and not the mean of the preceding hour. Temperature, wind and cloud cover are the value at the start
+of the bucket for an hourly source, and the time-weighted mean over the bucket at coarser resolutions.
 
 Aggregates per measure live in `statistics`, keyed by `WeatherHistoryMeasureEnum`. `averageValue` is
 time-weighted; for the irradiance measures it is a mean power density in W/m², so multiply by the
@@ -3993,6 +4010,12 @@ Each event carries the **complete** picture of the slot — render it as it arri
 
 New reason types came with this surface, so a skipped row can say *why* instead of falling back to a generic "scheduled optimization": `SessionComplete`, `AppliancePaused`, `NothingConnected`, `DeadlinePassed`, `WaitingForCheaperSlot`, `AboveOwnPriceLimit`, `BelowMinPower`, `OtherApplianceTurn`, `SupplyExhausted`, `OutsideSchedule` — grouped by the new `SessionState` and `Contention` reason categories. `ApplianceInitiatedDraw` and `PowerOffered` came with the waterfall states above.
 
+**Battery vs. charging car.** While a car charges, the house battery is either held out of it or allowed to help, according to the owner's `batteryEvDischargeMode`. Two reason types (category `BatteryState`) say which: `BatteryReservedFromEv` for the hold (`Discharge 0`) and `BatterySupportsEvCharging` for the release (`mode=Auto`). Both carry `context.batteryToEv` (`EnyoDataBusCommandReasonBatteryToEvContext`) with the owner's `mode`, the hold `trigger` (`EnyoBatteryToEvHoldTriggerEnum`: `OwnerBlocked`, `SocLimitReached`, `AllowanceSpent`, `NoMeasurement`), `socLimitPercent`, `allowanceWh` and `remainingWh`. The energy manager re-checks a hold periodically by briefly releasing the battery; that re-check sets `batteryToEv.probe: true` and should not be listed as its own entry in a command history.
+
+**Short-cycling protection.** When an appliance is kept running (or kept off) to honour its minimum on/off time, state `DeviceProtection` with `context.switching` (`EnyoDataBusCommandReasonSwitchingContext`): `hold` (`EnyoSwitchingProtectionHoldEnum.KeptOn` / `KeptOff`), `minOnSeconds`, `minOffSeconds` and `untilIso`. The text can then say "Kept running for another 4 minutes to protect the compressor" instead of a generic "Protecting the device".
+
+A hold that keeps an appliance **off** after a stop has its own type, `RestartDelay` (category `DeviceProtection`): set `context.switching` with `hold: KeptOff`, `minOffSeconds` and `untilIso` (when it may restart), and `powerW` to the power waiting for it — e.g. "Short pause after switching off — charging resumes at 13:15 so the car isn't switched on and off too often."
+
 ## Dynamic Grid Fees & Tariff Bonuses
 
 An electricity price is rarely one number. It is the energy price, plus the grid operator's network
@@ -4559,6 +4582,28 @@ Notes:
   one that has barely started.
 - V1 is unchanged and remains fully supported. V2 is an additive sibling, not a
   migration.
+
+#### Forecasting When a Heat Pump Runs
+
+A heat pump integration can publish its own forecast of when the heat pump will run with
+`HeatpumpOperationForecastV1` (or `publishHeatpumpOperationForecast()` on `IntegrationEnergyApp`).
+It is a prediction, not a request for power — to offer power, send `ApplianceFlexibilityAnnouncementV2`.
+
+Each entry covers one slot of `resolution`, starting at `timestampIso`. `outdoorTemperatureC` and
+`running` are always present; `flowTemperatureC`, `generatedHeatWh`, `consumptionWh` and
+`averagePowerW` are optional. Energy values are per slot, and `averagePowerW` is averaged over the
+whole slot. Each message replaces the previous forecast for the appliance.
+
+```typescript
+this.publishHeatpumpOperationForecast('heatpump-1', {
+    resolution: ForecastResolutionEnum.OneHour,
+    entries: [
+        {timestampIso: '2026-10-06T06:00:00Z', outdoorTemperatureC: 4.5, running: true,
+         flowTemperatureC: 38, generatedHeatWh: 5200, consumptionWh: 1600, averagePowerW: 1600},
+        {timestampIso: '2026-10-06T07:00:00Z', outdoorTemperatureC: 5.0, running: false},
+    ],
+});
+```
 
 #### Explaining Why a Command Was Issued
 

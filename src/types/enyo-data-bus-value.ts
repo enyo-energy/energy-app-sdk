@@ -42,6 +42,8 @@ import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationMod
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
 import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
 import type {EnyoEnergyDistributionSnapshot} from "./enyo-energy-distribution.js";
+import type {EnergyManagerBatteryEvDischargeModeEnum} from "./enyo-energy-manager-settings.js";
+import type {ForecastResolutionEnum} from "./enyo-forecasting.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -112,7 +114,16 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     ScheduledOptimization = 'scheduled-optimization',
     /** Command issued because the user explicitly requested it */
     UserRequest = 'user-request',
-    /** Command issued to protect the device (e.g. overheating or safety limit) */
+    /**
+     * Command issued to protect the device (e.g. overheating or safety limit).
+     *
+     * When the protection is a minimum on/off time — an appliance kept running
+     * (or kept off) to avoid short-cycling its compressor — set
+     * {@link EnyoDataBusCommandReasonContext.switching} so the text can say how
+     * long the hold lasts instead of a generic "protecting the device". A hold
+     * that keeps an appliance OFF after a stop has its own type,
+     * {@link RestartDelay}.
+     */
     DeviceProtection = 'device-protection',
     /** Command issued because home consumption is high */
     HomeConsumptionHigh = 'home-consumption-high',
@@ -214,6 +225,53 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * other constraint were lifted, the appliance would still stay off.
      */
     OutsideSchedule = 'outside-schedule',
+    /**
+     * The house battery is held (`Discharge 0`) so that stored energy does not
+     * flow into a charging car.
+     *
+     * Stated by the decision maker that judged the owner's
+     * `batteryEvDischargeMode`, never inferred by the battery's own command
+     * path. Says WHY through {@link EnyoDataBusCommandReasonContext.batteryToEv}
+     * — the owner blocked it, the SoC limit is reached, the watt-hour allowance
+     * is spent, or the battery's power cannot be measured. Set
+     * {@link EnyoDataBusCommandReason.socPercent} to the pack's current SoC.
+     *
+     * Told apart from {@link BatterySoCLow}: the pack is not low, it is at the
+     * floor the owner chose for the car. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    BatteryReservedFromEv = 'battery-reserved-from-ev',
+    /**
+     * While a car charges, the house battery is left to self-manage
+     * (`mode=Auto`) and may cover part of the car's draw — within what the
+     * owner allowed.
+     *
+     * The counterpart of {@link BatteryReservedFromEv}. Set
+     * {@link EnyoDataBusCommandReasonContext.batteryToEv} so the text can say
+     * how far: down to an SoC limit, or how many watt-hours of the allowance
+     * are left. A short re-check of an existing hold sets `batteryToEv.probe` —
+     * consumers SHOULD NOT show a probe as a separate history entry. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    BatterySupportsEvCharging = 'battery-supports-ev-charging',
+    /**
+     * The appliance was switched off a moment ago and is held off for its
+     * declared minimum off-time, so it is not cycled on and off. Stated by the
+     * energy manager's switching protection.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.switching} with
+     * {@link EnyoSwitchingProtectionHoldEnum.KeptOff}, `minOffSeconds` and
+     * `untilIso` — when it may restart, i.e. the last stop plus the minimum
+     * off-time — and {@link EnyoDataBusCommandReason.powerW} to the power that
+     * is waiting for it, so the text can say why it will start.
+     *
+     * The specific form of {@link DeviceProtection} for a hold after a stop;
+     * a hold that keeps an appliance RUNNING stays `DeviceProtection` with
+     * {@link EnyoSwitchingProtectionHoldEnum.KeptOn}. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.DeviceProtection} — it protects
+     * the appliance from short-cycling and is not about price, sun or contention.
+     */
+    RestartDelay = 'restart-delay',
 }
 
 /**
@@ -500,6 +558,203 @@ export interface EnyoDataBusCommandReasonContext {
     thermalStorage?: EnyoDataBusCommandReasonThermalStorageContext;
     /** The forecast that triggered a proactive command. */
     forecast?: EnyoDataBusCommandReasonForecastContext;
+    /**
+     * The owner's battery-to-EV setting (`batteryEvDischargeMode`) and where
+     * the charging session stands against it. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} and
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging}.
+     */
+    batteryToEv?: EnyoDataBusCommandReasonBatteryToEvContext;
+    /**
+     * The minimum on/off time an appliance is being held to. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.RestartDelay} (kept off) and on
+     * {@link EnyoDataBusCommandReasonTypeEnum.DeviceProtection} when the
+     * protection is against short-cycling (kept on).
+     */
+    switching?: EnyoDataBusCommandReasonSwitchingContext;
+}
+
+/**
+ * Which part of the owner's battery-to-EV setting
+ * (`batteryEvDischargeMode`) caused a
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} hold.
+ */
+export enum EnyoBatteryToEvHoldTriggerEnum {
+    /**
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.BlockDischarge}: the owner
+     * never lets the battery charge the car.
+     */
+    OwnerBlocked = 'owner-blocked',
+    /**
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.SocLimit}: the pack has
+     * reached the owner's floor
+     * ({@link EnyoDataBusCommandReasonBatteryToEvContext.socLimitPercent}).
+     */
+    SocLimitReached = 'soc-limit-reached',
+    /**
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.FixedWh}: this session's
+     * allowance ({@link EnyoDataBusCommandReasonBatteryToEvContext.allowanceWh})
+     * has gone into the car.
+     */
+    AllowanceSpent = 'allowance-spent',
+    /**
+     * The pack's live power cannot be read, so it cannot be shown NOT to feed
+     * the car. A fail-safe, stated out loud so that a site whose battery app
+     * publishes no power is diagnosable.
+     */
+    NoMeasurement = 'no-measurement',
+}
+
+/**
+ * The owner's battery-to-EV setting (`batteryEvDischargeMode`) and where
+ * the current charging session stands against it — the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} and
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging}.
+ *
+ * All energy values are in watt-hours (Wh).
+ *
+ * @example
+ * ```typescript
+ * // The pack reaches the owner's 50 % floor — hold it:
+ * const hold: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     socPercent: 50,
+ *     context: {batteryToEv: {
+ *         mode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+ *         trigger: EnyoBatteryToEvHoldTriggerEnum.SocLimitReached,
+ *         socLimitPercent: 50,
+ *         remainingWh: 0,
+ *     }},
+ * };
+ *
+ * // At 86 % the battery may still help:
+ * const release: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     socPercent: 86,
+ *     context: {batteryToEv: {
+ *         mode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+ *         socLimitPercent: 50,
+ *         remainingWh: 7272,
+ *     }},
+ * };
+ *
+ * // The periodic re-check of an existing hold — not a new decision:
+ * const probe: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     socPercent: 50,
+ *     context: {batteryToEv: {
+ *         mode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+ *         socLimitPercent: 50,
+ *         remainingWh: 0,
+ *         probe: true,
+ *     }},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonBatteryToEvContext {
+    /** The owner's `batteryEvDischargeMode` this decision was taken under. */
+    mode: EnergyManagerBatteryEvDischargeModeEnum;
+    /**
+     * Why the battery is held. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} only.
+     */
+    trigger?: EnyoBatteryToEvHoldTriggerEnum;
+    /**
+     * The owner's SoC floor, in percent. Set under
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.SocLimit}.
+     */
+    socLimitPercent?: number;
+    /**
+     * The owner's per-session allowance, in Wh. Set under
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.FixedWh}.
+     */
+    allowanceWh?: number;
+    /**
+     * What may still go from the battery into the car, in Wh. Absent when the
+     * mode states no ceiling
+     * ({@link EnergyManagerBatteryEvDischargeModeEnum.Intelligent}).
+     */
+    remainingWh?: number;
+    /**
+     * `true` for a short re-check of an existing hold: the battery is offered
+     * `Auto` to see whether it still drains into the car. Not a change of
+     * decision — consumers SHOULD NOT list it as a separate history entry.
+     */
+    probe?: boolean;
+}
+
+/**
+ * Which way a short-cycling protection holds an appliance.
+ */
+export enum EnyoSwitchingProtectionHoldEnum {
+    /**
+     * Kept running although the plan would stop it, because it has not yet run
+     * its minimum on-time — it may be drawing grid power meanwhile.
+     */
+    KeptOn = 'kept-on',
+    /**
+     * Kept off although the plan would start it, because it has not yet rested
+     * its minimum off-time (e.g. the compressor gap between two starts). Goes
+     * with {@link EnyoDataBusCommandReasonTypeEnum.RestartDelay}.
+     */
+    KeptOff = 'kept-off',
+}
+
+/**
+ * A minimum on/off time an appliance is held to, to protect it from
+ * short-cycling — the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.RestartDelay} (kept off) and of
+ * {@link EnyoDataBusCommandReasonTypeEnum.DeviceProtection} (kept on).
+ *
+ * Lets the text say "Kept running for another 4 minutes to protect the
+ * compressor" instead of "Protecting the device".
+ *
+ * @example
+ * ```typescript
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.DeviceProtection,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.DeviceProtection,
+ *     context: {switching: {
+ *         hold: EnyoSwitchingProtectionHoldEnum.KeptOn,
+ *         minOnSeconds: 900,
+ *         untilIso: '2026-10-03T12:04:00Z',
+ *     }},
+ * };
+ *
+ * // A wallbox held off after a stop, 4.2 kW of surplus waiting for it:
+ * const restartDelay: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.RestartDelay,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.DeviceProtection,
+ *     powerW: 4200,
+ *     context: {switching: {
+ *         hold: EnyoSwitchingProtectionHoldEnum.KeptOff,
+ *         minOffSeconds: 300,
+ *         untilIso: '2026-10-03T11:15:00Z',
+ *     }},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonSwitchingContext {
+    /** Whether the appliance is kept running or kept off. */
+    hold: EnyoSwitchingProtectionHoldEnum;
+    /**
+     * The minimum on-time the appliance declared, in seconds. Set with
+     * {@link EnyoSwitchingProtectionHoldEnum.KeptOn}.
+     */
+    minOnSeconds?: number;
+    /**
+     * The minimum off-time the appliance declared, in seconds. Set with
+     * {@link EnyoSwitchingProtectionHoldEnum.KeptOff}.
+     */
+    minOffSeconds?: number;
+    /**
+     * When the hold ends and the plan takes over again, ISO 8601. Omit when it
+     * is not known.
+     */
+    untilIso?: string;
 }
 
 /**
@@ -748,6 +1003,8 @@ export enum EnyoDataBusMessageEnum {
     ApplianceFlexibilityAnnouncementV2 = 'ApplianceFlexibilityAnnouncementV2',
     ApplianceStateUpdateV1 = 'ApplianceStateUpdateV1',
     HeatpumpValuesUpdateV1 = 'HeatpumpValuesUpdateV1',
+    /** A heat pump integration's forecast of when its heat pump will run, slot by slot. */
+    HeatpumpOperationForecastV1 = 'HeatpumpOperationForecastV1',
     HeatingRodValuesUpdateV1 = 'HeatingRodValuesUpdateV1',
     ChargingStartedV1 = 'ChargingStartedV1',
     ChargingMeterValuesUpdateV1 = 'ChargingMeterValuesUpdateV1',
@@ -1278,6 +1535,87 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV2 extends EnyoDataB
             };
         }
     }
+}
+
+/**
+ * One slot of a {@link EnyoDataBusHeatpumpOperationForecastV1}: whether the heat
+ * pump is expected to run in it, and at what outdoor temperature.
+ *
+ * Energy values are per slot — the energy expected over
+ * `[timestampIso, timestampIso + resolution)` — not cumulative over the
+ * forecast.
+ */
+export interface EnyoHeatpumpOperationForecastEntry {
+    /** Start of the slot this entry applies to, in ISO format. */
+    timestampIso: string;
+    /** Forecasted outdoor temperature for this slot, in degrees Celsius. */
+    outdoorTemperatureC: number;
+    /**
+     * Whether the heat pump is expected to run (compressor on) in this slot.
+     * Always present; `false` slots tell a consumer the heat pump is expected
+     * to stay off.
+     */
+    running: boolean;
+    /** Forecasted flow temperature in this slot, in degrees Celsius. */
+    flowTemperatureC?: number;
+    /** Forecasted heat the heat pump generates in this slot, in watt-hours (Wh). */
+    generatedHeatWh?: number;
+    /**
+     * Forecasted electrical energy the heat pump consumes in this slot, in
+     * watt-hours (Wh).
+     */
+    consumptionWh?: number;
+    /**
+     * Forecasted average electrical power of the heat pump over this slot, in
+     * watts (W). Averaged over the whole slot, so a heat pump running half of
+     * a slot at 2000 W reports 1000 W.
+     */
+    averagePowerW?: number;
+}
+
+/**
+ * A heat pump integration publishes its forecast of when the heat pump will run.
+ *
+ * The heat pump's own view of the coming hours, as its manufacturer's cloud or
+ * controller predicts it — not a request for power and not a schedule the energy
+ * manager has to follow. A consumer such as the energy manager uses it to plan
+ * around the heat pump's expected load. To offer power the heat pump could
+ * absorb, send an {@link EnyoDataBusApplianceFlexibilityAnnouncementV2} instead.
+ *
+ * Publish again whenever the forecast changes. Each message replaces the
+ * previous forecast for the appliance; a consumer keeps the last one it saw.
+ *
+ * @example
+ * ```typescript
+ * dataBus.sendMessage([{
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpOperationForecastV1,
+ *     applianceId: 'heatpump-1',
+ *     data: {
+ *         resolution: ForecastResolutionEnum.OneHour,
+ *         entries: [
+ *             {timestampIso: '2026-10-06T06:00:00Z', outdoorTemperatureC: 4.5, running: true,
+ *              flowTemperatureC: 38, generatedHeatWh: 5200, consumptionWh: 1600, averagePowerW: 1600},
+ *             {timestampIso: '2026-10-06T07:00:00Z', outdoorTemperatureC: 5.0, running: false},
+ *         ],
+ *     },
+ * }]);
+ * ```
+ */
+export interface EnyoDataBusHeatpumpOperationForecastV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpOperationForecastV1;
+    /** ID of the heat pump appliance this forecast is for. */
+    applianceId: string;
+    data: {
+        /** Length of every slot in {@link entries}. */
+        resolution: ForecastResolutionEnum;
+        /**
+         * The forecast slots, sorted ascending by `timestampIso` and aligned to
+         * {@link resolution}.
+         */
+        entries: EnyoHeatpumpOperationForecastEntry[];
+    };
 }
 
 /**

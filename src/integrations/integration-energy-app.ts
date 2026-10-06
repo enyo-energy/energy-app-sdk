@@ -5,6 +5,7 @@ import {
     EnyoDataBusCommandAcknowledgeV1,
     EnyoDataBusGridOperatorPowerLimitationExecutedV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
+    EnyoDataBusHeatpumpOperationForecastV1,
     EnyoDataBusMessage,
     EnyoDataBusMessageEnum
 } from "../types/enyo-data-bus-value.js";
@@ -299,6 +300,46 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
             applianceId,
             timestampIso: new Date().toISOString(),
             data: {flexibility}
+        };
+        this.useDataBus().sendMessage([msg]);
+    }
+
+    /**
+     * Publishes a `HeatpumpOperationForecastV1` — this heat pump's own forecast
+     * of when it will run, slot by slot.
+     *
+     * A prediction, not a request for power: to offer power the heat pump could
+     * absorb, use {@link publishFlexibilityAnnouncement}. Publish again whenever
+     * the forecast changes; each message replaces the previous one for the
+     * appliance.
+     *
+     * @param applianceId - The heat pump appliance the forecast is for.
+     * @param forecast - The slot length and the slots. See
+     *   {@link EnyoDataBusHeatpumpOperationForecastV1.data}.
+     *
+     * @example
+     * ```typescript
+     * this.publishHeatpumpOperationForecast('heatpump-1', {
+     *     resolution: ForecastResolutionEnum.OneHour,
+     *     entries: [
+     *         {timestampIso: '2026-10-06T06:00:00Z', outdoorTemperatureC: 4.5, running: true, averagePowerW: 1600},
+     *         {timestampIso: '2026-10-06T07:00:00Z', outdoorTemperatureC: 5.0, running: false},
+     *     ],
+     * });
+     * ```
+     */
+    public publishHeatpumpOperationForecast(
+        applianceId: string,
+        forecast: EnyoDataBusHeatpumpOperationForecastV1['data']
+    ): void {
+        const msg: EnyoDataBusHeatpumpOperationForecastV1 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.HeatpumpOperationForecastV1,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            data: forecast
         };
         this.useDataBus().sendMessage([msg]);
     }

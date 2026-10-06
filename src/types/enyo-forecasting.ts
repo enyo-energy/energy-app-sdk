@@ -157,15 +157,34 @@ export interface WeatherForecastByCoordinatesRequest {
  * A single weather forecast data point
  */
 export interface WeatherForecastEntry {
-    /** Timestamp of this forecast entry in ISO format */
+    /** Start of the hour this entry applies to, in ISO format. */
     timestampIso: string;
-    /** Forecasted outdoor temperature in degrees Celsius */
+    /**
+     * Forecasted outdoor temperature in degrees Celsius.
+     *
+     * Value at the start of the bucket (hourly source); at coarser
+     * resolutions, the time-weighted mean over the bucket.
+     */
     outdoorTemperatureCelsius: number;
-    /** Wind speed in meters per second */
+    /**
+     * Wind speed in meters per second.
+     *
+     * Value at the start of the bucket (hourly source); at coarser
+     * resolutions, the time-weighted mean over the bucket.
+     */
     windSpeedMs?: number;
-    /** Cloud coverage area as a percentage (0-100) */
+    /**
+     * Cloud coverage area as a percentage (0-100).
+     *
+     * Value at the start of the bucket (hourly source); at coarser
+     * resolutions, the time-weighted mean over the bucket.
+     */
     cloudAreaPercent?: number;
-    /** Weather symbol representing the forecasted weather condition */
+    /**
+     * Weather symbol representing the forecasted weather condition.
+     *
+     * Value at the start of the bucket (hourly source).
+     */
     symbol?: EnyoWeatherSymbolEnum;
     /**
      * Global horizontal irradiance in W/m².
@@ -173,6 +192,10 @@ export interface WeatherForecastEntry {
      * Total shortwave radiation received by a horizontal surface — the sum of
      * the diffuse part and the horizontal projection of the direct part
      * (`GHI = DHI + DNI * cos(zenith)`).
+     *
+     * Mean over the bucket starting at `timestampIso`, i.e.
+     * `[timestampIso, timestampIso + resolution)`. Not the value at that
+     * moment, and not the mean of the preceding hour.
      */
     globalHorizontalIrradiance?: number;
     /**
@@ -183,6 +206,10 @@ export interface WeatherForecastEntry {
      * {@link WeatherForecastEntry.diffuseHorizontalIrradiance} it allows
      * transposing the forecast onto an arbitrarily tilted plane (plane of
      * array), which a single GHI value cannot do.
+     *
+     * Mean over the bucket starting at `timestampIso`, i.e.
+     * `[timestampIso, timestampIso + resolution)`. Not the value at that
+     * moment, and not the mean of the preceding hour.
      */
     directNormalIrradiance?: number;
     /**
@@ -192,6 +219,10 @@ export interface WeatherForecastEntry {
      * by the atmosphere and clouds, i.e. everything that does not arrive
      * directly from the sun's disc. See
      * {@link WeatherForecastEntry.directNormalIrradiance}.
+     *
+     * Mean over the bucket starting at `timestampIso`, i.e.
+     * `[timestampIso, timestampIso + resolution)`. Not the value at that
+     * moment, and not the mean of the preceding hour.
      */
     diffuseHorizontalIrradiance?: number;
 }

@@ -46,8 +46,87 @@ export interface EnergyAppPackageOptionsDeviceDetectionHostname {
     matchingValue: string;
 }
 
+/**
+ * Which Modbus register bank a device detection rule reads.
+ * - `'holding'`: holding registers, function code 3
+ * - `'input'`: input registers, function code 4
+ *
+ * The two banks are separate address spaces, so the same address may hold
+ * different data (or nothing) in each.
+ */
+export type EnergyAppPackageOptionsDeviceDetectionModbusRegisterType = 'holding' | 'input';
+
+/**
+ * How the Modbus device detection rules in
+ * {@link EnergyAppPackageOptionsDeviceDetection.modbus} are combined.
+ *
+ * Each name has two parts:
+ * - `Registers…`: how the entries (registers) of the `modbus` list combine.
+ *   `Or` means one matching register is enough; `And` means every register has
+ *   to match, all on the same unit id.
+ * - `MatchingValues…`: how the `matchingValues` within one register combine.
+ *   `Or` means the register's value has to match one of them; `And` means it
+ *   has to match all of them.
+ *
+ * Only read from the **first** entry of the `modbus` list and applies to the
+ * whole list; set it there and nowhere else. Defaults to
+ * {@link RegistersOr_MatchingValuesOr} when omitted, which is the behaviour of
+ * all existing rules.
+ */
+export enum EnergyAppPackageOptionsDeviceDetectionModbusModeEnum {
+    /** One register has to match, with one of its matching values. The default. */
+    RegistersOr_MatchingValuesOr = 'RegistersOr_MatchingValuesOr',
+    /** One register has to match, with all of its matching values. */
+    RegistersOr_MatchingValuesAnd = 'RegistersOr_MatchingValuesAnd',
+    /** Every register has to match, each with one of its matching values. */
+    RegistersAnd_MatchingValuesOr = 'RegistersAnd_MatchingValuesOr',
+    /** Every register has to match, each with all of its matching values. */
+    RegistersAnd_MatchingValuesAnd = 'RegistersAnd_MatchingValuesAnd',
+}
+
+/**
+ * Optional device detection configuration for Modbus TCP register matching:
+ * read a register range and compare its decoded value against the matching
+ * values.
+ *
+ * How several entries and several matching values combine is set by
+ * {@link mode} on the first entry of the list.
+ *
+ * @example
+ * // Vendor name in holding registers AND model id in an input register:
+ * modbus: [
+ *   {
+ *     mode: EnergyAppPackageOptionsDeviceDetectionModbusModeEnum.RegistersAnd_MatchingValuesOr,
+ *     unitIds: [1],
+ *     registerAddress: 40001,
+ *     registerSize: 2,
+ *     type: 'string',
+ *     matchingValues: ['SMA'],
+ *   },
+ *   {
+ *     unitIds: [1],
+ *     registerType: 'input',
+ *     registerAddress: 30053,
+ *     registerSize: 2,
+ *     type: 'UInt32BE',
+ *     matchingValues: ['9401', '9402'],
+ *   },
+ * ]
+ */
 export interface EnergyAppPackageOptionsDeviceDetectionModbus {
+    /**
+     * How all entries of the `modbus` list and their matching values combine.
+     * Only read from the first entry of the list — set it there and leave it
+     * out on the others. Defaults to
+     * {@link EnergyAppPackageOptionsDeviceDetectionModbusModeEnum.RegistersOr_MatchingValuesOr}.
+     */
+    mode?: EnergyAppPackageOptionsDeviceDetectionModbusModeEnum;
     unitIds: number[];
+    /**
+     * Which register bank to read. Defaults to `'holding'` when omitted,
+     * which is the behaviour of all existing rules.
+     */
+    registerType?: EnergyAppPackageOptionsDeviceDetectionModbusRegisterType;
     /** Register address, for example 30001 */
     registerAddress: number;
     /** Register size, for example 2 for 30001 - 30002 */
