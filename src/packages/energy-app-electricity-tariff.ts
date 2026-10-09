@@ -1,4 +1,5 @@
 import {
+    EnyoAppliancePriceSeries,
     EnyoElectricityTariff,
     EnyoTariffActivationResult,
     EnyoTariffChangeEvent,
@@ -25,8 +26,10 @@ export interface EnyoTariffPriceRange {
  * list of tariffs, no default flag and no tariff id: occupying a slot is what it
  * means to be the tariff in force.
  *
- * Six methods, split by role. A **consumer** asks {@link getTariff} what applies
- * and {@link getPrices} what it costs, and follows {@link onTariffChanged}. An
+ * Seven methods, split by role. A **consumer** asks {@link getTariff} what
+ * applies and {@link getPrices} what it costs — or
+ * {@link getPricesForAppliance} what one device is billed at — and follows
+ * {@link onTariffChanged}. An
  * **owner** — the app integrating a provider like Tibber or Ostrom — answers
  * {@link onTariffSelected} when the user picks it, calls {@link setTariff} once
  * its tariff is usable, and feeds {@link publishPrices} as new prices arrive.
@@ -92,6 +95,43 @@ export interface EnergyAppElectricityTariff {
      * ```
      */
     getPrices(direction: EnyoTariffDirectionEnum, range: EnyoTariffPriceRange): Promise<EnyoTariffPriceSeries | null>;
+
+    /**
+     * Returns the effective consumption prices that actually bill one
+     * appliance — the one call an energy manager needs to price any device,
+     * whatever meter it is behind.
+     *
+     * - Appliance behind an **active** meter cascade (see `useCascade()`) →
+     *   the cascade's prices ({@link EnyoBillingMeterEnum.Cascade}), filled
+     *   **slot by slot**: a 15-minute slot the cascade has no price for carries
+     *   the site's price for that slot with
+     *   {@link EnyoAppliancePriceEntry.fallback} set. While the cascade has no
+     *   tariff of its own, every slot carries the site's price and
+     *   {@link EnyoAppliancePriceSeries.inheritedFromSite} is set.
+     * - Every other appliance, and every appliance on a site without an active
+     *   cascade → the site's consumption prices
+     *   ({@link EnyoBillingMeterEnum.Primary}), the same as
+     *   {@link getPrices} for {@link EnyoTariffDirectionEnum.Consumption}.
+     *
+     * The prices already contain the billing meter's own grid fee and taxes
+     * (see `includes`); do not add a grid fee on top. Saves every caller from
+     * branching over `useCascade().isApplianceBehindCascade()` and two price
+     * sources themselves, and matches what the hub bills.
+     *
+     * Returns `null` only when no prices cover the range at all.
+     *
+     * @param applianceId - The appliance to price
+     * @param range - The time range to cover
+     * @returns Promise resolving to the billing price series, or `null`
+     *
+     * @example
+     * ```typescript
+     * const prices = await tariffs.getPricesForAppliance('heatpump-1', {fromIso, untilIso});
+     * // prices.billingMeter: 'primary' | 'cascade'
+     * const approximate = prices?.entries.some(e => e.fallback);
+     * ```
+     */
+    getPricesForAppliance(applianceId: string, range: EnyoTariffPriceRange): Promise<EnyoAppliancePriceSeries | null>;
 
     /**
      * Puts this app's tariff into a direction slot, replacing whatever was

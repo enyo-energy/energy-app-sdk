@@ -51,6 +51,7 @@ import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
 import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
+import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -612,6 +613,24 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useCommandLog(): EnergyAppCommandLog {
         return this.energyAppSdk.useCommandLog();
+    }
+
+    /**
+     * Gets the Cascade API for the site's meter cascade: a second meter behind
+     * the primary meter (e.g. for a heatpump on a dedicated tariff) with its
+     * own electricity tariff, prices and grid fee.
+     *
+     * Use it to find out whether a cascade is active and which appliances are
+     * behind it, and to read or supply the cascade's tariff, prices and grid
+     * fee — appliances behind an active cascade are billed on those instead of
+     * on {@link useElectricityTariff} and {@link useGridFee}.
+     * @returns The Cascade API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `ElectricityTariff`,
+     *         `GridFeeRegister` or `GridFeeUse` permission required by the
+     *         called method is not granted.
+     */
+    public useCascade(): EnergyAppCascade {
+        return this.energyAppSdk.useCascade();
     }
 
     /**

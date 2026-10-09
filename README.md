@@ -191,6 +191,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Read EPEX SPOT wholesale prices (incl. negative-price windows) | [`useEpexSpotPrices()`](#useepexspotprices-energyappepexspotprice) |
 | Manage electricity tariffs (default tariff, price per kWh) | [`useElectricityTariff()`](#useelectricitytariff-energyappelectricitytariff) |
 | Publish or resolve time-variable grid fees (§14a HT/NT) | [`useGridFee()`](#usegridfee-energyappgridfee) |
+| Price appliances behind a cascade meter (own tariff, prices and grid fee) | [`useCascade()`](#usecascade-energyappcascade) |
 | Register a PV system (kWp, DC strings, orientation) | [`usePvSystem()`](#usepvsystem-energyapppvsystem) |
 | Discover capabilities of the active energy manager | [`useEnergyManager()`](#useenergymanager-energyappenergymanager) |
 | Serve your v2 onboarding guides when the host asks for them | [`useOnboardingV2()`](#useonboardingv2-energyapponboardingv2) |
@@ -1715,6 +1716,18 @@ const prices = await tariffs.getPrices(EnyoTariffDirectionEnum.Consumption, { fr
 const needsGridFee = !prices?.includes.includes(EnyoPriceComponentEnum.GridFee);
 ```
 
+To price one device, ask for the prices that actually bill it. This works for every appliance: the
+site's consumption prices, or — for an appliance behind an active [meter cascade](#usecascade-energyappcascade)
+— the cascade's, filled per 15-minute slot. The prices are effective prices (grid fee and taxes
+included, see `includes`), so never add a grid fee on top:
+
+```typescript
+const billed = await tariffs.getPricesForAppliance('heatpump-1', { fromIso, untilIso });
+// billed.billingMeter: 'primary' | 'cascade'
+// entry.fallback: cascade had no price for this slot, the site's was used
+// billed.inheritedFromSite: cascade has no tariff of its own yet
+```
+
 The app that integrates a provider owns the other side. It answers when the user picks it, sets the
 tariff once it is actually usable, and pushes prices as they arrive:
 
@@ -1784,6 +1797,115 @@ const fees = await gridFee.getGridFeeValues({ fromIso, untilIso });
 ```
 
 Publishers need `GridFeeRegister`; consumers need `GridFeeUse`.
+
+#### `useCascade(): EnergyAppCascade`
+
+A **meter cascade** (Kaskadenschaltung) is a second billing meter (Z2) installed *behind* the primary
+meter (Z1) — typically for a heatpump or wallbox on a dedicated tariff with a reduced (§14a EnWG) grid
+fee. Appliances behind an **active** Z2 are billed on the cascade's tariff and grid fee; everything else
+on `useElectricityTariff()` and `useGridFee()`. The site has at most one cascade, and Z2 has a
+**consumption tariff only** — all feed-in leaves through Z1.
+
+**Split rule.** PV and battery cover Z2 first; Z2 only pays the cascade tariff for what Z1 imports at the
+same moment. Z1 importing 2 kW, battery 1 kW, Z2 drawing 2 kW → Z2 grid share 1 kW, Z2 self-consumed
+1 kW, household grid share 1 kW.
+
+Topology — is there a cascade, is it working, who is behind it:
+
+```typescript
+const cascade = energyApp.useCascade();
+
+const details = await cascade.getCascade();   // active, status, estimated, meterApplianceId?, applianceIds
+if (details?.active && details.status !== EnyoCascadeStatusEnum.Live) {
+    // 'noCascadeSource' (nothing assigned yet) or 'noGridReading' (no Z1 reading)
+}
+cascade.onCascadeChanged(event => reassignPrices(event.cascade));
+```
+
+With `estimated: true`, Z2 is the sum of its appliances and has no meter (`meterApplianceId` absent).
+A physical Z2 meter carries the topology feature `CascadeSubMeter` — skip it when looking for the grid
+meter.
+
+Prices — to price a device, use `useElectricityTariff().getPricesForAppliance(applianceId, range)`. It
+works for every appliance and picks Z2 or Z1 itself, returning the **effective** price per 15-minute slot,
+grid fee and taxes included. `cascade.getPrices(range)` returns Z2's effective prices directly. Never add
+a grid fee on top:
+
+```typescript
+const prices = await energyApp.useElectricityTariff().getPricesForAppliance('heatpump-1', { fromIso, untilIso });
+// prices.billingMeter: 'cascade' | 'primary'
+// entry.fallback: Z2 had no price for that slot, the site's was used
+// prices.inheritedFromSite: Z2 has no tariff of its own yet
+```
+
+Until Z2 has its own tariff or grid fee, the hub prices it with the site's — and so do `getTariff`,
+`getPrices`, `getGridFee` and `getGridFeeValues`: they return the site's values with
+`inheritedFromSite: true` rather than `null`. The grid fee methods are informational (to show the fee
+separately).
+
+What Z2 is actually drawing and costing — live via the `CascadeSplitUpdateV1` data bus message
+(`householdGridW`, `cascadeGridW`, `cascadeSelfConsumedW`, `subMeterPowerW`, `status`, `estimated` — the
+same values the cockpit shows), and as history:
+
+```typescript
+energyApp.useDataBus().listenForMessages([EnyoDataBusMessageEnum.CascadeSplitUpdateV1], msg => {
+    const { cascadeGridW, status } = (msg as EnyoDataBusCascadeSplitUpdateV1).data;
+});
+
+const history = await cascade.getCascadeTimeseries({ fromIso, untilIso, resolution: '1d' });
+// resolution: '1m' (kept 31 days) | '15m' | '1d' | '1mo'
+// per bucket: householdGridKwh, cascadeGridKwh, cascadeSelfConsumedKwh,
+//             householdCostCt, cascadeCostCt, cascadePriceCt, estimated
+```
+
+History costs are in **ct**, priced when read with the tariffs then in force.
+
+**The core owns the cascade tariff by default** — the user enters it in the hub. The cascade **grid fee
+comes with the tariff**: it is provided by the core, or by the app that owns the cascade tariff, and goes
+away with that app's ownership. An app that provides a
+**dynamic** tariff can offer itself for Z2 and take it over once the user selects it, then publish its
+prices:
+
+```typescript
+// Registering the handler is what lists this app in the hub's cascade tariff selection.
+cascade.onTariffSelected(async () => {
+    if (!await isAuthenticated()) {
+        return {
+            status: EnyoTariffActivationStatusEnum.AuthenticationRequired,
+            authenticationUrl: buildOAuthUrl('cascade'),
+        };
+    }
+    await cascade.setTariff({                                 // takes over the slot from the core
+        name: 'Tibber Wärmepumpe',
+        vendorName: 'Tibber',
+        currency: EnyoCurrencyEnum.EUR,
+        pricing: { type: EnyoTariffPricingTypeEnum.Dynamic }, // only dynamic tariffs can be app-provided
+        externalTariffId: contract.id,
+    });
+    return { status: EnyoTariffActivationStatusEnum.Success };
+});
+
+await cascade.publishPrices({ includes: [], entries });      // only while this app owns Z2's tariff
+await cascade.registerGridFee(reducedGridFee);              // optional: the Z2 grid fee comes with the tariff
+
+cascade.onTariffChanged(event => {
+    if (event.tariff?.externalTariffId !== contract.id) stopPublishing(); // lost ownership
+});
+```
+
+| Group | Methods | Permission |
+|---|---|---|
+| Topology | `isActive`, `getCascade`, `getApplianceIds`, `isApplianceBehindCascade`, `onCascadeChanged` | none |
+| Prices & tariff (read) | `getTariff`, `getPrices`, `onTariffChanged` | none |
+| History | `getCascadeTimeseries` | `Timeseries` |
+| Grid fee | `getGridFee`, `getGridFeeValues`, `onGridFeeChanged` / `registerGridFee`, `removeGridFee` (cascade tariff owner only) | `GridFeeUse` / `GridFeeRegister` |
+| Dynamic tariff provider | `onTariffSelected`, `setTariff`, `publishPrices` | `ElectricityTariff` |
+| Data bus | `CascadeSplitUpdateV1`, `AggregatedStateUpdateV1.data.cascade` | `SubscribeDataBus` |
+
+Without a cascade, topology getters resolve to `null` / `false` / `[]`, cascade price and grid fee
+getters to `null`, and writes reject; `useElectricityTariff().getPricesForAppliance` returns the site's
+prices. Z1 also counts
+everything that passes Z2, so never add the two meter readings together.
 
 #### `useWeatherForecasting(): EnergyAppWeatherForecasting`
 
@@ -2971,11 +3093,48 @@ class MyHeatpumpApp extends HeatpumpIntegrationEnergyApp {
 
 Drives a heatpump. Manages building / DHW overheating commands and grid-power-availability announcements.
 
-- **Subscribed commands:** `HeatpumpOverheatingV1`, `HeatpumpAvailablePowerAnnouncementV1`, `GridOperatorPowerLimitationV1` (broadcast)
-- **Implement:** `handleHeatpumpOverheating`, `handleHeatpumpAvailablePowerAnnouncement`, `handleGridOperatorPowerLimitation`
+- **Subscribed commands:** `HeatpumpOverheatingV1`, `HeatpumpAvailablePowerAnnouncementV1`, `SetHeatpumpAvailablePowerV2`, `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** `handleHeatpumpOverheating`, `handleHeatpumpAvailablePowerAnnouncement`, `handleSetHeatpumpAvailablePower`, `handleGridOperatorPowerLimitation`
+- **Optional override:** `handleSetHeatpumpRoomTemperature` — write a measured room temperature into a heating circuit. Answers `NotSupported` by default; override it when the heatpump declares `RoomTemperatureInput`.
 - **Publish helpers:**
   - `publishHeatpumpValuesUpdate(applianceId, values)` — operation mode, electrical and thermal power, energies.
-  - `publishHeatpumpTemperatures(applianceId, temperatures)` — outdoor, flow, return, DHW tanks, heating circuits, buffer tank.
+  - `publishHeatpumpTemperatures(applianceId, temperatures)` — outdoor, flow / target flow / return, DHW tanks, heating circuits (room, flow, target flow, return), buffer tank.
+
+#### Advanced heatpump metadata
+
+Beyond tanks and circuits, the heatpump metadata (`EnyoHeatpumpApplianceMetadata`) can carry what the device is configured to do. Declare each part with its feature flag in `availableFeatures` so consumers know to expect it:
+
+| Feature flag | Where the data lives |
+|---|---|
+| `HeatingCurve` | `heatingCircuits[].heatingCurve` — outdoor → flow temperature `points` (vendor-neutral, linearly interpolated), plus raw `slope` / `parallelShiftK`, min / max flow and an optional cooling curve |
+| `TimeProgram` | `heatingCircuits[].timeProgram` and `domesticHotWater[].timeProgram` — weekly periods (`daysOfWeek` 0 = Sunday, local `HH:mm` times, may wrap past midnight) switching between `Comfort` / `Reduced` / `Off` / `Boost` |
+| `RoomTemperature` | `heatingCircuits[].roomTemperatureC` in `HeatpumpTemperaturesUpdateV1`; where it is measured goes in `heatingCircuits[].roomTemperatureSource` (`None` / `Internal` / `External`) and, for an enyo sensor, `roomTemperatureSensor` |
+| `RoomTemperatureInput` | The heatpump accepts measured room temperatures via `SetHeatpumpRoomTemperatureV1` |
+| `FlowTemperature` / `ReturnTemperature` | `heatpumpFlowTemperatureC`, `heatpumpTargetFlowTemperatureC`, `heatpumpReturnTemperatureC` and per-circuit `flowTemperatureC`, `targetFlowTemperatureC`, `returnTemperatureC` in `HeatpumpTemperaturesUpdateV1` |
+
+`updateAppliance` replaces the whole `heatingCircuits` / `domesticHotWater` array, so use the `ApplianceManager` helpers to change a single entry:
+
+```typescript
+await applianceManager.updateHeatpumpHeatingCircuit(applianceId, 0, {
+    heatingCurve: {
+        points: [
+            { outdoorTemperatureC: -15, flowTemperatureC: 48 },
+            { outdoorTemperatureC: 0, flowTemperatureC: 38 },
+            { outdoorTemperatureC: 15, flowTemperatureC: 27 },
+        ],
+        slope: 0.8,
+        parallelShiftK: 0,
+    },
+    timeProgram: {
+        defaultLevel: EnyoHeatpumpTimeProgramLevelEnum.Reduced,
+        levelTemperaturesC: { Comfort: 21, Reduced: 18 },
+        periods: [{ daysOfWeek: [1, 2, 3, 4, 5], startTimeOfDay: '06:00', endTimeOfDay: '22:00', level: EnyoHeatpumpTimeProgramLevelEnum.Comfort }],
+    },
+});
+await applianceManager.updateHeatpumpDomesticHotWater(applianceId, 0, { timeProgram: dhwProgram });
+```
+
+Validate before publishing with `validateHeatpumpHeatingCurve`, `validateHeatpumpTimeProgram` or `validateHeatpumpAdvancedMetadata` (or their `assertValid*` counterparts). Each returns `{ ok, errors, warnings }`.
 
 ### WallboxIntegrationEnergyApp
 

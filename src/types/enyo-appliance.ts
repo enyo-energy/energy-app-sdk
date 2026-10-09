@@ -306,6 +306,14 @@ export enum EnyoApplianceTopologyFeatureEnum {
     IntermediateMeter = 'IntermediateMeter',
     /** If the inverter does a direct grid feed in without self consumption */
     InverterFullGridFeedIn = 'InverterFullGridFeedIn',
+    /**
+     * If the meter is the cascade meter (Z2) behind the primary meter, with its
+     * own tariff and grid fee (see `useCascade()`). It is **not** a grid meter:
+     * an app looping over all meters to find the grid connection must skip it,
+     * otherwise it reads the cascade's partial consumption as the site's grid
+     * power.
+     */
+    CascadeSubMeter = 'CascadeSubMeter',
 }
 
 export interface EnyoApplianceTopology {

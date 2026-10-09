@@ -7,8 +7,10 @@ import {
     EnyoDataBusHeatpumpOverheatingV1,
     EnyoDataBusHeatpumpTemperaturesV1,
     EnyoDataBusHeatpumpValuesV1,
+    EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusMessageEnum,
-    EnyoDataBusSetHeatpumpAvailablePowerV2
+    EnyoDataBusSetHeatpumpAvailablePowerV2,
+    EnyoDataBusSetHeatpumpRoomTemperatureV1
 } from "../types/enyo-data-bus-value.js";
 
 /**
@@ -17,6 +19,10 @@ import {
  * Subscribes to:
  *  - `HeatpumpOverheatingV1` — overheating commands (room / buffer tank / DHW).
  *  - `HeatpumpAvailablePowerAnnouncementV1` — available power announcements.
+ *  - `SetHeatpumpAvailablePowerV2` — available power envelope with context.
+ *  - `SetHeatpumpRoomTemperatureV1` — measured room temperature input
+ *    (optional: override {@link handleSetHeatpumpRoomTemperature}; answers
+ *    `NotSupported` by default).
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  *
  * Subclasses implement the `handle*` async methods, returning `Accepted`,
@@ -67,6 +73,10 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         this.registerCommandHandler<EnyoDataBusSetHeatpumpAvailablePowerV2>(
             EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2,
             (msg) => this.handleSetHeatpumpAvailablePower(msg)
+        );
+        this.registerCommandHandler<EnyoDataBusSetHeatpumpRoomTemperatureV1>(
+            EnyoDataBusMessageEnum.SetHeatpumpRoomTemperatureV1,
+            (msg) => this.handleSetHeatpumpRoomTemperature(msg)
         );
     }
 
@@ -120,6 +130,31 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     ): Promise<IntegrationCommandResponse>;
 
     /**
+     * Handles a `SetHeatpumpRoomTemperatureV1` command: writes the measured
+     * room temperature (`message.data.roomTemperatureC`) into the heating
+     * circuit `message.data.heatingCircuitIndex` of the physical heatpump, for
+     * use in its room-temperature control.
+     *
+     * Override this in integrations whose heatpump declares
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperatureInput}.
+     * The default implementation answers `NotSupported`.
+     *
+     * @param _message - The room temperature command.
+     * @returns `Accepted` when the temperature was written, `Rejected` (with
+     *   `rejectionReason`) when the heatpump cannot take it right now (e.g.
+     *   unknown circuit index), `NotSupported` when the heatpump does not
+     *   accept room temperatures as input.
+     */
+    protected async handleSetHeatpumpRoomTemperature(
+        _message: EnyoDataBusSetHeatpumpRoomTemperatureV1
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'Heatpump does not accept room temperatures as input',
+        };
+    }
+
+    /**
      * @inheritDoc
      */
     protected abstract handleGridOperatorPowerLimitation(
@@ -152,7 +187,8 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
 
     /**
      * Publishes a `HeatpumpTemperaturesUpdateV1` message with the current
-     * temperatures (outdoor, flow, DHW, heating circuits, buffer tank).
+     * temperatures (outdoor, flow / target flow / return, DHW, heating
+     * circuits incl. room and per-circuit flow / return, buffer tank).
      *
      * @param applianceId - The heatpump appliance ID this update is for.
      * @param temperatures - Temperature payload — see

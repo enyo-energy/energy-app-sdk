@@ -1,4 +1,5 @@
 import {
+    EnyoAppliance,
     EnyoApplianceBatteryState,
     EnyoApplianceErrorCode,
     EnyoApplianceStateEnum,
@@ -6,7 +7,6 @@ import {
     EnyoApplianceTypeEnum
 } from "./enyo-appliance.js";
 import type {EnyoAutomationTriggerData} from "./enyo-automation.js";
-import type {EnyoChargeStatus} from "./enyo-charge.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {
@@ -30,6 +30,7 @@ import type {
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
+import type {EnyoCascadeStatusEnum} from "./enyo-meter-cascade.js";
 import type {
     EnyoFlexibilityHeatpumpTargetTypeEnum,
     EnyoFlexibilityPowerBand,
@@ -1094,6 +1095,10 @@ export enum EnyoDataBusMessageEnum {
     SmartPlugValuesUpdateV1 = 'SmartPlugValuesUpdateV1',
     /** Control command: switch a smart plug / relay channel on or off. */
     SetSmartPlugSwitchV1 = 'SetSmartPlugSwitchV1',
+    /** Control command: write a measured room temperature into a heatpump that accepts it as control input. */
+    SetHeatpumpRoomTemperatureV1 = 'SetHeatpumpRoomTemperatureV1',
+    /** Live split of the grid power between the household (primary meter) and the meter cascade. Published by the core. */
+    CascadeSplitUpdateV1 = 'CascadeSplitUpdateV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
 }
 
@@ -1811,6 +1816,98 @@ export interface EnyoDataBusStopChargingFailedV1 extends EnyoDataBusMessage {
     };
 }
 
+/**
+ * Live values of the site's meter cascade (see {@link EnyoMeterCascade}) as
+ * part of {@link EnyoDataBusAggregatedStateValuesV1}.
+ *
+ * Powers use the same sign convention as the aggregated grid power: positive
+ * means energy flowing from the primary meter into the cascade (consumption),
+ * negative means energy flowing back out of it (feed-in).
+ *
+ * The cascade meter sits **behind** the primary meter, so everything it
+ * measures is already contained in `gridPowerW`. Never add the two; to get the
+ * part of the grid power billed on the site's own tariff, subtract the
+ * cascade's share instead.
+ */
+export interface EnyoAggregatedStateCascadeValues {
+    /** Appliance ID of the cascade meter. Absent when the cascade is {@link estimated}. */
+    meterApplianceId?: string;
+    /**
+     * Whether the cascade is in effect, i.e. appliances behind it are billed on
+     * the cascade's tariff and grid fee (see `useCascade().isActive()`).
+     */
+    active: boolean;
+    /** Whether the cascade values are calculated from its appliances rather than measured by a meter */
+    estimated?: boolean;
+    /** Operating status of the cascade */
+    status?: EnyoCascadeStatusEnum;
+    /** Total power through the cascade meter (in Watt). Positive: consumption, negative: feed-in */
+    powerW?: number;
+    /** Power through the cascade meter on phase L1 (in Watt). Positive: consumption, negative: feed-in */
+    powerPhase1W?: number;
+    /** Power through the cascade meter on phase L2 (in Watt). Positive: consumption, negative: feed-in */
+    powerPhase2W?: number;
+    /** Power through the cascade meter on phase L3 (in Watt). Positive: consumption, negative: feed-in */
+    powerPhase3W?: number;
+    /** Consumption share of {@link powerW} (in Watt, always >= 0) */
+    consumptionW?: number;
+    /** Feed-in share of {@link powerW} (in Watt, always >= 0) */
+    feedInW?: number;
+    /**
+     * Time resolution of the cascade power values. Use `'dynamic'` when the
+     * values are forwarded as events occur.
+     */
+    resolution?: EnyoDataBusMessageResolution;
+    /** IDs of the appliances behind the cascade meter (see `useCascade().getApplianceIds()`) */
+    applianceIds?: string[];
+}
+
+/**
+ * Live split of the site's grid power between the household (Z1) and the
+ * meter cascade (Z2) — the same values the cockpit shows. Published by the
+ * core whenever the split is recomputed, and only while a cascade is
+ * configured. Subscribing requires the `SubscribeDataBus` permission.
+ *
+ * **Split rule.** PV and battery cover Z2 first; Z2 only pays the cascade
+ * tariff for what Z1 imports from the grid at the same moment:
+ *
+ * - `cascadeGridW = min(max(subMeterPowerW − local supply, 0), Z1 import)`
+ * - `cascadeSelfConsumedW = subMeterPowerW − cascadeGridW`
+ * - `householdGridW = Z1 import − cascadeGridW`
+ *
+ * Example: Z1 imports 2 kW, the battery supplies 1 kW, Z2 draws 2 kW →
+ * `cascadeGridW` 1 kW, `cascadeSelfConsumedW` 1 kW, `householdGridW` 1 kW.
+ *
+ * Because of this rule, `cascadeGridW` × the cascade price is what Z2 is
+ * costing right now, and `cascadeSelfConsumedW` costs nothing. All powers are
+ * in Watt and never negative; `householdGridW + cascadeGridW` is the site's
+ * grid import. Feed-in always leaves through Z1 and is not part of the split.
+ */
+export interface EnyoDataBusCascadeSplitUpdateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.CascadeSplitUpdateV1;
+    data: {
+        /** Operating status of the cascade; the powers are only reliable when {@link EnyoCascadeStatusEnum.Live} */
+        status: EnyoCascadeStatusEnum;
+        /** Whether the cascade values are calculated from its appliances rather than measured by a meter */
+        estimated: boolean;
+        /** Grid import billed on the primary meter's (Z1) tariff — the household share */
+        householdGridW?: number;
+        /** Grid import billed on the cascade's (Z2) tariff */
+        cascadeGridW?: number;
+        /** Consumption behind the cascade meter covered locally (PV / battery) instead of the grid */
+        cascadeSelfConsumedW?: number;
+        /**
+         * Power through the cascade sub-meter — `cascadeGridW +
+         * cascadeSelfConsumedW`. Calculated from the appliances behind the
+         * cascade when {@link estimated}.
+         */
+        subMeterPowerW?: number;
+        /** Appliance ID of the cascade meter; absent when {@link estimated} */
+        meterApplianceId?: string;
+    };
+}
+
 export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.AggregatedStateUpdateV1;
@@ -1847,6 +1944,13 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
         heatpumpPowerW?: number;
         chargerPowerW?: number;
         autarkyPercentage?: number;
+        /**
+         * Live values of the site's meter cascade — the meter behind the
+         * primary meter with its own tariff and grid fee. Omitted when no
+         * cascade is configured. Its power is already contained in
+         * {@link gridPowerW}; never add the two.
+         */
+        cascade?: EnyoAggregatedStateCascadeValues;
         /** Array of all appliances with their individual values and current state */
         appliances: Array<{
             /** ID of the appliance */
@@ -3252,8 +3356,12 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
             /** Current temperature in Celsius */
             temperatureC: number;
         }[];
-        /** Heatpump flow temperature in Celsius */
+        /** Heatpump flow (supply) temperature in Celsius */
         heatpumpFlowTemperatureC?: number;
+        /** Target flow (supply) temperature of the heatpump in Celsius */
+        heatpumpTargetFlowTemperatureC?: number;
+        /** Heatpump return temperature in Celsius */
+        heatpumpReturnTemperatureC?: number;
         /** Heating circuit temperatures */
         heatingCircuits?: {
             /** Index of the heating circuit */
@@ -3264,14 +3372,37 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
              * Omit when no identification is available.
              */
             name?: string;
-            /** Target temperature in Celsius */
+            /**
+             * Target temperature of the circuit in Celsius, as the device
+             * reports it. Prefer the explicit {@link targetFlowTemperatureC}
+             * and {@link targetRoomTemperatureC} where available — this field
+             * does not say which of the two it is.
+             */
             targetTemperatureC: number;
-            /** Current temperature in Celsius */
+            /**
+             * Current temperature of the circuit in Celsius, as the device
+             * reports it. Prefer the explicit {@link flowTemperatureC} and
+             * {@link roomTemperatureC} where available — this field does not
+             * say which of the two it is.
+             */
             temperatureC: number;
             /** Target room temperature in Celsius */
             targetRoomTemperatureC?: number;
-            /** Current room temperature in Celsius */
+            /**
+             * Current (measured) room temperature in Celsius. See
+             * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperature}.
+             */
             roomTemperatureC?: number;
+            /** Current flow (supply) temperature of this circuit in Celsius */
+            flowTemperatureC?: number;
+            /**
+             * Target flow (supply) temperature of this circuit in Celsius —
+             * typically the value the heating curve yields for the current
+             * outdoor temperature.
+             */
+            targetFlowTemperatureC?: number;
+            /** Current return temperature of this circuit in Celsius */
+            returnTemperatureC?: number;
         }[];
         /** Buffer tank temperature */
         bufferTank?: {
@@ -3478,6 +3609,58 @@ export interface EnyoDataBusHeatpumpOverheatingV1 extends EnyoDataBusMessage {
         dhw?: EnyoHeatpumpOverheatingConfig;
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message writing a measured room temperature into a heatpump that
+ * uses it as an input for its room-temperature control.
+ *
+ * Only send it to heatpumps that declare
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperatureInput}.
+ * Typically the energy manager forwards the readings of the temperature sensor
+ * linked via {@link EnyoHeatpumpApplianceHeatingCircuit.roomTemperatureSensor},
+ * re-sending whenever a new reading arrives and well before
+ * {@link validForSeconds} runs out.
+ *
+ * The receiving integration should answer with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's
+ * `id`.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusSetHeatpumpRoomTemperatureV1 = {
+ *     id: 'msg-1',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.SetHeatpumpRoomTemperatureV1,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: new Date().toISOString(),
+ *     data: {heatingCircuitIndex: 0, roomTemperatureC: 20.6, validForSeconds: 900},
+ * };
+ * ```
+ */
+export interface EnyoDataBusSetHeatpumpRoomTemperatureV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetHeatpumpRoomTemperatureV1;
+    /** ID of the heatpump appliance to write the room temperature into */
+    applianceId: string;
+    data: {
+        /** Index of the heating circuit whose room this temperature belongs to */
+        heatingCircuitIndex: number;
+        /** Measured room temperature in Celsius */
+        roomTemperatureC: number;
+        /** ID of the temperature sensor appliance the reading comes from, if any */
+        sourceApplianceId?: string;
+        /** ID of the sensor within {@link sourceApplianceId}, if any */
+        sourceSensorId?: string;
+        /**
+         * How long the reading may be used, in seconds. After that the
+         * heatpump should fall back to its own behaviour (e.g. its internal
+         * sensor or pure heating-curve control) unless a newer reading arrived.
+         * Omit to leave the fallback to the heatpump.
+         */
+        validForSeconds?: number;
     };
 }
 

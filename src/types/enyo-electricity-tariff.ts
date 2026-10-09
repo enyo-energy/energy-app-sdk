@@ -314,3 +314,48 @@ export interface EnyoTariffChangeEvent {
     /** The tariff now in the slot, or `null` when it was cleared. */
     tariff: EnyoElectricityTariff | null;
 }
+
+/**
+ * Which meter's tariff bills an appliance, as reported by
+ * `useElectricityTariff().getPricesForAppliance()`.
+ */
+export enum EnyoBillingMeterEnum {
+    /** The site's primary meter (Z1) — the site's consumption tariff */
+    Primary = 'primary',
+    /** The cascade meter (Z2) behind the primary meter — the cascade's consumption tariff (see `useCascade()`) */
+    Cascade = 'cascade',
+}
+
+/**
+ * One 15-minute slot of an {@link EnyoAppliancePriceSeries}.
+ */
+export interface EnyoAppliancePriceEntry extends EnyoTariffPriceEntry {
+    /**
+     * `true` when the appliance is billed on a cascade (Z2) but Z2 had no
+     * price for this slot, so the site's (Z1) price for the slot was used — the hub falls
+     * back slot by slot.
+     */
+    fallback: boolean;
+}
+
+/**
+ * The consumption prices that actually bill one appliance, as returned by
+ * `useElectricityTariff().getPricesForAppliance()`.
+ *
+ * Effective prices: each entry already contains the billing meter's own grid
+ * fee (and whatever else `includes` declares). Do not add a grid fee on top.
+ */
+export interface EnyoAppliancePriceSeries extends Omit<EnyoTariffPriceSeries, 'entries'> {
+    /** Which meter bills the appliance */
+    billingMeter: EnyoBillingMeterEnum;
+    /**
+     * `true` when the appliance is billed on a cascade (Z2) but Z2 has no
+     * tariff of its own, so every slot carries the site's prices. Always
+     * `false` for {@link EnyoBillingMeterEnum.Primary}.
+     */
+    inheritedFromSite: boolean;
+    /** `true` when at least one entry has {@link EnyoAppliancePriceEntry.fallback} set */
+    fallback: boolean;
+    /** Entries sorted ascending by `timestampIso`, filled slot by slot */
+    entries: EnyoAppliancePriceEntry[];
+}

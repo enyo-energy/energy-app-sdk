@@ -19,6 +19,7 @@ import {
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceModeEnum,
+    EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../../types/enyo-heatpump-appliance.js';
 import type {EnyoApplianceCreatedFilter} from '../../../packages/energy-app-appliance.js';
 import {
@@ -569,6 +570,94 @@ describe('ApplianceManager', () => {
                 ],
             });
 
+            manager.dispose();
+        });
+    });
+
+    describe('updateHeatpumpHeatingCircuit / updateHeatpumpDomesticHotWater', () => {
+        const curve = {
+            points: [
+                {outdoorTemperatureC: -10, flowTemperatureC: 45},
+                {outdoorTemperatureC: 15, flowTemperatureC: 28},
+            ],
+        };
+        const heatpump = () => makeAppliance('hp-1', {
+            type: EnyoApplianceTypeEnum.Heatpump,
+            heatpump: {
+                availableFeatures: [EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurve],
+                mode: EnyoHeatpumpApplianceModeEnum.Heating,
+                heatingCircuits: [
+                    {index: 0, customName: 'Ground floor', targetRoomTemperatureC: 21},
+                    {index: 2, customName: 'Attic'},
+                ],
+                domesticHotWater: [{index: 0, targetTemperatureC: 50, tankSizeLiter: 300}],
+            },
+        }, 'SN-HP');
+
+        it('merges the patch into the matching circuit and leaves the others untouched', async () => {
+            const sdk = createAppliancesFake([heatpump()]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.updateHeatpumpHeatingCircuit('hp-1', 0, {heatingCurve: curve});
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump?.heatingCircuits).toEqual([
+                {index: 0, customName: 'Ground floor', targetRoomTemperatureC: 21, heatingCurve: curve},
+                {index: 2, customName: 'Attic'},
+            ]);
+            // Sibling heatpump metadata survives.
+            expect(saved.heatpump?.mode).toBe(EnyoHeatpumpApplianceModeEnum.Heating);
+            expect(saved.heatpump?.domesticHotWater).toHaveLength(1);
+
+            manager.dispose();
+        });
+
+        it('appends a missing circuit in index order', async () => {
+            const sdk = createAppliancesFake([heatpump()]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.updateHeatpumpHeatingCircuit('hp-1', 1, {customName: 'First floor'});
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump?.heatingCircuits?.map(c => c.index)).toEqual([0, 1, 2]);
+            expect(saved.heatpump?.heatingCircuits?.[1]).toEqual({index: 1, customName: 'First floor'});
+
+            manager.dispose();
+        });
+
+        it('patches a DHW zone and refuses to append one without targetTemperatureC', async () => {
+            const sdk = createAppliancesFake([heatpump()]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+            const timeProgram = {
+                defaultLevel: EnyoHeatpumpTimeProgramLevelEnum.Reduced,
+                periods: [{
+                    daysOfWeek: [1, 2, 3, 4, 5],
+                    startTimeOfDay: '05:00',
+                    endTimeOfDay: '07:00',
+                    level: EnyoHeatpumpTimeProgramLevelEnum.Comfort,
+                }],
+            };
+
+            await manager.updateHeatpumpDomesticHotWater('hp-1', 0, {timeProgram});
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump?.domesticHotWater).toEqual([
+                {index: 0, targetTemperatureC: 50, tankSizeLiter: 300, timeProgram},
+            ]);
+
+            await expect(manager.updateHeatpumpDomesticHotWater('hp-1', 1, {timeProgram}))
+                .rejects.toThrow(/targetTemperatureC/);
+
+            manager.dispose();
+        });
+
+        it('does nothing for an unknown appliance', async () => {
+            const sdk = createAppliancesFake([heatpump()]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.updateHeatpumpHeatingCircuit('missing', 0, {customName: 'x'});
+
+            expect(sdk.save).not.toHaveBeenCalled();
             manager.dispose();
         });
     });

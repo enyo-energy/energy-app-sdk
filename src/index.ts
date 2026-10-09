@@ -89,6 +89,7 @@ export * from './implementations/calibration/calibration-validators.js'
 export * from './types/enyo-temperature-sensor-appliance.js'
 export * from './types/enyo-battery-appliance.js'
 export * from './types/enyo-heatpump-appliance.js'
+export * from './implementations/heatpump/heatpump-metadata-validators.js'
 export * from './types/enyo-inverter-appliance.js'
 export * from './types/enyo-onboarding.js'
 export * from './packages/energy-app-onboarding.js'
@@ -176,6 +177,8 @@ export * from './types/enyo-price-schedule.js';
 export * from './types/enyo-grid-fee.js';
 export * from './types/enyo-price-composition.js';
 export * from './packages/energy-app-grid-fee.js';
+export * from './types/enyo-meter-cascade.js';
+export * from './packages/energy-app-cascade.js';
 export * from './implementations/pricing/price-schedule-resolver.js';
 export * from './implementations/pricing/price-component-validators.js';
 export * from './implementations/pricing/compose-electricity-prices.js';

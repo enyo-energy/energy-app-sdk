@@ -19,6 +19,42 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     ReadyForCalibration = 'ReadyForCalibration',
     /** If the heatpump supports cooling (reversible heatpump) */
     Cooling = 'Cooling',
+    /**
+     * If the heatpump reports the heating curve of at least one heating circuit
+     * ({@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurve}).
+     */
+    HeatingCurve = 'HeatingCurve',
+    /**
+     * If the heatpump reports the time program (weekly schedule) of at least one
+     * heating circuit or domestic-hot-water zone
+     * ({@link EnyoHeatpumpApplianceHeatingCircuit.timeProgram},
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.timeProgram}).
+     */
+    TimeProgram = 'TimeProgram',
+    /**
+     * If the heatpump reports actual (measured) room temperatures for its
+     * heating circuits, via `heatingCircuits[].roomTemperatureC` of
+     * {@link EnyoDataBusHeatpumpTemperaturesV1}.
+     */
+    RoomTemperature = 'RoomTemperature',
+    /**
+     * If the heatpump accepts measured room temperatures as an input for its
+     * room-temperature control, written into it by the energy manager via
+     * {@link EnyoDataBusSetHeatpumpRoomTemperatureV1}. Typically used to feed a
+     * room sensor that is not wired to the heatpump (see
+     * {@link EnyoHeatpumpApplianceHeatingCircuit.roomTemperatureSensor}).
+     */
+    RoomTemperatureInput = 'RoomTemperatureInput',
+    /**
+     * If the heatpump reports flow (supply) temperatures — its own and/or per
+     * heating circuit — via {@link EnyoDataBusHeatpumpTemperaturesV1}.
+     */
+    FlowTemperature = 'FlowTemperature',
+    /**
+     * If the heatpump reports return temperatures — its own and/or per heating
+     * circuit — via {@link EnyoDataBusHeatpumpTemperaturesV1}.
+     */
+    ReturnTemperature = 'ReturnTemperature',
 }
 
 /**
@@ -120,6 +156,191 @@ export enum EnyoHeatpumpApplianceHeatingCircuitTypeEnum {
 }
 
 /**
+ * One point of a heating (or cooling) curve: the target flow temperature the
+ * heatpump aims for at a given outdoor temperature.
+ */
+export interface EnyoHeatpumpApplianceHeatingCurvePoint {
+    /** Outdoor temperature in °C */
+    outdoorTemperatureC: number;
+    /** Target flow (supply) temperature in °C at that outdoor temperature */
+    flowTemperatureC: number;
+}
+
+/**
+ * The heating curve (Heizkurve) of a heating circuit: which flow temperature the
+ * heatpump targets for a given outdoor temperature.
+ *
+ * Vendors parametrise their curves differently — the same "slope 1.2, shift
+ * +2 K" produces different flow temperatures on different brands — so the
+ * vendor-neutral representation is {@link points}: the integration samples its
+ * device's curve into outdoor → flow pairs, and consumers interpolate between
+ * them. The raw vendor parameters ({@link slope}, {@link parallelShiftK}, …)
+ * are kept alongside as informational values, e.g. for showing the user what
+ * the installer set on the device.
+ *
+ * The flow temperature drives the heatpump's efficiency (COP), so the curve is
+ * what lets an EMS estimate how expensive heating will be at a forecast outdoor
+ * temperature and how much headroom a pre-heating run has.
+ *
+ * Use {@link validateHeatpumpHeatingCurve} to check a curve before publishing it.
+ */
+export interface EnyoHeatpumpApplianceHeatingCurve {
+    /**
+     * The curve as outdoor → target flow temperature pairs, sorted by strictly
+     * increasing {@link EnyoHeatpumpApplianceHeatingCurvePoint.outdoorTemperatureC}.
+     * At least two points are required.
+     *
+     * Consumers interpolate linearly between neighbouring points and clamp to
+     * the first / last point outside the covered range. Sample densely enough
+     * to capture a curved vendor formula (e.g. every 5 K from -20 °C to 20 °C).
+     */
+    points: EnyoHeatpumpApplianceHeatingCurvePoint[];
+    /**
+     * Raw vendor slope (Steilheit / Neigung) as shown on the device.
+     * Informational only — its meaning differs between vendors; use
+     * {@link points} for calculations.
+     */
+    slope?: number;
+    /**
+     * Raw vendor parallel shift (Niveau / Parallelverschiebung) of the curve in
+     * Kelvin, as shown on the device. Informational only — use {@link points}
+     * for calculations.
+     */
+    parallelShiftK?: number;
+    /**
+     * Room temperature in °C the curve is designed for. Some vendors shift the
+     * whole curve when the room setpoint changes; this states the setpoint the
+     * reported {@link points} correspond to.
+     */
+    referenceRoomTemperatureC?: number;
+    /** Lower bound in °C the heatpump clamps the computed flow temperature to */
+    minFlowTemperatureC?: number;
+    /** Upper bound in °C the heatpump clamps the computed flow temperature to */
+    maxFlowTemperatureC?: number;
+    /**
+     * Optional cooling curve of reversible heatpumps, in the same
+     * representation as {@link points} (sorted by strictly increasing outdoor
+     * temperature, at least two points). Only meaningful when the heatpump
+     * supports {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.Cooling}.
+     */
+    coolingPoints?: EnyoHeatpumpApplianceHeatingCurvePoint[];
+    /** When the curve was last read from the device, as epoch milliseconds */
+    updatedAtMs?: number;
+}
+
+/**
+ * Operating level a time program switches a heating circuit or DHW zone to.
+ */
+export enum EnyoHeatpumpTimeProgramLevelEnum {
+    /** Normal comfort setpoint (e.g. day temperature, regular DHW temperature) */
+    Comfort = 'Comfort',
+    /** Reduced / eco setpoint (e.g. night setback) */
+    Reduced = 'Reduced',
+    /** Heating or DHW production is switched off (frost protection only) */
+    Off = 'Off',
+    /** Raised setpoint above comfort (e.g. DHW boost or legionella run) */
+    Boost = 'Boost',
+}
+
+/**
+ * One switching period of a {@link EnyoHeatpumpTimeProgram}.
+ *
+ * Times are local wall-clock times of the site in `HH:mm` notation — the way
+ * heatpumps store them — not UTC. Consumers convert them to absolute times
+ * using the site's timezone.
+ */
+export interface EnyoHeatpumpTimeProgramPeriod {
+    /**
+     * Days of the week the period applies to, `0` = Sunday … `6` = Saturday.
+     * Must not be empty.
+     *
+     * For a period that wraps past midnight the day is evaluated against the
+     * day the period **starts** — a Friday 22:00–06:00 period covers Friday
+     * evening and the early hours of Saturday.
+     */
+    daysOfWeek: number[];
+    /** Inclusive start of the period as local wall-clock time, `HH:mm` */
+    startTimeOfDay: string;
+    /**
+     * Exclusive end of the period as local wall-clock time, `HH:mm`. `'24:00'`
+     * marks the end of the day. May be **earlier** than {@link startTimeOfDay},
+     * in which case the period wraps past midnight. Must differ from
+     * {@link startTimeOfDay}.
+     */
+    endTimeOfDay: string;
+    /** Level the zone runs at during this period */
+    level: EnyoHeatpumpTimeProgramLevelEnum;
+    /**
+     * Explicit setpoint in °C for this period, for devices that store a
+     * temperature per period. When omitted, the setpoint follows from
+     * {@link EnyoHeatpumpTimeProgram.levelTemperaturesC} for {@link level}.
+     */
+    targetTemperatureC?: number;
+}
+
+/**
+ * The weekly time program (Zeitprogramm) of a heating circuit or a
+ * domestic-hot-water zone, as configured on the heatpump.
+ *
+ * Tells the EMS in advance when the heatpump will lower its room setpoint or
+ * start charging its DHW tank, so the optimizer can plan around — or with —
+ * the device's own schedule instead of reacting to it.
+ *
+ * Use {@link validateHeatpumpTimeProgram} to check a program before publishing it.
+ */
+export interface EnyoHeatpumpTimeProgram {
+    /** Level the zone runs at outside of every {@link periods} entry */
+    defaultLevel: EnyoHeatpumpTimeProgramLevelEnum;
+    /**
+     * The switching periods. Periods should not overlap on the same day; if
+     * they do, consumers should treat the later entry in the array as winning.
+     */
+    periods: EnyoHeatpumpTimeProgramPeriod[];
+    /**
+     * Setpoint in °C per level, for devices that work with levels rather than a
+     * temperature per period (e.g. `{Comfort: 21, Reduced: 18}`).
+     */
+    levelTemperaturesC?: Partial<Record<EnyoHeatpumpTimeProgramLevelEnum, number>>;
+    /**
+     * Whether the zone currently follows this program. `false` means the user
+     * switched the zone to a manual / constant mode and the program is stored
+     * but not in effect. Omitted means unknown.
+     */
+    active?: boolean;
+    /** When the program was last read from the device, as epoch milliseconds */
+    updatedAtMs?: number;
+}
+
+/**
+ * Where the room temperature of a heating circuit is measured.
+ */
+export enum EnyoHeatpumpRoomTemperatureSourceEnum {
+    /** No room temperature is measured — the circuit runs purely on its heating curve */
+    None = 'None',
+    /** Measured by the heatpump's own room unit / sensor wired to the heatpump */
+    Internal = 'Internal',
+    /**
+     * Measured by a separate temperature sensor known to enyo (see
+     * {@link EnyoHeatpumpApplianceHeatingCircuit.roomTemperatureSensor}). If
+     * the heatpump supports
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperatureInput},
+     * the energy manager can forward the readings to it.
+     */
+    External = 'External',
+}
+
+/**
+ * Reference to a single sensor of a
+ * {@link EnyoApplianceTypeEnum.TemperatureSensor} appliance.
+ */
+export interface EnyoHeatpumpRoomTemperatureSensorReference {
+    /** ID of the temperature sensor appliance */
+    applianceId: string;
+    /** ID of the sensor within that appliance ({@link EnyoTemperatureSensor.id}) */
+    sensorId: string;
+}
+
+/**
  * A domestic-hot-water zone of the installation.
  *
  * In a combi installation
@@ -165,7 +386,12 @@ export interface EnyoHeatpumpApplianceDomesticHotWater {
      * Acts as an upper bound the EMS must not exceed (e.g. when overheating the
      * tank to store surplus energy).
      */
-    maxTemperatureC?: number;
+    maxTemperatureC?: number;    /**
+     * The weekly time program of this DHW zone (when the tank is charged to
+     * which temperature), if the heatpump reports one. See
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.TimeProgram}.
+     */
+    timeProgram?: EnyoHeatpumpTimeProgram;
 }
 
 /**
@@ -218,7 +444,31 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
     /** Type of heat emitter connected to this circuit (e.g. radiators or floor heating) */
     type?: EnyoHeatpumpApplianceHeatingCircuitTypeEnum;
     /** Optional custom name for the heating circuit, defined by the user (e.g. "Ground floor") */
-    customName?: string;
+    customName?: string;    /**
+     * The heating curve of this circuit, if the heatpump reports it. See
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurve}.
+     */
+    heatingCurve?: EnyoHeatpumpApplianceHeatingCurve;
+    /**
+     * The weekly time program of this circuit (comfort / reduced periods), if
+     * the heatpump reports it. See
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.TimeProgram}.
+     */
+    timeProgram?: EnyoHeatpumpTimeProgram;
+    /**
+     * Where the room temperature of this circuit is measured. Omitted means
+     * unknown, not {@link EnyoHeatpumpRoomTemperatureSourceEnum.None}.
+     */
+    roomTemperatureSource?: EnyoHeatpumpRoomTemperatureSourceEnum;
+    /**
+     * The enyo temperature sensor measuring this circuit's room. Set together
+     * with {@link roomTemperatureSource} =
+     * {@link EnyoHeatpumpRoomTemperatureSourceEnum.External}; its readings can
+     * be forwarded to the heatpump via
+     * {@link EnyoDataBusSetHeatpumpRoomTemperatureV1} when the heatpump supports
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperatureInput}.
+     */
+    roomTemperatureSensor?: EnyoHeatpumpRoomTemperatureSensorReference;
 }
 
 /**

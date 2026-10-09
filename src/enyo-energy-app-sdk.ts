@@ -49,6 +49,7 @@ import {EnergyAppDeviceTest} from "./packages/energy-app-device-test.js";
 import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
 import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
+import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -183,4 +184,6 @@ export interface EnyoEnergyAppSdk {
     useGridFee: () => EnergyAppGridFee;
     /** Get the Command Log API for recording which register, configuration key or message this app wrote to an appliance, and reading those commands back */
     useCommandLog: () => EnergyAppCommandLog;
+    /** Get the Cascade API for the meter behind the primary meter: whether it is active, which appliances are behind it, and its own electricity tariff, prices and grid fee */
+    useCascade: () => EnergyAppCascade;
 }

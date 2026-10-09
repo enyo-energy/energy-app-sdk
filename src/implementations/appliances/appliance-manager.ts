@@ -11,7 +11,11 @@ import {
 } from "../../types/enyo-appliance.js";
 import type {EnyoApplianceCreatedFilter} from "../../packages/energy-app-appliance.js";
 import type {EnyoChargerApplianceMetadata} from "../../types/enyo-charger-appliance.js";
-import type {EnyoHeatpumpApplianceMetadata} from "../../types/enyo-heatpump-appliance.js";
+import type {
+    EnyoHeatpumpApplianceDomesticHotWater,
+    EnyoHeatpumpApplianceHeatingCircuit,
+    EnyoHeatpumpApplianceMetadata,
+} from "../../types/enyo-heatpump-appliance.js";
 import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-appliance.js";
 import type {EnyoInverterApplianceMetadata} from "../../types/enyo-inverter-appliance.js";
 import type {EnyoMeterAppliance} from "../../types/enyo-meter-appliance.js";
@@ -671,6 +675,92 @@ export class ApplianceManager {
         if (!appliance) return;
         const updated = this.mergeApplianceData(appliance, attributes);
         await this.energyApp.useAppliances().save(updated, applianceId);
+        await this.primeCacheFromSdk(applianceId);
+    }
+
+    /**
+     * Patches a single heating circuit of a heatpump — e.g. to publish a changed
+     * heating curve or time program — without resending the whole
+     * `heatingCircuits` array.
+     *
+     * {@link updateAppliance} merges `heatpump` metadata only one level deep,
+     * so passing `heatingCircuits` there replaces every circuit. This helper
+     * reads the stored array, shallow-merges `patch` into the circuit with the
+     * given `index` (appending a new circuit when none exists), keeps the
+     * array sorted by index, and saves. Other circuits are left untouched.
+     *
+     * Does nothing when the appliance does not exist.
+     *
+     * @param applianceId The ID of the heatpump appliance
+     * @param index The `index` of the heating circuit to patch
+     * @param patch The circuit fields to set; fields not given keep their stored value
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async updateHeatpumpHeatingCircuit(
+        applianceId: string,
+        index: number,
+        patch: Partial<Omit<EnyoHeatpumpApplianceHeatingCircuit, 'index'>>,
+    ): Promise<void> {
+        this.throwIfDisposed();
+        const appliance = await this.energyApp.useAppliances().getById(applianceId);
+        if (!appliance) return;
+        const circuits = [...(appliance.heatpump?.heatingCircuits ?? [])];
+        const position = circuits.findIndex(c => c.index === index);
+        if (position >= 0) {
+            circuits[position] = {...circuits[position], ...patch, index};
+        } else {
+            circuits.push({...patch, index});
+            circuits.sort((a, b) => a.index - b.index);
+        }
+        await this.energyApp.useAppliances().save(
+            this.mergeApplianceData(appliance, {heatpump: {heatingCircuits: circuits}}),
+            applianceId,
+        );
+        await this.primeCacheFromSdk(applianceId);
+    }
+
+    /**
+     * Patches a single domestic-hot-water zone of a heatpump — e.g. to publish
+     * a changed time program — without resending the whole `domesticHotWater`
+     * array. Works like {@link updateHeatpumpHeatingCircuit}.
+     *
+     * Appending a zone that does not exist yet requires `targetTemperatureC`
+     * in `patch`, because a DHW zone cannot be stored without it.
+     *
+     * Does nothing when the appliance does not exist.
+     *
+     * @param applianceId The ID of the heatpump appliance
+     * @param index The `index` of the DHW zone to patch
+     * @param patch The zone fields to set; fields not given keep their stored value
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     * @throws {Error} when the zone does not exist and `patch` lacks `targetTemperatureC`
+     */
+    async updateHeatpumpDomesticHotWater(
+        applianceId: string,
+        index: number,
+        patch: Partial<Omit<EnyoHeatpumpApplianceDomesticHotWater, 'index'>>,
+    ): Promise<void> {
+        this.throwIfDisposed();
+        const appliance = await this.energyApp.useAppliances().getById(applianceId);
+        if (!appliance) return;
+        const zones = [...(appliance.heatpump?.domesticHotWater ?? [])];
+        const position = zones.findIndex(z => z.index === index);
+        if (position >= 0) {
+            zones[position] = {...zones[position], ...patch, index};
+        } else {
+            const {targetTemperatureC} = patch;
+            if (targetTemperatureC === undefined) {
+                throw new Error(
+                    `Cannot add domestic hot water zone ${index} to appliance ${applianceId} without targetTemperatureC`,
+                );
+            }
+            zones.push({...patch, index, targetTemperatureC});
+            zones.sort((a, b) => a.index - b.index);
+        }
+        await this.energyApp.useAppliances().save(
+            this.mergeApplianceData(appliance, {heatpump: {domesticHotWater: zones}}),
+            applianceId,
+        );
         await this.primeCacheFromSdk(applianceId);
     }
 

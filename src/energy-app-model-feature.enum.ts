@@ -45,6 +45,8 @@ export enum EnergyAppModelFeatureEnum {
     HeatpumpPowerModulation = 'heatpump-power-modulation',
     /** The model supports the SG Ready interface for smart-grid signalling */
     HeatpumpSgReady = 'heatpump-sg-ready',
+    /** The heat pump accepts measured room temperatures from an external sensor as control input */
+    HeatpumpRoomTemperatureInput = 'heatpump-room-temperature-input',
 
     // Climate Control / Air Conditioning
 
