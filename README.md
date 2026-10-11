@@ -1759,8 +1759,17 @@ An entry may carry an optional `gridFeeGrossPerKwh`: the gross grid fee **contai
 `pricePerKwh`, in currency units per kWh. It is a breakdown only — `pricePerKwh` is always the
 total, so never compute `pricePerKwh + gridFeeGrossPerKwh`.
 
+It may also carry an optional `spotPricePerKwh`: the net wholesale (e.g. EPEX day-ahead) price the
+interval's price is based on, as the provider reports it — in currency units per kWh, possibly negative.
+Informational too: never add it to `pricePerKwh`.
+
 ```typescript
-entries.push({ timestampIso: '2026-05-23T10:00:00Z', pricePerKwh: 0.31, gridFeeGrossPerKwh: 0.09 });
+entries.push({
+    timestampIso: '2026-05-23T10:00:00Z',
+    pricePerKwh: 0.31,
+    gridFeeGrossPerKwh: 0.09,
+    spotPricePerKwh: 0.084,
+});
 ```
 
 **Calling `setTariff` is the activation signal.** Return `AuthenticationRequired` or
@@ -4174,6 +4183,8 @@ New reason types came with this surface, so a skipped row can say *why* instead 
 **Short-cycling protection.** When an appliance is kept running (or kept off) to honour its minimum on/off time, state `DeviceProtection` with `context.switching` (`EnyoDataBusCommandReasonSwitchingContext`): `hold` (`EnyoSwitchingProtectionHoldEnum.KeptOn` / `KeptOff`), `minOnSeconds`, `minOffSeconds` and `untilIso`. The text can then say "Kept running for another 4 minutes to protect the compressor" instead of a generic "Protecting the device".
 
 A hold that keeps an appliance **off** after a stop has its own type, `RestartDelay` (category `DeviceProtection`): set `context.switching` with `hold: KeptOff`, `minOffSeconds` and `untilIso` (when it may restart), and `powerW` to the power waiting for it — e.g. "Short pause after switching off — charging resumes at 13:15 so the car isn't switched on and off too often."
+
+**Fluctuating PV surplus.** When the surplus jumps around (clouds passing) and the energy manager holds an appliance's power steady instead of following every dip, state `PvSurplusFluctuating` (category `PvSurplus`) with `powerW` set to the power being held — e.g. "Charging power held steady while clouds pass." / "Ladeleistung wird gehalten, solange Wolken durchziehen." It is a smoothing decision, told apart from `PvSurplusAvailable` / `PvSurplusUnavailable`.
 
 ## Dynamic Grid Fees & Tariff Bonuses
 

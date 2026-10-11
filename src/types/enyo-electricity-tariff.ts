@@ -202,6 +202,19 @@ export interface EnyoTariffPriceEntry {
      * series declares {@link EnyoPriceComponentEnum.GridFee} in its `includes`.
      */
     gridFeeGrossPerKwh?: number;
+    /**
+     * Optional wholesale spot price per kWh this interval's price is based on,
+     * as the provider reports it — typically the EPEX day-ahead price for a
+     * dynamic tariff. In the tariff's currency (not cent), net: without grid
+     * fee, taxes, levies or supplier margin. May be negative.
+     *
+     * Informational only, like {@link gridFeeGrossPerKwh}: it shows what the
+     * price was derived from and is **never added** to {@link pricePerKwh},
+     * which is always the total price. Set it when the provider hands it out;
+     * omit it otherwise — consumers needing a spot price without it can read
+     * `useEpexSpotPrices()`.
+     */
+    spotPricePerKwh?: number;
 }
 
 /**

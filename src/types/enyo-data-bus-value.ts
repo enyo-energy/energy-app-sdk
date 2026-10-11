@@ -82,6 +82,19 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * saying "elsewhere".
      */
     PvSurplusAllocatedElsewhere = 'pv-surplus-allocated-elsewhere',
+    /**
+     * The PV surplus is fluctuating (e.g. clouds passing) and the energy manager
+     * deliberately holds the appliance's power steady instead of following
+     * every dip and peak — "Ladeleistung wird gehalten, solange Wolken
+     * durchziehen." / "Charging power held steady while clouds pass."
+     *
+     * Says the command is a smoothing decision, not a reaction to the surplus
+     * being there or gone: told apart from {@link PvSurplusAvailable} and
+     * {@link PvSurplusUnavailable}. Set {@link EnyoDataBusCommandReason.powerW}
+     * to the power being held. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.PvSurplus}.
+     */
+    PvSurplusFluctuating = 'pv-surplus-fluctuating',
     /** Command issued because battery capacity is available */
     BatteryCapacityAvailable = 'battery-capacity-available',
     /** Command issued because battery capacity is unavailable */
