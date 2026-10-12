@@ -90,6 +90,16 @@ const PRICE_LIMIT_MAX_CT = 200;
  */
 const DISCHARGE_BUDGET_MIN_PLAUSIBLE_WH = 100;
 
+/**
+ * Below this, a
+ * {@link EnergyManagerSettingValues.batteryDischargeBlockAboveHomeConsumptionW}
+ * threshold is almost certainly kW entered into a W field.
+ *
+ * `11` would block the battery above 11 W — that is, whenever the house draws
+ * anything — where 11 kW was plainly meant. `0` is caught by the same check.
+ */
+const HOME_CONSUMPTION_BLOCK_MIN_PLAUSIBLE_W = 100;
+
 /** Every {@link EnergyManagerBatteryEvDischargeModeEnum} value. */
 const EV_DISCHARGE_MODES: ReadonlySet<string> = new Set(
     Object.values(EnergyManagerBatteryEvDischargeModeEnum),
@@ -175,6 +185,21 @@ function gateValue(
  *   duplicates mode `block-discharge`, the second catches a kWh value in a Wh field).
  * - `batteryEvDischargeSocLimitPercent` is a finite number in 0…100 (**error**),
  *   and not `100` (**warning** — a floor nothing can discharge past).
+ * - `batteryPvPriorityTargetSocPercent`, unless `null` (disabled), is a finite
+ *   number in 0…100 (**error**), and neither `0` (**warning** — no priority at
+ *   all, write `null`) nor `100` (**warning** — charging tapers near full, so
+ *   surplus consumers can be held back for hours).
+ * - `heatingRodBatteryDischargeSocLimitPercent`, unless `null` (disabled), is a
+ *   finite number in 0…100 (**error**), and not `100` (**warning** — a floor
+ *   nothing can discharge past). Set while `batteryControl` is not `true`
+ *   (**warning** — the floor cannot be enforced), or below
+ *   `batteryPvPriorityTargetSocPercent` (**warning** — the rod drains what the
+ *   PV priority refills).
+ * - `batteryDischargeBlockAboveHomeConsumptionW`, unless `null` (disabled), is
+ *   a finite non-negative number (**error**), and not below 100 W (**warning**
+ *   — catches a kW value in a W field; the battery would be blocked almost
+ *   always).
+ * - `null` counts as unset for the "stored" checks below.
  * - A parameter belonging to a mode other than the selected one is flagged by
  *   the gate check below, since {@link ENERGY_MANAGER_SETTING_DEPENDENCIES}
  *   gates each on its own mode.
@@ -224,7 +249,7 @@ export function validateEnergyManagerSettingsState(
 
     // ── value formats ──────────────────────────────────────────────────────
     for (const key of ['batteryControl', 'batteryChargeFromGrid', 'heatpumpControl',
-        'heatingRodControl', 'chargerControl'] as const) {
+        'heatingRodControl', 'chargerControl', 'gridOptimizedEvCharging'] as const) {
         if (values[key] !== undefined && typeof values[key] !== 'boolean') {
             errors.push(`\`${key}\` must be a boolean when set.`);
         }
@@ -338,6 +363,81 @@ export function validateEnergyManagerSettingsState(
         }
     }
 
+    if (values.batteryPvPriorityTargetSocPercent !== undefined
+        && values.batteryPvPriorityTargetSocPercent !== null) {
+        const target = values.batteryPvPriorityTargetSocPercent;
+        if (typeof target !== 'number' || !Number.isFinite(target)) {
+            errors.push('`batteryPvPriorityTargetSocPercent` must be a finite number when set.');
+        } else if (target < 0 || target > 100) {
+            errors.push(
+                `\`batteryPvPriorityTargetSocPercent\` is ${target}; it is a percentage and must lie ` +
+                    'between 0 and 100.',
+            );
+        } else if (target === 0) {
+            warnings.push(
+                '`batteryPvPriorityTargetSocPercent` is 0, which gives the battery no priority at all — ' +
+                    'write `null` to say that outright.',
+            );
+        } else if (target === 100) {
+            warnings.push(
+                '`batteryPvPriorityTargetSocPercent` is 100. Charging tapers as the battery nears full, ' +
+                    'so PV-surplus consumers may be held back for hours waiting for the last percent.',
+            );
+        }
+    }
+
+    if (values.batteryDischargeBlockAboveHomeConsumptionW !== undefined
+        && values.batteryDischargeBlockAboveHomeConsumptionW !== null) {
+        const threshold = values.batteryDischargeBlockAboveHomeConsumptionW;
+        if (typeof threshold !== 'number' || !Number.isFinite(threshold)) {
+            errors.push('`batteryDischargeBlockAboveHomeConsumptionW` must be a finite number or null when set.');
+        } else if (threshold < 0) {
+            errors.push(
+                `\`batteryDischargeBlockAboveHomeConsumptionW\` is ${threshold}; a consumption threshold ` +
+                    'cannot be negative.',
+            );
+        } else if (threshold < HOME_CONSUMPTION_BLOCK_MIN_PLAUSIBLE_W) {
+            warnings.push(
+                `\`batteryDischargeBlockAboveHomeConsumptionW\` is ${threshold} W, so the battery would be ` +
+                    'blocked almost always — this field is in watts, not kilowatts.',
+            );
+        }
+    }
+
+    if (values.heatingRodBatteryDischargeSocLimitPercent !== undefined
+        && values.heatingRodBatteryDischargeSocLimitPercent !== null) {
+        const floor = values.heatingRodBatteryDischargeSocLimitPercent;
+        if (typeof floor !== 'number' || !Number.isFinite(floor)) {
+            errors.push('`heatingRodBatteryDischargeSocLimitPercent` must be a finite number or null when set.');
+        } else if (floor < 0 || floor > 100) {
+            errors.push(
+                `\`heatingRodBatteryDischargeSocLimitPercent\` is ${floor}; it is a percentage and must lie ` +
+                    'between 0 and 100.',
+            );
+        } else {
+            if (floor === 100) {
+                warnings.push(
+                    '`heatingRodBatteryDischargeSocLimitPercent` is 100, a floor the battery is already at, ' +
+                        'so the rod can never draw from it — write `null` to disable it outright.',
+                );
+            }
+            if (values.batteryControl !== true) {
+                warnings.push(
+                    '`heatingRodBatteryDischargeSocLimitPercent` is set, but `batteryControl` is not true — ' +
+                        'the energy manager cannot hold the battery at the floor.',
+                );
+            }
+            const priority = values.batteryPvPriorityTargetSocPercent;
+            if (typeof priority === 'number' && Number.isFinite(priority) && floor < priority) {
+                warnings.push(
+                    `\`heatingRodBatteryDischargeSocLimitPercent\` (${floor} %) is below ` +
+                        `\`batteryPvPriorityTargetSocPercent\` (${priority} %) — the rod drains the battery ` +
+                        'into a range the PV priority then refills.',
+                );
+            }
+        }
+    }
+
     if (values.costOptimizedTargetTime !== undefined) {
         if (typeof values.costOptimizedTargetTime !== 'string'
             || !TIME_RE.test(values.costOptimizedTargetTime)) {
@@ -364,7 +464,7 @@ export function validateEnergyManagerSettingsState(
     // ── stored but unsupported ─────────────────────────────────────────────
     for (const setting of Object.values(EnergyManagerSettingEnum)) {
         const keys = ENERGY_MANAGER_SETTING_VALUE_KEYS[setting];
-        const held = keys.filter((key) => values[key] !== undefined);
+        const held = keys.filter((key) => values[key] !== undefined && values[key] !== null);
         if (held.length && !supported.has(setting)) {
             warnings.push(
                 `"${setting}" holds a value (${held.join(', ')}) but is not in \`supported\` — ` +
@@ -378,7 +478,8 @@ export function validateEnergyManagerSettingsState(
         if (!dependency) continue;
         const key = setting as EnergyManagerSettingEnum;
 
-        const held = ENERGY_MANAGER_SETTING_VALUE_KEYS[key].some((k) => values[k] !== undefined);
+        const held = ENERGY_MANAGER_SETTING_VALUE_KEYS[key]
+            .some((k) => values[k] !== undefined && values[k] !== null);
         if (held && gateValue(values, dependency.requires) !== dependency.equals) {
             warnings.push(
                 `"${key}" holds a value, but it only takes effect while "${dependency.requires}" ` +

@@ -561,3 +561,240 @@ describe('isEnergyManagerSettingActive', () => {
         expect(warnings.some((w) => w.includes('battery-ev-discharge-fixed-wh'))).toBe(true);
     });
 });
+
+describe('validateEnergyManagerSettingsState — battery PV priority target', () => {
+    const target = (batteryPvPriorityTargetSocPercent: number | null, batteryControl = true) =>
+        validateEnergyManagerSettingsState(state({batteryControl, batteryPvPriorityTargetSocPercent}));
+
+    it('accepts a target inside 1…99 without warnings', () => {
+        for (const value of [1, 40, 80, 99]) {
+            const {ok, warnings} = target(value);
+            expect(ok, String(value)).toBe(true);
+            expect(warnings, String(value)).toEqual([]);
+        }
+    });
+
+    it('rejects a value outside 0…100', () => {
+        for (const value of [-1, 101]) {
+            const {ok, errors} = target(value);
+            expect(ok, String(value)).toBe(false);
+            expect(errors.some((e) => e.includes('between 0 and 100'))).toBe(true);
+        }
+    });
+
+    it('rejects a non-finite target', () => {
+        const {ok, errors} = target(Number.POSITIVE_INFINITY);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('finite number'))).toBe(true);
+    });
+
+    it('accepts null as disabled, without warnings even while battery control is off', () => {
+        for (const control of [true, false]) {
+            const {ok, warnings} = target(null, control);
+            expect(ok).toBe(true);
+            expect(warnings).toEqual([]);
+        }
+    });
+
+    it('warns that 0 gives no priority and suggests null', () => {
+        const {ok, warnings} = target(0);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('write `null`'))).toBe(true);
+    });
+
+    it('warns that 100 can hold surplus consumers back for hours', () => {
+        const {ok, warnings} = target(100);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('held back for hours'))).toBe(true);
+    });
+
+    it('warns when set while battery control is off', () => {
+        const {ok, warnings} = target(40, false);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('battery-pv-priority-target-soc-percent'))).toBe(true);
+    });
+
+    it('is gated directly on battery control', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent))
+            .toEqual({requires: EnergyManagerSettingEnum.BatteryControl, equals: true});
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent, {
+            batteryControl: true,
+        })).toBe(true);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent, {
+            batteryControl: false,
+        })).toBe(false);
+    });
+
+    it('maps to its value key', () => {
+        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent])
+            .toEqual(['batteryPvPriorityTargetSocPercent']);
+    });
+});
+
+describe('validateEnergyManagerSettingsState — heating rod battery floor', () => {
+    const floor = (
+        heatingRodBatteryDischargeSocLimitPercent: number | null,
+        extra: EnergyManagerSettingValues = {},
+    ) => validateEnergyManagerSettingsState(state({
+        batteryControl: true,
+        heatingRodControl: true,
+        heatingRodBatteryDischargeSocLimitPercent,
+        ...extra,
+    }));
+
+    it('accepts a floor inside 0…99 without warnings', () => {
+        for (const value of [0, 50, 80, 99]) {
+            const {ok, warnings} = floor(value);
+            expect(ok, String(value)).toBe(true);
+            expect(warnings, String(value)).toEqual([]);
+        }
+    });
+
+    it('accepts null as disabled, without warnings even while its gates are closed', () => {
+        const {ok, warnings} = validateEnergyManagerSettingsState(state({
+            batteryControl: false,
+            heatingRodControl: false,
+            heatingRodBatteryDischargeSocLimitPercent: null,
+        }));
+        expect(ok).toBe(true);
+        expect(warnings).toEqual([]);
+    });
+
+    it('rejects a value outside 0…100', () => {
+        for (const value of [-5, 120]) {
+            const {ok, errors} = floor(value);
+            expect(ok, String(value)).toBe(false);
+            expect(errors.some((e) => e.includes('between 0 and 100'))).toBe(true);
+        }
+    });
+
+    it('rejects a non-finite floor', () => {
+        const {ok, errors} = floor(Number.NaN);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('finite number'))).toBe(true);
+    });
+
+    it('warns that a floor of 100 can never discharge', () => {
+        const {ok, warnings} = floor(100);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('can never draw from it'))).toBe(true);
+    });
+
+    it('warns when battery control is not on', () => {
+        const {ok, warnings} = floor(80, {batteryControl: false});
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('cannot hold the battery at the floor'))).toBe(true);
+    });
+
+    it('warns when the floor lies below the PV priority target', () => {
+        const {warnings} = floor(30, {batteryPvPriorityTargetSocPercent: 50});
+        expect(warnings.some((w) => w.includes('PV priority then refills'))).toBe(true);
+
+        expect(floor(80, {batteryPvPriorityTargetSocPercent: 50}).warnings).toEqual([]);
+        expect(floor(30, {batteryPvPriorityTargetSocPercent: null}).warnings).toEqual([]);
+    });
+
+    it('warns when set while heating rod control is off', () => {
+        const {warnings} = floor(80, {heatingRodControl: false});
+        expect(warnings.some((w) => w.includes('heating-rod-battery-discharge-soc-limit-percent'))).toBe(true);
+    });
+
+    it('is gated directly on heating rod control', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent))
+            .toEqual({requires: EnergyManagerSettingEnum.HeatingRodControl, equals: true});
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent, {
+            heatingRodControl: true,
+        })).toBe(true);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent, {}))
+            .toBe(false);
+    });
+
+    it('maps to its value key', () => {
+        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent])
+            .toEqual(['heatingRodBatteryDischargeSocLimitPercent']);
+    });
+});
+
+describe('validateEnergyManagerSettingsState — battery discharge block above home consumption', () => {
+    const block = (batteryDischargeBlockAboveHomeConsumptionW: number | null, batteryControl = true) =>
+        validateEnergyManagerSettingsState(state({batteryControl, batteryDischargeBlockAboveHomeConsumptionW}));
+
+    it('accepts a plausible threshold in watts without warnings', () => {
+        for (const value of [100, 4000, 11000, 30000]) {
+            const {ok, warnings} = block(value);
+            expect(ok, String(value)).toBe(true);
+            expect(warnings, String(value)).toEqual([]);
+        }
+    });
+
+    it('accepts null as disabled, without warnings even while battery control is off', () => {
+        for (const control of [true, false]) {
+            const {ok, warnings} = block(null, control);
+            expect(ok).toBe(true);
+            expect(warnings).toEqual([]);
+        }
+    });
+
+    it('rejects a negative or non-finite threshold', () => {
+        expect(block(-1).errors.some((e) => e.includes('cannot be negative'))).toBe(true);
+        expect(block(Number.NaN).errors.some((e) => e.includes('finite number'))).toBe(true);
+    });
+
+    it('warns on a figure that looks like kW in a W field', () => {
+        for (const value of [0, 11, 99]) {
+            const {ok, warnings} = block(value);
+            expect(ok, String(value)).toBe(true);
+            expect(warnings.some((w) => w.includes('watts, not kilowatts')), String(value)).toBe(true);
+        }
+    });
+
+    it('warns when set while battery control is off', () => {
+        const {warnings} = block(11000, false);
+        expect(warnings.some((w) => w.includes('battery-discharge-block-above-home-consumption-w'))).toBe(true);
+    });
+
+    it('is gated directly on battery control', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryDischargeBlockAboveHomeConsumptionW))
+            .toEqual({requires: EnergyManagerSettingEnum.BatteryControl, equals: true});
+        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.BatteryDischargeBlockAboveHomeConsumptionW])
+            .toEqual(['batteryDischargeBlockAboveHomeConsumptionW']);
+    });
+});
+
+describe('validateEnergyManagerSettingsState — grid-optimised EV charging', () => {
+    it('accepts true and false under charger control without warnings', () => {
+        for (const value of [true, false]) {
+            const {ok, warnings} = validateEnergyManagerSettingsState(
+                state({chargerControl: true, gridOptimizedEvCharging: value}),
+            );
+            expect(ok, String(value)).toBe(true);
+            expect(warnings, String(value)).toEqual([]);
+        }
+    });
+
+    it('rejects a non-boolean value', () => {
+        const {ok, errors} = validateEnergyManagerSettingsState(state({
+            chargerControl: true,
+            gridOptimizedEvCharging: 'yes' as unknown as boolean,
+        }));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('`gridOptimizedEvCharging` must be a boolean'))).toBe(true);
+    });
+
+    it('warns when set while charger control is off', () => {
+        const {warnings} = validateEnergyManagerSettingsState(
+            state({chargerControl: false, gridOptimizedEvCharging: true}),
+        );
+        expect(warnings.some((w) => w.includes('grid-optimized-ev-charging'))).toBe(true);
+    });
+
+    it('is gated directly on charger control', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.GridOptimizedEvCharging))
+            .toEqual({requires: EnergyManagerSettingEnum.ChargerControl, equals: true});
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.GridOptimizedEvCharging, {
+            chargerControl: true,
+        })).toBe(true);
+        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.GridOptimizedEvCharging])
+            .toEqual(['gridOptimizedEvCharging']);
+    });
+});

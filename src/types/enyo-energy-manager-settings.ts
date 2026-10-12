@@ -50,6 +50,16 @@ export enum EnergyManagerSettingEnum {
     BatteryEvDischargeFixedWh = 'battery-ev-discharge-fixed-wh',
     /** The SoC floor, in %. Only under {@link EnergyManagerBatteryEvDischargeModeEnum.SocLimit}. */
     BatteryEvDischargeSocLimitPercent = 'battery-ev-discharge-soc-limit-percent',
+    /**
+     * The SoC, in %, the battery is charged to from PV surplus before any other
+     * surplus consumer (EV, heating rod, …) gets a share.
+     */
+    BatteryPvPriorityTargetSocPercent = 'battery-pv-priority-target-soc-percent',
+    /**
+     * The home consumption, in W, above which the battery must not discharge.
+     * Unset or `null` means no such block.
+     */
+    BatteryDischargeBlockAboveHomeConsumptionW = 'battery-discharge-block-above-home-consumption-w',
 
     // ── Heat pump ──────────────────────────────────────────────────────────
 
@@ -62,11 +72,21 @@ export enum EnergyManagerSettingEnum {
     HeatingRodControl = 'heating-rod-control',
     /** What the heating rod is allowed to do — see {@link EnergyManagerHeatingRodModeEnum}. */
     HeatingRodMode = 'heating-rod-mode',
+    /**
+     * The SoC floor, in %, down to which the house battery may feed the
+     * heating rod. Unset or `null` means the battery never feeds the rod.
+     */
+    HeatingRodBatteryDischargeSocLimitPercent = 'heating-rod-battery-discharge-soc-limit-percent',
 
     // ── Charger ────────────────────────────────────────────────────────────
 
     /** Whether the energy manager may steer the wallbox. Gates the other charger settings. */
     ChargerControl = 'charger-control',
+    /**
+     * Whether cost-optimised charging on a non-dynamic tariff places its grid
+     * energy in low-load hours (by EPEX spot) to relieve the grid.
+     */
+    GridOptimizedEvCharging = 'grid-optimized-ev-charging',
     /**
      * The charge mode applied when a session starts without an explicit one
      * ({@link EnyoChargeModeEnum}).
@@ -210,7 +230,9 @@ export enum EnergyManagerBatteryEvDischargeModeEnum {
 export enum EnergyManagerHeatingRodModeEnum {
     /**
      * Only ever run on PV surplus. The rod is a dump load for energy that would
-     * otherwise be exported; it never causes an import.
+     * otherwise be exported; it never causes an import. With
+     * {@link EnergyManagerSettingValues.heatingRodBatteryDischargeSocLimitPercent}
+     * set, the battery above that floor counts as supply too.
      */
     PvSurplusOnly = 'pv-surplus-only',
     /**
@@ -288,6 +310,77 @@ export interface EnergyManagerSettingValues {
      * something else.
      */
     batteryEvDischargeSocLimitPercent?: number;
+    /**
+     * The state of charge, in **percent**, the battery is charged to from PV
+     * surplus **before** any other surplus consumer gets a share — a target,
+     * not a floor. `40` means: until the battery holds 40 %, PV surplus goes
+     * into the battery first, and an EV charging on PV, a heating rod in
+     * {@link EnergyManagerHeatingRodModeEnum.PvSurplusOnly}, a heat pump surplus
+     * boost or a surplus automation only receives what the battery cannot take.
+     * Above the target, surplus is shared as without this setting.
+     *
+     * Only consumers that run *on surplus* are held back. An explicit user
+     * request, an immediate or cost-optimised charge session that imports from
+     * the grid, and any other grid-backed mode are unaffected — this setting
+     * decides who gets the sun first, not whether the house may import.
+     *
+     * **Disabled by default.** Absent or `null` means "no priority" — the
+     * battery competes for surplus as it always has. Write `null` to switch it
+     * off again; `0` says the same but is flagged by the validator. While the battery is below the target it is charged as
+     * fast as the surplus allows, overriding
+     * {@link EnergyManagerBatteryChargingModeEnum.Paced}; once the target is
+     * reached, {@link batteryChargingMode} applies again. The energy manager
+     * applies its own hysteresis around the target so consumers are not cycled
+     * on and off at the threshold.
+     *
+     * Not to be confused with {@link batteryEvDischargeSocLimitPercent}: that
+     * is a floor for *discharging* the battery into a vehicle, this is a target
+     * for *charging* it from PV. They are independent.
+     *
+     * When a consumer is held back or reduced because of this setting, the
+     * energy manager states it with
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryPvPriority}.
+     *
+     * Only meaningful while {@link batteryControl} is `true`.
+     */
+    batteryPvPriorityTargetSocPercent?: number | null;
+    /**
+     * The home consumption, in **watts**, above which the battery is blocked
+     * from discharging. `11000` means: while the house draws more than 11 kW,
+     * the battery holds its charge and the grid covers the load; once
+     * consumption falls back below, the battery may discharge again.
+     *
+     * Keeps a large but short-lived household load — a sauna, an oven, an
+     * instantaneous water heater — from emptying the battery in minutes, so its
+     * charge is left for the base load in the evening and night.
+     *
+     * **Disabled by default.** Absent or `null` means the battery discharges
+     * regardless of consumption; write `null` to switch it off again.
+     *
+     * "Home consumption" is the household itself plus every appliance the
+     * energy manager does **not** track — the same quantity as
+     * {@link HomeConsumptionTimeseriesEntry.homeConsumptionW}. Tracked
+     * appliances (wallbox, heat pump, heating rod, air conditioning, …) are
+     * excluded, as is the battery's own charging: a charging car never trips
+     * the block on its own. The energy manager applies its own hysteresis and
+     * averaging around the threshold so a brief spike does not toggle the
+     * battery.
+     *
+     * The block wins over every permission to discharge: while it holds,
+     * neither {@link batteryEvDischargeMode} nor
+     * {@link heatingRodBatteryDischargeSocLimitPercent} lets the battery feed
+     * anything. Charging is unaffected.
+     *
+     * Watts, not kilowatts — the cockpit may show kW, but the stored value is
+     * W like every other power in this SDK: `11` would block above 11 W, i.e.
+     * almost always.
+     *
+     * When the battery is held because of this setting, the energy manager
+     * states it with {@link EnyoDataBusCommandReasonTypeEnum.HomeConsumptionHigh}.
+     *
+     * Only meaningful while {@link batteryControl} is `true`.
+     */
+    batteryDischargeBlockAboveHomeConsumptionW?: number | null;
 
     /**
      * Whether the energy manager may steer the heat pump.
@@ -303,9 +396,72 @@ export interface EnergyManagerSettingValues {
     heatingRodControl?: boolean;
     /** What the heating rod may do. Only meaningful while {@link heatingRodControl} is `true`. */
     heatingRodMode?: EnergyManagerHeatingRodModeEnum;
+    /**
+     * The state of charge, in **percent**, down to which the house battery may
+     * feed the heating rod — a floor, not a target. `80` lets the rod draw from
+     * the battery while it holds more than 80 %, and stops it there.
+     *
+     * **Disabled by default.** Absent or `null` means the battery never feeds
+     * the rod; write `null` to switch it off again.
+     *
+     * Applies under both {@link EnergyManagerHeatingRodModeEnum} values. Under
+     * {@link EnergyManagerHeatingRodModeEnum.PvSurplusOnly} it widens the rod's
+     * supply from PV surplus to PV surplus plus the battery above the floor —
+     * still never a grid import. Under
+     * {@link EnergyManagerHeatingRodModeEnum.Boost} the battery above the floor
+     * is drawn before the grid.
+     *
+     * The energy manager can only hold the battery at the floor while
+     * {@link batteryControl} is `true`; set without it, the validator warns.
+     * Keep it at or above {@link batteryPvPriorityTargetSocPercent}: a floor
+     * below that target lets the rod drain the battery into a range the PV
+     * priority then refills, and the two work against each other.
+     *
+     * When the battery feeds the rod, or is held back from it at the floor, the
+     * energy manager states it with
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsHeatingRod} or
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromHeatingRod}.
+     *
+     * Only meaningful while {@link heatingRodControl} is `true`.
+     */
+    heatingRodBatteryDischargeSocLimitPercent?: number | null;
 
     /** Whether the energy manager may steer the wallbox. */
     chargerControl?: boolean;
+    /**
+     * Whether EV charging should avoid putting load on the grid when it is
+     * busiest. **Off by default** — absent or `false` means off.
+     *
+     * Applies only to sessions in {@link EnyoChargeModeEnum.CostOptimized},
+     * whatever made them cost-optimised (this house-wide default, the vehicle
+     * or the session), and only while the active consumption tariff is
+     * **not** dynamic — {@link EnyoTariffPricingTypeEnum.Static} or
+     * {@link EnyoTariffPricingTypeEnum.TimeVariable}. It adds no charge mode
+     * and changes no other mode.
+     *
+     * Without it, such a session imports whatever PV did not cover as late as
+     * possible before its deadline (static tariff) or in the tariff's cheap
+     * windows (time-of-use). With it, the energy manager places that grid
+     * energy in the hours with the lowest EPEX spot price before the deadline
+     * instead — the spot price standing in for how heavily the grid is loaded.
+     * PV surplus still comes first, and the deadline is still met.
+     *
+     * The purpose is grid relief, not savings: the customer's price per kWh is
+     * unchanged by it on a static tariff, and on a time-of-use tariff a
+     * low-load hour may fall in a more expensive window — the owner opted into
+     * that trade by switching this on. A price ceiling on the session still
+     * applies as before, against the customer's own tariff.
+     *
+     * Under a dynamic tariff the setting has no effect: cost-optimised charging
+     * already follows the market price there. When no EPEX prices are
+     * available, the energy manager falls back to the behaviour without it.
+     *
+     * Charging placed or deferred because of this setting is stated with
+     * {@link EnyoDataBusCommandReasonTypeEnum.GridLoadOptimized}.
+     *
+     * Only meaningful while {@link chargerControl} is `true`.
+     */
+    gridOptimizedEvCharging?: boolean;
     /**
      * The mode applied to a charging session started without an explicit one.
      * Only meaningful while {@link chargerControl} is `true`.
@@ -460,7 +616,7 @@ export interface EnergyManagerSettingDependency {
 /**
  * Which settings are gated by which, as data.
  *
- * Six of the ten settings only mean anything while another one holds a specific
+ * Fifteen of the nineteen settings only mean anything while another one holds a specific
  * value. Encoding that here rather than in prose gives the cockpit a single
  * source of truth for greying out dependent controls, and lets
  * `validateEnergyManagerSettingsState()` flag values that can never take effect.
@@ -496,8 +652,24 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
         requires: EnergyManagerSettingEnum.BatteryEvDischargeMode,
         equals: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
     },
+    [EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent]: {
+        requires: EnergyManagerSettingEnum.BatteryControl,
+        equals: true,
+    },
+    [EnergyManagerSettingEnum.BatteryDischargeBlockAboveHomeConsumptionW]: {
+        requires: EnergyManagerSettingEnum.BatteryControl,
+        equals: true,
+    },
     [EnergyManagerSettingEnum.HeatingRodMode]: {
         requires: EnergyManagerSettingEnum.HeatingRodControl,
+        equals: true,
+    },
+    [EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent]: {
+        requires: EnergyManagerSettingEnum.HeatingRodControl,
+        equals: true,
+    },
+    [EnergyManagerSettingEnum.GridOptimizedEvCharging]: {
+        requires: EnergyManagerSettingEnum.ChargerControl,
         equals: true,
     },
     [EnergyManagerSettingEnum.DefaultChargeMode]: {
@@ -538,10 +710,18 @@ export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
     [EnergyManagerSettingEnum.BatteryEvDischargeMode]: ['batteryEvDischargeMode'],
     [EnergyManagerSettingEnum.BatteryEvDischargeFixedWh]: ['batteryEvDischargeFixedWh'],
     [EnergyManagerSettingEnum.BatteryEvDischargeSocLimitPercent]: ['batteryEvDischargeSocLimitPercent'],
+    [EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent]: ['batteryPvPriorityTargetSocPercent'],
+    [EnergyManagerSettingEnum.BatteryDischargeBlockAboveHomeConsumptionW]: [
+        'batteryDischargeBlockAboveHomeConsumptionW',
+    ],
     [EnergyManagerSettingEnum.HeatpumpControl]: ['heatpumpControl'],
     [EnergyManagerSettingEnum.HeatingRodControl]: ['heatingRodControl'],
     [EnergyManagerSettingEnum.HeatingRodMode]: ['heatingRodMode'],
+    [EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent]: [
+        'heatingRodBatteryDischargeSocLimitPercent',
+    ],
     [EnergyManagerSettingEnum.ChargerControl]: ['chargerControl'],
+    [EnergyManagerSettingEnum.GridOptimizedEvCharging]: ['gridOptimizedEvCharging'],
     [EnergyManagerSettingEnum.DefaultChargeMode]: ['defaultChargeMode'],
     [EnergyManagerSettingEnum.PriceLimitMode]: ['priceLimitMode'],
     [EnergyManagerSettingEnum.PriceLimitCtPerKwh]: ['priceLimitCtPerKwh'],

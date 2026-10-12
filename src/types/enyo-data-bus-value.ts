@@ -139,7 +139,19 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * {@link RestartDelay}.
      */
     DeviceProtection = 'device-protection',
-    /** Command issued because home consumption is high */
+    /**
+     * Command issued because home consumption is high.
+     *
+     * When the energy manager holds the battery because home consumption — the
+     * household plus untracked appliances, tracked appliances excluded — is
+     * above the owner's `batteryDischargeBlockAboveHomeConsumptionW`, set
+     * {@link EnyoDataBusCommandReasonContext.batteryDischargeBlock} with the
+     * threshold, {@link EnyoDataBusCommandReason.powerW} to the current home
+     * consumption and category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState} — so the text
+     * can say "Battery paused: home consumption is 13.2 kW, above your 11 kW
+     * limit."
+     */
     HomeConsumptionHigh = 'home-consumption-high',
     /** Command issued to optimize self-consumption */
     SelfConsumptionOptimization = 'self-consumption-optimization',
@@ -286,6 +298,70 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * the appliance from short-cycling and is not about price, sun or contention.
      */
     RestartDelay = 'restart-delay',
+    /**
+     * A PV-surplus consumer (EV on PV, heating rod, heat pump surplus boost,
+     * surplus automation) is held back or reduced because the house battery is
+     * charged first, up to the owner's `batteryPvPriorityTargetSocPercent`.
+     *
+     * Stated by the energy manager's surplus allocation on the consumer that
+     * lost out, never on the battery itself. Set
+     * {@link EnyoDataBusCommandReasonContext.batteryPvPriority} with the
+     * target, {@link EnyoDataBusCommandReason.socPercent} to the pack's current
+     * SoC, and {@link EnyoDataBusCommandReason.powerW} to the surplus the
+     * battery is taking — so the text can say "The battery charges to 40 %
+     * first (now 28 %)."
+     *
+     * Told apart from {@link PvSurplusAllocatedElsewhere}: the surplus did not
+     * go to another appliance by the planner's choice, it went to the battery
+     * because the owner asked for it. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.PvSurplus} — it is about who
+     * got the sun.
+     */
+    BatteryPvPriority = 'battery-pv-priority',
+    /**
+     * The house battery is allowed to feed the heating rod, down to the
+     * owner's `heatingRodBatteryDischargeSocLimitPercent`.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.batteryToHeatingRod} with the
+     * floor, {@link EnyoDataBusCommandReason.socPercent} to the pack's current
+     * SoC and {@link EnyoDataBusCommandReason.powerW} to the power the battery
+     * contributes. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    BatterySupportsHeatingRod = 'battery-supports-heating-rod',
+    /**
+     * The house battery is held back from the heating rod because it has
+     * reached the owner's floor (`heatingRodBatteryDischargeSocLimitPercent`).
+     * The rod runs on PV surplus only — or, under boost, from the grid.
+     *
+     * The counterpart of {@link BatterySupportsHeatingRod}. Set
+     * {@link EnyoDataBusCommandReasonContext.batteryToHeatingRod} and
+     * {@link EnyoDataBusCommandReason.socPercent}. Told apart from
+     * {@link BatterySoCLow}: the pack is not low, it is at the floor the owner
+     * chose for the rod. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    BatteryReservedFromHeatingRod = 'battery-reserved-from-heating-rod',
+    /**
+     * A cost-optimised charging session was placed in — or is waiting for — a
+     * low-load hour on the grid, because the owner switched on
+     * `gridOptimizedEvCharging`. Covers both the "charging now" and the
+     * "waiting" side of the decision.
+     *
+     * About relieving the grid, not about the customer's price: on a static or
+     * time-of-use tariff the EPEX spot price that ranked the slot is not what
+     * the customer pays, so the text must not promise a saving — which is why
+     * this is its own type rather than
+     * {@link ElectricityPriceBelowThreshold} or {@link WaitingForCheaperSlot}.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.placement} with the chosen
+     * window and the session's deadline, and
+     * {@link EnyoDataBusCommandReasonContext.gridLoad} with the spot price
+     * behind it — so the text can say "Charging from 02:00, when the grid is
+     * less busy — ready by 07:00." Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.Schedule}.
+     */
+    GridLoadOptimized = 'grid-load-optimized',
 }
 
 /**
@@ -586,6 +662,135 @@ export interface EnyoDataBusCommandReasonContext {
      * protection is against short-cycling (kept on).
      */
     switching?: EnyoDataBusCommandReasonSwitchingContext;
+    /**
+     * The owner's battery-first target (`batteryPvPriorityTargetSocPercent`).
+     * Set on {@link EnyoDataBusCommandReasonTypeEnum.BatteryPvPriority}.
+     */
+    batteryPvPriority?: EnyoDataBusCommandReasonBatteryPvPriorityContext;
+    /**
+     * The owner's battery-to-heating-rod floor
+     * (`heatingRodBatteryDischargeSocLimitPercent`). Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsHeatingRod} and
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromHeatingRod}.
+     */
+    batteryToHeatingRod?: EnyoDataBusCommandReasonBatteryToHeatingRodContext;
+    /**
+     * The owner's home-consumption threshold above which the battery may not
+     * discharge (`batteryDischargeBlockAboveHomeConsumptionW`). Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.HomeConsumptionHigh} when that
+     * threshold is why the battery is held.
+     */
+    batteryDischargeBlock?: EnyoDataBusCommandReasonBatteryDischargeBlockContext;
+    /**
+     * The EPEX spot price that stood in for grid load. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.GridLoadOptimized}.
+     */
+    gridLoad?: EnyoDataBusCommandReasonGridLoadContext;
+}
+
+/**
+ * The market signal behind a
+ * {@link EnyoDataBusCommandReasonTypeEnum.GridLoadOptimized} decision.
+ *
+ * The EPEX spot price is used as a proxy for how heavily the grid is loaded —
+ * it is **not** what the customer pays, which is why it lives here and not in
+ * {@link EnyoDataBusCommandReason.electricityPricePerKwh}.
+ *
+ * @example
+ * ```typescript
+ * // Waiting for the low-load hours from 02:00 to finish by 07:00:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.GridLoadOptimized,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.Schedule,
+ *     context: {
+ *         placement: {
+ *             startIso: '2026-10-13T02:00:00+02:00',
+ *             endIso: '2026-10-13T04:30:00+02:00',
+ *             deadlineIso: '2026-10-13T07:00:00+02:00',
+ *         },
+ *         gridLoad: {epexPricePerKwh: 0.042, currency: EnyoCurrencyEnum.EUR},
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonGridLoadContext {
+    /** EPEX spot price per kWh of the chosen slot, in {@link currency} — a grid-load proxy. */
+    epexPricePerKwh: number;
+    /** Currency of {@link epexPricePerKwh}. */
+    currency: EnyoCurrencyEnum;
+}
+
+/**
+ * The owner's home-consumption threshold
+ * (`batteryDischargeBlockAboveHomeConsumptionW`) the battery is held under —
+ * the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.HomeConsumptionHigh} when it blocks
+ * the battery. The current home consumption travels in
+ * {@link EnyoDataBusCommandReason.powerW}, measured like
+ * {@link HomeConsumptionTimeseriesEntry.homeConsumptionW}: household plus
+ * untracked appliances, tracked appliances excluded.
+ *
+ * @example
+ * ```typescript
+ * // Home consumption is 13.2 kW, above the owner's 11 kW threshold — hold the battery:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.HomeConsumptionHigh,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     powerW: 13200,
+ *     context: {batteryDischargeBlock: {thresholdW: 11000}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonBatteryDischargeBlockContext {
+    /** The home consumption, in W, above which the battery may not discharge. */
+    thresholdW: number;
+}
+
+/**
+ * The owner's battery-to-heating-rod floor
+ * (`heatingRodBatteryDischargeSocLimitPercent`) a decision was taken under —
+ * the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsHeatingRod} and
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromHeatingRod}. The
+ * pack's current SoC travels in {@link EnyoDataBusCommandReason.socPercent}.
+ *
+ * @example
+ * ```typescript
+ * // The battery reaches the owner's 80 % floor — the rod stops drawing from it:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromHeatingRod,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     socPercent: 80,
+ *     context: {batteryToHeatingRod: {socLimitPercent: 80}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonBatteryToHeatingRodContext {
+    /** The SoC floor, in percent, the battery may feed the rod down to. */
+    socLimitPercent: number;
+}
+
+/**
+ * The owner's battery-first setting (`batteryPvPriorityTargetSocPercent`) a
+ * PV-surplus consumer was held back under — the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatteryPvPriority}. The pack's
+ * current SoC travels in {@link EnyoDataBusCommandReason.socPercent}.
+ *
+ * @example
+ * ```typescript
+ * // The wallbox gets no PV surplus while the battery charges to 40 %:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryPvPriority,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.PvSurplus,
+ *     socPercent: 28,
+ *     powerW: 3200,
+ *     context: {batteryPvPriority: {targetSocPercent: 40}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonBatteryPvPriorityContext {
+    /** The SoC, in percent, the battery is charged to before surplus is shared. */
+    targetSocPercent: number;
 }
 
 /**
