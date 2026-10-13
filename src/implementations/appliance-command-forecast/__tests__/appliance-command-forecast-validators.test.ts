@@ -21,7 +21,13 @@ import {
     EnyoAirConditioningOptimizationModeEnum,
 } from '../../../types/enyo-air-conditioning-appliance.js';
 import {EnyoAutomationTriggerTypeEnum} from '../../../types/enyo-automation.js';
-import {EnyoChargeModeEnum} from '../../../types/enyo-data-bus-value.js';
+import {
+    EnyoChargeModeEnum,
+    EnyoDataBusCommandReasonCategoryEnum,
+    type EnyoDataBusCommandReasonArbitrageContext,
+    EnyoDataBusCommandReasonTypeEnum,
+} from '../../../types/enyo-data-bus-value.js';
+import {EnyoCurrencyEnum} from '../../../types/enyo-currency.js';
 import {EnyoSmartPlugApplianceStateEnum} from '../../../types/enyo-smart-plug-appliance.js';
 import {
     ApplianceCommandForecastValidationError,
@@ -873,5 +879,79 @@ describe('ChargerForecastScheduleEntry.priceCtPerKwh', () => {
             relativeSchedule: [{seconds: 0, powerW: 11_000, priceCtPerKwh: '14 ct'}],
         } as unknown as ChargerForecast;
         expect(() => validateChargerForecast(forecast)).toThrow(/priceCtPerKwh/);
+    });
+});
+
+describe('validateBatteryCommandForecast — reason on an Auto forecast', () => {
+    /** RPI-000000002 on 2026-10-13: buy 35.2 ct, break-even 52.7 ct, peak 42.9 ct, η 75.7 %. */
+    const arbitrage = (
+        overrides: Partial<EnyoDataBusCommandReasonArbitrageContext> = {},
+    ): EnyoDataBusCommandReasonArbitrageContext => ({
+        buyPricePerKwh: 0.352,
+        buyStartIso: '2026-10-13T11:00:00Z',
+        buyEndIso: '2026-10-13T13:00:00Z',
+        sellPricePerKwh: 0.429,
+        sellStartIso: '2026-10-13T16:00:00Z',
+        sellEndIso: '2026-10-13T19:00:00Z',
+        breakEvenPricePerKwh: 0.527,
+        roundTripEfficiency: 0.757,
+        ...overrides,
+    });
+
+    const autoWith = (context?: {arbitrage: EnyoDataBusCommandReasonArbitrageContext}): BatteryCommandForecast => ({
+        resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+        mode: BatteryCommandForecastModeEnum.Auto,
+        reason: {
+            type: EnyoDataBusCommandReasonTypeEnum.PriceSpreadTooSmall,
+            category: EnyoDataBusCommandReasonCategoryEnum.EnergyPrice,
+            electricityPricePerKwh: 0.352,
+            currency: EnyoCurrencyEnum.EUR,
+            context,
+        },
+    });
+
+    it('accepts PriceSpreadTooSmall with the full arbitrage figures', () => {
+        expect(() => validateBatteryCommandForecast(autoWith({arbitrage: arbitrage()}))).not.toThrow();
+    });
+
+    it('accepts PriceSpreadTooSmall without figures (flat horizon)', () => {
+        expect(() => validateBatteryCommandForecast(autoWith())).not.toThrow();
+    });
+
+    it('rejects a reason type that is not an enum member', () => {
+        const forecast = {
+            resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+            mode: BatteryCommandForecastModeEnum.Auto,
+            reason: {type: 'too-expensive'},
+        } as unknown as BatteryCommandForecast;
+        expect(() => validateBatteryCommandForecast(forecast)).toThrow(/reason\.type is invalid/);
+    });
+
+    it('rejects a ct value in a EUR/kWh price field', () => {
+        expect(() => validateBatteryCommandForecast(autoWith({arbitrage: arbitrage({buyPricePerKwh: 35.2})})))
+            .toThrow(/not ct\/kWh/);
+    });
+
+    it('accepts a negative price within the plausible band', () => {
+        expect(() => validateBatteryCommandForecast(autoWith({arbitrage: arbitrage({buyPricePerKwh: -0.05})})))
+            .not.toThrow();
+    });
+
+    it('rejects a round-trip efficiency given as a percentage', () => {
+        expect(() => validateBatteryCommandForecast(autoWith({arbitrage: arbitrage({roundTripEfficiency: 75.7})})))
+            .toThrow(/roundTripEfficiency/);
+        expect(() => validateBatteryCommandForecast(autoWith({arbitrage: arbitrage({roundTripEfficiency: 0})})))
+            .toThrow(/roundTripEfficiency/);
+    });
+
+    it('rejects a window whose start is not before its end', () => {
+        expect(() => validateBatteryCommandForecast(autoWith({
+            arbitrage: arbitrage({sellStartIso: '2026-10-13T19:00:00Z', sellEndIso: '2026-10-13T16:00:00Z'}),
+        }))).toThrow(/sellStartIso must lie before sellEndIso/);
+    });
+
+    it('rejects a timestamp that is not ISO 8601', () => {
+        expect(() => validateBatteryCommandForecast(autoWith({arbitrage: arbitrage({buyStartIso: 'noon'})})))
+            .toThrow(/not an ISO 8601 timestamp/);
     });
 });

@@ -3522,33 +3522,58 @@ Both are for marking on the same power scale a consumer already draws from `maxC
 
 ### BatteryCommandForecast
 
-Relative `{seconds, mode, powerW}` schedule where `mode` is one of `'charge'`, `'discharge'`, or `'auto'`. `auto` returns control to the appliance and must always carry `powerW = 0`.
+A discriminated union on `mode`:
+
+- `mode: 'auto'` — hand the battery back to its own logic over the horizon; no schedule. May carry an optional `reason` (`EnyoDataBusCommandReason`) saying **why** nothing is prescribed — e.g. `PriceSpreadTooSmall` when trading would not pay. Set it only when every Auto slot of the horizon shares the same reason; when they differ, leave it out rather than guess. Without it, an empty Auto forecast tends to read as "no forecast".
+- `mode: 'schedule'` — follow `relativeSchedule`, a list of `{seconds, direction, powerW}` setpoints, where `direction` is `charge`, `discharge` or `idle`.
 
 The type is named `BatteryCommandForecast` to make the distinction with the existing [`BatteryForecast`](#batteryforecast) class (which forecasts state-of-charge from history) explicit.
 
 ```typescript
 import {
+    ApplianceForecastResolutionEnum,
     BatteryCommandForecast,
+    BatteryCommandForecastDirectionEnum,
     BatteryCommandForecastModeEnum,
+    EnyoCurrencyEnum,
+    EnyoDataBusCommandReasonCategoryEnum,
+    EnyoDataBusCommandReasonTypeEnum,
 } from '@enyo-energy/energy-app-sdk';
 
-const forecast: BatteryCommandForecast = {
+// A planned cadence:
+const scheduled: BatteryCommandForecast = {
+    resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+    mode: BatteryCommandForecastModeEnum.Schedule,
     relativeSchedule: [
-        { seconds: 0,    mode: BatteryCommandForecastModeEnum.Charge,    powerW: 3000 },
-        { seconds: 1800, mode: BatteryCommandForecastModeEnum.Discharge, powerW: 2500 },
-        { seconds: 3600, mode: BatteryCommandForecastModeEnum.Auto,      powerW: 0    },
+        { seconds: 0,    direction: BatteryCommandForecastDirectionEnum.Charge,    powerW: 3000 },
+        { seconds: 1800, direction: BatteryCommandForecastDirectionEnum.Discharge, powerW: 2500 },
+        { seconds: 3600, direction: BatteryCommandForecastDirectionEnum.Idle,      powerW: 0    },
     ],
     estimatedSavings: { costSavings: 0.18, currency: 'EUR' },
 };
+await forecasts.publishBatteryForecast('battery-1', scheduled);
 
-await forecasts.publishBatteryForecast('battery-1', forecast);
+// Nothing planned, and why:
+const auto: BatteryCommandForecast = {
+    resolution: ApplianceForecastResolutionEnum.FifteenMinutes,
+    mode: BatteryCommandForecastModeEnum.Auto,
+    reason: {
+        type: EnyoDataBusCommandReasonTypeEnum.PriceSpreadTooSmall,
+        category: EnyoDataBusCommandReasonCategoryEnum.EnergyPrice,
+        electricityPricePerKwh: 0.352,
+        currency: EnyoCurrencyEnum.EUR,
+        context: { arbitrage: { buyPricePerKwh: 0.352, breakEvenPricePerKwh: 0.527, sellPricePerKwh: 0.429, roundTripEfficiency: 0.757 } },
+    },
+};
+await forecasts.publishBatteryForecast('battery-1', auto);
 ```
 
-Per-entry invariants:
+Invariants:
 
-- `seconds`: finite, non-negative; first entry `= 0`; subsequent entries strictly increasing.
-- `mode`: one of `charge` / `discharge` / `auto`.
-- `powerW`: finite, non-negative. **MUST be `0` when `mode === 'auto'`.**
+- `mode: 'auto'` must not carry a `relativeSchedule`. A `reason` must have a valid `type`; its `context.arbitrage` prices must be EUR/kWh within a plausible band (a ct value such as `35.2` is rejected), `roundTripEfficiency` must lie in (0, 1], and each window's start must lie before its end.
+- `seconds`: finite, non-negative; first entry `= 0`; strictly increasing; a multiple of the `resolution` step.
+- `direction`: one of `charge` / `discharge` / `idle`. `idle` hands the slot to the battery's own logic — to block charging or discharging, use that direction with `powerW = 0` instead.
+- `powerW`: finite, non-negative. **MUST be `0` when `direction === 'idle'`.**
 
 ### HeatpumpForecast
 
@@ -4189,6 +4214,14 @@ New reason types came with this surface, so a skipped row can say *why* instead 
 **Battery vs. charging car.** While a car charges, the house battery is either held out of it or allowed to help, according to the owner's `batteryEvDischargeMode`. Two reason types (category `BatteryState`) say which: `BatteryReservedFromEv` for the hold (`Discharge 0`) and `BatterySupportsEvCharging` for the release (`mode=Auto`). Both carry `context.batteryToEv` (`EnyoDataBusCommandReasonBatteryToEvContext`) with the owner's `mode`, the hold `trigger` (`EnyoBatteryToEvHoldTriggerEnum`: `OwnerBlocked`, `SocLimitReached`, `AllowanceSpent`, `NoMeasurement`), `socLimitPercent`, `allowanceWh` and `remainingWh`. The energy manager re-checks a hold periodically by briefly releasing the battery; that re-check sets `batteryToEv.probe: true` and should not be listed as its own entry in a command history.
 
 **Battery first on PV surplus.** When a surplus consumer (EV on PV, heating rod, heat pump boost, surplus automation) is held back or reduced because the battery is charged first up to the owner's `batteryPvPriorityTargetSocPercent`, the energy manager states `BatteryPvPriority` (category `PvSurplus`) on that consumer: `context.batteryPvPriority.targetSocPercent` for the target, `socPercent` for the pack's current SoC and `powerW` for the surplus the battery is taking — e.g. "The battery charges to 40 % first (now 28 %)."
+
+**Battery trading: why or why not.** The `arbitrage` context (`EnyoDataBusCommandReasonArbitrageContext`) carries the trough-against-peak arithmetic behind a battery buy: `buyPricePerKwh` / `buyStartIso` / `buyEndIso`, `sellPricePerKwh` / `sellStartIso` / `sellEndIso`, `breakEvenPricePerKwh` (losses, wear and margin included) and `roundTripEfficiency` (a fraction, `0.757`). Prices are **EUR/kWh like every machine-readable price in the SDK** — `0.336`, not `33.6`. Three uses:
+
+- `PriceSpreadTooSmall` (category `EnergyPrice`) — the battery stays on Auto because buying in the trough and using the energy at the peak would not pay back: "Charging at 35.2 ct/kWh only pays off from 52.7 ct/kWh, but the peak averages 42.9 ct/kWh." Set `electricityPricePerKwh` to the buy price and all the figures; on a flat horizon send it without `arbitrage`. The trough is not "too expensive" — the gap is too small — so this is not `ElectricityPriceAboveThreshold`. Where PV makes Auto mean self-consumption, `SelfConsumptionOptimization` stays the right type.
+- `ElectricityPriceBelowThreshold` on a grid charge — the buy and the peak it is for: "Charging at 33.6 ct for the 17:00 peak at 43.7 ct."
+- `ScheduledOptimization` on a price hold (`Discharge 0`) — `sellStartIso` / `sellPricePerKwh`: "Stored energy kept for 17:00 (43.7 ct)." Not `ElectricityPriceBelowThreshold`, which would say power is cheap for a command that stops the battery.
+
+**Installation limits.** Power capped by a limit the owner or installer set — not the grid operator — carries `InstallationLimit` (category `Contention`) with `powerW` set to the ceiling and `context.installationLimit` = `{source, limitW}`, where `source` is `EnyoInstallationLimitSourceEnum.DesiredGridLimit` (`desiredKwLimit`) or `ChargerLimit` (`chargerLimitW`). `limitW` is in **W** even for the desired limit, which is configured in kW. `GridOperatorPowerLimitationActive` stays reserved for limits the grid operator imposed.
 
 **Grid-optimised charging.** A cost-optimised session placed in, or waiting for, a low-load hour because of `gridOptimizedEvCharging` carries `GridLoadOptimized` (category `Schedule`) with `context.placement` (chosen window and deadline) and `context.gridLoad` (`epexPricePerKwh`, `currency`). The EPEX price is a grid-load proxy, not what the customer pays, so the text must not promise a saving — e.g. "Charging from 02:00, when the grid is less busy — ready by 07:00."
 

@@ -20,7 +20,11 @@ import {
     EnyoAirConditioningOptimizationModeEnum,
 } from '../../types/enyo-air-conditioning-appliance.js';
 import {EnyoAutomationTriggerTypeEnum} from '../../types/enyo-automation.js';
-import {EnyoChargeModeEnum} from '../../types/enyo-data-bus-value.js';
+import {
+    EnyoChargeModeEnum,
+    type EnyoDataBusCommandReason,
+    EnyoDataBusCommandReasonTypeEnum,
+} from '../../types/enyo-data-bus-value.js';
 import {EnyoSmartPlugApplianceStateEnum} from '../../types/enyo-smart-plug-appliance.js';
 
 /**
@@ -79,7 +83,9 @@ export function validateChargerForecast(forecast: ChargerForecast): void {
  * {@link BatteryCommandForecastModeEnum}: when `mode = 'auto'` no
  * schedule is expected; when `mode = 'schedule'` the embedded
  * {@link BatteryCommandForecastScheduled.relativeSchedule} is validated
- * by {@link validateBatterySchedule}.
+ * by {@link validateBatterySchedule}. An Auto forecast's optional
+ * {@link BatteryCommandForecastAuto.reason} is checked by
+ * {@link validateBatteryForecastReason}.
  */
 export function validateBatteryCommandForecast(forecast: BatteryCommandForecast): void {
     if (!forecast || typeof forecast !== 'object') {
@@ -102,10 +108,89 @@ export function validateBatteryCommandForecast(forecast: BatteryCommandForecast)
                 "BatteryCommandForecast with mode='auto' must not carry a relativeSchedule.",
             );
         }
+        if (forecast.reason !== undefined) {
+            validateBatteryForecastReason(forecast.reason, 'BatteryCommandForecast.reason');
+        }
         return;
     }
 
     validateBatterySchedule(forecast.relativeSchedule, forecast.resolution);
+}
+
+/**
+ * Lowest and highest plausible price per kWh in a reason's `arbitrage`
+ * context, in EUR/kWh. Wide enough for negative and spiking dynamic prices,
+ * narrow enough to catch a ct value (`33.6`) in a EUR field.
+ */
+const ARBITRAGE_PRICE_MIN_PER_KWH = -1;
+const ARBITRAGE_PRICE_MAX_PER_KWH = 5;
+
+/**
+ * Validates the reason attached to an Auto {@link BatteryCommandForecast}.
+ * Throws on the first violation.
+ *
+ * Checks that the reason is an object whose `type` is an
+ * {@link EnyoDataBusCommandReasonTypeEnum} member and, when it carries
+ * `context.arbitrage`, that:
+ * - every price is a finite EUR/kWh figure within a plausible band (catches
+ *   ct in a EUR field),
+ * - `roundTripEfficiency` lies in (0, 1] (catches `75.7` for `0.757`),
+ * - each window's start lies before its end, where both are given.
+ *
+ * @param reason - The reason to validate.
+ * @param fieldName - Field path used in error messages.
+ * @throws {ApplianceCommandForecastValidationError} On the first violation.
+ */
+export function validateBatteryForecastReason(reason: EnyoDataBusCommandReason, fieldName: string): void {
+    if (!reason || typeof reason !== 'object') {
+        throw new ApplianceCommandForecastValidationError(`${fieldName} must be an object.`);
+    }
+    validateEnumField(reason.type, Object.values(EnyoDataBusCommandReasonTypeEnum), `${fieldName}.type`, true);
+
+    const arbitrage = reason.context?.arbitrage;
+    if (arbitrage === undefined) return;
+
+    for (const key of ['buyPricePerKwh', 'sellPricePerKwh', 'breakEvenPricePerKwh'] as const) {
+        const price = arbitrage[key];
+        if (price === undefined) continue;
+        if (!Number.isFinite(price)) {
+            throw new ApplianceCommandForecastValidationError(
+                `${fieldName}.context.arbitrage.${key} must be a finite number; got ${price}.`,
+            );
+        }
+        if (price < ARBITRAGE_PRICE_MIN_PER_KWH || price > ARBITRAGE_PRICE_MAX_PER_KWH) {
+            throw new ApplianceCommandForecastValidationError(
+                `${fieldName}.context.arbitrage.${key} is ${price}, outside ` +
+                    `${ARBITRAGE_PRICE_MIN_PER_KWH}…${ARBITRAGE_PRICE_MAX_PER_KWH} — prices are per kWh in ` +
+                    'the reason\'s currency (EUR/kWh), not ct/kWh.',
+            );
+        }
+    }
+
+    const efficiency = arbitrage.roundTripEfficiency;
+    if (efficiency !== undefined && (!Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 1)) {
+        throw new ApplianceCommandForecastValidationError(
+            `${fieldName}.context.arbitrage.roundTripEfficiency is ${efficiency}; it is a fraction in (0, 1], ` +
+                'e.g. 0.757 rather than 75.7.',
+        );
+    }
+
+    for (const [start, end] of [['buyStartIso', 'buyEndIso'], ['sellStartIso', 'sellEndIso']] as const) {
+        const startIso = arbitrage[start];
+        const endIso = arbitrage[end];
+        for (const [key, iso] of [[start, startIso], [end, endIso]] as const) {
+            if (iso !== undefined && Number.isNaN(Date.parse(iso))) {
+                throw new ApplianceCommandForecastValidationError(
+                    `${fieldName}.context.arbitrage.${key} is not an ISO 8601 timestamp: ${iso}.`,
+                );
+            }
+        }
+        if (startIso !== undefined && endIso !== undefined && Date.parse(startIso) >= Date.parse(endIso)) {
+            throw new ApplianceCommandForecastValidationError(
+                `${fieldName}.context.arbitrage.${start} must lie before ${end}.`,
+            );
+        }
+    }
 }
 
 /**

@@ -51,6 +51,7 @@ import {
 } from './enyo-air-conditioning-appliance.js';
 import {EnyoAutomationTriggerTypeEnum} from './enyo-automation.js';
 import {EnyoChargeModeEnum} from './enyo-data-bus-value.js';
+import type {EnyoDataBusCommandReason} from './enyo-data-bus-value.js';
 import {EnyoSmartPlugApplianceStateEnum} from './enyo-smart-plug-appliance.js';
 
 /**
@@ -283,6 +284,17 @@ export interface BatteryCommandForecastScheduleEntry {
 export interface BatteryCommandForecastAuto extends ApplianceForecastMetadata {
     /** Discriminator — set to {@link BatteryCommandForecastModeEnum.Auto}. */
     mode: BatteryCommandForecastModeEnum.Auto;
+    /**
+     * Why no schedule is prescribed over the horizon — e.g.
+     * {@link EnyoDataBusCommandReasonTypeEnum.PriceSpreadTooSmall} when
+     * trading would not pay.
+     *
+     * Set it only when every Auto slot of the horizon shares the same reason;
+     * when they differ, leave it out rather than pick one. Optional, so a
+     * consumer that does not read it is unaffected — but without it an empty
+     * Auto forecast tends to read as "no forecast".
+     */
+    reason?: EnyoDataBusCommandReason;
 }
 
 /**

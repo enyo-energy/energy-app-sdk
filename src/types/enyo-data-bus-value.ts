@@ -58,6 +58,12 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * cost per kWh of delivered heat rather than by price alone, add
      * {@link EnyoDataBusCommandReasonContext.efficiency} so the arithmetic is
      * visible — a warm hour at a higher price can still be the cheaper heat.
+     *
+     * When a battery buys from the grid to cover a later peak, add
+     * {@link EnyoDataBusCommandReasonContext.arbitrage} with the buy price and
+     * the peak it is for (`sellStartIso`, `sellPricePerKwh`), so the text can
+     * say what the buy is for: "Charging at 33.6 ct for the 17:00 peak at
+     * 43.7 ct."
      */
     ElectricityPriceBelowThreshold = 'electricity-price-below-threshold',
     /** Command issued because the electricity price is above a configured threshold */
@@ -99,7 +105,13 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     BatteryCapacityAvailable = 'battery-capacity-available',
     /** Command issued because battery capacity is unavailable */
     BatteryCapacityUnavailable = 'battery-capacity-unavailable',
-    /** Command issued because a grid operator power limitation is active */
+    /**
+     * Command issued because a grid operator power limitation is active.
+     *
+     * Only for a limit the grid operator imposed. A cap set by the owner or
+     * installer — the desired grid limit, the charger limit — is
+     * {@link InstallationLimit}.
+     */
     GridOperatorPowerLimitationActive = 'grid-operator-power-limitation-active',
     /** Command issued because a grid operator power limitation is inactive */
     GridOperatorPowerLimitationInactive = 'grid-operator-power-limitation-inactive',
@@ -123,7 +135,14 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * {@link EnyoDataBusCommandReasonCategoryEnum.Schedule}) with
      * {@link EnyoDataBusCommandReason.context} — `forecast` for what was seen
      * coming, `efficiency` for why this slot won, `thermalStorage` for what
-     * ends the block, `placement` for when it runs.
+     * ends the block, `placement` for when it runs, `arbitrage` for the price
+     * spread a battery block was placed for.
+     *
+     * Also the type for a battery held back (`Discharge 0`) so that stored
+     * energy is kept for a later, dearer peak: set `arbitrage.sellStartIso`
+     * and `arbitrage.sellPricePerKwh` so the text reads "Stored energy kept for
+     * 17:00 (43.7 ct)." Not {@link ElectricityPriceBelowThreshold} — that
+     * would say power is cheap for a command that stops the battery.
      */
     ScheduledOptimization = 'scheduled-optimization',
     /** Command issued because the user explicitly requested it */
@@ -153,7 +172,15 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * limit."
      */
     HomeConsumptionHigh = 'home-consumption-high',
-    /** Command issued to optimize self-consumption */
+    /**
+     * Command issued to optimize self-consumption — e.g. a battery handed back
+     * to its own logic so it stores PV surplus and covers the house load.
+     *
+     * Only true where there is something to self-consume. A battery on a site
+     * without PV that is left on Auto because trading does not pay is
+     * {@link PriceSpreadTooSmall}; do not use this type as the default for
+     * every Auto hand-back.
+     */
     SelfConsumptionOptimization = 'self-consumption-optimization',
     /**
      * Nothing left to deliver — the run's energy (or temperature, or state of
@@ -362,6 +389,37 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * {@link EnyoDataBusCommandReasonCategoryEnum.Schedule}.
      */
     GridLoadOptimized = 'grid-load-optimized',
+    /**
+     * The battery is left to its own logic because buying in the cheap hours
+     * and using the energy in the dear ones would not pay back after storage
+     * losses and wear. The trough is not "expensive" — the gap between trough
+     * and peak is too small.
+     *
+     * Set {@link EnyoDataBusCommandReason.electricityPricePerKwh} to the buy
+     * price and {@link EnyoDataBusCommandReasonContext.arbitrage} to the
+     * figures behind the verdict. On a flat horizon — prices barely move, so
+     * there is no cycle to weigh at all — send the type without `arbitrage`;
+     * the text then says so without figures.
+     *
+     * Told apart from {@link ElectricityPriceAboveThreshold}, which claims the
+     * price is over a level, and from {@link SelfConsumptionOptimization},
+     * which stays the right type where PV makes Auto mean self-consumption.
+     * Not {@link ScheduledOptimization}: nothing is placed, this is a refusal
+     * to trade. Category {@link EnyoDataBusCommandReasonCategoryEnum.EnergyPrice}.
+     */
+    PriceSpreadTooSmall = 'price-spread-too-small',
+    /**
+     * Power is capped by a limit the owner or installer set for the
+     * installation — not by the grid operator.
+     *
+     * Set {@link EnyoDataBusCommandReason.powerW} to the ceiling and
+     * {@link EnyoDataBusCommandReasonContext.installationLimit} to say which
+     * limit it is, so the text can tell "your desired grid limit of 8 kW" from
+     * "the charger limit of 11 kW set by your installer". Told apart from
+     * {@link GridOperatorPowerLimitationActive}, which would be untrue here.
+     * Category {@link EnyoDataBusCommandReasonCategoryEnum.Contention}.
+     */
+    InstallationLimit = 'installation-limit',
 }
 
 /**
@@ -686,6 +744,127 @@ export interface EnyoDataBusCommandReasonContext {
      * {@link EnyoDataBusCommandReasonTypeEnum.GridLoadOptimized}.
      */
     gridLoad?: EnyoDataBusCommandReasonGridLoadContext;
+    /**
+     * The trough-against-peak arithmetic behind a battery buy that was or was
+     * not made. Set on {@link EnyoDataBusCommandReasonTypeEnum.PriceSpreadTooSmall},
+     * and alongside {@link EnyoDataBusCommandReasonTypeEnum.ElectricityPriceBelowThreshold}
+     * (a buy for a peak) or {@link EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization}
+     * (energy kept for a peak).
+     */
+    arbitrage?: EnyoDataBusCommandReasonArbitrageContext;
+    /**
+     * Which owner- or installer-set limit capped the power. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.InstallationLimit}.
+     */
+    installationLimit?: EnyoDataBusCommandReasonInstallationLimitContext;
+}
+
+/**
+ * The trough-against-peak arithmetic behind a battery buy that was or was not
+ * made.
+ *
+ * Prices are per kWh of electricity in
+ * {@link EnyoDataBusCommandReason.currency} — **EUR/kWh, not ct**, like
+ * {@link EnyoDataBusCommandReason.electricityPricePerKwh}: `0.336`, not
+ * `33.6`. Every field is optional so each use sets only what it states:
+ *
+ * - {@link EnyoDataBusCommandReasonTypeEnum.PriceSpreadTooSmall} — all of them.
+ * - {@link EnyoDataBusCommandReasonTypeEnum.ElectricityPriceBelowThreshold} on
+ *   a grid charge — the buy, and the peak it is for.
+ * - {@link EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization} on a hold —
+ *   the peak the energy is kept for.
+ *
+ * @example
+ * ```typescript
+ * // No cycle charge: buying at 35.2 ct needs 52.7 ct to pay back, the peak averages 42.9 ct.
+ * const refused: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.PriceSpreadTooSmall,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.EnergyPrice,
+ *     electricityPricePerKwh: 0.352,
+ *     currency: EnyoCurrencyEnum.EUR,
+ *     context: {arbitrage: {
+ *         buyPricePerKwh: 0.352,
+ *         buyStartIso: '2026-10-13T11:00:00Z',
+ *         buyEndIso: '2026-10-13T13:00:00Z',
+ *         sellPricePerKwh: 0.429,
+ *         sellStartIso: '2026-10-13T16:00:00Z',
+ *         sellEndIso: '2026-10-13T19:00:00Z',
+ *         breakEvenPricePerKwh: 0.527,
+ *         roundTripEfficiency: 0.757,
+ *     }},
+ * };
+ *
+ * // Stored energy kept for the 17:00 peak:
+ * const hold: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.Schedule,
+ *     powerW: 0,
+ *     currency: EnyoCurrencyEnum.EUR,
+ *     context: {arbitrage: {sellStartIso: '2026-10-13T17:00:00Z', sellPricePerKwh: 0.437}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonArbitrageContext {
+    /** Average price, EUR/kWh, over the cheapest window the energy would be bought in. */
+    buyPricePerKwh?: number;
+    /** ISO 8601 start of the buy window. */
+    buyStartIso?: string;
+    /** ISO 8601 end of the buy window. */
+    buyEndIso?: string;
+    /** Average price, EUR/kWh, over the peak window the energy would be used in. */
+    sellPricePerKwh?: number;
+    /** ISO 8601 start of the peak window. */
+    sellStartIso?: string;
+    /** ISO 8601 end of the peak window. */
+    sellEndIso?: string;
+    /**
+     * Price, EUR/kWh, the peak must reach for the buy to pay back — losses,
+     * wear and margin included.
+     */
+    breakEvenPricePerKwh?: number;
+    /** Round-trip efficiency the verdict assumed, as a fraction (0–1): `0.757`, not `75.7`. */
+    roundTripEfficiency?: number;
+}
+
+/**
+ * Which owner- or installer-set limit capped the power behind an
+ * {@link EnyoDataBusCommandReasonTypeEnum.InstallationLimit}.
+ */
+export enum EnyoInstallationLimitSourceEnum {
+    /**
+     * The soft grid limit the user or installer would like import and export
+     * to stay within — {@link EnyoGridConnectionPoint.desiredKwLimit}.
+     */
+    DesiredGridLimit = 'desired-grid-limit',
+    /**
+     * The installer's cap on the total power all wallboxes may draw —
+     * {@link EnyoGridConnectionPoint.chargerLimitW}.
+     */
+    ChargerLimit = 'charger-limit',
+}
+
+/**
+ * The limit behind an {@link EnyoDataBusCommandReasonTypeEnum.InstallationLimit}.
+ *
+ * @example
+ * ```typescript
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.InstallationLimit,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.Contention,
+ *     powerW: 11000,
+ *     context: {installationLimit: {source: EnyoInstallationLimitSourceEnum.ChargerLimit, limitW: 11000}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonInstallationLimitContext {
+    /** Which limit applied. */
+    source: EnyoInstallationLimitSourceEnum;
+    /**
+     * The limit, in **watts** — also for
+     * {@link EnyoInstallationLimitSourceEnum.DesiredGridLimit}, whose
+     * configured value `desiredKwLimit` is in kW: convert before setting it.
+     */
+    limitW: number;
 }
 
 /**
