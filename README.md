@@ -3110,12 +3110,75 @@ class MyHeatpumpApp extends HeatpumpIntegrationEnergyApp {
 
 Drives a heatpump. Manages building / DHW overheating commands and grid-power-availability announcements.
 
-- **Subscribed commands:** `HeatpumpOverheatingV1`, `HeatpumpAvailablePowerAnnouncementV1`, `SetHeatpumpAvailablePowerV2`, `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
+> **Preferred: control heatpumps with the V3 messages.** `HeatpumpControlV3` (power, power sources, which zones to heat now, until when), `HeatpumpControlCancelV3` (cancel a session) and `HeatpumpControlStatusV3` (progress) are the preferred way to control a heatpump — for energy managers sending commands and for integrations receiving them. Use them for all new work. `HeatpumpOverheatingV1`, `SetHeatpumpAvailablePowerV2` and `HeatpumpAvailablePowerAnnouncementV1` are deprecated and only remain for heatpumps that do not declare `ControlV3`. See [HeatpumpControlV3](#heatpumpcontrolv3). Likewise, a heatpump offers its flexibility with `HeatpumpFlexibilityAnnouncementV3` rather than the generic `ApplianceFlexibilityAnnouncementV1` / `V2` — see [HeatpumpFlexibilityAnnouncementV3](#heatpumpflexibilityannouncementv3).
+
+- **Subscribed commands:** `HeatpumpControlV3`, `HeatpumpControlCancelV3`, `HeatpumpOverheatingV1` (deprecated), `HeatpumpAvailablePowerAnnouncementV1` (deprecated), `SetHeatpumpAvailablePowerV2` (deprecated), `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
 - **Implement:** `handleHeatpumpOverheating`, `handleHeatpumpAvailablePowerAnnouncement`, `handleSetHeatpumpAvailablePower`, `handleGridOperatorPowerLimitation`
-- **Optional override:** `handleSetHeatpumpRoomTemperature` — write a measured room temperature into a heating circuit. Answers `NotSupported` by default; override it when the heatpump declares `RoomTemperatureInput`.
+- **Optional overrides:**
+  - `handleSetHeatpumpRoomTemperature` — write a measured room temperature into a heating circuit. Answers `NotSupported` by default; override it when the heatpump declares `RoomTemperatureInput`.
+  - `handleHeatpumpControl` — support `HeatpumpControlV3` (see below). Answers `NotSupported` by default; override it and declare `ControlV3`.
+  - `handleHeatpumpControlCancel` — withdraw a cancelled session on the device. By default `Accepted` for heatpumps declaring `ControlV3`, `NotSupported` otherwise.
+  - `onHeatpumpControlEnded(applianceId, cause)` — return the heatpump to its own behaviour when a session ends; `cause` is `HeatpumpControlEndCauseEnum.Expired`, `Ended` or `Cancelled`. Does nothing by default.
+  - `resolveHeatpumpMetadata(applianceId)` — the metadata actions are validated against. Defaults to the stored appliance's `heatpump` metadata.
+- **Helpers for a V3 implementation:** `checkHeatpumpControlActions(message)` (validates every action against metadata and offer), `isHeatpumpControlChanged(message)` (new session or changed actions?), and the exported `computeHeatpumpSetpointRaise(...)` and `combineHeatpumpControlAnswers(...)`.
 - **Publish helpers:**
+  - `publishHeatpumpControlStatus(applianceId, {sessionId, actions})` — how a session's actions progress (`HeatpumpControlStatusV3`).
+  - `publishHeatpumpFlexibility(applianceId, options, {validForSeconds?, repeatEverySeconds?})` — offer per zone how far the heatpump can be raised right now (`HeatpumpFlexibilityAnnouncementV3`); repeated automatically until replaced (see below).
   - `publishHeatpumpValuesUpdate(applianceId, values)` — operation mode, electrical and thermal power, energies.
   - `publishHeatpumpTemperatures(applianceId, temperatures)` — outdoor, flow / target flow / return, DHW tanks, heating circuits (room, flow, target flow, return), buffer tank.
+
+#### HeatpumpControlV3
+
+**The preferred way to control a heatpump.** Energy managers send `HeatpumpControlV3` / `HeatpumpControlCancelV3` to heatpumps declaring `ControlV3`, and the deprecated `HeatpumpOverheatingV1` / `SetHeatpumpAvailablePowerV2` to all others — the choice comes from the metadata, not from probing. Integrations override `handleHeatpumpControl`, declare `ControlV3` (and `PvSurplusSignal` where the device takes a PV surplus signal), and report progress with `publishHeatpumpControlStatus`.
+
+One message per control session says **how much** power (`availablePowerW`), **from where** (`powerSources`: PV / battery / grid), **which zones to heat now** (`actions`: DHW, buffer tank or room, each with `index`, `deltaK` and an optional `heatSource`) and **until when** (`validUntilIso`).
+
+```typescript
+{
+    sessionId: 'night-tariff-2026-10-15',          // the same across every repeat
+    validUntilIso: '2026-10-15T00:01:00.000Z',     // liveness: repeated ~every 10 s, ~60 s ahead
+    availablePowerW: 3000,
+    powerSources: [{ source: EnyoPowerSourceEnum.Grid, powerW: 3000 }],
+    actions: [{ target: EnyoHeatpumpControlTargetEnum.Dhw, index: 0, deltaK: 5 }],
+}
+```
+
+- **An action means "heat this zone now".** It pulls heating into a cheap or sunny period — e.g. night tariff 0–5 h. Answer it `Accepted` only when the device will actually start heating. A setpoint-only heatpump (Stiebel Eltron, Nibe) only starts once the temperature is a hysteresis below the setpoint, so write at least `currentTemperature + hysteresisK` (`domesticHotWater[].hysteresisK` / `bufferTanks[].hysteresisK`) even if `deltaK` asks for less. If `maxTemperatureC` leaves no such setpoint, answer `Rejected` — never `Accepted` with nothing happening. `computeHeatpumpSetpointRaise({setpointC, deltaK, currentTemperatureC, hysteresisK, maxTemperatureC})` does the arithmetic the same way for every app.
+- **Room `deltaK` is always Kelvin of room temperature.** On an outdoor-controlled circuit (`heatingControlReference: Outdoor`) the app translates it into a heating-curve shift, on a room-controlled one into a higher room setpoint. The energy manager never sends a curve shift. Above the circuit's `heatingCutoffOutdoorTemperatureC` a room action cannot take effect and is `Rejected`.
+- **Report what was written.** Each `actionResults` entry carries `appliedTargetTemperatureC` (the setpoint written), `appliedDeltaK` (the effective raise, possibly above `deltaK`) and, for a room on an outdoor-controlled circuit, `appliedHeatingCurveShiftK`.
+- **Sessions.** Repeats arrive about every 10 s with the same `sessionId`; apply the actions only when `isHeatpumpControlChanged(message)` says the session or its actions changed, and just update the power otherwise. The base class handles liveness for every V3 implementation: it rejects a message whose `validUntilIso` is invalid or past, and calls `onHeatpumpControlEnded` when no repeat arrives by `validUntilIso` (`Expired`), on a message with no actions and no `availablePowerW` (`Ended` — passed to `handleHeatpumpControl` first, so the device can be reset at once), or on a cancel (`Cancelled`).
+- **Cancelling.** `HeatpumpControlCancelV3` with a `sessionId` cancels that session right away, instead of waiting up to ~60 s for `validUntilIso` to lapse. It only touches the named session, so a newer one that replaced it is safe, which an empty `HeatpumpControlV3` cannot guarantee. Idempotent: `Accepted` also when the session is no longer running. Stop repeating the session first, or the next repeat starts it again.
+- **Answers per action.** The acknowledgment carries one `actionResults` entry per action; return them in `IntegrationCommandResponse.actionResults` and the base class passes them through. The top-level `answer` is `Accepted` as soon as the power or one action is accepted, `NotSupported` only when nothing is supported, otherwise `Rejected` (`combineHeatpumpControlAnswers`).
+- **Progress.** `HeatpumpControlStatusV3` reports each action as `Waiting` (accepted, not heating yet — defrost, minimum off-time), `Running`, `Completed` (target reached — the energy manager may end the session early) or `Aborted` (stopped or refused — the energy manager re-plans), with `currentTemperatureC`, `appliedTargetTemperatureC`, `startedAtIso`, `endedAtIso` and a `reason`. Send it on every state change and once more when the session ends.
+- **Validation** (`checkHeatpumpControlActions(message)`, or `validateHeatpumpControlAction(action, metadata, powerSources, offer?)` directly):
+  - A heating rod (`heatSource` `HeatingRod` / `Both`) runs on PV surplus only: rejected unless `powerSources` are PV alone, and `NotSupported` without `HeatingRodControllable`.
+  - Each target needs its overheating feature (`DomesticHotWaterOverheating`, `BufferTankOverheating`, `RoomOverheating`), else `NotSupported`.
+  - DHW must stay within `domesticHotWater[].maxTemperatureC`: setpoint + `deltaK` above it is rejected.
+  - When the session names an `offerId`, each action must fit the heatpump's current offer.
+
+#### HeatpumpFlexibilityAnnouncementV3
+
+The heatpump's offer, in the vocabulary of `HeatpumpControlV3`: per zone (`target` + `index`), how far it can be raised right now (`maxDeltaK` above `setpointC`, room in Kelvin of room temperature) and the smallest raise that actually starts it (`minDeltaK`, e.g. the remaining hysteresis), with which heat source at what power (`heatSources`: compressor and heating rod as separate entries, each with a `power` band and an optional `estimatedElectricalKwh` for the full raise), and when (`earliestStartIso` / `latestStartIso`, `minDurationMinutes`). An optional `required: {deltaK, byIso}` turns a "may" into a "must, by then" — e.g. hot water dropping below comfort at 18:00. Declare `FlexibilityAnnouncementV3` on the heatpump; for such heatpumps it supersedes the generic `ApplianceFlexibilityAnnouncementV1` / `V2`.
+
+```typescript
+const offerId = await this.publishHeatpumpFlexibility('heatpump-1', [{
+    target: EnyoHeatpumpControlTargetEnum.Dhw,
+    index: 0,
+    currentTemperatureC: 47,
+    setpointC: 50,
+    maxDeltaK: 10,
+    heatSources: [
+        { heatSource: EnyoHeatpumpHeatSourceEnum.Compressor, power: { minWatt: 800, maxWatt: 2300, stepWatt: 100 }, estimatedElectricalKwh: 1.4 },
+        { heatSource: EnyoHeatpumpHeatSourceEnum.HeatingRod, power: { minWatt: 3000, maxWatt: 3000, stepWatt: 3000 }, estimatedElectricalKwh: 4.1 },
+    ],
+    required: { deltaK: 3, byIso: '2026-10-14T18:00:00.000Z' },
+}]);
+```
+
+- **Lifecycle.** The latest offer per appliance replaces the previous one and holds until `validUntilIso`. `publishHeatpumpFlexibility` repeats it with a fresh `validUntilIso` (default: valid 15 min, repeated every 5 min) until you call it again, and stops repeating on `stop()`. Publish `[]` to withdraw the offer.
+- **`offerId`** is derived from what is offered (`heatpumpFlexibilityOfferId`), ignoring measured values and order — it stays the same while the tank warms up and changes when the offer changes.
+- **Answering an offer.** The energy manager answers with `HeatpumpControlV3` — one action per offered zone, `deltaK` ≤ `maxDeltaK`, a `heatSource` from the offered ones — and names the offer in `data.offerId`. When a session names an `offerId`, the base class checks every action against the heatpump's current offer and rejects what was not offered. A session without `offerId` is the energy manager's own plan and is checked against the metadata only.
+- **Validation** (`validateHeatpumpFlexibilityAnnouncement(data, metadata?)`, run by `publishHeatpumpFlexibility` before sending): `maxDeltaK` positive; at least one heat source, none twice, a sane power band; start window and `required.byIso` valid, `required.deltaK` ≤ `maxDeltaK`; each zone at most once; and against the metadata, DHW `setpointC + maxDeltaK` ≤ `maxTemperatureC`, a heating rod only with `HeatingRodControllable`, and each target's overheating feature declared.
 
 #### Advanced heatpump metadata
 
@@ -3127,6 +3190,11 @@ Beyond tanks and circuits, the heatpump metadata (`EnyoHeatpumpApplianceMetadata
 | `TimeProgram` | `heatingCircuits[].timeProgram` and `domesticHotWater[].timeProgram` — weekly periods (`daysOfWeek` 0 = Sunday, local `HH:mm` times, may wrap past midnight) switching between `Comfort` / `Reduced` / `Off` / `Boost` |
 | `RoomTemperature` | `heatingCircuits[].roomTemperatureC` in `HeatpumpTemperaturesUpdateV1`; where it is measured goes in `heatingCircuits[].roomTemperatureSource` (`None` / `Internal` / `External`) and, for an enyo sensor, `roomTemperatureSensor` |
 | `RoomTemperatureInput` | The heatpump accepts measured room temperatures via `SetHeatpumpRoomTemperatureV1` |
+| `PvSurplusSignal` | The heatpump takes `availablePowerW` of `HeatpumpControlV3` as a PV surplus signal (e.g. Lambda register 102). Supersedes the deprecated `AvailablePowerAnnouncement` |
+| `ControlV3` | The heatpump's app handles `HeatpumpControlV3` / `HeatpumpControlCancelV3` and reports `HeatpumpControlStatusV3`. The energy manager sends V3 only to heatpumps declaring it. Needs at least one overheating feature to be actionable |
+| `FlexibilityAnnouncementV3` | The heatpump publishes `HeatpumpFlexibilityAnnouncementV3` offers; the energy manager plans from them instead of deriving the headroom from metadata. Needs at least one overheating feature to be actionable |
+| — | `heatingCircuits[].heatingControlReference` — what the circuit steers by: `Outdoor` (heating curve) or `Room`. Independent of `roomTemperatureSource`, which says where the room is measured |
+| — | `heatingCircuits[].heatingCutoffOutdoorTemperatureC` — the heatpump's own heating cut-off (Heizgrenze / Sommerabschaltung) setting. Above it a room action cannot take effect. Unlike the learned `building.heatingLimitC`; the validator warns when the two differ by more than 3 K |
 | `FlowTemperature` / `ReturnTemperature` | `heatpumpFlowTemperatureC`, `heatpumpTargetFlowTemperatureC`, `heatpumpReturnTemperatureC` and per-circuit `flowTemperatureC`, `targetFlowTemperatureC`, `returnTemperatureC` in `HeatpumpTemperaturesUpdateV1` |
 
 `updateAppliance` replaces the whole `heatingCircuits` / `domesticHotWater` array, so use the `ApplianceManager` helpers to change a single entry:

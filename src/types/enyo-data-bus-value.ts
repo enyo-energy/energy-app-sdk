@@ -1461,8 +1461,9 @@ export enum EnyoDataBusMessageEnum {
     RebootChargerV1 = 'RebootChargerV1',
     RequestChargerLogsV1 = 'RequestChargerLogsV1',
     ClearChargingProfilesV1 = 'ClearChargingProfilesV1',
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.HeatpumpControlV3} instead, which carries power, power sources and per-action overheating in one session. */
     HeatpumpOverheatingV1 = 'HeatpumpOverheatingV1',
-    /** @deprecated Use {@link EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2} instead, which adds purpose and power-source context. */
+    /** @deprecated Use {@link EnyoDataBusMessageEnum.HeatpumpControlV3} instead. */
     HeatpumpAvailablePowerAnnouncementV1 = 'HeatpumpAvailablePowerAnnouncementV1',
     /** @deprecated Use {@link EnyoDataBusMessageEnum.SetHeatingRodAvailablePowerV2} instead. */
     HeatingRodAvailablePowerAnnouncementV1 = 'HeatingRodAvailablePowerAnnouncementV1',
@@ -1482,7 +1483,10 @@ export enum EnyoDataBusMessageEnum {
     CalibrationStatusUpdateV1 = 'CalibrationStatusUpdateV1',
     /** V2 control command: announce the available/max power (W) envelope to a charger. Supersedes {@link EnyoDataBusMessageEnum.ChangeChargingPowerV1}. */
     SetChargerAvailablePowerV2 = 'SetChargerAvailablePowerV2',
-    /** V2 control command: announce the available/max power (W) envelope to a heatpump, with purpose and power-source context. Supersedes {@link EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1}. */
+    /**
+     * V2 control command: announce the available/max power (W) envelope to a heatpump, with purpose and power-source context. Supersedes {@link EnyoDataBusMessageEnum.HeatpumpAvailablePowerAnnouncementV1}.
+     * @deprecated Use {@link EnyoDataBusMessageEnum.HeatpumpControlV3} instead, which adds a session, a validity and per-action overheating.
+     */
     SetHeatpumpAvailablePowerV2 = 'SetHeatpumpAvailablePowerV2',
     /** V2 control command: announce the available/max power (W) envelope to a heating rod. Supersedes {@link EnyoDataBusMessageEnum.HeatingRodAvailablePowerAnnouncementV1}. */
     SetHeatingRodAvailablePowerV2 = 'SetHeatingRodAvailablePowerV2',
@@ -1494,6 +1498,17 @@ export enum EnyoDataBusMessageEnum {
     SetSmartPlugSwitchV1 = 'SetSmartPlugSwitchV1',
     /** Control command: write a measured room temperature into a heatpump that accepts it as control input. */
     SetHeatpumpRoomTemperatureV1 = 'SetHeatpumpRoomTemperatureV1',
+    /**
+     * Control command: one heatpump control session — how much power, from which sources, which zones to heat now (DHW / buffer tank / room) and until when. Only for heatpumps declaring the `ControlV3` feature.
+     * Supersedes {@link EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2} and {@link EnyoDataBusMessageEnum.HeatpumpOverheatingV1}.
+     */
+    HeatpumpControlV3 = 'HeatpumpControlV3',
+    /** Control command: cancel a {@link EnyoDataBusMessageEnum.HeatpumpControlV3} session right away. */
+    HeatpumpControlCancelV3 = 'HeatpumpControlCancelV3',
+    /** A heatpump reports how the actions of a {@link EnyoDataBusMessageEnum.HeatpumpControlV3} session progress: waiting, running, completed, aborted. */
+    HeatpumpControlStatusV3 = 'HeatpumpControlStatusV3',
+    /** A heatpump offers, per zone, how far it can be raised right now, with which heat source at what power, and until when. Answered with {@link EnyoDataBusMessageEnum.HeatpumpControlV3}. */
+    HeatpumpFlexibilityAnnouncementV3 = 'HeatpumpFlexibilityAnnouncementV3',
     /** Live split of the grid power between the household (primary meter) and the meter cascade. Published by the core. */
     CascadeSplitUpdateV1 = 'CascadeSplitUpdateV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
@@ -1747,6 +1762,11 @@ export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
  * heating circuit. That breakdown is additive context for the decision maker;
  * `kWh` remains the authoritative total.
  *
+ * For heatpumps declaring
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.FlexibilityAnnouncementV3},
+ * superseded by {@link EnyoDataBusHeatpumpFlexibilityAnnouncementV3} (its
+ * optional `required` covers energy owed by a deadline).
+ *
  * @example
  * ```typescript
  * dataBus.sendMessage([{
@@ -1816,6 +1836,11 @@ export interface EnyoDataBusApplianceFlexibilityAnnouncementV1 extends EnyoDataB
  * Deliberately no `kWh` field: an energy figure here would be read as
  * authoritative the moment it exists, and the announcement would collapse back
  * into V1 with extra fields. An appliance that knows its energy should send V1.
+ *
+ * For heatpumps declaring
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.FlexibilityAnnouncementV3},
+ * superseded by {@link EnyoDataBusHeatpumpFlexibilityAnnouncementV3}, which
+ * offers per zone in the vocabulary of `HeatpumpControlV3`.
  *
  * **The window is a trigger window, not a run window.**
  * {@link data.flexibility.availableFromIsoTimestamp} and
@@ -3684,7 +3709,50 @@ export interface EnyoDataBusCommandAcknowledgeV1 extends EnyoDataBusMessage {
         answer: EnyoCommandAcknowledgeAnswerEnum;
         /** Optional reason for rejection (relevant when answer is Rejected or NotSupported) */
         rejectionReason?: string;
+        /**
+         * Per-action answers, for commands that carry several actions — today
+         * {@link EnyoDataBusHeatpumpControlV3}. One entry per action of the
+         * command, matched by `target` and `index`.
+         *
+         * {@link answer} then speaks for the command as a whole (the power and
+         * the session), and these say which of its actions were taken.
+         */
+        actionResults?: EnyoCommandAcknowledgeActionResult[];
     };
+}
+
+/**
+ * The answer to one action of a multi-action command such as
+ * {@link EnyoDataBusHeatpumpControlV3}, carried in
+ * {@link EnyoDataBusCommandAcknowledgeV1.data.actionResults}.
+ */
+export interface EnyoCommandAcknowledgeActionResult {
+    /** What the action raises — matches {@link EnyoHeatpumpControlAction.target}. */
+    target: EnyoHeatpumpControlTargetEnum;
+    /** Zone index — matches {@link EnyoHeatpumpControlAction.index}. */
+    index?: number;
+    /** Whether this action was accepted, rejected or is not supported. */
+    answer: EnyoCommandAcknowledgeAnswerEnum;
+    /** Why the action was rejected or is not supported. */
+    rejectionReason?: string;
+    /**
+     * The setpoint actually written for an accepted action, in °C — the DHW,
+     * buffer-tank or room setpoint. May be higher than the old setpoint plus
+     * the requested `deltaK`, when the device needed more to start heating.
+     */
+    appliedTargetTemperatureC?: number;
+    /**
+     * The effective raise above the previous setpoint, in Kelvin, after
+     * hysteresis and caps — `appliedTargetTemperatureC` minus the previous
+     * setpoint. May exceed the requested `deltaK`.
+     */
+    appliedDeltaK?: number;
+    /**
+     * For a room action on an outdoor-controlled circuit: the heating-curve
+     * shift actually written, in Kelvin of flow temperature (the room
+     * `deltaK` translated by the integration).
+     */
+    appliedHeatingCurveShiftK?: number;
 }
 
 /**
@@ -3991,6 +4059,9 @@ export interface EnyoHeatpumpOverheatingConfig {
  *
  * Supports room overheating (via heating circuits), buffer tank overheating,
  * and domestic hot water (DHW) overheating, each with their own temperature delta and duration.
+ *
+ * @deprecated Use {@link EnyoDataBusHeatpumpControlV3}, which carries the
+ * overheating as per-action requests inside a control session with a validity.
  */
 export interface EnyoDataBusHeatpumpOverheatingV1 extends EnyoDataBusMessage {
     type: 'message';
@@ -4171,6 +4242,10 @@ export interface EnyoPowerSourceShare {
  * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's
  * `id`.
  */
+/**
+ * @deprecated Use {@link EnyoDataBusHeatpumpControlV3}, which carries the
+ * power and its sources together with what to raise and until when.
+ */
 export interface EnyoDataBusSetHeatpumpAvailablePowerV2 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2;
@@ -4213,6 +4288,465 @@ export interface EnyoDataBusSetHeatpumpAvailablePowerV2 extends EnyoDataBusMessa
          * grid). When present, the shares should sum to {@link data.powerW}.
          */
         powerSources?: EnyoPowerSourceShare[];
+    };
+}
+
+/**
+ * What a {@link EnyoHeatpumpControlAction} raises.
+ */
+export enum EnyoHeatpumpControlTargetEnum {
+    /** A domestic-hot-water zone ({@link EnyoHeatpumpApplianceMetadata.domesticHotWater}). */
+    Dhw = 'dhw',
+    /** A heating buffer tank ({@link EnyoHeatpumpApplianceMetadata.bufferTanks}). */
+    BufferTank = 'buffer-tank',
+    /** The room temperature of a heating circuit ({@link EnyoHeatpumpApplianceMetadata.heatingCircuits}). */
+    Room = 'room',
+}
+
+/**
+ * One thing a {@link EnyoDataBusHeatpumpControlV3} session asks the heatpump
+ * to do: **heat this zone now**, raised above its current setpoint.
+ *
+ * "Now" is the point — the energy manager uses actions to pull heating into a
+ * cheap or sunny period (e.g. night tariff 0–5 h, PV surplus at noon). An
+ * action is answered `Accepted` only when the device will actually start
+ * heating within the session. Many heatpumps (e.g. Stiebel Eltron, Nibe) have
+ * no "start a charge" command, only a setpoint, and only start once the
+ * temperature has fallen a hysteresis below it: there the integration must set
+ * the setpoint to at least `currentTemperature + hysteresisK`
+ * ({@link EnyoHeatpumpApplianceDomesticHotWater.hysteresisK},
+ * {@link EnyoHeatpumpApplianceBufferTank.hysteresisK}), even if that is more
+ * than `deltaK` asks for — `computeHeatpumpSetpointRaise` does the arithmetic.
+ * If the maximum temperature makes that impossible, the action is `Rejected`,
+ * never `Accepted` with nothing happening. What was actually written is
+ * reported back in {@link EnyoCommandAcknowledgeActionResult}.
+ *
+ * Needs the matching overheating feature —
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.DomesticHotWaterOverheating},
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.BufferTankOverheating} or
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomOverheating}; without
+ * it the action is answered `NotSupported`.
+ */
+export interface EnyoHeatpumpControlAction {
+    /** What to heat. */
+    target: EnyoHeatpumpControlTargetEnum;
+    /**
+     * Index of the DHW zone, buffer tank or heating circuit, as in
+     * {@link EnyoHeatpumpOverheatingConfig.index}. Omit for the first (or only) one.
+     */
+    index?: number;
+    /**
+     * How far to raise above the zone's current setpoint, in Kelvin. Positive;
+     * the minimum the energy manager asks for — the integration may raise
+     * further to make the device start (see above), and reports the effective
+     * raise as `appliedDeltaK`.
+     *
+     * **For {@link EnyoHeatpumpControlTargetEnum.Room} always Kelvin of room
+     * temperature**, whatever the circuit steers by
+     * ({@link EnyoHeatpumpApplianceHeatingCircuit.heatingControlReference}). On
+     * an outdoor-controlled circuit the integration translates it into a
+     * heating-curve shift, on a room-controlled one into a higher room
+     * setpoint. The energy manager never sends a curve shift. Above the
+     * circuit's {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCutoffOutdoorTemperatureC}
+     * a room action cannot take effect and is `Rejected`.
+     *
+     * For {@link EnyoHeatpumpControlTargetEnum.Dhw} the result must stay within
+     * the zone's {@link EnyoHeatpumpApplianceDomesticHotWater.maxTemperatureC}:
+     * setpoint + `deltaK` <= `maxTemperatureC`, or the action is rejected.
+     *
+     * Optional in the message; an integration decides what an action without
+     * it means for its device (e.g. "raise as far as useful") or rejects it.
+     */
+    deltaK?: number;
+    /**
+     * Which heat source the action may use. {@link EnyoHeatpumpHeatSourceEnum.HeatingRod}
+     * and {@link EnyoHeatpumpHeatSourceEnum.Both} are only allowed when the
+     * session's `powerSources` consist of PV alone — the heating rod runs on
+     * PV surplus only — and need
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingRodControllable}.
+     * Omit to leave the choice to the heatpump.
+     */
+    heatSource?: EnyoHeatpumpHeatSourceEnum;
+}
+
+/**
+ * One heatpump control session: how much power the heatpump has
+ * ({@link data.availablePowerW}), where it comes from
+ * ({@link data.powerSources}), which zones to heat now ({@link data.actions})
+ * and how long that holds ({@link data.validUntilIso}).
+ *
+ * The preferred way to control a heatpump. Send it only to heatpumps
+ * declaring {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ControlV3}; for
+ * all others use the deprecated {@link EnyoDataBusSetHeatpumpAvailablePowerV2}
+ * and {@link EnyoDataBusHeatpumpOverheatingV1}. An integration without V3
+ * support answers `NotSupported`.
+ *
+ * **Sessions and liveness.** The energy manager repeats the message about every
+ * 10 s with the same {@link data.sessionId} and a fresh
+ * {@link data.validUntilIso} (about 60 s ahead). A repeat with the same session
+ * and the same actions only updates the power; a new session or changed
+ * actions are applied anew. If no repeat arrives by `validUntilIso`, the
+ * heatpump returns to its own behaviour. A message with no actions and no
+ * `availablePowerW` ends the session;
+ * {@link EnyoDataBusHeatpumpControlCancelV3} cancels a named session right
+ * away.
+ *
+ * **Answer and progress.** The receiving integration answers with an
+ * {@link EnyoDataBusCommandAcknowledgeV1} carrying one
+ * {@link EnyoCommandAcknowledgeActionResult} per action in `actionResults`,
+ * including the values it actually wrote. The top-level `answer` speaks for
+ * the session: `Accepted` as soon as the power or at least one action is
+ * accepted, `NotSupported` only when nothing is supported, otherwise
+ * `Rejected`. How the actions then progress — waiting, running, completed,
+ * aborted — follows in {@link EnyoDataBusHeatpumpControlStatusV3}.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusHeatpumpControlV3 = {
+ *     id: 'msg-1',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpControlV3,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-10-14T11:00:00.000Z',
+ *     data: {
+ *         sessionId: 'pv-surplus-2026-10-14T11:00',
+ *         validUntilIso: '2026-10-14T11:01:00.000Z',
+ *         availablePowerW: 2400,
+ *         powerSources: [{source: EnyoPowerSourceEnum.Pv, powerW: 2400}],
+ *         actions: [{target: EnyoHeatpumpControlTargetEnum.Dhw, index: 0, deltaK: 8}],
+ *         reason: {type: EnyoDataBusCommandReasonTypeEnum.PvSurplusAvailable},
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusHeatpumpControlV3 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpControlV3;
+    /** ID of the heatpump appliance this session applies to. */
+    applianceId: string;
+    data: {
+        /** Identifies the session; stays the same across every repeat of the same control. */
+        sessionId: string;
+        /**
+         * The {@link EnyoDataBusHeatpumpFlexibilityAnnouncementV3.data.offerId}
+         * this session answers, if it answers one. When set and the heatpump
+         * holds a current offer, every action is checked against that offer:
+         * its zone must be offered, its `deltaK` must not exceed the offered
+         * `maxDeltaK`, and its `heatSource` must be among the offered ones.
+         */
+        offerId?: string;
+        /**
+         * ISO 8601 timestamp the session lapses at unless a newer message
+         * arrives — liveness, not the planned end. The energy manager repeats
+         * about every 10 s with this roughly 60 s ahead.
+         */
+        validUntilIso: string;
+        /**
+         * Power the heatpump may draw, in Watts. Heatpumps declaring
+         * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.PvSurplusSignal}
+         * take it as a PV surplus signal (e.g. Lambda register 102).
+         */
+        availablePowerW?: number;
+        /** Breakdown of {@link availablePowerW} by source (PV / battery / grid); should sum to it. */
+        powerSources?: EnyoPowerSourceShare[];
+        /** Which zones to heat now. Empty together with no {@link availablePowerW} ends the session. */
+        actions: EnyoHeatpumpControlAction[];
+        /** Optional reason why this command was issued. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Cancels one {@link EnyoDataBusHeatpumpControlV3} session right away.
+ *
+ * Without it, the energy manager can only stop repeating a session and wait
+ * for `validUntilIso` to lapse (up to ~60 s), or send an empty
+ * `HeatpumpControlV3`, which ends whatever session is current. This message
+ * names the session it cancels, so it withdraws exactly that control — e.g.
+ * because the forecast changed — without touching a newer session that has
+ * replaced it in the meantime.
+ *
+ * The heatpump returns to its own behaviour for that session. Stop repeating
+ * the session before sending this: a later `HeatpumpControlV3` with the same
+ * `sessionId` starts it again.
+ *
+ * **Answer.** The receiving integration answers with an
+ * {@link EnyoDataBusCommandAcknowledgeV1}. Cancelling is idempotent: `Accepted`
+ * also when the session is no longer running (it lapsed, ended or was replaced)
+ * — the requested state holds either way. `Rejected` only when the heatpump
+ * could not withdraw a control it still holds; `NotSupported` from heatpumps
+ * without {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ControlV3}.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusHeatpumpControlCancelV3 = {
+ *     id: 'msg-2',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpControlCancelV3,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-10-14T10:30:00.000Z',
+ *     data: {sessionId: 'night-tariff-2026-10-15'},
+ * };
+ * ```
+ */
+export interface EnyoDataBusHeatpumpControlCancelV3 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpControlCancelV3;
+    /** ID of the heatpump appliance whose session is cancelled. */
+    applianceId: string;
+    data: {
+        /** The `sessionId` of the {@link EnyoDataBusHeatpumpControlV3} session to cancel. */
+        sessionId: string;
+        /** Optional reason why the session is cancelled. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Where one action of a {@link EnyoDataBusHeatpumpControlV3} session stands.
+ */
+export enum EnyoHeatpumpControlActionStateEnum {
+    /**
+     * Accepted and written, but the device is not heating yet — e.g. a
+     * compressor minimum off-time, a defrost, or another zone being served
+     * first. Say why in {@link EnyoHeatpumpControlActionStatus.reason}.
+     */
+    Waiting = 'waiting',
+    /** The device is heating the zone. */
+    Running = 'running',
+    /** The zone reached the target the action set. */
+    Completed = 'completed',
+    /**
+     * The device stopped or refused the action before reaching the target —
+     * e.g. an error, a safety cut-out, or the outdoor temperature crossing the
+     * heating cut-off. Say why in {@link EnyoHeatpumpControlActionStatus.reason}.
+     */
+    Aborted = 'aborted',
+}
+
+/**
+ * The progress of one action, carried by {@link EnyoDataBusHeatpumpControlStatusV3}.
+ */
+export interface EnyoHeatpumpControlActionStatus {
+    /** The action's target — matches {@link EnyoHeatpumpControlAction.target}. */
+    target: EnyoHeatpumpControlTargetEnum;
+    /** The action's zone index — matches {@link EnyoHeatpumpControlAction.index}. */
+    index?: number;
+    /** Where the action stands. */
+    state: EnyoHeatpumpControlActionStateEnum;
+    /** The zone's measured temperature now, in °C. */
+    currentTemperatureC?: number;
+    /** The setpoint written for the action, in °C — as in {@link EnyoCommandAcknowledgeActionResult.appliedTargetTemperatureC}. */
+    appliedTargetTemperatureC?: number;
+    /** ISO 8601 timestamp the device started heating for the action. */
+    startedAtIso?: string;
+    /** ISO 8601 timestamp the action completed or was aborted. */
+    endedAtIso?: string;
+    /** Why the action is waiting or was aborted, in plain words (e.g. "defrost"). */
+    reason?: string;
+}
+
+/**
+ * A heatpump integration reports how the actions of a
+ * {@link EnyoDataBusHeatpumpControlV3} session are progressing.
+ *
+ * The acknowledgment only says whether a control was accepted. Especially on
+ * setpoint-only heatpumps, accepted is not yet heating: this message says when
+ * the device actually starts (`Running`), when a zone is done (`Completed`) —
+ * so the energy manager can end the session early — and when it is held up
+ * (`Waiting`) or gave up (`Aborted`), so the energy manager can re-plan.
+ *
+ * Sent by integrations declaring
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ControlV3} whenever an
+ * action's state changes, and once more when the session ends. Each message
+ * carries every action of the session. Advisory: all actions completed does
+ * not end the session — that stays the energy manager's decision.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusHeatpumpControlStatusV3 = {
+ *     id: 'msg-4',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpControlStatusV3,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-10-15T00:02:00.000Z',
+ *     data: {
+ *         sessionId: 'night-tariff-2026-10-15',
+ *         actions: [{
+ *             target: EnyoHeatpumpControlTargetEnum.Dhw,
+ *             index: 0,
+ *             state: EnyoHeatpumpControlActionStateEnum.Running,
+ *             currentTemperatureC: 46.5,
+ *             appliedTargetTemperatureC: 55,
+ *             startedAtIso: '2026-10-15T00:02:00.000Z',
+ *         }],
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusHeatpumpControlStatusV3 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpControlStatusV3;
+    /** ID of the heatpump appliance the session runs on. */
+    applianceId: string;
+    data: {
+        /** The `sessionId` of the {@link EnyoDataBusHeatpumpControlV3} session reported on. */
+        sessionId: string;
+        /** One entry per action of the session. */
+        actions: EnyoHeatpumpControlActionStatus[];
+    };
+}
+
+/**
+ * One heat source a {@link EnyoHeatpumpFlexibilityOption} can be raised with,
+ * and the power it would draw.
+ */
+export interface EnyoHeatpumpFlexibilityHeatSource {
+    /**
+     * The compressor or the heating rod. Offer them as separate entries — their
+     * power profiles differ (a modulating compressor vs. a usually fixed-power
+     * rod), and the energy manager picks one per control action. A heating rod
+     * needs {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingRodControllable}
+     * and is only ever run on PV surplus.
+     */
+    heatSource: EnyoHeatpumpHeatSourceEnum.Compressor | EnyoHeatpumpHeatSourceEnum.HeatingRod;
+    /** Electrical power band this source would draw, in Watts. A fixed-power rod states min = max. */
+    power: EnyoFlexibilityPowerBand;
+    /**
+     * Electrical energy, in kWh, needed to raise the zone by the full
+     * {@link EnyoHeatpumpFlexibilityOption.maxDeltaK} with this source —
+     * electricity drawn, not heat stored. Lets the energy manager weigh the
+     * zone against a battery; a compressor needs a fraction of what a rod
+     * needs for the same Kelvin.
+     */
+    estimatedElectricalKwh?: number;
+}
+
+/**
+ * One zone a heatpump offers to raise — the offer-side mirror of a
+ * {@link EnyoHeatpumpControlAction}: same {@link target} and {@link index}, a
+ * {@link maxDeltaK} the action's `deltaK` may not exceed, and the heat sources
+ * its `heatSource` may choose from.
+ */
+export interface EnyoHeatpumpFlexibilityOption {
+    /** What can be raised — the same vocabulary as {@link EnyoHeatpumpControlAction.target}. */
+    target: EnyoHeatpumpControlTargetEnum;
+    /** Index of the DHW zone, buffer tank or heating circuit. Omit for the first (or only) one. */
+    index?: number;
+    /** The zone's measured temperature now, in °C. */
+    currentTemperatureC?: number;
+    /** The zone's current setpoint, in °C — what a control action's `deltaK` is added to. */
+    setpointC?: number;
+    /**
+     * How far the zone can be raised above its setpoint right now, in Kelvin
+     * — for {@link EnyoHeatpumpControlTargetEnum.Room} in Kelvin of room
+     * temperature, as in {@link EnyoHeatpumpControlAction.deltaK}. For DHW,
+     * `setpointC + maxDeltaK` must stay within
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.maxTemperatureC}. Do not
+     * offer a room above the circuit's heating cut-off.
+     */
+    maxDeltaK: number;
+    /**
+     * The smallest raise that actually makes the device start heating now, in
+     * Kelvin — e.g. the hysteresis still separating the current temperature
+     * from a setpoint that would trigger a charge. A control action asking for
+     * less is raised to this by the integration. Must not exceed
+     * {@link maxDeltaK}; omitted means any positive raise starts it.
+     */
+    minDeltaK?: number;
+    /** The heat sources the zone can be raised with. At least one. */
+    heatSources: EnyoHeatpumpFlexibilityHeatSource[];
+    /** Earliest the raise may be triggered, ISO 8601. Omitted means immediately. */
+    earliestStartIso?: string;
+    /**
+     * Latest the raise may be triggered, ISO 8601 — a trigger deadline, not a
+     * completion deadline. Omitted means for as long as the offer is valid.
+     */
+    latestStartIso?: string;
+    /** Shortest contiguous run still worth starting, in minutes. */
+    minDurationMinutes?: number;
+    /**
+     * Optional: a raise that **must** happen — e.g. the hot water drops below
+     * comfort at 18:00 — with only its timing left to the energy manager. Turns
+     * the option from "may" into "must, by then". Its `deltaK` must not exceed
+     * {@link maxDeltaK}.
+     */
+    required?: {
+        /** The raise that must be reached, in Kelvin above the setpoint. */
+        deltaK: number;
+        /** ISO 8601 timestamp by which it must be reached. */
+        byIso: string;
+    };
+    /** Where the zone stands, e.g. a tank at 38 °C heading for 50 °C. */
+    progress?: EnyoFlexibilityProgress;
+}
+
+/**
+ * A heatpump's offer: per zone, how far it can be raised right now, with which
+ * heat source at what power, and until when.
+ *
+ * The heat-pump counterpart of the generic
+ * {@link EnyoDataBusApplianceFlexibilityAnnouncementV1} /
+ * {@link EnyoDataBusApplianceFlexibilityAnnouncementV2}, built in the
+ * vocabulary of {@link EnyoDataBusHeatpumpControlV3}: the energy manager
+ * answers each offered zone with one control action (same `target` and
+ * `index`, `deltaK` ≤ `maxDeltaK`, a `heatSource` from the offered ones) and
+ * names the offer in `HeatpumpControlV3.data.offerId`. Sent by heatpumps that
+ * declare {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.FlexibilityAnnouncementV3};
+ * for them it supersedes V1 and V2.
+ *
+ * **Lifecycle.** The latest message per appliance replaces the previous one.
+ * The offer holds until {@link data.validUntilIso}; the sender repeats it
+ * before then (`HeatpumpIntegrationEnergyApp.publishHeatpumpFlexibility` does
+ * so automatically). A lapsed offer, or one with no {@link data.options}, means
+ * the heatpump offers nothing.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusHeatpumpFlexibilityAnnouncementV3 = {
+ *     id: 'msg-3',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpFlexibilityAnnouncementV3,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-10-14T10:00:00.000Z',
+ *     data: {
+ *         offerId: 'a1b2c3d4',
+ *         validUntilIso: '2026-10-14T10:15:00.000Z',
+ *         options: [{
+ *             target: EnyoHeatpumpControlTargetEnum.Dhw,
+ *             index: 0,
+ *             currentTemperatureC: 47,
+ *             setpointC: 50,
+ *             maxDeltaK: 10,
+ *             heatSources: [
+ *                 {heatSource: EnyoHeatpumpHeatSourceEnum.Compressor, power: {minWatt: 800, maxWatt: 2300, stepWatt: 100}, estimatedElectricalKwh: 1.4},
+ *                 {heatSource: EnyoHeatpumpHeatSourceEnum.HeatingRod, power: {minWatt: 3000, maxWatt: 3000, stepWatt: 3000}, estimatedElectricalKwh: 4.1},
+ *             ],
+ *             required: {deltaK: 3, byIso: '2026-10-14T18:00:00.000Z'},
+ *         }],
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusHeatpumpFlexibilityAnnouncementV3 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpFlexibilityAnnouncementV3;
+    /** ID of the heatpump appliance making the offer. */
+    applianceId: string;
+    data: {
+        /**
+         * Identifies the offer's substance. Stays the same across repeats and
+         * measured-value updates, changes when what is offered changes.
+         */
+        offerId: string;
+        /** ISO 8601 timestamp the offer lapses at unless repeated. */
+        validUntilIso: string;
+        /** One entry per zone, at most one per `target` and `index`. Empty means nothing is offered. */
+        options: EnyoHeatpumpFlexibilityOption[];
     };
 }
 

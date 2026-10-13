@@ -204,7 +204,8 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
      *
      * @param originalMessage - The inbound command being acknowledged.
      * @param applianceId - The appliance ID acknowledging the command.
-     * @param response - The handler response (`answer` + optional `rejectionReason`).
+     * @param response - The handler response (`answer`, optional `rejectionReason`
+     *   and, for multi-action commands, `actionResults`).
      */
     protected sendAcknowledge(
         originalMessage: EnyoDataBusMessage,
@@ -222,7 +223,8 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
                 messageId: originalMessage.id,
                 acknowledgeMessage: originalMessage.message,
                 answer: response.answer,
-                rejectionReason: response.rejectionReason
+                rejectionReason: response.rejectionReason,
+                actionResults: response.actionResults
             }
         };
         this.useDataBus().sendMessage([ack]);

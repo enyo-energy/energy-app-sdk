@@ -1,0 +1,261 @@
+import {
+    EnyoCommandAcknowledgeActionResult,
+    EnyoCommandAcknowledgeAnswerEnum,
+    EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
+    EnyoHeatpumpControlAction,
+    EnyoHeatpumpControlTargetEnum,
+    EnyoHeatpumpHeatSourceEnum,
+    EnyoPowerSourceEnum,
+    EnyoPowerSourceShare,
+} from '../../types/enyo-data-bus-value.js';
+import {
+    EnyoHeatpumpApplianceAvailableFeaturesEnum,
+    EnyoHeatpumpApplianceMetadata,
+} from '../../types/enyo-heatpump-appliance.js';
+
+/**
+ * The overheating feature each `HeatpumpControlV3` target needs — and that a
+ * `HeatpumpFlexibilityAnnouncementV3` option for that target needs to be
+ * actionable.
+ */
+export const HEATPUMP_CONTROL_TARGET_FEATURE: Readonly<Record<EnyoHeatpumpControlTargetEnum, EnyoHeatpumpApplianceAvailableFeaturesEnum>> = {
+    [EnyoHeatpumpControlTargetEnum.Dhw]: EnyoHeatpumpApplianceAvailableFeaturesEnum.DomesticHotWaterOverheating,
+    [EnyoHeatpumpControlTargetEnum.BufferTank]: EnyoHeatpumpApplianceAvailableFeaturesEnum.BufferTankOverheating,
+    [EnyoHeatpumpControlTargetEnum.Room]: EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomOverheating,
+};
+
+/**
+ * Whether a session's power sources consist of PV alone — the only case in
+ * which a heating rod may run.
+ *
+ * @param powerSources - The session's `powerSources`.
+ * @returns `true` when at least one share is given and every share is PV.
+ */
+export function isPvOnlyPowerSources(powerSources: EnyoPowerSourceShare[] | undefined): boolean {
+    return !!powerSources
+        && powerSources.length > 0
+        && powerSources.every((share) => share.source === EnyoPowerSourceEnum.Pv);
+}
+
+/**
+ * Validates one action of a `HeatpumpControlV3` session against the
+ * heatpump's metadata and the session's power sources, and returns the answer
+ * the action deserves.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls any handler; an
+ * integration that overrides `handleHeatpumpControl` can call it itself.
+ *
+ * Rules, in order — the first that fails decides:
+ * 1. `target` is an {@link EnyoHeatpumpControlTargetEnum} member, and
+ *    `deltaK`, when given, is a finite positive number (**Rejected**).
+ * 2. `heatSource` is `HeatingRod` or `Both` but `powerSources` are missing or
+ *    not PV alone — the rod runs on PV surplus only (**Rejected**).
+ * 3. `heatSource` is `HeatingRod` or `Both` but the heatpump does not declare
+ *    `HeatingRodControllable` (**NotSupported**).
+ * 4. The heatpump does not declare the target's overheating feature
+ *    (`DomesticHotWaterOverheating`, `BufferTankOverheating`,
+ *    `RoomOverheating`) (**NotSupported**).
+ * 5. The metadata lists zones for the target but none with the action's
+ *    `index` (**Rejected**).
+ * 6. For a DHW action: the zone's `targetTemperatureC + deltaK` exceeds its
+ *    `maxTemperatureC` (**Rejected**). Skipped when either value is unknown.
+ *
+ * 7. When an `offer` is given (the heatpump's current
+ *    `HeatpumpFlexibilityAnnouncementV3`): the action's zone is offered,
+ *    its `deltaK` does not exceed the offered `maxDeltaK`, and its
+ *    `heatSource` is among the offered sources — `Both` needs both
+ *    (**Rejected**). Zones match on `target` and `index`, an omitted index
+ *    counting as `0`.
+ *
+ * Without metadata only rules 1, 2 and 7 can be checked.
+ *
+ * @param action - The action to validate.
+ * @param metadata - The heatpump's metadata, if known.
+ * @param powerSources - The session's `powerSources`.
+ * @param offer - The heatpump's current offer, when the session answers one.
+ * @returns The action's result: `Accepted` when every rule holds.
+ *
+ * @example
+ * ```typescript
+ * const result = validateHeatpumpControlAction(
+ *     {target: EnyoHeatpumpControlTargetEnum.Dhw, index: 0, deltaK: 8},
+ *     appliance.heatpump,
+ *     message.data.powerSources,
+ * );
+ * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * ```
+ */
+export function validateHeatpumpControlAction(
+    action: EnyoHeatpumpControlAction,
+    metadata: EnyoHeatpumpApplianceMetadata | undefined,
+    powerSources: EnyoPowerSourceShare[] | undefined,
+    offer?: EnyoDataBusHeatpumpFlexibilityAnnouncementV3['data'],
+): EnyoCommandAcknowledgeActionResult {
+    const result = (answer: EnyoCommandAcknowledgeAnswerEnum, rejectionReason?: string): EnyoCommandAcknowledgeActionResult => ({
+        target: action.target,
+        ...(action.index !== undefined ? {index: action.index} : {}),
+        answer,
+        ...(rejectionReason !== undefined ? {rejectionReason} : {}),
+    });
+    const rejected = (reason: string) => result(EnyoCommandAcknowledgeAnswerEnum.Rejected, reason);
+    const notSupported = (reason: string) => result(EnyoCommandAcknowledgeAnswerEnum.NotSupported, reason);
+
+    if (!Object.values(EnyoHeatpumpControlTargetEnum).includes(action.target)) {
+        return rejected(`Unknown control target "${action.target}".`);
+    }
+    if (action.deltaK !== undefined && (!Number.isFinite(action.deltaK) || action.deltaK <= 0)) {
+        return rejected(`deltaK must be a finite positive number of Kelvin; got ${action.deltaK}.`);
+    }
+
+    const usesRod = action.heatSource === EnyoHeatpumpHeatSourceEnum.HeatingRod
+        || action.heatSource === EnyoHeatpumpHeatSourceEnum.Both;
+    if (usesRod && !isPvOnlyPowerSources(powerSources)) {
+        return rejected(
+            `heatSource "${action.heatSource}" may only run on PV surplus, but powerSources are not PV alone.`,
+        );
+    }
+
+    if (offer) {
+        const option = offer.options.find(
+            (o) => o.target === action.target && (o.index ?? 0) === (action.index ?? 0),
+        );
+        if (!option) {
+            return rejected(`Offer ${offer.offerId} does not offer ${action.target} zone ${action.index ?? 0}.`);
+        }
+        if (action.deltaK !== undefined && action.deltaK > option.maxDeltaK) {
+            return rejected(
+                `deltaK ${action.deltaK} K exceeds the offered maxDeltaK of ${option.maxDeltaK} K (offer ${offer.offerId}).`,
+            );
+        }
+        const offered = new Set(option.heatSources.map((h) => h.heatSource));
+        const needed = action.heatSource === EnyoHeatpumpHeatSourceEnum.Both
+            ? [EnyoHeatpumpHeatSourceEnum.Compressor, EnyoHeatpumpHeatSourceEnum.HeatingRod]
+            : action.heatSource !== undefined ? [action.heatSource] : [];
+        const missing = needed.filter((h) => !offered.has(h as EnyoHeatpumpHeatSourceEnum.Compressor));
+        if (missing.length > 0) {
+            return rejected(`heatSource "${action.heatSource}" was not offered (offer ${offer.offerId}).`);
+        }
+    }
+
+    if (!metadata) return result(EnyoCommandAcknowledgeAnswerEnum.Accepted);
+    const features = metadata.availableFeatures ?? [];
+
+    if (usesRod && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingRodControllable)) {
+        return notSupported('The heatpump\'s heating rod cannot be controlled (no HeatingRodControllable).');
+    }
+    const feature = HEATPUMP_CONTROL_TARGET_FEATURE[action.target];
+    if (!features.includes(feature)) {
+        return notSupported(`The heatpump does not support ${action.target} overheating (no ${feature}).`);
+    }
+
+    const zones: Array<{index: number}> | undefined = action.target === EnyoHeatpumpControlTargetEnum.Dhw
+        ? metadata.domesticHotWater
+        : action.target === EnyoHeatpumpControlTargetEnum.BufferTank
+            ? metadata.bufferTanks
+            : metadata.heatingCircuits;
+    const zone = zones && zones.length > 0
+        ? (action.index === undefined ? zones[0] : zones.find((z) => z.index === action.index))
+        : undefined;
+    if (zones && zones.length > 0 && !zone) {
+        return rejected(`No ${action.target} zone with index ${action.index}.`);
+    }
+
+    if (action.target === EnyoHeatpumpControlTargetEnum.Dhw && zone && action.deltaK !== undefined) {
+        const dhw = zone as NonNullable<EnyoHeatpumpApplianceMetadata['domesticHotWater']>[number];
+        if (dhw.maxTemperatureC !== undefined && Number.isFinite(dhw.targetTemperatureC)) {
+            const raised = dhw.targetTemperatureC + action.deltaK;
+            if (raised > dhw.maxTemperatureC) {
+                return rejected(
+                    `Raising DHW zone ${dhw.index} from ${dhw.targetTemperatureC} °C by ${action.deltaK} K ` +
+                        `gives ${raised} °C, above its maxTemperatureC of ${dhw.maxTemperatureC} °C.`,
+                );
+            }
+        }
+    }
+
+    return result(EnyoCommandAcknowledgeAnswerEnum.Accepted);
+}
+
+/** Input of {@link computeHeatpumpSetpointRaise}. */
+export interface HeatpumpSetpointRaiseInput {
+    /** The zone's current setpoint, in °C. */
+    setpointC: number;
+    /** The raise the action asks for, in Kelvin. */
+    deltaK: number;
+    /** The zone's measured temperature now, in °C. Without it the hysteresis rule cannot apply. */
+    currentTemperatureC?: number;
+    /**
+     * How far the temperature must fall below the setpoint before the device
+     * starts heating, in Kelvin (`hysteresisK` of the DHW zone or buffer tank).
+     */
+    hysteresisK?: number;
+    /** The highest setpoint allowed, in °C (e.g. `maxTemperatureC` of the DHW zone). */
+    maxTemperatureC?: number;
+}
+
+/** Result of {@link computeHeatpumpSetpointRaise}. */
+export type HeatpumpSetpointRaiseResult =
+    | {
+        ok: true;
+        /** The setpoint to write, in °C. */
+        targetTemperatureC: number;
+        /** The effective raise above the current setpoint, in Kelvin — at least the requested `deltaK`. */
+        appliedDeltaK: number;
+    }
+    | {
+        ok: false;
+        /** Why no setpoint makes the device start heating within the limits. */
+        rejectionReason: string;
+    };
+
+/**
+ * Computes the setpoint a setpoint-only heatpump needs to **start heating a
+ * zone now** for a `HeatpumpControlV3` action — the rule every integration
+ * applies the same way.
+ *
+ * Such a device only heats once the temperature is a hysteresis below the
+ * setpoint. So the setpoint written is the larger of
+ * - `setpointC + deltaK` (what the energy manager asked for), and
+ * - `currentTemperatureC + hysteresisK` (what makes the device start),
+ *
+ * and must not exceed `maxTemperatureC`. When the requested raise alone
+ * exceeds the maximum, or the maximum leaves no setpoint high enough to start
+ * the device, the action cannot work and is to be answered `Rejected`.
+ *
+ * @param input - Setpoint, requested raise, and the zone's state and limits.
+ * @returns The setpoint to write and the effective raise, or why it cannot work.
+ *
+ * @example
+ * ```typescript
+ * // Setpoint 50 °C, hysteresis 5 K, max 60 °C, energy manager asks +2 K.
+ * // Tank at 44 °C: 50 + 2 = 52 °C is above 44 + 5 = 49 °C, so the request alone starts it.
+ * computeHeatpumpSetpointRaise({setpointC: 50, deltaK: 2, currentTemperatureC: 44, hysteresisK: 5, maxTemperatureC: 60});
+ * // → {ok: true, targetTemperatureC: 52, appliedDeltaK: 2}
+ *
+ * // Tank at 49 °C: the device only starts at 49 + 5 = 54 °C, so the raise grows to +4 K.
+ * computeHeatpumpSetpointRaise({setpointC: 50, deltaK: 2, currentTemperatureC: 49, hysteresisK: 5, maxTemperatureC: 60});
+ * // → {ok: true, targetTemperatureC: 54, appliedDeltaK: 4}
+ * ```
+ */
+export function computeHeatpumpSetpointRaise(input: HeatpumpSetpointRaiseInput): HeatpumpSetpointRaiseResult {
+    const {setpointC, deltaK, currentTemperatureC, hysteresisK, maxTemperatureC} = input;
+    if (!Number.isFinite(setpointC) || !Number.isFinite(deltaK) || deltaK <= 0) {
+        return {ok: false, rejectionReason: `A finite setpoint and a positive deltaK are needed; got ${setpointC} °C and ${deltaK} K.`};
+    }
+    const requested = setpointC + deltaK;
+    const trigger = currentTemperatureC !== undefined && hysteresisK !== undefined
+        ? currentTemperatureC + hysteresisK
+        : -Infinity;
+    const target = Math.max(requested, trigger);
+
+    if (maxTemperatureC !== undefined && target > maxTemperatureC) {
+        return {
+            ok: false,
+            rejectionReason: requested > maxTemperatureC
+                ? `Raising ${setpointC} °C by ${deltaK} K gives ${requested} °C, above the maximum of ${maxTemperatureC} °C.`
+                : `Starting the device needs a setpoint of ${trigger} °C (${currentTemperatureC} °C + ` +
+                    `${hysteresisK} K hysteresis), above the maximum of ${maxTemperatureC} °C.`,
+        };
+    }
+    return {ok: true, targetTemperatureC: target, appliedDeltaK: target - setpointC};
+}

@@ -1,4 +1,7 @@
-import {EnyoCommandAcknowledgeAnswerEnum} from "../types/enyo-data-bus-value.js";
+import {
+    EnyoCommandAcknowledgeActionResult,
+    EnyoCommandAcknowledgeAnswerEnum
+} from "../types/enyo-data-bus-value.js";
 import {EnyoSourceEnum} from "../types/enyo-source.enum.js";
 import {ApplianceManager} from "../implementations/appliances/appliance-manager.js";
 
@@ -16,6 +19,13 @@ export interface IntegrationCommandResponse {
      * manager has actionable diagnostics.
      */
     rejectionReason?: string;
+    /**
+     * Per-action answers for commands that carry several actions (e.g.
+     * `HeatpumpControlV3`). Passed through 1:1 into
+     * `CommandAcknowledgeV1.data.actionResults`; {@link answer} then speaks for
+     * the command as a whole.
+     */
+    actionResults?: EnyoCommandAcknowledgeActionResult[];
 }
 
 /**

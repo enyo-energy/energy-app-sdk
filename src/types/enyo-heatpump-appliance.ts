@@ -11,7 +11,11 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     BufferTankOverheating = 'BufferTankOverheating',
     /** If the heatpump supports domestic hot water overheating */
     DomesticHotWaterOverheating = 'DomesticHotWaterOverheating',
-    /** If the heatpump supports available power announcements */
+    /**
+     * If the heatpump supports available power announcements
+     * @deprecated Goes with {@link EnyoDataBusSetHeatpumpAvailablePowerV2}. For
+     * {@link EnyoDataBusHeatpumpControlV3}, declare {@link PvSurplusSignal}.
+     */
     AvailablePowerAnnouncement = 'AvailablePowerAnnouncement',
     /** If the heatpump reports power values (e.g. electrical power consumption in watts) */
     Power = 'Power',
@@ -55,6 +59,40 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
      * circuit — via {@link EnyoDataBusHeatpumpTemperaturesV1}.
      */
     ReturnTemperature = 'ReturnTemperature',
+    /**
+     * If the heatpump takes `availablePowerW` of
+     * {@link EnyoDataBusHeatpumpControlV3} as a PV surplus signal (e.g. Lambda
+     * register 102). Supersedes {@link AvailablePowerAnnouncement}.
+     */
+    PvSurplusSignal = 'PvSurplusSignal',
+    /**
+     * If the heatpump's app handles {@link EnyoDataBusHeatpumpControlV3}
+     * (and {@link EnyoDataBusHeatpumpControlCancelV3}) and reports progress via
+     * {@link EnyoDataBusHeatpumpControlStatusV3}. The energy manager sends V3
+     * only to heatpumps declaring it, and the deprecated
+     * {@link EnyoDataBusSetHeatpumpAvailablePowerV2} /
+     * {@link EnyoDataBusHeatpumpOverheatingV1} to all others — no probing, no
+     * waiting for a missing acknowledgment.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleHeatpumpControl`. Actions are only
+     * actionable for targets whose overheating feature is declared too.
+     */
+    ControlV3 = 'ControlV3',
+    /**
+     * If the heatpump publishes {@link EnyoDataBusHeatpumpFlexibilityAnnouncementV3}
+     * — per zone, how far it can be raised right now, with which heat source at
+     * what power, and until when. The energy manager then plans from these
+     * offers instead of deriving the headroom from metadata, and prefers them
+     * over the generic flexibility announcements V1 / V2. Without it, the
+     * energy manager keeps its own model.
+     *
+     * Offers are only actionable for targets whose overheating feature is
+     * declared too ({@link DomesticHotWaterOverheating},
+     * {@link BufferTankOverheating}, {@link RoomOverheating}), and heating-rod
+     * offers need {@link HeatingRodControllable}.
+     */
+    FlexibilityAnnouncementV3 = 'FlexibilityAnnouncementV3',
 }
 
 /**
@@ -330,6 +368,24 @@ export enum EnyoHeatpumpRoomTemperatureSourceEnum {
 }
 
 /**
+ * What a heating circuit's control steers by — independent of where the room
+ * temperature is measured ({@link EnyoHeatpumpRoomTemperatureSourceEnum}).
+ */
+export enum EnyoHeatpumpHeatingControlReferenceEnum {
+    /**
+     * Weather-compensated: the flow temperature follows the outdoor
+     * temperature along the heating curve. Raising the room setpoint shifts the
+     * curve rather than closing a room-temperature loop.
+     */
+    Outdoor = 'Outdoor',
+    /**
+     * Room-controlled: the circuit regulates on the measured room temperature.
+     * A room overheating then shows up directly as a higher room temperature.
+     */
+    Room = 'Room',
+}
+
+/**
  * Reference to a single sensor of a
  * {@link EnyoApplianceTypeEnum.TemperatureSensor} appliance.
  */
@@ -469,6 +525,30 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
      * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperatureInput}.
      */
     roomTemperatureSensor?: EnyoHeatpumpRoomTemperatureSensorReference;
+    /**
+     * What this circuit's control steers by — the outdoor temperature (heating
+     * curve) or the room temperature. Tells the energy manager how a room
+     * action of {@link EnyoDataBusHeatpumpControlV3} will play out.
+     *
+     * Not the same as {@link roomTemperatureSource}, which says where the room
+     * temperature is measured: a circuit can measure the room and still steer
+     * by the outdoor temperature. Omitted means unknown.
+     */
+    heatingControlReference?: EnyoHeatpumpHeatingControlReferenceEnum;
+    /**
+     * Outdoor temperature in °C above which this circuit stops space heating
+     * (Heizgrenze / Sommerabschaltung) — a **setting of the heatpump**, read
+     * from the device.
+     *
+     * Not the same as {@link EnyoHeatpumpApplianceBuildingModel.heatingLimitC},
+     * which is learned from how the building behaves. The heatpump acts on its
+     * own setting: above it, a room action of
+     * {@link EnyoDataBusHeatpumpControlV3} cannot take effect (on e.g. Vaillant
+     * it decides whether pre-heating works at all), so the energy manager
+     * must not plan one, and the integration answers it `Rejected`. Omitted
+     * means unknown.
+     */
+    heatingCutoffOutdoorTemperatureC?: number;
 }
 
 /**

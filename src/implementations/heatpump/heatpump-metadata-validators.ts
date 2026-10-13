@@ -16,6 +16,7 @@
 
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
+    EnyoHeatpumpHeatingControlReferenceEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../types/enyo-heatpump-appliance.js';
@@ -320,12 +321,21 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *    is not `External`.
  *  - Warning: a circuit links an external sensor but the heatpump does not
  *    declare `RoomTemperatureInput` — the readings cannot be forwarded.
+ *  - Warning: `ControlV3` or `FlexibilityAnnouncementV3` is declared without
+ *    any of `DomesticHotWaterOverheating`, `BufferTankOverheating` or
+ *    `RoomOverheating` — no action could ever be taken.
+ *  - Error: a circuit's `heatingCutoffOutdoorTemperatureC` is not finite.
+ *    Warning: it lies outside 5…30 °C, or more than 3 K away from
+ *    `building.heatingLimitC` — the device's setting and the learned building
+ *    disagree, so pre-heating may be planned where the heatpump does nothing.
+ *  - Error: a circuit's `heatingControlReference` is not an
+ *    `EnyoHeatpumpHeatingControlReferenceEnum` member.
  *
  * @param metadata - The heatpump metadata to validate.
  * @returns The validation result.
  */
 export function validateHeatpumpAdvancedMetadata(
-    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater'>,
+    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>,
 ): HeatpumpMetadataValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -349,6 +359,21 @@ export function validateHeatpumpAdvancedMetadata(
         EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomTemperatureInput,
     );
 
+    const features = metadata.availableFeatures ?? [];
+    const hasOverheating = [
+        EnyoHeatpumpApplianceAvailableFeaturesEnum.DomesticHotWaterOverheating,
+        EnyoHeatpumpApplianceAvailableFeaturesEnum.BufferTankOverheating,
+        EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomOverheating,
+    ].some((f) => features.includes(f));
+    for (const v3 of [
+        EnyoHeatpumpApplianceAvailableFeaturesEnum.ControlV3,
+        EnyoHeatpumpApplianceAvailableFeaturesEnum.FlexibilityAnnouncementV3,
+    ]) {
+        if (features.includes(v3) && !hasOverheating) {
+            warnings.push(`${v3} is declared without any overheating feature — no action could ever be taken`);
+        }
+    }
+
     for (const circuit of circuits) {
         const prefix = `heatingCircuits[index=${circuit.index}]`;
         if (circuit.heatingCurve) merge(`${prefix}.heatingCurve`, validateHeatpumpHeatingCurve(circuit.heatingCurve));
@@ -360,6 +385,28 @@ export function validateHeatpumpAdvancedMetadata(
         }
         if (circuit.roomTemperatureSensor && !isExternal) {
             warnings.push(`${prefix}: roomTemperatureSensor is linked but roomTemperatureSource is not External`);
+        }
+        const cutoff = circuit.heatingCutoffOutdoorTemperatureC;
+        if (cutoff !== undefined) {
+            if (!isFiniteNumber(cutoff)) {
+                errors.push(`${prefix}: heatingCutoffOutdoorTemperatureC must be a finite number`);
+            } else {
+                if (cutoff < 5 || cutoff > 30) {
+                    warnings.push(`${prefix}: heatingCutoffOutdoorTemperatureC ${cutoff} °C is outside the plausible 5…30 °C`);
+                }
+                const learned = metadata.building?.heatingLimitC;
+                if (learned !== undefined && Math.abs(cutoff - learned) > 3) {
+                    warnings.push(
+                        `${prefix}: heatingCutoffOutdoorTemperatureC ${cutoff} °C differs from the learned ` +
+                        `building.heatingLimitC ${learned} °C by more than 3 K — pre-heating may be planned ` +
+                        'where the heatpump does nothing',
+                    );
+                }
+            }
+        }
+        if (circuit.heatingControlReference !== undefined
+            && !Object.values(EnyoHeatpumpHeatingControlReferenceEnum).includes(circuit.heatingControlReference)) {
+            errors.push(`${prefix}: heatingControlReference "${circuit.heatingControlReference}" is not a valid value`);
         }
         if (circuit.roomTemperatureSensor && !acceptsRoomTemperature) {
             warnings.push(
