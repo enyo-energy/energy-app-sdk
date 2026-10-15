@@ -33,6 +33,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [NetworkDeviceManager](#networkdevicemanager)
   - [Startup pattern](#startup-pattern)
 - [Package Files](#package-files)
+- [Printable Manual Setup Guide](#printable-manual-setup-guide)
 - [Firmware Update Registry](#firmware-update-registry)
   - [Declaring firmware](#declaring-firmware)
   - [Firmware modes](#firmware-modes)
@@ -2851,6 +2852,43 @@ It checks that names are unique slugs, that paths stay inside the package and ca
 extension, and that any declared MIME type is well formed; two names pointing at one
 path is a warning.
 
+## Printable Manual Setup Guide
+
+A package can declare **one optional** onboarding guide (v2) as static data in its package
+definition. The enyo CLI reads it during `enyo release`, and enyo renders it as a printable
+PDF installation manual. It is separate from the interactive guides an app returns from
+`useOnboardingV2().registerOnboardingGuidesHandler()`: it never takes part in an onboarding
+run, so it needs no `name` and doesn't conflict with those guides in any way.
+
+Paper cannot scan the network or ask the app anything, so the guide must describe a
+**manual setup**:
+
+- `startVariant: EnyoOnboardingV2StartVariant.ManualSetup` and `requiresNetworkScan: false`
+- no `network-scan` / `device-test` actions, no `device-select` / `eebus-device-select`
+  blocks, no `dynamic` blocks, no `start-variant` targets
+- no `applianceId`, `vendorId` or `modelIds`
+- plain JSON only, and every image block `file` declared in `files`
+
+```typescript
+import {
+    defineEnergyAppPackage,
+    definePublicFile,
+    validatePackageOnboardingGuide
+} from '@enyo-energy/energy-app-sdk';
+import {manualSetupGuide} from './src/onboarding/manual-setup.guide.js';
+
+const packageDef = defineEnergyAppPackage({
+    // ...
+    files: [definePublicFile({name: 'modbus-menu', path: './assets/modbus-menu.png'})],
+    onboardingGuide: manualSetupGuide
+});
+
+const {ok, errors, warnings} = validatePackageOnboardingGuide(packageDef);
+```
+
+The complete authoring guide, with the reason behind each rule and a full example, is the
+JSDoc of `EnergyAppPackageDefinition.onboardingGuide`.
+
 ## Firmware Update Registry
 
 Ship firmware images with your package and hand them to devices at runtime. You declare the files by local path in the package definition, the enyo CLI uploads them during `enyo release`, and the app reaches them through `energyApp.useFirmwareRegistry()`. The release tarball never carries the bytes.
@@ -4279,7 +4317,7 @@ Each event carries the **complete** picture of the slot — render it as it arri
 
 New reason types came with this surface, so a skipped row can say *why* instead of falling back to a generic "scheduled optimization": `SessionComplete`, `AppliancePaused`, `NothingConnected`, `DeadlinePassed`, `WaitingForCheaperSlot`, `AboveOwnPriceLimit`, `BelowMinPower`, `OtherApplianceTurn`, `SupplyExhausted`, `OutsideSchedule` — grouped by the new `SessionState` and `Contention` reason categories. `ApplianceInitiatedDraw` and `PowerOffered` came with the waterfall states above.
 
-**Battery vs. charging car.** While a car charges, the house battery is either held out of it or allowed to help, according to the owner's `batteryEvDischargeMode`. Two reason types (category `BatteryState`) say which: `BatteryReservedFromEv` for the hold (`Discharge 0`) and `BatterySupportsEvCharging` for the release (`mode=Auto`). Both carry `context.batteryToEv` (`EnyoDataBusCommandReasonBatteryToEvContext`) with the owner's `mode`, the hold `trigger` (`EnyoBatteryToEvHoldTriggerEnum`: `OwnerBlocked`, `SocLimitReached`, `AllowanceSpent`, `NoMeasurement`), `socLimitPercent`, `allowanceWh` and `remainingWh`. The energy manager re-checks a hold periodically by briefly releasing the battery; that re-check sets `batteryToEv.probe: true` and should not be listed as its own entry in a command history.
+**Battery vs. charging car.** While a car charges, the house battery is either held out of it or allowed to help, according to the owner's `batteryEvDischargeMode`. Two reason types (category `BatteryState`) say which: `BatteryReservedFromEv` for the hold (`Discharge 0`) and `BatterySupportsEvCharging` for the release (`mode=Auto`). Both carry `context.batteryToEv` (`EnyoDataBusCommandReasonBatteryToEvContext`) with the owner's `mode`, the hold `trigger` (`EnyoBatteryToEvHoldTriggerEnum`: `OwnerBlocked`, `SocLimitReached`, `AllowanceSpent`, `NoMeasurement`), `socLimitPercent`, `allowanceWh` and `remainingWh`. The energy manager re-checks a hold periodically by briefly releasing the battery; that re-check sets `batteryToEv.probe: true` and should not be listed as its own entry in a command history. The car's side of the same decision is stated on the charger's command with `EvChargingFromHomeBattery` (also category `BatteryState`): `powerW` is the battery's share of the charging setpoint (never the whole setpoint), `socPercent` the battery fleet's SoC, `context.batteryToEv` the owner's mode and the session's `socLimitPercent` / `allowanceWh` / `remainingWh` (never `trigger` or `probe`), and, under `Intelligent` only, `electricityPricePerKwh` is what the stored energy costs.
 
 **Battery first on PV surplus.** When a surplus consumer (EV on PV, heating rod, heat pump boost, surplus automation) is held back or reduced because the battery is charged first up to the owner's `batteryPvPriorityTargetSocPercent`, the energy manager states `BatteryPvPriority` (category `PvSurplus`) on that consumer: `context.batteryPvPriority.targetSocPercent` for the target, `socPercent` for the pack's current SoC and `powerW` for the surplus the battery is taking — e.g. "The battery charges to 40 % first (now 28 %)."
 

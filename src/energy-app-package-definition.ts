@@ -2,6 +2,7 @@ import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 import {getSdkVersion} from "./version.js";
 import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
+import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -684,6 +685,147 @@ export interface EnergyAppPackageDefinition {
      * Only relevant when {@link firmware} is declared.
      */
     firmwareMode?: EnergyAppPackageFirmwareMode;
+    /**
+     * The package's static **manual setup** onboarding guide (v2). It is
+     * optional and there is at most one. The enyo CLI reads it at release time
+     * and ships it with the package version, where enyo renders it as a
+     * printable PDF installation manual.
+     *
+     * ## What it is for
+     *
+     * The guides an app returns from
+     * {@link EnergyAppOnboardingV2.registerOnboardingGuidesHandler} are
+     * interactive and only exist on a device where the app is running. This
+     * guide is the opposite: a fixed document that exists as soon as the
+     * package is released. An installer can read it on paper before the
+     * device is even powered. It is written with the same v2 guide model, so
+     * an app that already has an interactive manual setup flow can usually
+     * declare the same steps here.
+     *
+     * It does not take part in onboarding runs. It is never offered by the
+     * host, never addressed by name and never compared against the guides from
+     * the runtime handler, so there are no naming or precedence rules between
+     * the two.
+     *
+     * ## What it may contain
+     *
+     * Paper cannot scan the network or ask the app anything, so the guide is
+     * limited to a manual setup the installer can follow by reading. The
+     * following rules are enforced by `validatePackageOnboardingGuide()`, and
+     * the CLI refuses the release if any of them is broken:
+     *
+     * | Rule | Why |
+     * |---|---|
+     * | `startVariant` is {@link EnyoOnboardingV2StartVariant.ManualSetup} | The document describes a manual setup, nothing else. |
+     * | `requiresNetworkScan: false` is set explicitly | The default is `true`, and a printed manual has no scan to rely on. |
+     * | No `network-scan` or `device-test` action blocks | Both act on devices found by a scan. |
+     * | No `device-select` or `eebus-device-select` blocks | Both pick from devices the host discovered. |
+     * | No `dynamic` blocks | Their value is resolved by the app at runtime and does not exist when the PDF is rendered. |
+     * | No `start-variant` targets | They lead into another, scan-based guide that is not part of the document. |
+     * | No `applianceId`, `vendorId` or `modelIds` | A document is not bound to an appliance, and enyo derives vendor and models from the package. |
+     * | Plain JSON only (no functions, `Date`s, `undefined` in arrays, class instances) | The CLI serializes the guide into the release. |
+     * | Every image block `file` is declared in {@link files} | Otherwise the PDF has a hole where the image belongs. |
+     *
+     * Everything else is allowed. Content blocks (text, headline, bullets,
+     * image, hint, link) render as they are. Interactive blocks (choice,
+     * select, input, credentials, auth, additional-setup and the
+     * `connection-check` / `ocpp-connect` actions) render as instructions,
+     * and their outcomes and transitions become the branches of the document
+     * ("if the device is not reachable, continue with …"). Give every
+     * outcome a label that reads well on paper.
+     *
+     * `name` is optional and has no meaning here.
+     *
+     * ## How to write one
+     *
+     * 1. Put the guide in its own file (for example
+     *    `src/onboarding/manual-setup.guide.ts`) and build it with
+     *    `defineOnboardingGuideV2()`, the `onboardingV2Block.*` and
+     *    `onboardingV2Target.*` factories, and the `onContinueV2()` /
+     *    `onOutcomeV2()` transition helpers.
+     * 2. Keep the file free of runtime dependencies. The CLI loads it while
+     *    loading this definition, outside the app sandbox, so it must not
+     *    touch the SDK instance, storage, the network or environment state.
+     * 3. Import it here and assign it to `onboardingGuide`.
+     * 4. Check it locally with `validatePackageOnboardingGuide(definition)`.
+     * 5. Release. The CLI validates the guide again and aborts on errors.
+     *
+     * ```typescript
+     * // src/onboarding/manual-setup.guide.ts
+     * import {
+     *     defineOnboardingGuideV2,
+     *     EnyoDeviceTestOutcomeEnum,
+     *     EnyoOnboardingV2InputValueType,
+     *     EnyoOnboardingV2StartVariant,
+     *     onboardingV2Block,
+     *     onboardingV2Target,
+     *     onContinueV2,
+     *     onOutcomeV2,
+     * } from '@enyo-energy/energy-app-sdk';
+     *
+     * const t = (de: string, en: string) => [
+     *     {language: 'de' as const, value: de},
+     *     {language: 'en' as const, value: en},
+     * ];
+     *
+     * export const manualSetupGuide = defineOnboardingGuideV2({
+     *     title: t('Wechselrichter manuell einrichten', 'Set up the inverter manually'),
+     *     startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+     *     requiresNetworkScan: false,
+     *     startStepId: 'prepare',
+     *     steps: [
+     *         {
+     *             id: 'prepare',
+     *             name: 'modbus-aktivieren',
+     *             title: t('Modbus TCP aktivieren', 'Enable Modbus TCP'),
+     *             blocks: [
+     *                 onboardingV2Block.text('intro', t(
+     *                     'Aktiviere Modbus TCP im Webinterface des Wechselrichters.',
+     *                     'Enable Modbus TCP in the inverter web interface.',
+     *                 )),
+     *                 onboardingV2Block.imageFile('menu', 'modbus-menu', t('Menü', 'Menu')),
+     *             ],
+     *             transitions: [onContinueV2(onboardingV2Target.step('ip'))],
+     *         },
+     *         {
+     *             id: 'ip',
+     *             name: 'ip-eingeben',
+     *             title: t('IP-Adresse eingeben', 'Enter the IP address'),
+     *             blocks: [
+     *                 onboardingV2Block.input(
+     *                     'device-ip',
+     *                     EnyoOnboardingV2InputValueType.IpAddress,
+     *                     t('IP-Adresse des Wechselrichters', 'Inverter IP address'),
+     *                     t('Verbindung prüfen', 'Check connection'),
+     *                     [
+     *                         {id: 'ok', value: EnyoDeviceTestOutcomeEnum.AppliancesCreated, label: t('Verbunden', 'Connected')},
+     *                         {id: 'unreachable', value: EnyoDeviceTestOutcomeEnum.Unreachable, label: t('Nicht erreichbar', 'Unreachable')},
+     *                     ],
+     *                     {placeholder: t('z. B. 192.168.1.42', 'e.g. 192.168.1.42')},
+     *                 ),
+     *             ],
+     *             transitions: [
+     *                 onOutcomeV2('device-ip', 'ok', onboardingV2Target.success()),
+     *                 onOutcomeV2('device-ip', 'unreachable', onboardingV2Target.step('prepare')),
+     *             ],
+     *         },
+     *     ],
+     * });
+     *
+     * // energy-app.package.ts
+     * import {defineEnergyAppPackage, definePublicFile} from '@enyo-energy/energy-app-sdk';
+     * import {manualSetupGuide} from './src/onboarding/manual-setup.guide.js';
+     *
+     * export default defineEnergyAppPackage({
+     *     // ...
+     *     files: [definePublicFile({name: 'modbus-menu', path: './assets/modbus-menu.png'})],
+     *     onboardingGuide: manualSetupGuide,
+     * });
+     * ```
+     *
+     * Omit the field for packages that have no manual setup to document.
+     */
+    onboardingGuide?: EnyoOnboardingV2Guide;
 }
 
 /**

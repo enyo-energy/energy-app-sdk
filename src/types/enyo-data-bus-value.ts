@@ -308,6 +308,37 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      */
     BatterySupportsEvCharging = 'battery-supports-ev-charging',
     /**
+     * The car charges on energy from the house battery, within the owner's
+     * battery-to-EV setting (`batteryEvDischargeMode`).
+     *
+     * Stated on the CHARGER's command by the decision maker that routed the
+     * battery's energy into the car — never inferred from the battery's
+     * measured discharge. The battery states its own side of the same decision
+     * with {@link BatterySupportsEvCharging} (released) or
+     * {@link BatteryReservedFromEv} (held); this reason is the car's side, and
+     * the two are sent together.
+     *
+     * Fields:
+     * - {@link EnyoDataBusCommandReason.powerW}: the battery's share of the
+     *   charging setpoint, in W. The rest of the setpoint is solar. Never the
+     *   whole setpoint.
+     * - {@link EnyoDataBusCommandReason.socPercent}: the battery fleet's current
+     *   SoC.
+     * - {@link EnyoDataBusCommandReasonContext.batteryToEv}: the owner's mode and
+     *   where the session stands against it — `socLimitPercent` under
+     *   `SocLimit`, `allowanceWh` under `FixedWh`, `remainingWh` under both.
+     *   `trigger` and `probe` are never set here: they describe a battery hold.
+     * - {@link EnyoDataBusCommandReason.electricityPricePerKwh}: under
+     *   `Intelligent` only, what the stored energy costs, which the car's own
+     *   price limit was compared against. Absent under `SocLimit` / `FixedWh`,
+     *   which feed the car at any stored price.
+     *
+     * Told apart from {@link BatteryCapacityAvailable}, which says only that a
+     * battery can supply power and names no owner setting. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    EvChargingFromHomeBattery = 'ev-charging-from-home-battery',
+    /**
      * The appliance was switched off a moment ago and is held off for its
      * declared minimum off-time, so it is not cycled on and off. Stated by the
      * energy manager's switching protection.
@@ -710,7 +741,10 @@ export interface EnyoDataBusCommandReasonContext {
      * The owner's battery-to-EV setting (`batteryEvDischargeMode`) and where
      * the charging session stands against it. Set on
      * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} and
-     * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging}.
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging} (the
+     * battery's command), and on
+     * {@link EnyoDataBusCommandReasonTypeEnum.EvChargingFromHomeBattery} (the
+     * charger's command).
      */
     batteryToEv?: EnyoDataBusCommandReasonBatteryToEvContext;
     /**
@@ -1006,8 +1040,9 @@ export enum EnyoBatteryToEvHoldTriggerEnum {
 /**
  * The owner's battery-to-EV setting (`batteryEvDischargeMode`) and where
  * the current charging session stands against it — the structured backing of
- * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} and
- * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging}.
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv},
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging} and
+ * {@link EnyoDataBusCommandReasonTypeEnum.EvChargingFromHomeBattery}.
  *
  * All energy values are in watt-hours (Wh).
  *
@@ -1038,6 +1073,20 @@ export enum EnyoBatteryToEvHoldTriggerEnum {
  *     }},
  * };
  *
+ * // The charger's side of the same decision: 2.4 kW of the car's setpoint is
+ * // the battery's, which may go on down to 50 %:
+ * const charging: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.EvChargingFromHomeBattery,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     powerW: 2400,
+ *     socPercent: 79,
+ *     context: {batteryToEv: {
+ *         mode: EnergyManagerBatteryEvDischargeModeEnum.SocLimit,
+ *         socLimitPercent: 50,
+ *         remainingWh: 3895,
+ *     }},
+ * };
+ *
  * // The periodic re-check of an existing hold — not a new decision:
  * const probe: EnyoDataBusCommandReason = {
  *     type: EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging,
@@ -1058,6 +1107,7 @@ export interface EnyoDataBusCommandReasonBatteryToEvContext {
     /**
      * Why the battery is held. Set on
      * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv} only.
+     * Never set on {@link EnyoDataBusCommandReasonTypeEnum.EvChargingFromHomeBattery}.
      */
     trigger?: EnyoBatteryToEvHoldTriggerEnum;
     /**
@@ -1080,6 +1130,7 @@ export interface EnyoDataBusCommandReasonBatteryToEvContext {
      * `true` for a short re-check of an existing hold: the battery is offered
      * `Auto` to see whether it still drains into the car. Not a change of
      * decision — consumers SHOULD NOT list it as a separate history entry.
+     * Never set on {@link EnyoDataBusCommandReasonTypeEnum.EvChargingFromHomeBattery}.
      */
     probe?: boolean;
 }
