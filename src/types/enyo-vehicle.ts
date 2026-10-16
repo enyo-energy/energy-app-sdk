@@ -49,6 +49,43 @@ export interface EnyoVehicle {
     maxChargingPowerKw?: number;
     /** How many phases the car charges over — typically `1` or `3`. */
     numberOfPhases?: number;
+    /**
+     * Lowest charging current, in Amperes per phase, the car accepts — e.g.
+     * `6` (the IEC 61851 minimum) or higher for cars that drop out of a
+     * session below a certain current.
+     *
+     * The EMS must not issue a non-zero current limit below it; a session is
+     * held at the higher of this value and the wallbox's
+     * {@link EnyoChargerApplianceMetadata.minChargingCurrentAmpere}. Omit when
+     * the car has no minimum beyond the wallbox's.
+     */
+    minChargingCurrentAmpere?: number;
+    /**
+     * Whether a charging session of this car must not be paused once it has
+     * started — some cars stop responding or end the session when charging
+     * is paused and do not resume on their own.
+     *
+     * When `true`, the EMS must not pause the session (setpoint `0`) but hold
+     * it at least at its minimum current until it is complete. Applies if
+     * either this or the wallbox's
+     * {@link EnyoChargerApplianceMetadata.cannotBePaused} is `true`. Omitted
+     * means `false`.
+     *
+     * @default false
+     */
+    cannotBePaused?: boolean;
+    /**
+     * Whether the EMS must not switch phases (1 ↔ 3) while this car charges —
+     * some cars abort the session or fault on a phase switch.
+     *
+     * When `true`, a session stays in the phase configuration it started in.
+     * Applies if either this or the wallbox's
+     * {@link EnyoChargerApplianceMetadata.phaseSwitchDisabled} is `true`.
+     * Omitted means `false`.
+     *
+     * @default false
+     */
+    phaseSwitchDisabled?: boolean;
 
     /** Target state of charge for every session, in percent (0-100). */
     defaultChargeLimitPercent?: number;

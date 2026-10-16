@@ -257,7 +257,11 @@ export enum EnyoDataBusCommandReasonTypeEnum {
     /**
      * There is power available, but less than the appliance's minimum operating
      * point — switching it on would not be executable.
-     * {@link EnyoDataBusCommandReason.powerW} is the power that was available.
+     *
+     * Set {@link EnyoDataBusCommandReason.powerW} to the power that was
+     * available and {@link EnyoDataBusCommandReason.minPowerW} to the minimum
+     * the appliance needs to start, so the text can say "Only 4.1 kW left —
+     * needs at least 4.2 kW to start."
      */
     BelowMinPower = 'below-min-power',
     /**
@@ -451,6 +455,19 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * Category {@link EnyoDataBusCommandReasonCategoryEnum.Contention}.
      */
     InstallationLimit = 'installation-limit',
+    /**
+     * The appliance runs on its own control: the energy manager deliberately
+     * leaves it alone and issues no setpoint — e.g. a heat pump left to its
+     * own logic at night on a static tariff, where there is no cheaper hour to
+     * shift into and no PV surplus to use.
+     *
+     * A statement that the manager chose not to steer, not that the appliance
+     * overrode a plan: told apart from {@link ApplianceInitiatedDraw} (the
+     * appliance drew outside an allocation) and {@link AppliancePaused} (the
+     * appliance declined power it was given). Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.Other}.
+     */
+    SelfManaged = 'self-managed',
 }
 
 /**
@@ -513,6 +530,14 @@ export interface EnyoDataBusCommandReason {
     capacityKwh?: number;
     /** Relevant power in Watts */
     powerW?: number;
+    /**
+     * Minimum power, in Watts, the appliance needs to start or keep running.
+     *
+     * Set on {@link EnyoDataBusCommandReasonTypeEnum.BelowMinPower} alongside
+     * {@link powerW} (the power that was available), so the text can contrast
+     * the two: "Only 4.1 kW left — needs at least 4.2 kW to start."
+     */
+    minPowerW?: number;
     /** Relevant energy in Watt hours */
     powerWh?: number;
     /** Relevant temperature in Celsius (e.g. heatpump-driven reasons) */

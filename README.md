@@ -829,6 +829,9 @@ vehicle?.priceLimitMode;             // how the ceiling is expressed, or none
 vehicle?.priceLimitCtPerKwh;         // ct/kWh ceiling, under 'ct-per-kwh'
 vehicle?.priceLimitSharePercent;     // cheapest n % of the day, under 'cheapest-share'
 vehicle?.immediateReserveKwh;        // full-power reserve before any mode
+vehicle?.minChargingCurrentAmpere;   // lowest current per phase the car accepts
+vehicle?.cannotBePaused;             // true: never pause a started session
+vehicle?.phaseSwitchDisabled;        // true: never switch phases while charging
 vehicle?.departureTimeHHmm;          // daily deadline, wall-clock "07:30"
 vehicle?.departureTimezone;          // IANA zone the time is read in
 
@@ -4326,6 +4329,10 @@ New reason types came with this surface, so a skipped row can say *why* instead 
 - `PriceSpreadTooSmall` (category `EnergyPrice`) — the battery stays on Auto because buying in the trough and using the energy at the peak would not pay back: "Charging at 35.2 ct/kWh only pays off from 52.7 ct/kWh, but the peak averages 42.9 ct/kWh." Set `electricityPricePerKwh` to the buy price and all the figures; on a flat horizon send it without `arbitrage`. The trough is not "too expensive" — the gap is too small — so this is not `ElectricityPriceAboveThreshold`. Where PV makes Auto mean self-consumption, `SelfConsumptionOptimization` stays the right type.
 - `ElectricityPriceBelowThreshold` on a grid charge — the buy and the peak it is for: "Charging at 33.6 ct for the 17:00 peak at 43.7 ct."
 - `ScheduledOptimization` on a price hold (`Discharge 0`) — `sellStartIso` / `sellPricePerKwh`: "Stored energy kept for 17:00 (43.7 ct)." Not `ElectricityPriceBelowThreshold`, which would say power is cheap for a command that stops the battery.
+
+**Not enough power to start.** `BelowMinPower` (category `Contention`) carries `powerW` for the power that was available and `minPowerW` for the minimum the appliance needs to start — e.g. "Only 4.1 kW left — needs at least 4.2 kW to start."
+
+**Left to its own control.** When the energy manager deliberately does not steer an appliance — e.g. a heat pump left alone at night on a static tariff — it states `SelfManaged` (category `Other`). This is the manager's choice not to steer, not the appliance overriding a plan (`ApplianceInitiatedDraw`) or declining power (`AppliancePaused`).
 
 **Installation limits.** Power capped by a limit the owner or installer set — not the grid operator — carries `InstallationLimit` (category `Contention`) with `powerW` set to the ceiling and `context.installationLimit` = `{source, limitW}`, where `source` is `EnyoInstallationLimitSourceEnum.DesiredGridLimit` (`desiredKwLimit`) or `ChargerLimit` (`chargerLimitW`). `limitW` is in **W** even for the desired limit, which is configured in kW. `GridOperatorPowerLimitationActive` stays reserved for limits the grid operator imposed.
 

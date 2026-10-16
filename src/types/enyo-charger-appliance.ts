@@ -152,6 +152,43 @@ export interface EnyoChargerApplianceMetadata {
      */
     phaseSwitchThresholdKw?: number;
     /**
+     * Lowest charging current, in Amperes per phase, the charger can hold a
+     * session at — typically `6` (the IEC 61851 minimum), higher on chargers
+     * that cannot regulate down that far.
+     *
+     * The EMS must not issue a non-zero current limit below it; a session is
+     * held at the higher of this value and the vehicle's
+     * {@link EnyoVehicle.minChargingCurrentAmpere}. Omit when unknown.
+     */
+    minChargingCurrentAmpere?: number;
+    /**
+     * Whether a charging session on this charger must not be paused once it
+     * has started — e.g. chargers that end the session or need a re-plug
+     * when the current is set to `0`.
+     *
+     * When `true`, the EMS must not pause the session (setpoint `0`) but hold
+     * it at least at its minimum current until it is complete. Applies if
+     * either this or the vehicle's {@link EnyoVehicle.cannotBePaused} is
+     * `true`. Omitted means `false`.
+     *
+     * @default false
+     */
+    cannotBePaused?: boolean;
+    /**
+     * Whether the EMS must not switch phases (1 ↔ 3) on this charger, even
+     * though the hardware supports it (see {@link availablePhases}) — e.g.
+     * because the installer disabled it or switching proved unreliable.
+     *
+     * When `true`, sessions stay in the phase configuration they started in,
+     * and {@link phaseSwitchThresholdKw}, {@link phaseSwitchDelaySeconds} and
+     * {@link phaseSwitchIntervalSeconds} are not used. Applies if either this
+     * or the vehicle's {@link EnyoVehicle.phaseSwitchDisabled} is `true`.
+     * Omitted means `false`.
+     *
+     * @default false
+     */
+    phaseSwitchDisabled?: boolean;
+    /**
      * Granularity, in Amperes, at which the charging current limit can be set
      * on this charger. Any current limit the EMS issues should be a multiple of
      * this step.
@@ -174,6 +211,26 @@ export interface EnyoChargerApplianceMetadata {
      *   `ThreeToOnePhaseSwitch` feature)
      */
     availablePhases?: EnyoChargerAppliancePhase[];
+    /**
+     * Time, in seconds, the charger needs to carry out a phase switch after it
+     * has been triggered (e.g. 1 → 3 phases or 3 → 1 phase).
+     *
+     * During this delay the charger is still operating in the previous phase
+     * configuration; the EMS should not expect the new phase count to be in
+     * effect until it has elapsed. Only meaningful on chargers that can switch
+     * phases (see {@link availablePhases}). Omit when unknown.
+     */
+    phaseSwitchDelaySeconds?: number;
+    /**
+     * Minimum time, in seconds, the charger has to stay in a phase
+     * configuration after a phase switch before another phase switch is
+     * possible.
+     *
+     * The EMS must not trigger a new phase switch until this interval has
+     * passed since the last switch. Only meaningful on chargers that can switch
+     * phases (see {@link availablePhases}). Omit when unknown.
+     */
+    phaseSwitchIntervalSeconds?: number;
     /**
      * Whether the energy manager is allowed to actively control (steer) this
      * charger. When `false`, the charger is treated as read-only/monitor-only
