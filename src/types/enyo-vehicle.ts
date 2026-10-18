@@ -70,6 +70,8 @@ export interface EnyoVehicle {
      * either this or the wallbox's
      * {@link EnyoChargerApplianceMetadata.cannotBePaused} is `true`. Omitted
      * means `false`.
+     * The command holding the session states
+     * {@link EnyoDataBusCommandReasonTypeEnum.CannotBePaused}.
      *
      * @default false
      */

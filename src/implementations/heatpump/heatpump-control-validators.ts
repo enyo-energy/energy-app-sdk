@@ -2,6 +2,7 @@ import {
     EnyoCommandAcknowledgeActionResult,
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
+    EnyoDataBusHeatpumpProgramSwitchV3,
     EnyoHeatpumpControlAction,
     EnyoHeatpumpControlTargetEnum,
     EnyoHeatpumpHeatSourceEnum,
@@ -11,6 +12,8 @@ import {
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceMetadata,
+    EnyoHeatpumpOverrideProgramMode,
+    EnyoHeatpumpProgramModeEnum,
 } from '../../types/enyo-heatpump-appliance.js';
 
 /**
@@ -258,4 +261,110 @@ export function computeHeatpumpSetpointRaise(input: HeatpumpSetpointRaiseInput):
         };
     }
     return {ok: true, targetTemperatureC: target, appliedDeltaK: target - setpointC};
+}
+
+/**
+ * How far ahead `untilIso` of a `HeatpumpProgramSwitchV3` to `Comfort` or
+ * `Eco` may lie, in minutes. Bounds how long a zone stays switched when the
+ * energy manager stops re-sending (e.g. after a restart).
+ */
+export const HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES = 30;
+
+/**
+ * Clock-skew tolerance on top of {@link HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES},
+ * in seconds, so an `untilIso` sent exactly 30 min ahead is not rejected
+ * because the two clocks differ slightly.
+ */
+export const HEATPUMP_PROGRAM_SWITCH_CLOCK_TOLERANCE_SECONDS = 60;
+
+/** The answer {@link validateHeatpumpProgramSwitch} gives a `HeatpumpProgramSwitchV3`. */
+export interface HeatpumpProgramSwitchValidationResult {
+    /** `Accepted` when every rule holds. */
+    answer: EnyoCommandAcknowledgeAnswerEnum;
+    /** Why the switch was rejected or is not supported. */
+    rejectionReason?: string;
+}
+
+/**
+ * Validates a `HeatpumpProgramSwitchV3` against the heatpump's metadata and
+ * returns the answer it deserves.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls
+ * `handleHeatpumpProgramSwitch`; an integration handling the message itself
+ * can call it too.
+ *
+ * Rules, in order — the first that fails decides:
+ * 1. `target` is `Room` or `Dhw`, and `mode` is an
+ *    {@link EnyoHeatpumpProgramModeEnum} member (**Rejected**).
+ * 2. For `Comfort` / `Eco`: `untilIso` is an ISO 8601 timestamp in the future
+ *    and at most {@link HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES} minutes ahead
+ *    (plus {@link HEATPUMP_PROGRAM_SWITCH_CLOCK_TOLERANCE_SECONDS})
+ *    (**Rejected**).
+ * 3. The heatpump does not declare `ProgramSwitch` (**NotSupported**).
+ * 4. The metadata lists zones for the target but none with the message's
+ *    `index` (**Rejected**).
+ * 5. For `Comfort` / `Eco`: the zone does not list the mode in
+ *    `supportedProgramModes` (**NotSupported**).
+ *
+ * Without metadata only rules 1 and 2 can be checked.
+ *
+ * @param data - The message's data.
+ * @param metadata - The heatpump's metadata, if known.
+ * @param nowMs - The current time in epoch milliseconds; injectable for tests.
+ * @returns The answer: `Accepted` when every rule holds.
+ *
+ * @example
+ * ```typescript
+ * const result = validateHeatpumpProgramSwitch(message.data, appliance.heatpump);
+ * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * ```
+ */
+export function validateHeatpumpProgramSwitch(
+    data: EnyoDataBusHeatpumpProgramSwitchV3['data'],
+    metadata: EnyoHeatpumpApplianceMetadata | undefined,
+    nowMs: number = Date.now(),
+): HeatpumpProgramSwitchValidationResult {
+    const rejected = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason});
+    const notSupported = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported, rejectionReason});
+
+    if (data.target !== EnyoHeatpumpControlTargetEnum.Room && data.target !== EnyoHeatpumpControlTargetEnum.Dhw) {
+        return rejected(`Only room and dhw zones can be switched; got "${data.target}".`);
+    }
+    if (!Object.values(EnyoHeatpumpProgramModeEnum).includes(data.mode)) {
+        return rejected(`Unknown program mode "${data.mode}".`);
+    }
+    const isOverride = data.mode !== EnyoHeatpumpProgramModeEnum.Program;
+    if (isOverride) {
+        const untilMs = data.untilIso !== undefined ? Date.parse(data.untilIso) : Number.NaN;
+        if (!Number.isFinite(untilMs)) {
+            return rejected(`A switch to ${data.mode} needs untilIso as an ISO 8601 timestamp; got ${data.untilIso}.`);
+        }
+        if (untilMs <= nowMs) {
+            return rejected(`untilIso ${data.untilIso} has already passed.`);
+        }
+        const maxMs = nowMs + HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES * 60_000 + HEATPUMP_PROGRAM_SWITCH_CLOCK_TOLERANCE_SECONDS * 1000;
+        if (untilMs > maxMs) {
+            return rejected(
+                `untilIso ${data.untilIso} is more than ${HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES} min ahead; ` +
+                    're-send the switch instead of sending a far-off untilIso.',
+            );
+        }
+    }
+
+    if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    if (!(metadata.availableFeatures ?? []).includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch)) {
+        return notSupported('The heatpump does not support program switches (no ProgramSwitch).');
+    }
+
+    const zones = data.target === EnyoHeatpumpControlTargetEnum.Dhw ? metadata.domesticHotWater : metadata.heatingCircuits;
+    const zone = zones && zones.length > 0
+        ? (data.index === undefined ? zones[0] : zones.find((z) => z.index === data.index))
+        : undefined;
+    if (zones && zones.length > 0 && !zone) {
+        return rejected(`No ${data.target} zone with index ${data.index}.`);
+    }
+    if (isOverride && !(zone?.supportedProgramModes ?? []).includes(data.mode as EnyoHeatpumpOverrideProgramMode)) {
+        return notSupported(`The ${data.target} zone ${zone?.index ?? data.index ?? 0} cannot be switched to ${data.mode}.`);
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }

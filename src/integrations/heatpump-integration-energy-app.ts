@@ -10,12 +10,15 @@ import {
     EnyoDataBusHeatpumpControlV3,
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
     EnyoDataBusHeatpumpOverheatingV1,
+    EnyoDataBusHeatpumpProgramSwitchV3,
     EnyoDataBusHeatpumpTemperaturesV1,
     EnyoDataBusHeatpumpValuesV1,
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusMessageEnum,
     EnyoDataBusSetHeatpumpAvailablePowerV2,
     EnyoDataBusSetHeatpumpRoomTemperatureV1,
+    EnyoDataBusCommandReason,
+    EnyoHeatpumpControlTargetEnum,
     EnyoHeatpumpFlexibilityOption
 } from "../types/enyo-data-bus-value.js";
 import {
@@ -24,9 +27,13 @@ import {
 } from "../implementations/heatpump/heatpump-flexibility-validators.js";
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
-    EnyoHeatpumpApplianceMetadata
+    EnyoHeatpumpApplianceMetadata,
+    EnyoHeatpumpProgramModeEnum
 } from "../types/enyo-heatpump-appliance.js";
-import {validateHeatpumpControlAction} from "../implementations/heatpump/heatpump-control-validators.js";
+import {
+    validateHeatpumpControlAction,
+    validateHeatpumpProgramSwitch
+} from "../implementations/heatpump/heatpump-control-validators.js";
 import {
     HeatpumpControlEndCauseEnum,
     heatpumpControlActionsKey,
@@ -61,6 +68,42 @@ interface PublishedHeatpumpFlexibility {
 }
 
 /**
+ * Why {@link HeatpumpIntegrationEnergyApp.handleHeatpumpProgramSwitch} is called.
+ */
+export enum HeatpumpProgramSwitchCauseEnum {
+    /** The energy manager sent a `HeatpumpProgramSwitchV3`. */
+    Command = 'command',
+    /**
+     * A switch to comfort or eco reached its `untilIso` without a newer
+     * message; the base class switches the zone back to
+     * {@link EnyoHeatpumpProgramModeEnum.Program}.
+     */
+    Expired = 'expired',
+}
+
+/**
+ * What {@link HeatpumpIntegrationEnergyApp.handleHeatpumpProgramSwitch} is
+ * asked to do: switch one zone of one heatpump to a mode. Already validated
+ * against the heatpump's metadata.
+ */
+export interface HeatpumpProgramSwitchRequest {
+    /** The heatpump appliance. */
+    applianceId: string;
+    /** The kind of zone: a heating circuit's room or a DHW zone. */
+    target: EnyoHeatpumpControlTargetEnum.Room | EnyoHeatpumpControlTargetEnum.Dhw;
+    /** Index of the heating circuit or DHW zone; omitted for the first (or only) one. */
+    index?: number;
+    /** The mode to switch to; {@link EnyoHeatpumpProgramModeEnum.Program} returns the zone to its time program. */
+    mode: EnyoHeatpumpProgramModeEnum;
+    /** When the base class switches the zone back to the program, for `Comfort` / `Eco` from a command. */
+    untilIso?: string;
+    /** Why the energy manager switched the zone; omitted on expiry. */
+    reason?: EnyoDataBusCommandReason;
+    /** Whether the energy manager asked for it, or the base class because a switch expired. */
+    cause: HeatpumpProgramSwitchCauseEnum;
+}
+
+/**
  * Combines the answers of a `HeatpumpControlV3` session — the power and each
  * action — into the session's top-level answer: `Accepted` as soon as one part
  * is accepted, `NotSupported` only when every part is not supported, otherwise
@@ -91,6 +134,12 @@ export function combineHeatpumpControlAnswers(answers: EnyoCommandAcknowledgeAns
  *    and calls {@link onHeatpumpControlEnded} when it ends.
  *  - `HeatpumpControlCancelV3` — cancel one `HeatpumpControlV3` session right
  *    away (optional: override {@link handleHeatpumpControlCancel}).
+ *  - `HeatpumpProgramSwitchV3` — switch a heating circuit or DHW zone to its
+ *    comfort or eco setpoint, or back to its time program (optional: override
+ *    {@link handleHeatpumpProgramSwitch} and declare
+ *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch}). The
+ *    base class validates it and switches the zone back when `untilIso`
+ *    passes.
  *  - `HeatpumpOverheatingV1` — overheating commands (room / buffer tank / DHW).
  *    Deprecated in favour of `HeatpumpControlV3`.
  *  - `HeatpumpAvailablePowerAnnouncementV1` — available power announcements.
@@ -142,6 +191,8 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     private readonly heatpumpControlSessions = new HeatpumpControlSessionTracker(
         (applianceId) => void this.notifyHeatpumpControlEnded(applianceId, HeatpumpControlEndCauseEnum.Expired)
     );
+    /** Expiry timers of the zones currently switched to comfort or eco, by {@link heatpumpProgramSwitchKey}. */
+    private readonly heatpumpProgramSwitchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     /**
      * @param options - Standard integration options (see {@link IntegrationEnergyAppOptions}).
@@ -179,16 +230,24 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
             EnyoDataBusMessageEnum.HeatpumpControlCancelV3,
             (msg) => this.dispatchHeatpumpControlCancel(msg)
         );
+        this.registerCommandHandler<EnyoDataBusHeatpumpProgramSwitchV3>(
+            EnyoDataBusMessageEnum.HeatpumpProgramSwitchV3,
+            (msg) => this.dispatchHeatpumpProgramSwitch(msg)
+        );
     }
 
     /**
      * Stops the integration, drops every running `HeatpumpControlV3` session
-     * and its expiry timer, and stops repeating published flexibility offers.
-     * The offers already sent lapse at their `validUntilIso`.
+     * and its expiry timer, drops the expiry timers of program switches, and
+     * stops repeating published flexibility offers. The offers already sent
+     * lapse at their `validUntilIso`. Zones switched to comfort or eco are not
+     * switched back on stop.
      */
     public override stop(): void {
         super.stop();
         this.heatpumpControlSessions.dispose();
+        for (const timer of this.heatpumpProgramSwitchTimers.values()) clearTimeout(timer);
+        this.heatpumpProgramSwitchTimers.clear();
         for (const offer of this.heatpumpFlexibilityOffers.values()) {
             if (offer.timer !== undefined) clearInterval(offer.timer);
         }
@@ -369,6 +428,46 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
             };
         }
         return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    }
+
+    /**
+     * Switches one zone of the heatpump to a mode — for a
+     * `HeatpumpProgramSwitchV3` from the energy manager
+     * ({@link HeatpumpProgramSwitchCauseEnum.Command}), and back to
+     * {@link EnyoHeatpumpProgramModeEnum.Program} when such a switch reached
+     * its `untilIso` without a newer message
+     * ({@link HeatpumpProgramSwitchCauseEnum.Expired}). Answers `NotSupported`
+     * by default. Override it, declare
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch}, and
+     * list the zone's `supportedProgramModes` to support program switches.
+     *
+     * What an implementation must do:
+     * - `Comfort` / `Eco`: run the zone at the user's comfort or eco setpoint,
+     *   regardless of the time program — never a temperature of its own.
+     * - `Program`: return the zone to its time program and undo whatever the
+     *   switch wrote. Must be idempotent: it is also called when nothing is
+     *   switched.
+     * - The same mode arrives again about every 15 min as the energy manager
+     *   renews the switch; skip the device write when nothing changed.
+     *
+     * The base class has already validated the request with
+     * {@link validateHeatpumpProgramSwitch} and keeps the expiry timer: it is
+     * armed when a switch to `Comfort` / `Eco` is answered `Accepted`, renewed
+     * by every further accepted switch, and cleared by an accepted `Program`.
+     * On expiry the answer is only logged.
+     *
+     * @param _request - The zone, the mode, and why.
+     * @returns `Accepted` once the mode is written, `Rejected` (with
+     *   `rejectionReason`) when the zone cannot be switched right now,
+     *   `NotSupported` when the integration cannot switch modes.
+     */
+    protected async handleHeatpumpProgramSwitch(
+        _request: HeatpumpProgramSwitchRequest
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'Heatpump integration does not support HeatpumpProgramSwitchV3',
+        };
     }
 
     /**
@@ -692,6 +791,68 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         return response;
     }
 
+    private async dispatchHeatpumpProgramSwitch(
+        message: EnyoDataBusHeatpumpProgramSwitchV3
+    ): Promise<IntegrationCommandResponse> {
+        const {applianceId, data} = message;
+        const metadata = await this.resolveHeatpumpMetadata(applianceId);
+        const validation = validateHeatpumpProgramSwitch(data, metadata);
+        if (validation.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            return validation;
+        }
+
+        const isOverride = data.mode !== EnyoHeatpumpProgramModeEnum.Program;
+        const response = await this.handleHeatpumpProgramSwitch({
+            applianceId,
+            target: data.target,
+            ...(data.index !== undefined ? {index: data.index} : {}),
+            mode: data.mode,
+            ...(isOverride && data.untilIso !== undefined ? {untilIso: data.untilIso} : {}),
+            ...(data.reason !== undefined ? {reason: data.reason} : {}),
+            cause: HeatpumpProgramSwitchCauseEnum.Command,
+        });
+        if (response.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            return response;
+        }
+
+        const key = heatpumpProgramSwitchKey(applianceId, data.target, data.index);
+        const previous = this.heatpumpProgramSwitchTimers.get(key);
+        if (previous !== undefined) clearTimeout(previous);
+        this.heatpumpProgramSwitchTimers.delete(key);
+        if (isOverride) {
+            const delayMs = Math.max(0, Date.parse(data.untilIso as string) - Date.now());
+            this.heatpumpProgramSwitchTimers.set(key, setTimeout(() => {
+                this.heatpumpProgramSwitchTimers.delete(key);
+                void this.expireHeatpumpProgramSwitch(applianceId, data.target, data.index);
+            }, delayMs));
+        }
+        return response;
+    }
+
+    private async expireHeatpumpProgramSwitch(
+        applianceId: string,
+        target: HeatpumpProgramSwitchRequest['target'],
+        index: number | undefined
+    ): Promise<void> {
+        try {
+            const response = await this.handleHeatpumpProgramSwitch({
+                applianceId,
+                target,
+                ...(index !== undefined ? {index} : {}),
+                mode: EnyoHeatpumpProgramModeEnum.Program,
+                cause: HeatpumpProgramSwitchCauseEnum.Expired,
+            });
+            if (response.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+                console.warn(
+                    `HeatpumpIntegrationEnergyApp: switching ${target} ${index ?? 0} of ${applianceId} back to its program ` +
+                        `after expiry was answered ${response.answer}: ${response.rejectionReason ?? ''}`
+                );
+            }
+        } catch (error) {
+            console.error(`HeatpumpIntegrationEnergyApp: switching ${target} ${index ?? 0} of ${applianceId} back to its program failed`, error);
+        }
+    }
+
     private async dispatchHeatpumpControlCancel(
         message: EnyoDataBusHeatpumpControlCancelV3
     ): Promise<IntegrationCommandResponse> {
@@ -702,4 +863,16 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         }
         return response;
     }
+}
+
+/**
+ * Key of one zone's program-switch timer.
+ *
+ * @param applianceId - The heatpump appliance.
+ * @param target - Room or DHW.
+ * @param index - The zone index; omitted counts as `0`.
+ * @returns E.g. `heatpump-1|room:0`.
+ */
+function heatpumpProgramSwitchKey(applianceId: string, target: string, index: number | undefined): string {
+    return `${applianceId}|${target}:${index ?? 0}`;
 }

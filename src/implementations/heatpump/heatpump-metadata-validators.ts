@@ -1,8 +1,8 @@
 /**
  * Client-side validation for the advanced heatpump metadata an integration
  * publishes: heating curves ({@link EnyoHeatpumpApplianceHeatingCurve}), time
- * programs ({@link EnyoHeatpumpTimeProgram}) and the room-temperature wiring of
- * heating circuits.
+ * programs ({@link EnyoHeatpumpTimeProgram}), the room-temperature wiring of
+ * heating circuits and the program-switch modes of circuits and DHW zones.
  *
  * None of these shapes can be checked at the type level — a curve with one
  * point, an unsorted curve, `'25:00'` as a switching time or a period on day
@@ -17,10 +17,13 @@
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpHeatingControlReferenceEnum,
+    EnyoHeatpumpProgramModeEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../types/enyo-heatpump-appliance.js';
 import type {
+    EnyoHeatpumpApplianceDomesticHotWater,
+    EnyoHeatpumpApplianceHeatingCircuit,
     EnyoHeatpumpApplianceHeatingCurve,
     EnyoHeatpumpApplianceHeatingCurvePoint,
     EnyoHeatpumpApplianceMetadata,
@@ -61,6 +64,47 @@ const MINUTES_PER_DAY = 24 * 60;
 const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
 const TIME_OF_DAY = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const LEVELS = new Set<string>(Object.values(EnyoHeatpumpTimeProgramLevelEnum));
+const PROGRAM_MODES = new Set<string>(Object.values(EnyoHeatpumpProgramModeEnum));
+const OVERRIDE_PROGRAM_MODES = new Set<string>([EnyoHeatpumpProgramModeEnum.Comfort, EnyoHeatpumpProgramModeEnum.Eco]);
+
+/**
+ * Validates the program-switch fields of one heating circuit or DHW zone
+ * (`supportedProgramModes`, `programModeTemperaturesC`, `activeProgramMode`)
+ * and appends the problems to `errors` / `warnings`.
+ *
+ * @param zone - The heating circuit or DHW zone.
+ * @param prefix - Path prefix for the messages, e.g. `heatingCircuits[index=0]`.
+ * @param errors - Receives blocking problems.
+ * @param warnings - Receives advisory problems.
+ */
+function checkProgramModes(
+    zone: Pick<EnyoHeatpumpApplianceHeatingCircuit | EnyoHeatpumpApplianceDomesticHotWater,
+        'supportedProgramModes' | 'programModeTemperaturesC' | 'activeProgramMode'>,
+    prefix: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    for (const mode of zone.supportedProgramModes ?? []) {
+        if (!OVERRIDE_PROGRAM_MODES.has(mode)) {
+            errors.push(`${prefix}: supportedProgramModes may only list comfort and eco; got "${mode}"`);
+        }
+    }
+    const temperatures = zone.programModeTemperaturesC ?? {};
+    for (const [mode, temperatureC] of Object.entries(temperatures)) {
+        if (!OVERRIDE_PROGRAM_MODES.has(mode)) {
+            errors.push(`${prefix}: programModeTemperaturesC may only have comfort and eco; got "${mode}"`);
+        } else if (!isFiniteNumber(temperatureC)) {
+            errors.push(`${prefix}: programModeTemperaturesC.${mode} must be a finite number`);
+        }
+    }
+    const {comfort, eco} = temperatures;
+    if (isFiniteNumber(comfort) && isFiniteNumber(eco) && eco > comfort) {
+        warnings.push(`${prefix}: programModeTemperaturesC.eco ${eco} °C is above comfort ${comfort} °C`);
+    }
+    if (zone.activeProgramMode !== undefined && !PROGRAM_MODES.has(zone.activeProgramMode)) {
+        errors.push(`${prefix}: activeProgramMode "${zone.activeProgramMode}" is not a valid value`);
+    }
+}
 
 /**
  * Parses an `HH:mm` time of day into minutes since midnight.
@@ -330,6 +374,12 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *    disagree, so pre-heating may be planned where the heatpump does nothing.
  *  - Error: a circuit's `heatingControlReference` is not an
  *    `EnyoHeatpumpHeatingControlReferenceEnum` member.
+ *  - Error: a circuit's or DHW zone's `supportedProgramModes` or
+ *    `programModeTemperaturesC` name a mode other than comfort and eco, a
+ *    temperature is not finite, or `activeProgramMode` is not an
+ *    `EnyoHeatpumpProgramModeEnum` member. Warning: eco is above comfort.
+ *  - Warning: `ProgramSwitch` is declared but no zone lists
+ *    `supportedProgramModes`, or a zone lists them without `ProgramSwitch`.
  *
  * @param metadata - The heatpump metadata to validate.
  * @returns The validation result.
@@ -372,6 +422,21 @@ export function validateHeatpumpAdvancedMetadata(
         if (features.includes(v3) && !hasOverheating) {
             warnings.push(`${v3} is declared without any overheating feature — no action could ever be taken`);
         }
+    }
+
+    const switchableZones = [
+        ...circuits.map((c) => ({zone: c, prefix: `heatingCircuits[index=${c.index}]`})),
+        ...dhwZones.map((z) => ({zone: z, prefix: `domesticHotWater[index=${z.index}]`})),
+    ];
+    const declaresProgramSwitch = features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch);
+    for (const {zone, prefix} of switchableZones) {
+        checkProgramModes(zone, prefix, errors, warnings);
+        if (!declaresProgramSwitch && (zone.supportedProgramModes ?? []).length > 0) {
+            warnings.push(`${prefix}: supportedProgramModes are listed but the heatpump does not declare ProgramSwitch`);
+        }
+    }
+    if (declaresProgramSwitch && !switchableZones.some(({zone}) => (zone.supportedProgramModes ?? []).length > 0)) {
+        warnings.push('ProgramSwitch is declared but no zone lists supportedProgramModes — no switch could ever be accepted');
     }
 
     for (const circuit of circuits) {

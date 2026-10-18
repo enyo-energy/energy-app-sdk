@@ -170,6 +170,8 @@ export interface EnyoChargerApplianceMetadata {
      * it at least at its minimum current until it is complete. Applies if
      * either this or the vehicle's {@link EnyoVehicle.cannotBePaused} is
      * `true`. Omitted means `false`.
+     * The command holding the session states
+     * {@link EnyoDataBusCommandReasonTypeEnum.CannotBePaused}.
      *
      * @default false
      */

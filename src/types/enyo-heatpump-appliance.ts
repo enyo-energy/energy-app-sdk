@@ -93,6 +93,20 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
      * offers need {@link HeatingRodControllable}.
      */
     FlexibilityAnnouncementV3 = 'FlexibilityAnnouncementV3',
+    /**
+     * If the heatpump's app handles {@link EnyoDataBusHeatpumpProgramSwitchV3}:
+     * the energy manager can switch a heating circuit or DHW zone to its
+     * comfort or eco setpoint regardless of the time program, and back to the
+     * program. The energy manager sends it only to heatpumps declaring this
+     * feature.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleHeatpumpProgramSwitch`, and list per
+     * zone which modes can be switched to in
+     * {@link EnyoHeatpumpApplianceHeatingCircuit.supportedProgramModes} /
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.supportedProgramModes}.
+     */
+    ProgramSwitch = 'ProgramSwitch',
 }
 
 /**
@@ -281,6 +295,34 @@ export enum EnyoHeatpumpTimeProgramLevelEnum {
 }
 
 /**
+ * The mode {@link EnyoDataBusHeatpumpProgramSwitchV3} switches a heating
+ * circuit or DHW zone to.
+ *
+ * {@link Comfort} and {@link Eco} use the user's own setpoints — the energy
+ * manager chooses only *which* of them applies, never a temperature. They
+ * match the time-program levels {@link EnyoHeatpumpTimeProgramLevelEnum.Comfort}
+ * and {@link EnyoHeatpumpTimeProgramLevelEnum.Reduced}.
+ */
+export enum EnyoHeatpumpProgramModeEnum {
+    /** Follow the zone's own time program again — ends a switch to {@link Comfort} or {@link Eco}. */
+    Program = 'program',
+    /** Run at the user's comfort setpoint, regardless of the time program. */
+    Comfort = 'comfort',
+    /** Run at the user's eco / reduced setpoint, regardless of the time program. */
+    Eco = 'eco',
+}
+
+/**
+ * The modes a zone can be switched *to* with
+ * {@link EnyoDataBusHeatpumpProgramSwitchV3} — every
+ * {@link EnyoHeatpumpProgramModeEnum} except
+ * {@link EnyoHeatpumpProgramModeEnum.Program}, which is always possible.
+ */
+export type EnyoHeatpumpOverrideProgramMode =
+    | EnyoHeatpumpProgramModeEnum.Comfort
+    | EnyoHeatpumpProgramModeEnum.Eco;
+
+/**
  * One switching period of a {@link EnyoHeatpumpTimeProgram}.
  *
  * Times are local wall-clock times of the site in `HH:mm` notation — the way
@@ -448,6 +490,26 @@ export interface EnyoHeatpumpApplianceDomesticHotWater {
      * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.TimeProgram}.
      */
     timeProgram?: EnyoHeatpumpTimeProgram;
+    /**
+     * The modes {@link EnyoDataBusHeatpumpProgramSwitchV3} can switch this
+     * zone to. Switching back to {@link EnyoHeatpumpProgramModeEnum.Program}
+     * is always possible and is not listed. Omitted or empty means the zone
+     * cannot be switched. Needs
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch}.
+     */
+    supportedProgramModes?: EnyoHeatpumpOverrideProgramMode[];
+    /**
+     * The setpoint in °C each mode runs this zone at — the user's own comfort
+     * and eco temperatures (e.g. `{comfort: 22, eco: 20}`). Lets the energy
+     * manager estimate what a switch to eco saves. Read from the device even
+     * when it cannot publish a full {@link timeProgram}.
+     */
+    programModeTemperaturesC?: Partial<Record<EnyoHeatpumpOverrideProgramMode, number>>;
+    /**
+     * The mode the zone runs in, as last read from the device — so the energy
+     * manager notices when the user switched it by hand. Omitted means unknown.
+     */
+    activeProgramMode?: EnyoHeatpumpProgramModeEnum;
 }
 
 /**
@@ -549,6 +611,26 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
      * means unknown.
      */
     heatingCutoffOutdoorTemperatureC?: number;
+    /**
+     * The modes {@link EnyoDataBusHeatpumpProgramSwitchV3} can switch this
+     * zone to. Switching back to {@link EnyoHeatpumpProgramModeEnum.Program}
+     * is always possible and is not listed. Omitted or empty means the zone
+     * cannot be switched. Needs
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch}.
+     */
+    supportedProgramModes?: EnyoHeatpumpOverrideProgramMode[];
+    /**
+     * The setpoint in °C each mode runs this zone at — the user's own comfort
+     * and eco temperatures (e.g. `{comfort: 22, eco: 20}`). Lets the energy
+     * manager estimate what a switch to eco saves. Read from the device even
+     * when it cannot publish a full {@link timeProgram}.
+     */
+    programModeTemperaturesC?: Partial<Record<EnyoHeatpumpOverrideProgramMode, number>>;
+    /**
+     * The mode the zone runs in, as last read from the device — so the energy
+     * manager notices when the user switched it by hand. Omitted means unknown.
+     */
+    activeProgramMode?: EnyoHeatpumpProgramModeEnum;
 }
 
 /**

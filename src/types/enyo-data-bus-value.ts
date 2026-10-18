@@ -29,7 +29,7 @@ import type {
 } from "./enyo-calibration.js";
 import {EnyoEnergyPrices} from "./enyo-energy-prices.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
-import {EnyoHeatpumpApplianceModeEnum} from "./enyo-heatpump-appliance.js";
+import {EnyoHeatpumpApplianceModeEnum, EnyoHeatpumpProgramModeEnum} from "./enyo-heatpump-appliance.js";
 import type {EnyoCascadeStatusEnum} from "./enyo-meter-cascade.js";
 import type {
     EnyoFlexibilityHeatpumpTargetTypeEnum,
@@ -155,7 +155,8 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * {@link EnyoDataBusCommandReasonContext.switching} so the text can say how
      * long the hold lasts instead of a generic "protecting the device". A hold
      * that keeps an appliance OFF after a stop has its own type,
-     * {@link RestartDelay}.
+     * {@link RestartDelay}; a session kept running because it must not be
+     * paused at all has {@link CannotBePaused}.
      */
     DeviceProtection = 'device-protection',
     /**
@@ -360,6 +361,26 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * the appliance from short-cycling and is not about price, sun or contention.
      */
     RestartDelay = 'restart-delay',
+    /**
+     * The appliance is kept running — at its minimum — although the plan would
+     * pause it, because the session must not be paused once started: the
+     * charger's {@link EnyoChargerApplianceMetadata.cannotBePaused} or the
+     * car's {@link EnyoVehicle.cannotBePaused} is `true` (cars or chargers that
+     * end the session, or do not resume on their own, after a setpoint `0`).
+     *
+     * Set {@link EnyoDataBusCommandReason.powerW} to the minimum power the
+     * session is held at, so the text can say "Kept charging at the minimum
+     * of 1.4 kW — this car cannot pause charging." It may be drawing grid
+     * power meanwhile.
+     *
+     * Told apart from {@link DeviceProtection} with
+     * {@link EnyoSwitchingProtectionHoldEnum.KeptOn}: that hold lasts only
+     * for a minimum on-time and reads "Kept running for its minimum run time",
+     * which is untrue here — this hold lasts until the session is complete and
+     * carries no {@link EnyoDataBusCommandReasonContext.switching}. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.DeviceProtection}.
+     */
+    CannotBePaused = 'cannot-be-paused',
     /**
      * A PV-surplus consumer (EV on PV, heating rod, heat pump surplus boost,
      * surplus automation) is held back or reduced because the house battery is
@@ -1060,6 +1081,15 @@ export enum EnyoBatteryToEvHoldTriggerEnum {
      * publishes no power is diagnosable.
      */
     NoMeasurement = 'no-measurement',
+    /**
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.Intelligent}: only the
+     * night reserve is left — the energy the house is expected to need from
+     * dusk until PV covers it again. The rest of the pack is kept for the house
+     * ({@link EnyoDataBusCommandReasonBatteryToEvContext.nightReserveWh}), e.g.
+     * "The rest of the home battery (8.3 kWh) is kept for the house tonight,
+     * until the sun is back."
+     */
+    NightReserve = 'night-reserve',
 }
 
 /**
@@ -1112,6 +1142,18 @@ export enum EnyoBatteryToEvHoldTriggerEnum {
  *     }},
  * };
  *
+ * // Under Intelligent only the night reserve is left — keep it for the house:
+ * const nightReserve: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromEv,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     socPercent: 62,
+ *     context: {batteryToEv: {
+ *         mode: EnergyManagerBatteryEvDischargeModeEnum.Intelligent,
+ *         trigger: EnyoBatteryToEvHoldTriggerEnum.NightReserve,
+ *         nightReserveWh: 8300,
+ *     }},
+ * };
+ *
  * // The periodic re-check of an existing hold — not a new decision:
  * const probe: EnyoDataBusCommandReason = {
  *     type: EnyoDataBusCommandReasonTypeEnum.BatterySupportsEvCharging,
@@ -1145,6 +1187,16 @@ export interface EnyoDataBusCommandReasonBatteryToEvContext {
      * {@link EnergyManagerBatteryEvDischargeModeEnum.FixedWh}.
      */
     allowanceWh?: number;
+    /**
+     * The night reserve kept for the house, in Wh — the house load forecast
+     * from dusk until PV covers it again. Set with trigger
+     * {@link EnyoBatteryToEvHoldTriggerEnum.NightReserve} under
+     * {@link EnergyManagerBatteryEvDischargeModeEnum.Intelligent}. This is the
+     * reserve the plan keeps, not the energy stored in the pack; when the hold
+     * starts the two are about the same, since it starts when only the reserve
+     * is left.
+     */
+    nightReserveWh?: number;
     /**
      * What may still go from the battery into the car, in Wh. Absent when the
      * mode states no ceiling
@@ -1585,6 +1637,8 @@ export enum EnyoDataBusMessageEnum {
     HeatpumpControlStatusV3 = 'HeatpumpControlStatusV3',
     /** A heatpump offers, per zone, how far it can be raised right now, with which heat source at what power, and until when. Answered with {@link EnyoDataBusMessageEnum.HeatpumpControlV3}. */
     HeatpumpFlexibilityAnnouncementV3 = 'HeatpumpFlexibilityAnnouncementV3',
+    /** Control command: switch a heating circuit or DHW zone to its comfort or eco setpoint regardless of the time program, or back to the program. Only for heatpumps declaring the `ProgramSwitch` feature. */
+    HeatpumpProgramSwitchV3 = 'HeatpumpProgramSwitchV3',
     /** Live split of the grid power between the household (primary meter) and the meter cascade. Published by the core. */
     CascadeSplitUpdateV1 = 'CascadeSplitUpdateV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
@@ -4673,6 +4727,85 @@ export interface EnyoDataBusHeatpumpControlStatusV3 extends EnyoDataBusMessage {
         sessionId: string;
         /** One entry per action of the session. */
         actions: EnyoHeatpumpControlActionStatus[];
+    };
+}
+
+/**
+ * Switches one heating circuit or DHW zone to its comfort or eco setpoint,
+ * regardless of its time program, or back to the program — e.g. eco while
+ * electricity is expensive, comfort while there is PV surplus.
+ *
+ * The temperatures are the user's own
+ * ({@link EnyoHeatpumpApplianceHeatingCircuit.programModeTemperaturesC}): the
+ * energy manager chooses only *which* of them applies. Send it only to
+ * heatpumps declaring
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch}, and only
+ * with a mode the zone lists in `supportedProgramModes`.
+ *
+ * **One zone per message.** To switch several zones, send one message each.
+ *
+ * **Ending and safety net.** `mode: Program` ends a switch; it is idempotent.
+ * A switch to `Comfort` or `Eco` needs {@link data.untilIso}, at most
+ * {@link HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES} minutes ahead: when it passes
+ * without a newer message, the zone returns to its program by itself. While
+ * the switch should hold, the energy manager re-sends it about every 15 min
+ * with a fresh `untilIso`. So if the energy manager or the app restarts, a
+ * zone is back on its program after at most that long.
+ *
+ * **Together with {@link EnyoDataBusHeatpumpControlV3}.** The two run side by
+ * side. The mode sets the base and an action raises above it: eco at 20 °C
+ * plus a room action of +1 K gives 21 °C.
+ *
+ * **Answer.** The receiving integration answers with an
+ * {@link EnyoDataBusCommandAcknowledgeV1}: `Accepted` once the mode is
+ * written, `Rejected` with a reason when the zone cannot be switched right
+ * now (e.g. the user put the heatpump into a manual mode), `NotSupported` for
+ * heatpumps without the feature or zones that do not list the mode.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusHeatpumpProgramSwitchV3 = {
+ *     id: 'msg-5',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpProgramSwitchV3,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-10-18T17:00:00.000Z',
+ *     data: {
+ *         target: EnyoHeatpumpControlTargetEnum.Room,
+ *         index: 0,
+ *         mode: EnyoHeatpumpProgramModeEnum.Eco,
+ *         untilIso: '2026-10-18T17:30:00.000Z',
+ *         reason: {type: EnyoDataBusCommandReasonTypeEnum.ElectricityPriceAboveThreshold},
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusHeatpumpProgramSwitchV3 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpProgramSwitchV3;
+    /** ID of the heatpump appliance whose zone is switched. */
+    applianceId: string;
+    data: {
+        /** The kind of zone: a heating circuit's room or a DHW zone. */
+        target: EnyoHeatpumpControlTargetEnum.Room | EnyoHeatpumpControlTargetEnum.Dhw;
+        /**
+         * Index of the heating circuit or DHW zone, as in
+         * {@link EnyoHeatpumpApplianceHeatingCircuit.index}. Omit for the first
+         * (or only) one.
+         */
+        index?: number;
+        /** The mode to switch to; {@link EnyoHeatpumpProgramModeEnum.Program} ends the switch. */
+        mode: EnyoHeatpumpProgramModeEnum;
+        /**
+         * ISO 8601 timestamp the zone returns to its program at, unless a newer
+         * message arrives. Required for `Comfort` and `Eco`, at most
+         * {@link HEATPUMP_PROGRAM_SWITCH_MAX_MINUTES} minutes ahead; ignored
+         * for `Program`.
+         */
+        untilIso?: string;
+        /** Why the zone is switched, e.g. `electricity-price-above-threshold` or `pv-surplus-available`. */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 

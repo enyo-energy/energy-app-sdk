@@ -3,13 +3,17 @@ import {
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusHeatpumpControlCancelV3,
     EnyoDataBusHeatpumpControlV3,
+    EnyoDataBusHeatpumpProgramSwitchV3,
     EnyoDataBusMessage,
     EnyoDataBusMessageEnum,
 } from '../../../types/enyo-data-bus-value.js';
 import {EnyoHeatpumpApplianceMetadata} from '../../../types/enyo-heatpump-appliance.js';
 import {EnyoSourceEnum} from '../../../types/enyo-source.enum.js';
 import {HeatpumpControlEndCauseEnum} from '../heatpump-control-session.js';
-import {HeatpumpIntegrationEnergyApp} from '../../../integrations/heatpump-integration-energy-app.js';
+import {
+    HeatpumpIntegrationEnergyApp,
+    HeatpumpProgramSwitchRequest,
+} from '../../../integrations/heatpump-integration-energy-app.js';
 import {IntegrationCommandResponse} from '../../../integrations/integration-types.js';
 
 // Shared test harness for the heatpump integration tests — not a test file itself.
@@ -37,6 +41,7 @@ export function installSdk(appliances: Record<string, {heatpump?: EnyoHeatpumpAp
 interface Dispatchers {
     dispatchHeatpumpControl(message: EnyoDataBusHeatpumpControlV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpControlCancel(message: EnyoDataBusHeatpumpControlCancelV3): Promise<IntegrationCommandResponse>;
+    dispatchHeatpumpProgramSwitch(message: EnyoDataBusHeatpumpProgramSwitchV3): Promise<IntegrationCommandResponse>;
 }
 
 /**
@@ -49,6 +54,9 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
     readonly changed: boolean[] = [];
     readonly ended: Array<[string, HeatpumpControlEndCauseEnum]> = [];
     controlResponse?: (message: EnyoDataBusHeatpumpControlV3) => Promise<IntegrationCommandResponse>;
+    readonly switches: HeatpumpProgramSwitchRequest[] = [];
+    /** Without it the base class's default (`NotSupported`) answers program switches. */
+    programSwitchResponse?: (request: HeatpumpProgramSwitchRequest) => Promise<IntegrationCommandResponse>;
 
     constructor() {
         super({source: EnyoSourceEnum.Device, applianceIds: ['hp-1'], autoStart: false, autoStopOnShutdown: false});
@@ -72,6 +80,19 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         });
     }
 
+    /** Sends a program switch through the base class, as the data bus would. */
+    programSwitch(data: EnyoDataBusHeatpumpProgramSwitchV3['data']): Promise<IntegrationCommandResponse> {
+        return (this as unknown as Dispatchers).dispatchHeatpumpProgramSwitch({
+            id: `switch-${data.mode}`,
+            type: 'message',
+            message: EnyoDataBusMessageEnum.HeatpumpProgramSwitchV3,
+            source: EnyoSourceEnum.Device,
+            applianceId: 'hp-1',
+            timestampIso: new Date().toISOString(),
+            data,
+        });
+    }
+
     /** Exposes the protected action check. */
     check(message: EnyoDataBusHeatpumpControlV3): Promise<EnyoCommandAcknowledgeActionResult[]> {
         return this.checkHeatpumpControlActions(message);
@@ -82,6 +103,12 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         this.controls.push(message);
         this.changed.push(this.isHeatpumpControlChanged(message));
         return this.controlResponse(message);
+    }
+
+    protected async handleHeatpumpProgramSwitch(request: HeatpumpProgramSwitchRequest) {
+        if (!this.programSwitchResponse) return super.handleHeatpumpProgramSwitch(request);
+        this.switches.push(request);
+        return this.programSwitchResponse(request);
     }
 
     protected async handleHeatpumpOverheating() {
