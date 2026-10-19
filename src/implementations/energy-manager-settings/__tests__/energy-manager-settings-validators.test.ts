@@ -798,3 +798,50 @@ describe('validateEnergyManagerSettingsState — grid-optimised EV charging', ()
             .toEqual(['gridOptimizedEvCharging']);
     });
 });
+
+describe('validateEnergyManagerSettingsState — heat pump eco mode in expensive times', () => {
+    it('accepts true and false under heat pump control without warnings', () => {
+        for (const value of [true, false]) {
+            const {ok, warnings} = validateEnergyManagerSettingsState(
+                state({heatpumpControl: true, heatpumpEcoModeInExpensiveTimes: value}),
+            );
+            expect(ok, String(value)).toBe(true);
+            expect(warnings, String(value)).toEqual([]);
+        }
+    });
+
+    it('rejects a non-boolean value', () => {
+        const {ok, errors} = validateEnergyManagerSettingsState(state({
+            heatpumpControl: true,
+            heatpumpEcoModeInExpensiveTimes: 'on' as unknown as boolean,
+        }));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('`heatpumpEcoModeInExpensiveTimes` must be a boolean'))).toBe(true);
+    });
+
+    it('warns when set while heat pump control is off', () => {
+        const {warnings} = validateEnergyManagerSettingsState(
+            state({heatpumpControl: false, heatpumpEcoModeInExpensiveTimes: true}),
+        );
+        expect(warnings.some((w) => w.includes('heatpump-eco-mode-in-expensive-times'))).toBe(true);
+    });
+
+    it('warns when heat pump control is supported and on but the eco setting is not supported', () => {
+        const {warnings} = validateEnergyManagerSettingsState(
+            state({heatpumpControl: true}, [EnergyManagerSettingEnum.HeatpumpControl]),
+        );
+        expect(warnings.some((w) => w.includes('heatpump-eco-mode-in-expensive-times'))).toBe(true);
+    });
+
+    it('is gated directly on heat pump control', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes))
+            .toEqual({requires: EnergyManagerSettingEnum.HeatpumpControl, equals: true});
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes, {
+            heatpumpControl: true,
+        })).toBe(true);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes, {}))
+            .toBe(false);
+        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes])
+            .toEqual(['heatpumpEcoModeInExpensiveTimes']);
+    });
+});

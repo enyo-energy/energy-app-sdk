@@ -249,7 +249,8 @@ export function validateEnergyManagerSettingsState(
 
     // ── value formats ──────────────────────────────────────────────────────
     for (const key of ['batteryControl', 'batteryChargeFromGrid', 'heatpumpControl',
-        'heatingRodControl', 'chargerControl', 'gridOptimizedEvCharging'] as const) {
+        'heatpumpEcoModeInExpensiveTimes', 'heatingRodControl', 'chargerControl',
+        'gridOptimizedEvCharging'] as const) {
         if (values[key] !== undefined && typeof values[key] !== 'boolean') {
             errors.push(`\`${key}\` must be a boolean when set.`);
         }

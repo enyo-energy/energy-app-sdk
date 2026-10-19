@@ -4752,6 +4752,11 @@ export interface EnyoDataBusHeatpumpControlStatusV3 extends EnyoDataBusMessage {
  * with a fresh `untilIso`. So if the energy manager or the app restarts, a
  * zone is back on its program after at most that long.
  *
+ * **Price-driven eco needs the owner's consent.** Switch a zone to eco because
+ * electricity is expensive only while the general setting
+ * {@link EnergyManagerSettingValues.heatpumpEcoModeInExpensiveTimes} (and
+ * {@link EnergyManagerSettingValues.heatpumpControl}) is `true`.
+ *
  * **Together with {@link EnyoDataBusHeatpumpControlV3}.** The two run side by
  * side. The mode sets the base and an action raises above it: eco at 20 °C
  * plus a room action of +1 K gives 21 °C.

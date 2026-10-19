@@ -63,8 +63,13 @@ export enum EnergyManagerSettingEnum {
 
     // ── Heat pump ──────────────────────────────────────────────────────────
 
-    /** Whether the energy manager may steer the heat pump. */
+    /** Whether the energy manager may steer the heat pump. Gates {@link HeatpumpEcoModeInExpensiveTimes}. */
     HeatpumpControl = 'heatpump-control',
+    /**
+     * Whether the heat pump is switched to its eco / reduced setpoint while
+     * electricity is expensive.
+     */
+    HeatpumpEcoModeInExpensiveTimes = 'heatpump-eco-mode-in-expensive-times',
 
     // ── Heating rod ────────────────────────────────────────────────────────
 
@@ -391,6 +396,43 @@ export interface EnergyManagerSettingValues {
      * allow control before the energy manager acts.
      */
     heatpumpControl?: boolean;
+    /**
+     * Whether the energy manager switches the heat pump to the user's **eco**
+     * setpoint while electricity is expensive. **Off by default** — absent or
+     * `false` means off.
+     *
+     * While on, the energy manager sends
+     * {@link EnyoDataBusHeatpumpProgramSwitchV3} with
+     * {@link EnyoHeatpumpProgramModeEnum.Eco} to every zone (heating circuit or
+     * DHW zone) that lists `eco` in its `supportedProgramModes`, for the hours
+     * the active consumption tariff makes expensive, and
+     * {@link EnyoHeatpumpProgramModeEnum.Program} once they are over. The
+     * temperatures are the user's own
+     * ({@link EnyoHeatpumpApplianceHeatingCircuit.programModeTemperaturesC}) —
+     * the energy manager chooses only *when* eco applies, never how low it is.
+     *
+     * Which hours count as expensive is the energy manager's call, taken from
+     * the tariff: the dearest slots of the day under a
+     * {@link EnyoTariffPricingTypeEnum.Dynamic} tariff, the high-price windows
+     * under a {@link EnyoTariffPricingTypeEnum.TimeVariable} one. Under a
+     * {@link EnyoTariffPricingTypeEnum.Static} tariff no hour is dearer than
+     * another, so the setting has no effect. While PV surplus covers the heat
+     * pump, the grid price does not apply and the energy manager may leave the
+     * zone on its program.
+     *
+     * Only heat pumps declaring
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.ProgramSwitch} can
+     * follow it; on all others the setting has no effect.
+     *
+     * Each switch to eco because of this setting carries the reason
+     * {@link EnyoDataBusCommandReasonTypeEnum.ElectricityPriceAboveThreshold}
+     * (category {@link EnyoDataBusCommandReasonCategoryEnum.EnergyPrice}), with
+     * {@link EnyoDataBusCommandReason.electricityPricePerKwh} set to the price
+     * of the current slot.
+     *
+     * Only meaningful while {@link heatpumpControl} is `true`.
+     */
+    heatpumpEcoModeInExpensiveTimes?: boolean;
 
     /** Whether the energy manager may steer the heating rod. */
     heatingRodControl?: boolean;
@@ -616,7 +658,7 @@ export interface EnergyManagerSettingDependency {
 /**
  * Which settings are gated by which, as data.
  *
- * Fifteen of the nineteen settings only mean anything while another one holds a specific
+ * Sixteen of the twenty settings only mean anything while another one holds a specific
  * value. Encoding that here rather than in prose gives the cockpit a single
  * source of truth for greying out dependent controls, and lets
  * `validateEnergyManagerSettingsState()` flag values that can never take effect.
@@ -658,6 +700,10 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
     },
     [EnergyManagerSettingEnum.BatteryDischargeBlockAboveHomeConsumptionW]: {
         requires: EnergyManagerSettingEnum.BatteryControl,
+        equals: true,
+    },
+    [EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes]: {
+        requires: EnergyManagerSettingEnum.HeatpumpControl,
         equals: true,
     },
     [EnergyManagerSettingEnum.HeatingRodMode]: {
@@ -715,6 +761,7 @@ export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
         'batteryDischargeBlockAboveHomeConsumptionW',
     ],
     [EnergyManagerSettingEnum.HeatpumpControl]: ['heatpumpControl'],
+    [EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes]: ['heatpumpEcoModeInExpensiveTimes'],
     [EnergyManagerSettingEnum.HeatingRodControl]: ['heatingRodControl'],
     [EnergyManagerSettingEnum.HeatingRodMode]: ['heatingRodMode'],
     [EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent]: [
