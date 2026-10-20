@@ -13,8 +13,24 @@ import {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
  *   an appliance, gateway, or upstream service that requires user attention.
  * - `onboarding-required`: The package needs the user to complete (or revisit)
  *   an onboarding flow before it can continue operating normally.
+ * - `charging-issue`: The app expected an appliance to charge — it sent a
+ *   start or resume, gave the charger power, or scheduled a charge — but the
+ *   appliance is not charging. See "Sending a `charging-issue`" on
+ *   {@link EnergyAppNotification} for when to send it.
+ * - `battery-issue`: The app commanded a battery to charge, discharge or hold,
+ *   but the battery is not following the command. See "Sending a
+ *   `battery-issue`" on {@link EnergyAppNotification} for when to send it.
+ * - `authentication-required`: A sign-in that used to work was lost (expired
+ *   or revoked) and the user has to sign in again before the package can
+ *   continue. See "Sending an `authentication-required`" on
+ *   {@link EnergyAppNotification} for when to send it.
  */
-export type EnyoNotificationCategory = 'connection-issue' | 'onboarding-required';
+export type EnyoNotificationCategory =
+    | 'connection-issue'
+    | 'onboarding-required'
+    | 'charging-issue'
+    | 'battery-issue'
+    | 'authentication-required';
 
 /**
  * Registration payload describing a notification category to the host.
@@ -53,7 +69,9 @@ export type EnyoNotificationTarget =
     | EnyoNotificationOnboardingTarget
     | EnyoNotificationEnergyAppSettingsTarget
     | EnyoNotificationApplianceSettingsTarget
-    | EnyoNotificationSubscriptionOfferTarget;
+    | EnyoNotificationSubscriptionOfferTarget
+    | EnyoNotificationApplianceTarget
+    | EnyoNotificationAuthenticationTarget;
 
 /**
  * Target that opens an onboarding guide previously registered with the host.
@@ -84,6 +102,9 @@ export interface EnyoNotificationEnergyAppSettingsTarget {
 /**
  * Target that opens the settings screen for a specific appliance managed by
  * the energy app package.
+ *
+ * To show the appliance's live state instead (e.g. for a `charging-issue`),
+ * use {@link EnyoNotificationApplianceTarget}.
  */
 export interface EnyoNotificationApplianceSettingsTarget {
     /** Discriminator identifying this as an appliance settings target. */
@@ -93,6 +114,44 @@ export interface EnyoNotificationApplianceSettingsTarget {
      * an appliance id known to the host.
      */
     applianceId: string;
+}
+
+/**
+ * Target that opens the live view of a specific appliance (its current
+ * state, power and session), as opposed to its settings screen.
+ *
+ * This is the target to use for `charging-issue` and `battery-issue`
+ * notifications.
+ */
+export interface EnyoNotificationApplianceTarget {
+    /** Discriminator identifying this as an appliance target. */
+    type: 'appliance';
+    /**
+     * Identifier of the appliance to open. Must match an appliance id known
+     * to the host.
+     */
+    applianceId: string;
+}
+
+/**
+ * Target that opens the package's pending sign-in, i.e. the authentication
+ * request previously created via
+ * {@link EnergyAppAuthentication.requestAuthentication}.
+ *
+ * This is the target to use for `authentication-required` notifications.
+ * Create the authentication request before sending the notification, so that
+ * there is a sign-in for the host to open.
+ */
+export interface EnyoNotificationAuthenticationTarget {
+    /** Discriminator identifying this as an authentication target. */
+    type: 'authentication';
+    /**
+     * Identifier of the appliance the sign-in belongs to. Set it when the
+     * authentication request was created for a specific appliance
+     * ({@link EnyoAuthentication.applianceId}); omit it for a package-wide
+     * sign-in.
+     */
+    applianceId?: string;
 }
 
 /**
@@ -151,6 +210,9 @@ export interface EnyoNotificationTranslation {
  *   host via {@link EnergyAppNotification.registerNotificationCategory}.
  * - `rate-limit`: The package has exceeded the host's notification rate
  *   limit for the supplied category and must back off before retrying.
+ *   For `charging-issue` and `battery-issue` the limit is one notification
+ *   per appliance per 30 minutes; for `authentication-required` it is one
+ *   per package (or per appliance, for an appliance sign-in) per 24 hours.
  */
 export type EnyoNotificationSendErrorType = 'not-registered' | 'rate-limit';
 

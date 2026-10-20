@@ -1290,32 +1290,150 @@ prices.onPriceChange((newPrice) => {
 
 #### `useNotification(): EnergyAppNotification`
 
-Send notifications to users:
+Send notifications to users. Every category must be registered before it is used; the host uses the category for the
+user's on/off switch and for rate limits.
 
 ```typescript
 const notifications = energyApp.useNotification();
 
-// Send info notification
-await notifications.sendNotification({
-    type: 'info',
-    title: 'Energy Optimization',
-    message: 'Your system is running optimally',
-    timestamp: Date.now()
+notifications.registerNotificationCategory({
+    category: 'connection-issue',
+    name: [
+        { language: 'en', name: 'Connection issue' },
+        { language: 'de', name: 'Verbindungsproblem' }
+    ]
 });
 
-// Send warning
-await notifications.sendNotification({
-    type: 'warning',
-    title: 'High Energy Consumption',
-    message: 'Consider reducing energy usage during peak hours'
+const notificationId = notifications.sendNotification(
+    'connection-issue',
+    { applianceId, target: { type: 'appliance-settings', applianceId } },
+    [
+        { language: 'en', title: 'Inverter offline', body: 'Inverter communication lost - please check the connection.' },
+        { language: 'de', title: 'Wechselrichter offline', body: 'Keine Verbindung zum Wechselrichter - bitte Verbindung prüfen.' }
+    ]
+);
+```
+
+Categories:
+
+| Category | Use when |
+|---|---|
+| `connection-issue` | An appliance, gateway or upstream service is unreachable. |
+| `onboarding-required` | The user has to complete (or revisit) an onboarding flow. |
+| `charging-issue` | The app asked a charger to charge, but it is not charging. See [Charging issues](#charging-issues). |
+| `battery-issue` | The app commanded a battery, but it does not follow the command. See [Battery issues](#battery-issues). |
+| `authentication-required` | A sign-in that used to work was lost. See [Lost sign-in](#lost-sign-in). |
+
+Targets (`options.target`) decide where tapping the notification leads:
+
+| Target | Opens |
+|---|---|
+| `{ type: 'onboarding', onboardingName }` | A registered onboarding guide. |
+| `{ type: 'energy-app-settings' }` | The package's own settings. |
+| `{ type: 'appliance-settings', applianceId }` | The settings screen of an appliance. |
+| `{ type: 'appliance', applianceId }` | The live view of an appliance (current state, power and session). |
+| `{ type: 'authentication', applianceId? }` | The package's pending sign-in, created with `requestAuthentication()`. |
+| `{ type: 'subscription-offer', planKey }` | The offer screen for a subscription plan. |
+
+`sendNotification` throws an `EnyoNotificationSendError` with `type: 'not-registered'` if the category was not
+registered, or `type: 'rate-limit'` if the host's rate limit for the category is exceeded.
+
+##### Charging issues
+
+Only the app that decided a charger should charge knows that it should be charging, so the app sends
+`charging-issue` notifications. The host relies on these rules and does not re-check them. Send one only when
+**all** of the following hold:
+
+- The app itself asked the charger to charge: it sent a start or resume, or it is giving the charger more than 0 W.
+- The charger has stayed non-charging for at least 5 minutes after that request (status is not `Charging`, or it is
+  `Charging` but draws almost no power).
+- The charger is not `Suspended` with reason `EnyoChargerApplianceSuspendedReasonEnum.Ev`: the car is full or paused
+  charging itself, which is not a fault.
+- No grid-operator limit (§14a / `GridOperatorPowerLimitationV1`) is currently pushing the charger to 0.
+
+Send it **at most once per plug-in**: wait until the charger is `Available` again (car unplugged) before sending
+another one for that appliance. Always pass `applianceId` and the `appliance` target. The host drops more than one
+`charging-issue` per appliance per 30 minutes with a `rate-limit` error.
+
+```typescript
+const notification = energyApp.useNotification();
+
+notification.registerNotificationCategory({
+    category: 'charging-issue',
+    name: [
+        {language: 'de', name: 'Ladeprobleme'},
+        {language: 'en', name: 'Charging issues'},
+    ],
+    description: [
+        {language: 'de', name: 'Ladeprobleme', description: 'Wenn dein Auto nicht lädt, obwohl es laden sollte.'},
+        {language: 'en', name: 'Charging issues', description: 'When your car is not charging although it should.'},
+    ],
 });
 
-// Send critical alert
-await notifications.sendNotification({
-    type: 'error',
-    title: 'System Fault',
-    message: 'Inverter communication lost - please check connection'
-});
+notification.sendNotification(
+    'charging-issue',
+    {applianceId, target: {type: 'appliance', applianceId}},
+    [
+        {language: 'de', title: 'Dein Auto lädt nicht', body: 'Die Wallbox sollte gerade laden, tut es aber nicht. Prüfe bitte Auto und Ladekabel.'},
+        {language: 'en', title: 'Your car is not charging', body: 'The wallbox should be charging right now but isn\'t. Please check the car and the charging cable.'},
+    ],
+);
+```
+
+##### Battery issues
+
+`battery-issue` follows the same idea for home batteries. Send one only when **all** of the following hold:
+
+- The app itself commanded the battery (`SetStorageControlV2` with mode `Controlled`, or one of the other storage
+  commands) and that command is still in effect. Never while the battery runs on `Auto`.
+- For at least 5 minutes the battery has not followed it, judged by `batteryPowerW` in `BatteryValuesUpdateV1`:
+  not charging on `Charge`, not discharging on `Discharge`, or moving power noticeably on `Hold`.
+- The battery is not simply at its limit: no charge command at or above `maxSoC` (or 100 %), no discharge command
+  at or below `minSoC`.
+- A discharge to the house is not just capped by low household consumption.
+- No grid-operator limit (§14a) is pushing the battery to 0, and `controlAllowed` is not `false`.
+
+Send it **at most once per issue**: wait until the battery follows a command again, or the app releases it to
+`Auto`, before sending another one. Always pass `applianceId` and the `appliance` target. The host drops more than
+one `battery-issue` per appliance per 30 minutes with a `rate-limit` error.
+
+```typescript
+notification.sendNotification(
+    'battery-issue',
+    {applianceId, target: {type: 'appliance', applianceId}},
+    [
+        {language: 'de', title: 'Dein Speicher reagiert nicht', body: 'Der Batteriespeicher folgt der Steuerung gerade nicht. Prüfe bitte, ob die externe Steuerung am Speicher aktiviert ist.'},
+        {language: 'en', title: 'Your battery is not responding', body: 'The home battery is not following the control right now. Please check that external control is enabled on the battery.'},
+    ],
+);
+```
+
+##### Lost sign-in
+
+`requestAuthentication()` already prompts the user, including for the first sign-in during onboarding.
+`authentication-required` is only for a sign-in that **used to work** and was lost. Send one only when:
+
+- The package was `Authenticated` before, the vendor now rejects the credentials or token, and a refresh failed.
+- The failure is not transient. Timeouts or a vendor outage are a `connection-issue`.
+- The user did not sign out themselves.
+
+Before sending, set the state with `setAuthenticationState()` and create a new request with
+`requestAuthentication()`, so the `authentication` target has a sign-in to open. Send it **at most once per lost
+session**, and not again until the package is `Authenticated` again. The host allows one per package (or per
+appliance, for an appliance sign-in) per 24 hours.
+
+```typescript
+await auth.setAuthenticationState({state: EnyoAuthenticationStateEnum.AuthenticationFailed});
+await auth.requestAuthentication({authenticationType: 'oauth', oauth: {}, oneTimeAuthentication: false});
+
+notification.sendNotification(
+    'authentication-required',
+    {target: {type: 'authentication'}},
+    [
+        {language: 'de', title: 'Bitte erneut anmelden', body: 'Deine Anmeldung ist abgelaufen. Melde dich erneut an, damit wir deine Geräte weiter steuern können.'},
+        {language: 'en', title: 'Please sign in again', body: 'Your sign-in has expired. Sign in again so we can keep controlling your devices.'},
+    ],
+);
 ```
 
 ### App Intelligence
