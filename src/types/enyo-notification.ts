@@ -52,7 +52,8 @@ export interface EnyoNotificationCategoryTranslation {
 export type EnyoNotificationTarget =
     | EnyoNotificationOnboardingTarget
     | EnyoNotificationEnergyAppSettingsTarget
-    | EnyoNotificationApplianceSettingsTarget;
+    | EnyoNotificationApplianceSettingsTarget
+    | EnyoNotificationSubscriptionOfferTarget;
 
 /**
  * Target that opens an onboarding guide previously registered with the host.
@@ -92,6 +93,25 @@ export interface EnyoNotificationApplianceSettingsTarget {
      * an appliance id known to the host.
      */
     applianceId: string;
+}
+
+/**
+ * Target that opens enyo's offer screen for one of the package's
+ * subscription plans, from where the user can buy it.
+ *
+ * The app never learns whether the user bought the plan from this
+ * notification; a purchase arrives like any other through
+ * {@link EnergyAppSubscriptions.listenForSubscriptionChanges}.
+ */
+export interface EnyoNotificationSubscriptionOfferTarget {
+    /** Discriminator identifying this as a subscription offer target. */
+    type: 'subscription-offer';
+    /**
+     * Key of the plan to offer. Must match a
+     * {@link EnergyAppPackageSubscriptionPlan.planKey} declared in the package
+     * definition.
+     */
+    planKey: string;
 }
 
 /**

@@ -50,6 +50,8 @@ import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
 import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
 import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
+import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
+import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -59,6 +61,8 @@ export enum EnergyAppStateEnum {
     ConfigurationRequired = 'configuration-required',
     /** This state tells the user that an internet connection of the system is required which blocks the energy app from running*/
     InternetConnectionRequired = 'internet-connection-required',
+    /** This state tells the user that a subscription plan is required which blocks the energy app from running. The host shows the plans declared in the package definition. */
+    SubscriptionRequired = 'subscription-required',
 }
 
 /**
@@ -186,4 +190,8 @@ export interface EnyoEnergyAppSdk {
     useCommandLog: () => EnergyAppCommandLog;
     /** Get the Cascade API for the meter behind the primary meter: whether it is active, which appliances are behind it, and its own electricity tariff, prices and grid fee */
     useCascade: () => EnergyAppCascade;
+    /** Get the Webhook API for reading this app's single webhook URL on the enyo API and receiving the raw JSON bodies posted to it */
+    useWebhook: () => EnergyAppWebhook;
+    /** Get the Subscriptions API for reading the subscriptions bought for this app on this device and listening for new or changed subscriptions */
+    useSubscriptions: () => EnergyAppSubscriptions;
 }

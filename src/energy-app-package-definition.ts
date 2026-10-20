@@ -3,6 +3,7 @@ import {getSdkVersion} from "./version.js";
 import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
+import type {EnyoSubscriptionPaymentInterval, EnyoSubscriptionPrice} from "./types/enyo-subscription.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -297,6 +298,76 @@ export interface EnergyAppPackageStoreEntry {
     shortDescription: string;
     /** Detailed description of the package functionality */
     description: string;
+}
+
+/**
+ * Localized store information for one subscription plan. Shown by enyo on the
+ * offer and checkout screens and in the customer's subscription overview.
+ */
+export interface EnergyAppPackageSubscriptionPlanStoreEntry {
+    /** Language code for this store entry */
+    language: EnergyAppPackageLanguage;
+    /** Display name of the plan, e.g. `'Premium'` */
+    title: string;
+    /** One sentence describing what the plan unlocks */
+    shortDescription: string;
+    /** Optional list of benefits, shown as bullet points on the offer screen */
+    benefits?: string[];
+}
+
+/**
+ * A subscription plan an Energy App package sells, declared in
+ * {@link EnergyAppPackageDefinition.subscriptionPlans}.
+ *
+ * A plan can unlock the whole app or only parts of it — the app decides that
+ * in its own code by checking whether the plan is active (see
+ * {@link EnergyAppSubscriptions}). enyo handles checkout, billing, renewal and
+ * cancellation; the plan only describes what is sold and at which price.
+ *
+ * The enyo CLI reads the plans at release time. A price change therefore
+ * requires a new release, and only applies to new purchases: running
+ * subscriptions keep the price they were bought at.
+ *
+ * @example
+ * ```typescript
+ * defineSubscriptionPlan({
+ *     planKey: 'premium',
+ *     paymentInterval: EnyoSubscriptionPaymentIntervalEnum.Yearly,
+ *     prices: [{amountWithoutTax: 41.18, currency: EnyoCurrencyEnum.EUR}],
+ *     trialDays: 30,
+ *     storeEntry: [
+ *         {language: 'en', title: 'Premium', shortDescription: 'Optimises your heat pump with dynamic prices.'},
+ *         {language: 'de', title: 'Premium', shortDescription: 'Optimiert deine Wärmepumpe mit dynamischen Preisen.'}
+ *     ]
+ * })
+ * ```
+ */
+export interface EnergyAppPackageSubscriptionPlan {
+    /**
+     * Stable, app-chosen key for this plan: a kebab-case slug, unique within
+     * the package. Subscriptions refer to the plan by this key, so treat it as
+     * an API — renaming it disconnects every existing subscription from the
+     * app's checks.
+     */
+    planKey: string;
+    /** How often the plan is paid for: `one-time`, `monthly` or `yearly`. */
+    paymentInterval: EnyoSubscriptionPaymentInterval;
+    /**
+     * Net price, one entry per currency. At least one entry is required. The
+     * amount is always the total for one interval: per month for `monthly`,
+     * per year for `yearly`, and the single amount for `one-time`.
+     */
+    prices: EnyoSubscriptionPrice[];
+    /**
+     * Optional length of a free trial in days. The customer is charged for the
+     * first time when the trial ends, unless they cancelled before. Not
+     * allowed for `one-time` plans.
+     */
+    trialDays?: number;
+    /** Localized store information. Entries for `de` and `en` are required. */
+    storeEntry: EnergyAppPackageSubscriptionPlanStoreEntry[];
+    /** Optional internal note explaining this plan; never shown to users. */
+    internalComment?: string;
 }
 
 /**
@@ -826,6 +897,19 @@ export interface EnergyAppPackageDefinition {
      * Omit the field for packages that have no manual setup to document.
      */
     onboardingGuide?: EnyoOnboardingV2Guide;
+    /**
+     * Subscription plans this package sells, including their prices. The enyo
+     * CLI reads them at release time; enyo offers them to the customer and
+     * handles checkout, billing, renewal and cancellation.
+     *
+     * Subscriptions belong to the device the app runs on. The app reads them
+     * at runtime through {@link EnergyAppSubscriptions}, which requires the
+     * `Subscriptions` permission. Validate the declarations with
+     * `validatePackageSubscriptionPlans()` before publishing.
+     *
+     * Omit for packages that are free.
+     */
+    subscriptionPlans?: EnergyAppPackageSubscriptionPlan[];
 }
 
 /**

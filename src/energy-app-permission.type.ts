@@ -62,7 +62,9 @@ export enum EnergyAppPermissionTypeEnum {
     GridFeeUse = 'GridFeeUse',
     CommandLog = 'CommandLog',
     Calibration = 'Calibration',
-    VehicleIntegration = 'VehicleIntegration'
+    VehicleIntegration = 'VehicleIntegration',
+    Webhook = 'Webhook',
+    Subscriptions = 'Subscriptions'
 }
 
 /**

@@ -186,6 +186,8 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Query historical timeseries (PV, battery, meter, …) | [`useTimeseries()`](#usetimeseries-energyapptimeseries) |
 | Read site location (zip or coordinates) | [`useLocation()`](#uselocation-energyapplocation) |
 | Read grid connection point (fuse, phases, max power, charger limit) | [`useGridConnectionPoint()`](#usegridconnectionpoint-energyappgridconnectionpoint) |
+| Receive webhooks from third-party services (one URL per app, parsed JSON body) | [`useWebhook()`](#usewebhook-energyappwebhook) |
+| Sell one-time, monthly or yearly plans and check which ones the device has | [`useSubscriptions()`](#usesubscriptions-energyappsubscriptions) / [Subscription Plans](#subscription-plans) |
 | Retrieve secrets from the developer org secret store | [`useSecretManager()`](#usesecretmanager-energyappsecretmanager) |
 | Submit energy-manager diagnostics | [`useDiagnostics()`](#usediagnostics-energyappdiagnostics) |
 | Register a weather / PV / dynamic-price forecast provider | [`useWeatherForecasting()`](#useweatherforecasting-energyappweatherforecasting) / [`usePvForecasting()`](#usepvforecasting-energyapppvforecasting) / [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast) |
@@ -242,6 +244,7 @@ energyApp.onShutdown(async () => {
 - `running`: App is functioning normally
 - `configuration-required`: App needs user configuration
 - `internet-connection-required`: App needs internet connectivity
+- `subscription-required`: App needs a subscription plan; the host shows the plans declared in the package definition
 
 ### Package Definition
 
@@ -384,6 +387,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`Wifi`**: List known WiFi SSIDs
 - **`Udp`**: Bind UDP sockets and exchange datagrams
 - **`ChildProcess`**: Spawn child processes from the runtime
+- **`Webhook`**: Receive webhooks posted to the app's endpoint on the enyo API
 
 #### Data & Domain Permissions
 
@@ -401,6 +405,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`EpexSpotPrices`**: Read EPEX SPOT day-ahead wholesale market prices
 - **`GridFeeRegister`** / **`GridFeeUse`**: Publish / resolve dynamic grid fees (time-variable network charges)
 - **`CommandLog`**: Record and read back the commands apps issued to appliances
+- **`Subscriptions`**: Read the subscriptions bought for the app on this device
 
 #### Site & Identity Permissions
 
@@ -2249,6 +2254,68 @@ const failures = await commandLog.getCommands({
 
 Requires the `CommandLog` permission.
 
+#### `useWebhook(): EnergyAppWebhook`
+
+Receive webhooks from a vendor cloud. Apps run behind NAT on the hub, so every app gets **one** public
+endpoint on the enyo API instead; whatever JSON body is POSTed to it is forwarded to the app as a parsed object.
+
+```typescript
+const webhook = energyApp.useWebhook();
+
+const url = await webhook.getWebhookUrl();     // stable per app installation
+await vendorApi.subscribe({ callbackUrl: url });
+
+const listenerId = webhook.listenForWebhook<VendorEvent>(async (event) => {
+    // event: { webhookRequestId, source, receivedAtIso, body } — source defaults to 'custom-webhook'
+    await handleVendorEvent(event.body);   // already parsed JSON
+});
+```
+
+- **One endpoint per app.** Several event types share the same URL; tell them apart by the body.
+- **The body is already parsed.** `body` is the JSON object the caller sent. The type parameter is an
+  assertion, not validation — check the fields you rely on.
+- **At-least-once delivery.** A call may be forwarded more than once and order is not guaranteed —
+  deduplicate on `webhookRequestId`.
+
+Requires the `Webhook` permission.
+
+#### `useSubscriptions(): EnergyAppSubscriptions`
+
+Read the subscriptions a customer bought for this app **on this device**. The plans and their prices are
+declared in the package definition (see [Subscription Plans](#subscription-plans)); enyo handles checkout,
+billing, renewal and cancellation. The app never starts a purchase — it reads the result and reacts to it.
+
+```typescript
+import { isPlanActive } from '@enyo-energy/energy-app-sdk';
+
+const subscriptions = energyApp.useSubscriptions();
+
+// On boot: read the current state.
+applyPlan(isPlanActive(await subscriptions.getSubscriptions(), 'premium'));
+
+// Afterwards: purchases, renewals, cancellations, failed payments and expiry.
+subscriptions.listenForSubscriptionChanges(async ({ subscription, previousStatus }) => {
+    // previousStatus is undefined for a new subscription
+    applyPlan(isPlanActive(await subscriptions.getSubscriptions(), 'premium'));
+});
+```
+
+- **Use `isPlanActive()` / `isSubscriptionActive()`** instead of comparing statuses yourself. `trialing`, `active`,
+  `cancelled-until-period-end` and `grace` count as active; `expired` does not.
+- **`getSubscriptions()` returns expired subscriptions too**, so the app can tell "never bought" from "expired".
+- **The listener does not replay the current state.** Call `getSubscriptions()` on boot.
+- **Works offline.** The host keeps the last known state on the device and reports time-based changes (end of
+  trial, grace or paid period) without a connection.
+- **Fall back safely.** When a plan stops being active, release any control over appliances instead of leaving
+  them in the last commanded state.
+- **Point the user to an offer** with a notification target `{ type: 'subscription-offer', planKey: 'premium' }`,
+  or set `EnergyAppStateEnum.SubscriptionRequired` when the whole app needs a plan.
+
+For tests, `InMemorySubscriptions` implements the same interface; `upsertSubscription()` plays the part of enyo
+and notifies the listeners.
+
+Requires the `Subscriptions` permission.
+
 ### Operational Utilities
 
 #### `useOnboardingV2(): EnergyAppOnboardingV2`
@@ -2856,6 +2923,77 @@ const {ok, errors, warnings} = validatePackageFiles(packageDef.files);
 It checks that names are unique slugs, that paths stay inside the package and carry an
 extension, and that any declared MIME type is well formed; two names pointing at one
 path is a warning.
+
+## Subscription Plans
+
+Sell a one-time purchase or a monthly or yearly subscription for the whole app or for parts of it. Declare the plans, **including their prices**,
+in the package definition. The enyo CLI reads them during `enyo release`; enyo offers them to the customer and
+handles checkout, VAT, invoices, renewal and cancellation. Subscriptions belong to the **device** the app runs on.
+
+```typescript
+import {
+    defineEnergyAppPackage,
+    defineSubscriptionPlan,
+    EnergyAppPermissionTypeEnum,
+    EnyoCurrencyEnum,
+    EnyoSubscriptionPaymentIntervalEnum,
+    validatePackageSubscriptionPlans
+} from '@enyo-energy/energy-app-sdk';
+
+const packageDef = defineEnergyAppPackage({
+    // ...
+    permissions: [EnergyAppPermissionTypeEnum.Subscriptions /* , ... */],
+    subscriptionPlans: [
+        defineSubscriptionPlan({
+            planKey: 'premium',
+            paymentInterval: EnyoSubscriptionPaymentIntervalEnum.Yearly,
+            prices: [{ amountWithoutTax: 41.18, currency: EnyoCurrencyEnum.EUR }],
+            trialDays: 30,
+            storeEntry: [
+                {
+                    language: 'en',
+                    title: 'Premium',
+                    shortDescription: 'Optimises your heat pump with dynamic prices.',
+                    benefits: ['Dynamic price optimisation', 'Heat pump boost']
+                },
+                {
+                    language: 'de',
+                    title: 'Premium',
+                    shortDescription: 'Optimiert deine Wärmepumpe mit dynamischen Preisen.',
+                    benefits: ['Optimierung nach dynamischen Preisen', 'Wärmepumpen-Boost']
+                }
+            ]
+        })
+    ]
+});
+```
+
+| Field | Meaning |
+|---|---|
+| `planKey` | Kebab-case slug, unique in the package. Subscriptions refer to the plan by it — treat it as an API. |
+| `paymentInterval` | `one-time`, `monthly` or `yearly`. One-time purchases never renew and stay `active` until refunded. |
+| `prices` | One net price per currency. `amountWithoutTax` is always the **total for one interval** — per month, per year, or the single one-time amount — in the currency (not cent), at most two decimals; enyo adds VAT. |
+| `trialDays` | Optional free trial in days. Not allowed for `one-time` plans. |
+| `storeEntry` | Title, short description and optional benefits; `de` and `en` are required. |
+| `internalComment` | Optional note, never shown to users. |
+
+What a plan unlocks is decided by the app: check `isPlanActive(subscriptions, planKey)` at runtime (see
+[`useSubscriptions()`](#usesubscriptions-energyappsubscriptions)).
+
+**A price change needs a new release** and only applies to new purchases — running subscriptions keep the price
+they were bought at.
+
+Validate the plans before releasing:
+
+```typescript
+const { ok, errors } = validatePackageSubscriptionPlans(packageDef);
+// or: assertValidPackageSubscriptionPlans(packageDef) — throws PackageSubscriptionPlansValidationError
+```
+
+It checks that plan keys are unique slugs, that the payment interval is known, that every plan has at least one
+positive price per currency with at most two decimals, that `trialDays` is a positive whole number and not set on a
+`one-time` plan, that `de` and
+`en` store entries exist, and that the package requests the `Subscriptions` permission.
 
 ## Printable Manual Setup Guide
 

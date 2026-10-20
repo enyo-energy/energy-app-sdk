@@ -52,6 +52,8 @@ import {EnergyAppEpexSpotPrice} from "./packages/energy-app-epex-spot-price.js";
 import {EnergyAppGridFee} from "./packages/energy-app-grid-fee.js";
 import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
 import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
+import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
+import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -631,6 +633,37 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useCascade(): EnergyAppCascade {
         return this.energyAppSdk.useCascade();
+    }
+
+    /**
+     * Gets the Webhook API for receiving webhooks from third-party services.
+     *
+     * Every app has exactly one webhook endpoint on the enyo API. Read its URL
+     * with `getWebhookUrl()`, hand it to the vendor, and every JSON body posted
+     * to it is forwarded as a parsed object to the listeners registered with
+     * `listenForWebhook()`.
+     * @returns The Webhook API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Webhook`
+     *         permission is not granted.
+     */
+    public useWebhook(): EnergyAppWebhook {
+        return this.energyAppSdk.useWebhook();
+    }
+
+    /**
+     * Gets the Subscriptions API for reading the subscriptions a customer
+     * bought for this app on this device.
+     *
+     * The plans and their prices are declared in the package definition;
+     * enyo handles checkout, billing, renewal and cancellation. The app reads
+     * the result with `getSubscriptions()` and reacts to purchases, renewals,
+     * cancellations and expiry with `listenForSubscriptionChanges()`.
+     * @returns The Subscriptions API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Subscriptions`
+     *         permission is not granted.
+     */
+    public useSubscriptions(): EnergyAppSubscriptions {
+        return this.energyAppSdk.useSubscriptions();
     }
 
     /**
