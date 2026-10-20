@@ -3,7 +3,11 @@ import {getSdkVersion} from "./version.js";
 import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
-import type {EnyoSubscriptionPaymentInterval, EnyoSubscriptionPrice} from "./types/enyo-subscription.js";
+import type {
+    EnyoSubscriptionPaymentInterval,
+    EnyoSubscriptionPrice,
+    EnyoSubscriptionPricingModel
+} from "./types/enyo-subscription.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -353,9 +357,17 @@ export interface EnergyAppPackageSubscriptionPlan {
     /** How often the plan is paid for: `one-time`, `monthly` or `yearly`. */
     paymentInterval: EnyoSubscriptionPaymentInterval;
     /**
+     * Whether the price is charged once for the package on the device
+     * (`per-package`, the default) or once per unit (`per-unit`). For
+     * `per-unit` the app reports the units — appliances, vehicles or custom
+     * units — at runtime with {@link EnergyAppSubscriptions.setUnits}.
+     */
+    pricingModel?: EnyoSubscriptionPricingModel;
+    /**
      * Net price, one entry per currency. At least one entry is required. The
      * amount is always the total for one interval: per month for `monthly`,
-     * per year for `yearly`, and the single amount for `one-time`.
+     * per year for `yearly`, and the single amount for `one-time`. For a
+     * `per-unit` plan it is the amount per unit.
      */
     prices: EnyoSubscriptionPrice[];
     /**

@@ -6,14 +6,24 @@ import {
     EnyoSubscription,
     EnyoSubscriptionPaymentIntervalEnum,
     EnyoSubscriptionChangeEvent,
-    EnyoSubscriptionStatusEnum
+    EnyoSubscriptionPricingModelEnum,
+    EnyoSubscriptionStatusEnum,
+    EnyoSubscriptionUnit,
+    EnyoSubscriptionUnitTypeEnum
 } from '../../../types/enyo-subscription.js';
-import {defineSubscriptionPlan, isPlanActive, isSubscriptionActive} from '../define-subscription-plan.js';
+import {
+    defineSubscriptionPlan,
+    isPlanActive,
+    isSameSubscriptionUnit,
+    isSubscriptionActive,
+    isUnitActive
+} from '../define-subscription-plan.js';
 import {InMemorySubscriptions} from '../in-memory-subscriptions.js';
 import {
     assertValidPackageSubscriptionPlans,
     PackageSubscriptionPlansValidationError,
     validatePackageSubscriptionPlans,
+    validateSubscriptionUnits,
 } from '../subscription-plan-validators.js';
 
 /** A valid plan, overridable field by field for the failure cases. */
@@ -42,6 +52,7 @@ const subscription = (over: Partial<EnyoSubscription> = {}): EnyoSubscription =>
     planKey: 'premium',
     status: EnyoSubscriptionStatusEnum.Active,
     paymentInterval: EnyoSubscriptionPaymentIntervalEnum.Yearly,
+    pricingModel: EnyoSubscriptionPricingModelEnum.PerPackage,
     price: {amountWithoutTax: 41.18, currency: EnyoCurrencyEnum.EUR},
     startedAtIso: '2026-01-01T00:00:00Z',
     currentPeriodStartIso: '2026-01-01T00:00:00Z',
@@ -158,6 +169,65 @@ describe('validatePackageSubscriptionPlans', () => {
     });
 });
 
+describe('validatePackageSubscriptionPlans pricingModel', () => {
+    it.each([[undefined], [EnyoSubscriptionPricingModelEnum.PerPackage], [EnyoSubscriptionPricingModelEnum.PerUnit]])(
+        'accepts the pricing model %s', (pricingModel) => {
+            expect(validate(plan({pricingModel})).ok).toBe(true);
+        });
+
+    it('flags an unknown pricing model', () => {
+        const result = validate(plan({pricingModel: 'per-user' as never}));
+        expect(result.errors.some((e) => e.includes('pricingModel'))).toBe(true);
+    });
+});
+
+/** A wallbox appliance unit. */
+const wallbox: EnyoSubscriptionUnit = {type: EnyoSubscriptionUnitTypeEnum.Appliance, referenceId: 'wallbox-1'};
+/** A custom unit with a German and English name. */
+const room: EnyoSubscriptionUnit = {
+    type: EnyoSubscriptionUnitTypeEnum.Custom,
+    referenceId: 'living-room',
+    name: [{language: 'en', value: 'Living room'}, {language: 'de', value: 'Wohnzimmer'}],
+};
+
+describe('validateSubscriptionUnits', () => {
+    it('accepts appliance, vehicle and custom units', () => {
+        const units: EnyoSubscriptionUnit[] = [
+            wallbox,
+            {type: EnyoSubscriptionUnitTypeEnum.Vehicle, referenceId: 'vehicle-1'},
+            room,
+        ];
+        expect(validateSubscriptionUnits(units)).toEqual({ok: true, errors: []});
+        expect(validateSubscriptionUnits([]).ok).toBe(true);
+    });
+
+    it('allows the same reference for different types', () => {
+        const vehicle: EnyoSubscriptionUnit = {type: EnyoSubscriptionUnitTypeEnum.Vehicle, referenceId: 'wallbox-1'};
+        expect(validateSubscriptionUnits([wallbox, vehicle]).ok).toBe(true);
+    });
+
+    it('flags an empty reference, a duplicate unit and an unknown type', () => {
+        const result = validateSubscriptionUnits([
+            {type: EnyoSubscriptionUnitTypeEnum.Appliance, referenceId: ' '},
+            wallbox,
+            wallbox,
+            {type: 'room' as never, referenceId: 'x'},
+        ]);
+        expect(result.errors.some((e) => e.includes('referenceId is required'))).toBe(true);
+        expect(result.errors.some((e) => e.includes('duplicate unit'))).toBe(true);
+        expect(result.errors.some((e) => e.includes('type "room"'))).toBe(true);
+    });
+
+    it('requires a German and English name for custom units', () => {
+        const result = validateSubscriptionUnits([{
+            type: EnyoSubscriptionUnitTypeEnum.Custom,
+            referenceId: 'garage',
+            name: [{language: 'en', value: 'Garage'}, {language: 'de', value: ''}],
+        }]);
+        expect(result.errors.some((e) => e.includes('language "de"'))).toBe(true);
+    });
+});
+
 describe('assertValidPackageSubscriptionPlans', () => {
     it('returns the plans when they are valid', () => {
         const plans = [plan()];
@@ -192,7 +262,49 @@ describe('isSubscriptionActive / isPlanActive', () => {
     });
 });
 
+describe('isUnitActive', () => {
+    const perUnit = (over: Partial<EnyoSubscription> = {}) => subscription({
+        planKey: 'smart-charging',
+        pricingModel: EnyoSubscriptionPricingModelEnum.PerUnit,
+        units: [wallbox],
+        ...over,
+    });
+
+    it('is true only for a paid unit of an active subscription', () => {
+        expect(isUnitActive([perUnit()], 'smart-charging', wallbox)).toBe(true);
+        expect(isUnitActive([perUnit()], 'smart-charging', {type: 'appliance', referenceId: 'wallbox-2'})).toBe(false);
+        expect(isUnitActive([perUnit()], 'smart-charging', {type: 'vehicle', referenceId: 'wallbox-1'})).toBe(false);
+        expect(isUnitActive([perUnit()], 'premium', wallbox)).toBe(false);
+        expect(isUnitActive([perUnit({status: EnyoSubscriptionStatusEnum.Expired})], 'smart-charging', wallbox)).toBe(false);
+        expect(isUnitActive([perUnit({units: undefined})], 'smart-charging', wallbox)).toBe(false);
+    });
+
+    it('compares units by type and reference only', () => {
+        expect(isSameSubscriptionUnit(room, {...room, name: []} as EnyoSubscriptionUnit)).toBe(true);
+    });
+});
+
 describe('InMemorySubscriptions', () => {
+    it('stores and returns reported units per plan', async () => {
+        const subscriptions = new InMemorySubscriptions();
+        await subscriptions.setUnits('smart-charging', [wallbox, room]);
+        await subscriptions.setUnits('smart-charging', [wallbox]);
+
+        expect(await subscriptions.getUnits('smart-charging')).toEqual([wallbox]);
+        expect(await subscriptions.getUnits('other')).toEqual([]);
+    });
+
+    it('rejects invalid units and plans that are not per-unit', async () => {
+        const subscriptions = new InMemorySubscriptions([], [
+            plan({planKey: 'smart-charging', pricingModel: EnyoSubscriptionPricingModelEnum.PerUnit}),
+            plan(),
+        ]);
+
+        await expect(subscriptions.setUnits('smart-charging', [wallbox, wallbox])).rejects.toThrow('duplicate unit');
+        await expect(subscriptions.setUnits('premium', [wallbox])).rejects.toThrow('not a per-unit plan');
+        await expect(subscriptions.setUnits('smart-charging', [wallbox])).resolves.toBeUndefined();
+    });
+
     it('returns the initial subscriptions without notifying listeners', async () => {
         const subscriptions = new InMemorySubscriptions([subscription()]);
         expect(await subscriptions.getSubscriptions()).toEqual([subscription()]);

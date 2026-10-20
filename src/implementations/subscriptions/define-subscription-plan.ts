@@ -6,7 +6,8 @@
  * where it is written — mirroring `definePublicFile()` and
  * `defineFirmwareFile()`. `isSubscriptionActive()` and `isPlanActive()` hold
  * the single rule for which subscription statuses grant access, so every app
- * applies it the same way.
+ * applies it the same way; `isUnitActive()` applies it to one unit of a
+ * `per-unit` plan.
  *
  * Pair with `validatePackageSubscriptionPlans()`
  * (`./subscription-plan-validators.ts`) to fail fast before publishing.
@@ -16,7 +17,8 @@ import type {EnergyAppPackageSubscriptionPlan} from '../../energy-app-package-de
 import {
     EnyoSubscription,
     EnyoSubscriptionStatus,
-    EnyoSubscriptionStatusEnum
+    EnyoSubscriptionStatusEnum,
+    EnyoSubscriptionUnit
 } from '../../types/enyo-subscription.js';
 
 /**
@@ -89,4 +91,49 @@ export function isSubscriptionActive(subscription: EnyoSubscription): boolean {
  */
 export function isPlanActive(subscriptions: EnyoSubscription[], planKey: string): boolean {
     return subscriptions.some(subscription => subscription.planKey === planKey && isSubscriptionActive(subscription));
+}
+
+/**
+ * Tests whether two units are the same unit, i.e. have the same `type` and
+ * `referenceId`. The name of a custom unit is not compared.
+ *
+ * @param a - The first unit.
+ * @param b - The second unit.
+ * @returns True when both identify the same unit.
+ */
+export function isSameSubscriptionUnit(
+    a: Pick<EnyoSubscriptionUnit, 'type' | 'referenceId'>,
+    b: Pick<EnyoSubscriptionUnit, 'type' | 'referenceId'>,
+): boolean {
+    return a.type === b.type && a.referenceId === b.referenceId;
+}
+
+/**
+ * Tests whether one unit of a `per-unit` plan is paid for, i.e. whether an
+ * active subscription for the plan lists the unit in
+ * {@link EnyoSubscription.units}.
+ *
+ * @param subscriptions - The subscriptions, as returned by
+ *   {@link EnergyAppSubscriptions.getSubscriptions}.
+ * @param planKey - The {@link EnergyAppPackageSubscriptionPlan.planKey} to check.
+ * @param unit - The unit to check, identified by `type` and `referenceId`.
+ * @returns True when the unit is covered by an active subscription for the plan.
+ *
+ * @example
+ * ```typescript
+ * const subscriptions = await energyApp.useSubscriptions().getSubscriptions();
+ * if (isUnitActive(subscriptions, 'smart-charging', {type: 'appliance', referenceId: wallbox.id})) {
+ *     enableSmartCharging(wallbox);
+ * }
+ * ```
+ */
+export function isUnitActive(
+    subscriptions: EnyoSubscription[],
+    planKey: string,
+    unit: Pick<EnyoSubscriptionUnit, 'type' | 'referenceId'>,
+): boolean {
+    return subscriptions.some(subscription =>
+        subscription.planKey === planKey
+        && isSubscriptionActive(subscription)
+        && (subscription.units ?? []).some(paid => isSameSubscriptionUnit(paid, unit)));
 }

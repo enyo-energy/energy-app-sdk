@@ -2276,6 +2276,17 @@ const listenerId = webhook.listenForWebhook<VendorEvent>(async (event) => {
   assertion, not validation — check the fields you rely on.
 - **At-least-once delivery.** A call may be forwarded more than once and order is not guaranteed —
   deduplicate on `webhookRequestId`.
+- **Hidden sources need a token.** Some webhook sources are only delivered to listeners that present their static
+  access token. Pass it per listener; the listener then receives these sources in addition to the public ones:
+
+  ```typescript
+  webhook.listenForWebhook<VendorEvent>(handleEvent, {
+      secretKeys: [{ source: 'vendor-cloud', token: vendorWebhookToken }]
+  });
+  ```
+
+  The token only applies to that listener, and a source with a wrong token is not delivered. Keep the token in the
+  secret manager, not in the source code.
 
 Requires the `Webhook` permission.
 
@@ -2308,6 +2319,8 @@ subscriptions.listenForSubscriptionChanges(async ({ subscription, previousStatus
   trial, grace or paid period) without a connection.
 - **Fall back safely.** When a plan stops being active, release any control over appliances instead of leaving
   them in the last commanded state.
+- **Per-unit plans:** report the units with `setUnits(planKey, units)` and check each one with
+  `isUnitActive(subscriptions, planKey, unit)` — see [Per-unit plans](#per-unit-plans).
 - **Point the user to an offer** with a notification target `{ type: 'subscription-offer', planKey: 'premium' }`,
   or set `EnergyAppStateEnum.SubscriptionRequired` when the whole app needs a plan.
 
@@ -2972,13 +2985,59 @@ const packageDef = defineEnergyAppPackage({
 |---|---|
 | `planKey` | Kebab-case slug, unique in the package. Subscriptions refer to the plan by it — treat it as an API. |
 | `paymentInterval` | `one-time`, `monthly` or `yearly`. One-time purchases never renew and stay `active` until refunded. |
-| `prices` | One net price per currency. `amountWithoutTax` is always the **total for one interval** — per month, per year, or the single one-time amount — in the currency (not cent), at most two decimals; enyo adds VAT. |
+| `pricingModel` | `per-package` (default): one price for the package on the device. `per-unit`: the price is charged per unit the app reports — see [Per-unit plans](#per-unit-plans). |
+| `prices` | One net price per currency. `amountWithoutTax` is always the **total for one interval** — per month, per year, or the single one-time amount; per unit for `per-unit` plans — in the currency (not cent), at most two decimals; enyo adds VAT. |
 | `trialDays` | Optional free trial in days. Not allowed for `one-time` plans. |
 | `storeEntry` | Title, short description and optional benefits; `de` and `en` are required. |
 | `internalComment` | Optional note, never shown to users. |
 
 What a plan unlocks is decided by the app: check `isPlanActive(subscriptions, planKey)` at runtime (see
 [`useSubscriptions()`](#usesubscriptions-energyappsubscriptions)).
+
+### Per-unit plans
+
+For a `per-unit` plan the price is charged once per unit, and the **quantity comes from the energy app**. The app
+reports every unit it currently manages with `setUnits()` — on boot and whenever a unit is added or removed. Each
+unit has a `type` and a `referenceId` it is paid under:
+
+| `type` | `referenceId` | Name shown to the customer |
+|---|---|---|
+| `appliance` | the appliance id | taken from the appliance |
+| `vehicle` | the vehicle id | taken from the vehicle |
+| `custom` | an id chosen by the app | `name`, translated; `de` and `en` are required |
+
+```typescript
+import { EnyoSubscriptionUnitTypeEnum, isUnitActive } from '@enyo-energy/energy-app-sdk';
+
+const subscriptions = energyApp.useSubscriptions();
+const wallboxes = await energyApp.useAppliances().list();
+
+// 3 wallboxes on a yearly plan for 10 € → 30 € per year (net).
+await subscriptions.setUnits('smart-charging', wallboxes.map(wallbox => ({
+    type: EnyoSubscriptionUnitTypeEnum.Appliance,
+    referenceId: wallbox.id
+})));
+
+// A custom unit carries its own translated name.
+await subscriptions.setUnits('room-climate', [{
+    type: EnyoSubscriptionUnitTypeEnum.Custom,
+    referenceId: 'living-room',
+    name: [{ language: 'en', value: 'Living room' }, { language: 'de', value: 'Wohnzimmer' }]
+}]);
+
+// Only the units the customer paid for are active.
+const all = await subscriptions.getSubscriptions();
+for (const wallbox of wallboxes) {
+    setSmartCharging(wallbox, isUnitActive(all, 'smart-charging', { type: 'appliance', referenceId: wallbox.id }));
+}
+```
+
+- **Reporting a unit does not pay for it.** Paid units are listed in `subscription.units`; when the customer pays
+  for more units, the change listeners are called.
+- **Keep `referenceId` stable.** `type` plus `referenceId` identify the unit; a new reference is a new, unpaid unit.
+- **enyo decides how a changed quantity is charged**, e.g. pro rata for the rest of the period.
+- `validateSubscriptionUnits(units)` applies the host's rules up front: known type, non-empty reference, no unit
+  twice, `de` and `en` names on custom units.
 
 **A price change needs a new release** and only applies to new purchases — running subscriptions keep the price
 they were bought at.
@@ -2990,7 +3049,7 @@ const { ok, errors } = validatePackageSubscriptionPlans(packageDef);
 // or: assertValidPackageSubscriptionPlans(packageDef) — throws PackageSubscriptionPlansValidationError
 ```
 
-It checks that plan keys are unique slugs, that the payment interval is known, that every plan has at least one
+It checks that plan keys are unique slugs, that the payment interval and pricing model are known, that every plan has at least one
 positive price per currency with at most two decimals, that `trialDays` is a positive whole number and not set on a
 `one-time` plan, that `de` and
 `en` store entries exist, and that the package requests the `Subscriptions` permission.

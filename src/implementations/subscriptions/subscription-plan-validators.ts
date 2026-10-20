@@ -18,7 +18,12 @@ import type {
 } from '../../energy-app-package-definition.js';
 import {EnergyAppPermissionTypeEnum} from '../../energy-app-permission.type.js';
 import {EnyoCurrencyEnum} from '../../types/enyo-currency.js';
-import {EnyoSubscriptionPaymentIntervalEnum} from '../../types/enyo-subscription.js';
+import {
+    EnyoSubscriptionPaymentIntervalEnum,
+    EnyoSubscriptionPricingModelEnum,
+    EnyoSubscriptionUnit,
+    EnyoSubscriptionUnitTypeEnum
+} from '../../types/enyo-subscription.js';
 
 /**
  * Thrown by {@link assertValidPackageSubscriptionPlans} when a package's
@@ -193,6 +198,11 @@ export function validatePackageSubscriptionPlans(
             errors.push(`${at}: paymentInterval "${plan.paymentInterval}" is not supported.`);
         }
 
+        if (plan.pricingModel !== undefined
+            && !Object.values(EnyoSubscriptionPricingModelEnum).includes(plan.pricingModel as EnyoSubscriptionPricingModelEnum)) {
+            errors.push(`${at}: pricingModel "${plan.pricingModel}" is not supported.`);
+        }
+
         validatePrices(plan, at, errors);
 
         if (plan.trialDays !== undefined) {
@@ -226,4 +236,62 @@ export function assertValidPackageSubscriptionPlans(
     const {ok, errors} = validatePackageSubscriptionPlans(definition);
     if (!ok) throw new PackageSubscriptionPlansValidationError(errors);
     return definition.subscriptionPlans;
+}
+
+/** The outcome of validating the units reported for a `per-unit` plan. */
+export interface SubscriptionUnitsValidationResult {
+    /** True when there are no `errors`. */
+    ok: boolean;
+    /** Problems that make the host reject the units. */
+    errors: string[];
+}
+
+/**
+ * Validates the units an app reports for a `per-unit` plan with
+ * {@link EnergyAppSubscriptions.setUnits}: every unit has a known type and a
+ * non-empty reference, no unit is reported twice (same `type` and
+ * `referenceId`), and every custom unit has a non-empty name in German and
+ * English. The host applies the same rules and rejects invalid units.
+ *
+ * @param units - The units to report.
+ * @returns The {@link SubscriptionUnitsValidationResult}.
+ *
+ * @example
+ * ```typescript
+ * const {ok, errors} = validateSubscriptionUnits(units);
+ * if (!ok) logger.warn(errors.join('\n'));
+ * ```
+ */
+export function validateSubscriptionUnits(units: EnyoSubscriptionUnit[]): SubscriptionUnitsValidationResult {
+    const errors: string[] = [];
+    const seen = new Set<string>();
+
+    for (const [index, unit] of units.entries()) {
+        const at = `units[${index}] (${unit.type || '?'} ${unit.referenceId || '?'})`;
+
+        if (!Object.values(EnyoSubscriptionUnitTypeEnum).includes(unit.type as EnyoSubscriptionUnitTypeEnum)) {
+            errors.push(`${at}: type "${unit.type}" is not supported.`);
+        }
+
+        if (!unit.referenceId?.trim()) {
+            errors.push(`${at}: referenceId is required.`);
+        } else {
+            const key = `${unit.type}\u0000${unit.referenceId}`;
+            if (seen.has(key)) {
+                errors.push(`${at}: duplicate unit — type and referenceId must be unique.`);
+            }
+            seen.add(key);
+        }
+
+        if (unit.type === EnyoSubscriptionUnitTypeEnum.Custom) {
+            const names = unit.name ?? [];
+            for (const language of REQUIRED_LANGUAGES) {
+                if (!names.some(name => name.language === language && name.value?.trim())) {
+                    errors.push(`${at}: a custom unit needs a name in language "${language}".`);
+                }
+            }
+        }
+    }
+
+    return {ok: errors.length === 0, errors};
 }

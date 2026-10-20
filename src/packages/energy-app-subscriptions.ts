@@ -1,4 +1,8 @@
-import {EnyoSubscription, EnyoSubscriptionChangeListener} from "../types/enyo-subscription.js";
+import {
+    EnyoSubscription,
+    EnyoSubscriptionChangeListener,
+    EnyoSubscriptionUnit
+} from "../types/enyo-subscription.js";
 
 /**
  * Interface for reading the subscriptions a customer bought for this energy
@@ -16,6 +20,12 @@ import {EnyoSubscription, EnyoSubscriptionChangeListener} from "../types/enyo-su
  * the device is offline, and status changes that only depend on time — a trial
  * or grace period ending, a cancelled subscription expiring — are reported even
  * without a connection.
+ *
+ * A `per-unit` plan is charged once per unit — appliance, vehicle or custom
+ * unit — and the quantity comes from the app: it reports the units it
+ * currently manages with {@link setUnits}, and enyo offers and charges the
+ * plan for them. {@link EnyoSubscription.units} lists the units that are paid
+ * for; check a single unit with `isUnitActive()`.
  *
  * When a plan stops being active, the app must fall back to a safe behaviour.
  * For example, release any control it holds over a heat pump, wallbox or
@@ -51,10 +61,58 @@ export interface EnergyAppSubscriptions {
     getSubscriptions(): Promise<EnyoSubscription[]>;
 
     /**
+     * Reports the units the app currently manages for a `per-unit` plan,
+     * replacing the previously reported list. The number of units is the
+     * quantity enyo offers and charges the plan for.
+     *
+     * Call it on boot and whenever a unit is added or removed, with the full
+     * list each time. A unit is identified by its `type` plus `referenceId`,
+     * so keep the reference stable: a changed reference reads as a removed and
+     * a new, unpaid unit. How a changed quantity is charged — for example
+     * pro rata for the rest of the period — is decided by enyo.
+     *
+     * Reporting a unit does not pay for it. Once the customer has paid, the
+     * unit appears in {@link EnyoSubscription.units} and the change listeners
+     * are called.
+     *
+     * @param planKey - The key of a `per-unit` plan declared in the package definition.
+     * @param units - Every unit the app currently manages for the plan; an
+     *   empty list when there is none.
+     * @returns Promise that resolves once the host has stored the units
+     * @throws {Error} If `planKey` is not a `per-unit` plan of this package, or
+     *   a unit is invalid (empty reference, duplicate `type` + `referenceId`,
+     *   custom unit without `de` and `en` name).
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Subscriptions`
+     *   permission is not granted.
+     *
+     * @example
+     * ```typescript
+     * const wallboxes = await energyApp.useAppliances().list();
+     * await subscriptions.setUnits('smart-charging', wallboxes.map(wallbox => ({
+     *     type: EnyoSubscriptionUnitTypeEnum.Appliance,
+     *     referenceId: wallbox.id
+     * })));
+     * ```
+     */
+    setUnits(planKey: string, units: EnyoSubscriptionUnit[]): Promise<void>;
+
+    /**
+     * Returns the units last reported with {@link setUnits} for a `per-unit`
+     * plan. These are the units the app manages, whether paid for or not.
+     *
+     * @param planKey - The key of a `per-unit` plan declared in the package definition.
+     * @returns Promise that resolves to the reported units; an empty list when
+     *   none were reported yet
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Subscriptions`
+     *   permission is not granted.
+     */
+    getUnits(planKey: string): Promise<EnyoSubscriptionUnit[]>;
+
+    /**
      * Registers a listener that is called whenever a subscription of this app
      * on this device is created or changes — a purchase, a renewal, a
-     * cancellation, a failed payment, or the end of a trial, grace or paid
-     * period.
+     * cancellation, a failed payment, units paid for or removed, or the end of
+     * a trial, grace or paid period.
      *
      * The listener is not called for the state that exists when it is
      * registered. Read that with {@link getSubscriptions} on boot.

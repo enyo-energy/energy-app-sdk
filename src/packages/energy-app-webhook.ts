@@ -1,4 +1,4 @@
-import {EnyoWebhookEvent} from "../types/enyo-webhook.js";
+import {EnyoWebhookEvent, EnyoWebhookListenOptions} from "../types/enyo-webhook.js";
 
 /**
  * Interface for receiving webhooks from third-party services.
@@ -56,11 +56,33 @@ export interface EnergyAppWebhook {
      * is at least once and the order of calls is not guaranteed; deduplicate
      * with {@link EnyoWebhookEvent.webhookRequestId}.
      *
+     * By default the listener receives calls from the public sources only.
+     * To also receive a hidden source, pass its access token in
+     * `options.secretKeys`. The tokens apply to this listener only; other
+     * listeners of the app do not receive the hidden source unless they pass
+     * the token themselves.
+     *
      * @typeParam T - Shape of the JSON body the app expects.
      * @param listener - Callback invoked for every forwarded webhook call. May be async.
+     * @param options - Optional settings, such as access tokens for hidden sources.
      * @returns The listener ID, to be passed to {@link removeListener}
+     *
+     * @example
+     * ```typescript
+     * const token = await energyApp.useSecretManager().getSecret<string>('vendor-webhook-token', encryptionKey);
+     * webhook.listenForWebhook<VendorEvent>(async (event) => {
+     *     if (event.source === 'vendor-cloud') {
+     *         await handleVendorEvent(event.body);
+     *     }
+     * }, {
+     *     secretKeys: [{source: 'vendor-cloud', token}]
+     * });
+     * ```
      */
-    listenForWebhook<T = unknown>(listener: (event: EnyoWebhookEvent<T>) => void | Promise<void>): string;
+    listenForWebhook<T = unknown>(
+        listener: (event: EnyoWebhookEvent<T>) => void | Promise<void>,
+        options?: EnyoWebhookListenOptions
+    ): string;
 
     /**
      * Removes a listener previously registered with {@link listenForWebhook}.

@@ -1,5 +1,12 @@
+import type {EnergyAppPackageSubscriptionPlan} from '../../energy-app-package-definition.js';
 import type {EnergyAppSubscriptions} from '../../packages/energy-app-subscriptions.js';
-import type {EnyoSubscription, EnyoSubscriptionChangeListener} from '../../types/enyo-subscription.js';
+import {
+    EnyoSubscription,
+    EnyoSubscriptionChangeListener,
+    EnyoSubscriptionPricingModelEnum,
+    EnyoSubscriptionUnit
+} from '../../types/enyo-subscription.js';
+import {validateSubscriptionUnits} from './subscription-plan-validators.js';
 
 /**
  * In-memory implementation of {@link EnergyAppSubscriptions} for tests and
@@ -8,7 +15,8 @@ import type {EnyoSubscription, EnyoSubscriptionChangeListener} from '../../types
  * It holds the subscriptions in memory and lets a test play the part of enyo:
  * {@link upsertSubscription} simulates a purchase, renewal, cancellation,
  * failed payment or expiry and notifies the registered listeners exactly like
- * the host would.
+ * the host would. Units reported with {@link setUnits} are kept per plan and
+ * can be read back with {@link getUnits}.
  *
  * @example
  * ```typescript
@@ -20,6 +28,7 @@ import type {EnyoSubscription, EnyoSubscriptionChangeListener} from '../../types
  *     planKey: 'premium',
  *     status: EnyoSubscriptionStatusEnum.Active,
  *     paymentInterval: EnyoSubscriptionPaymentIntervalEnum.Yearly,
+ *     pricingModel: EnyoSubscriptionPricingModelEnum.PerPackage,
  *     price: {amountWithoutTax: 41.18, currency: EnyoCurrencyEnum.EUR},
  *     startedAtIso: '2026-01-01T00:00:00Z',
  *     currentPeriodStartIso: '2026-01-01T00:00:00Z',
@@ -31,16 +40,56 @@ import type {EnyoSubscription, EnyoSubscriptionChangeListener} from '../../types
 export class InMemorySubscriptions implements EnergyAppSubscriptions {
     private readonly subscriptions = new Map<string, EnyoSubscription>();
     private readonly listeners = new Map<string, EnyoSubscriptionChangeListener>();
+    private readonly unitsByPlan = new Map<string, EnyoSubscriptionUnit[]>();
     private nextListenerId = 1;
 
     /**
      * @param initialSubscriptions - Subscriptions that exist before the app
      *   starts. They do not trigger listeners.
+     * @param plans - Optional plans of the package. When given, {@link setUnits}
+     *   rejects plan keys that are not declared as `per-unit`, like the host
+     *   does. When omitted, every plan key is accepted.
      */
-    constructor(initialSubscriptions: EnyoSubscription[] = []) {
+    constructor(
+        initialSubscriptions: EnyoSubscription[] = [],
+        private readonly plans?: EnergyAppPackageSubscriptionPlan[],
+    ) {
         for (const subscription of initialSubscriptions) {
-            this.subscriptions.set(subscription.subscriptionId, {...subscription});
+            this.subscriptions.set(subscription.subscriptionId, structuredClone(subscription));
         }
+    }
+
+    /**
+     * Stores the units reported for a `per-unit` plan, replacing earlier ones.
+     *
+     * @param planKey - The key of the plan.
+     * @param units - Every unit the app currently manages for the plan.
+     * @returns Promise that resolves once the units are stored
+     * @throws {Error} If the units are invalid, or `plans` were given and
+     *   `planKey` is not a `per-unit` plan among them.
+     */
+    async setUnits(planKey: string, units: EnyoSubscriptionUnit[]): Promise<void> {
+        if (this.plans) {
+            const plan = this.plans.find(candidate => candidate.planKey === planKey);
+            if (plan?.pricingModel !== EnyoSubscriptionPricingModelEnum.PerUnit) {
+                throw new Error(`Plan "${planKey}" is not a per-unit plan of this package.`);
+            }
+        }
+
+        const {ok, errors} = validateSubscriptionUnits(units);
+        if (!ok) throw new Error(`Invalid subscription units:\n- ${errors.join('\n- ')}`);
+
+        this.unitsByPlan.set(planKey, units.map(unit => structuredClone(unit)));
+    }
+
+    /**
+     * Returns copies of the units last reported for a plan.
+     *
+     * @param planKey - The key of the plan.
+     * @returns Promise that resolves to the units; an empty list when none were reported
+     */
+    async getUnits(planKey: string): Promise<EnyoSubscriptionUnit[]> {
+        return (this.unitsByPlan.get(planKey) ?? []).map(unit => structuredClone(unit));
     }
 
     /**
@@ -49,7 +98,7 @@ export class InMemorySubscriptions implements EnergyAppSubscriptions {
      * @returns Promise that resolves to the subscriptions in insertion order
      */
     async getSubscriptions(): Promise<EnyoSubscription[]> {
-        return [...this.subscriptions.values()].map(subscription => ({...subscription}));
+        return [...this.subscriptions.values()].map(subscription => structuredClone(subscription));
     }
 
     /**
@@ -91,10 +140,10 @@ export class InMemorySubscriptions implements EnergyAppSubscriptions {
      */
     async upsertSubscription(subscription: EnyoSubscription): Promise<void> {
         const previousStatus = this.subscriptions.get(subscription.subscriptionId)?.status;
-        this.subscriptions.set(subscription.subscriptionId, {...subscription});
+        this.subscriptions.set(subscription.subscriptionId, structuredClone(subscription));
 
         for (const listener of [...this.listeners.values()]) {
-            await listener({subscription: {...subscription}, previousStatus});
+            await listener({subscription: structuredClone(subscription), previousStatus});
         }
     }
 }

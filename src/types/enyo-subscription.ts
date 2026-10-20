@@ -1,4 +1,5 @@
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
+import type {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
 
 /**
  * How often a plan is paid for.
@@ -33,6 +34,9 @@ export type EnyoSubscriptionPaymentInterval = `${EnyoSubscriptionPaymentInterval
  * It is never converted between intervals: a yearly plan for 41.18 € is
  * charged 41.18 € once per year.
  *
+ * For a `per-unit` plan the amount is the total per unit: 3 units of a
+ * yearly plan for 10 € are charged 30 € per year.
+ *
  * The amount is **net**: enyo adds the VAT that applies to the customer at
  * checkout and on the invoice.
  */
@@ -46,6 +50,109 @@ export interface EnyoSubscriptionPrice {
     /** Currency of {@link amountWithoutTax}. */
     currency: EnyoCurrencyEnum;
 }
+
+/**
+ * What a plan's price is charged for.
+ */
+export enum EnyoSubscriptionPricingModelEnum {
+    /**
+     * One price for the package on this device, however many appliances,
+     * vehicles or other units the app manages.
+     */
+    PerPackage = 'per-package',
+    /**
+     * The price is charged once per unit the app reports with
+     * {@link EnergyAppSubscriptions.setUnits} — for example per wallbox or per
+     * vehicle. The quantity comes from the energy app, not from the customer.
+     */
+    PerUnit = 'per-unit',
+}
+
+/**
+ * String union of every pricing model, derived from
+ * {@link EnyoSubscriptionPricingModelEnum} so both spellings stay
+ * interchangeable.
+ */
+export type EnyoSubscriptionPricingModel = `${EnyoSubscriptionPricingModelEnum}`;
+
+/**
+ * What kind of thing a unit of a `per-unit` plan is.
+ */
+export enum EnyoSubscriptionUnitTypeEnum {
+    /** An appliance; the reference is its appliance id. */
+    Appliance = 'appliance',
+    /** A vehicle; the reference is its vehicle id. */
+    Vehicle = 'vehicle',
+    /** Anything else; the reference is chosen by the app and the unit carries a translated name. */
+    Custom = 'custom',
+}
+
+/**
+ * String union of every unit type, derived from
+ * {@link EnyoSubscriptionUnitTypeEnum} so both spellings stay interchangeable.
+ */
+export type EnyoSubscriptionUnitType = `${EnyoSubscriptionUnitTypeEnum}`;
+
+/**
+ * A translated name of a custom unit, shown on the offer screen, the invoice
+ * and the customer's subscription overview.
+ *
+ * Mirrors the translation shape used elsewhere in the SDK (see
+ * {@link EnyoPackageConfigurationTranslatedValue}).
+ */
+export interface EnyoSubscriptionUnitTranslation {
+    /** Language code this translation applies to. */
+    language: EnergyAppPackageLanguage;
+    /** The displayed name in the given language. */
+    value: string;
+}
+
+/**
+ * Fields every subscription unit has.
+ */
+interface EnyoSubscriptionUnitBase {
+    /**
+     * The id this unit is paid under. Together with `type` it identifies the
+     * unit, so it must stay the same for as long as the unit exists — a new
+     * reference reads as a new unit that has not been paid for.
+     */
+    referenceId: string;
+}
+
+/**
+ * An appliance billed as one unit. Its name is taken from the appliance.
+ */
+export interface EnyoSubscriptionApplianceUnit extends EnyoSubscriptionUnitBase {
+    /** Discriminator identifying this as an appliance unit. */
+    type: 'appliance';
+}
+
+/**
+ * A vehicle billed as one unit. Its name is taken from the vehicle.
+ */
+export interface EnyoSubscriptionVehicleUnit extends EnyoSubscriptionUnitBase {
+    /** Discriminator identifying this as a vehicle unit. */
+    type: 'vehicle';
+}
+
+/**
+ * Any other thing billed as one unit, for example a room or a charging card.
+ */
+export interface EnyoSubscriptionCustomUnit extends EnyoSubscriptionUnitBase {
+    /** Discriminator identifying this as a custom unit. */
+    type: 'custom';
+    /** Translated name of the unit. Entries for `de` and `en` are required. */
+    name: EnyoSubscriptionUnitTranslation[];
+}
+
+/**
+ * One unit of a `per-unit` plan: an appliance, a vehicle, or a custom unit
+ * with a translated name. Identified by `type` plus `referenceId`.
+ */
+export type EnyoSubscriptionUnit =
+    | EnyoSubscriptionApplianceUnit
+    | EnyoSubscriptionVehicleUnit
+    | EnyoSubscriptionCustomUnit;
 
 /**
  * Lifecycle status of a subscription.
@@ -103,13 +210,21 @@ export interface EnyoSubscription {
     status: EnyoSubscriptionStatus;
     /** How often the subscription is paid for. */
     paymentInterval: EnyoSubscriptionPaymentInterval;
+    /** Whether the price is charged for the package or per unit. */
+    pricingModel: EnyoSubscriptionPricingModel;
     /**
      * The net total the customer pays per payment interval (per month, per
-     * year, or once for `one-time`). Fixed at purchase:
-     * a later price change in the package definition only applies to new
-     * purchases.
+     * year, or once for `one-time`) — for a `per-unit` subscription, per unit.
+     * Fixed at purchase: a later price change in the package definition only
+     * applies to new purchases.
      */
     price: EnyoSubscriptionPrice;
+    /**
+     * The units this subscription is paid for. Only set for `per-unit`
+     * subscriptions. A unit the app reported but that is missing here has not
+     * been paid for yet; use `isUnitActive()` to check a single unit.
+     */
+    units?: EnyoSubscriptionUnit[];
     /** ISO 8601 timestamp of when the subscription was bought. */
     startedAtIso: string;
     /**
@@ -145,7 +260,7 @@ export interface EnyoSubscriptionChangeEvent {
     /**
      * The status before this change. `undefined` when the subscription is new.
      * Equal to the current status for changes that keep the status, such as a
-     * renewal of an active subscription.
+     * renewal of an active subscription or units added to it.
      */
     previousStatus?: EnyoSubscriptionStatus;
 }
