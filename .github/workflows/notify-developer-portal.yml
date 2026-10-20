@@ -1,0 +1,62 @@
+# Tells the developer portal that a new SDK version exists, so its
+# `sdk-reference` workflow bumps the dependency, regenerates the SDK reference
+# under `/docs/sdk` and opens a pull request — instead of somebody remembering to.
+#
+# Fires on every push to `main`, but only dispatches when that push changed the
+# `version` in package.json: a push without a release has nothing to hand over.
+# The npm publish is still a manual step; the portal waits up to 30 minutes for
+# the version to appear on the registry.
+#
+# Needs the secret DEVELOPER_PORTAL_DISPATCH_TOKEN: a fine-grained token with
+# access to enyo-energy/developer-portal and "Contents: Read and write" — that is
+# what GitHub requires for a repository_dispatch. The built-in GITHUB_TOKEN
+# cannot reach another repository.
+name: notify-developer-portal
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect a version change
+        id: version
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          now=$(node -p "require('./package.json').version")
+          before=''
+          # An all-zero `before` is a newly created branch — treat it as a release.
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            before=$(git show "$BEFORE:package.json" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).version)}catch{console.log('')}})")
+          fi
+          echo "version=$now" >> "$GITHUB_OUTPUT"
+          if [ "$now" = "$before" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::version unchanged ($now) — no dispatch"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::version ${before:-?} -> $now"
+          fi
+
+      - name: Dispatch sdk-released to the developer portal
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DEVELOPER_PORTAL_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh api repos/enyo-energy/developer-portal/dispatches \
+            -f event_type=sdk-released \
+            -f "client_payload[version]=$VERSION" \
+            -f "client_payload[sha]=$GITHUB_SHA"
