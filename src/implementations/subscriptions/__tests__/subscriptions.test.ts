@@ -1,11 +1,14 @@
 import {describe, expect, it} from 'vitest';
 import type {EnergyAppPackageSubscriptionPlan} from '../../../energy-app-package-definition.js';
 import {EnergyAppPermissionTypeEnum} from '../../../energy-app-permission.type.js';
+import {EnergyAppStateEnum} from '../../../enyo-energy-app-sdk.js';
 import {EnyoCurrencyEnum} from '../../../types/enyo-currency.js';
 import {
     EnyoSubscription,
     EnyoSubscriptionPaymentIntervalEnum,
     EnyoSubscriptionChangeEvent,
+    EnyoSubscriptionCustomUnit,
+    EnyoSubscriptionModeEnum,
     EnyoSubscriptionPricingModelEnum,
     EnyoSubscriptionStatusEnum,
     EnyoSubscriptionUnit,
@@ -20,9 +23,11 @@ import {
 } from '../define-subscription-plan.js';
 import {InMemorySubscriptions} from '../in-memory-subscriptions.js';
 import {
+    assertEnergyAppStateMatchesSubscriptionMode,
     assertValidPackageSubscriptionPlans,
     PackageSubscriptionPlansValidationError,
     validatePackageSubscriptionPlans,
+    validateSubscriptionBilling,
     validateSubscriptionUnits,
 } from '../subscription-plan-validators.js';
 
@@ -43,8 +48,13 @@ const plan = (over: Partial<EnergyAppPackageSubscriptionPlan> = {}): EnergyAppPa
 const validate = (...plans: EnergyAppPackageSubscriptionPlan[]) =>
     validatePackageSubscriptionPlans({
         subscriptionPlans: plans,
+        subscriptionMode: EnyoSubscriptionModeEnum.Optional,
         permissions: [EnergyAppPermissionTypeEnum.Subscriptions],
     });
+
+/** A per-unit plan, overridable field by field. */
+const perUnitPlan = (over: Partial<EnergyAppPackageSubscriptionPlan> = {}): EnergyAppPackageSubscriptionPlan =>
+    plan({planKey: 'smart-charging', pricingModel: EnyoSubscriptionPricingModelEnum.PerUnit, ...over});
 
 /** A subscription, overridable field by field. */
 const subscription = (over: Partial<EnyoSubscription> = {}): EnyoSubscription => ({
@@ -75,13 +85,18 @@ describe('validatePackageSubscriptionPlans', () => {
     it('accepts the permission declared as an object', () => {
         const result = validatePackageSubscriptionPlans({
             subscriptionPlans: [plan()],
+            subscriptionMode: 'required',
             permissions: [{permission: 'Subscriptions', internalComment: 'Reads bought plans'}],
         });
         expect(result.ok).toBe(true);
     });
 
     it('flags a missing Subscriptions permission', () => {
-        const result = validatePackageSubscriptionPlans({subscriptionPlans: [plan()], permissions: ['Storage']});
+        const result = validatePackageSubscriptionPlans({
+            subscriptionPlans: [plan()],
+            subscriptionMode: 'optional',
+            permissions: ['Storage'],
+        });
         expect(result.errors.some((e) => e.includes('`Subscriptions` permission'))).toBe(true);
     });
 
@@ -184,7 +199,7 @@ describe('validatePackageSubscriptionPlans pricingModel', () => {
 /** A wallbox appliance unit. */
 const wallbox: EnyoSubscriptionUnit = {type: EnyoSubscriptionUnitTypeEnum.Appliance, referenceId: 'wallbox-1'};
 /** A custom unit with a German and English name. */
-const room: EnyoSubscriptionUnit = {
+const room: EnyoSubscriptionCustomUnit = {
     type: EnyoSubscriptionUnitTypeEnum.Custom,
     referenceId: 'living-room',
     name: [{language: 'en', value: 'Living room'}, {language: 'de', value: 'Wohnzimmer'}],
@@ -228,10 +243,63 @@ describe('validateSubscriptionUnits', () => {
     });
 });
 
+describe('validatePackageSubscriptionPlans subscriptionMode', () => {
+    it('requires subscriptionMode when plans are declared', () => {
+        const result = validatePackageSubscriptionPlans({subscriptionPlans: [plan()], permissions: ['Subscriptions']});
+        expect(result.errors.some((e) => e.includes('subscriptionMode is required'))).toBe(true);
+    });
+
+    it('flags an unknown subscriptionMode', () => {
+        const result = validatePackageSubscriptionPlans({
+            subscriptionPlans: [plan()],
+            subscriptionMode: 'sometimes' as never,
+            permissions: ['Subscriptions'],
+        });
+        expect(result.errors.some((e) => e.includes('subscriptionMode "sometimes"'))).toBe(true);
+    });
+
+    it('warns about a subscriptionMode without plans', () => {
+        const result = validatePackageSubscriptionPlans({subscriptionMode: 'required', permissions: []});
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('has no effect'))).toBe(true);
+    });
+});
+
+describe('validateSubscriptionBilling', () => {
+    const plans = [perUnitPlan(), plan()];
+
+    it('accepts no mark and a mark naming a per-unit plan', () => {
+        expect(validateSubscriptionBilling(undefined, plans)).toEqual([]);
+        expect(validateSubscriptionBilling({billed: true, planKey: 'smart-charging'}, plans)).toEqual([]);
+        expect(validateSubscriptionBilling({billed: false, planKey: 'smart-charging'}, plans)).toEqual([]);
+    });
+
+    it('flags an unknown plan, a per-package plan and a missing billed flag', () => {
+        expect(validateSubscriptionBilling({billed: true, planKey: 'other'}, plans)[0]).toContain('not a plan of this package');
+        expect(validateSubscriptionBilling({billed: true, planKey: 'premium'}, plans)[0]).toContain('not a per-unit plan');
+        expect(validateSubscriptionBilling({planKey: 'smart-charging'} as never, plans)[0]).toContain('billed');
+        expect(validateSubscriptionBilling({billed: true, planKey: 'smart-charging'}, undefined)).toHaveLength(1);
+    });
+});
+
+describe('assertEnergyAppStateMatchesSubscriptionMode', () => {
+    it('rejects subscription-required only for optional packages', () => {
+        expect(() => assertEnergyAppStateMatchesSubscriptionMode('optional', EnergyAppStateEnum.SubscriptionRequired))
+            .toThrow('must not report');
+        expect(() => assertEnergyAppStateMatchesSubscriptionMode('optional', EnergyAppStateEnum.Running)).not.toThrow();
+        expect(() => assertEnergyAppStateMatchesSubscriptionMode('required', 'subscription-required')).not.toThrow();
+        expect(() => assertEnergyAppStateMatchesSubscriptionMode(undefined, 'subscription-required')).not.toThrow();
+    });
+});
+
 describe('assertValidPackageSubscriptionPlans', () => {
     it('returns the plans when they are valid', () => {
         const plans = [plan()];
-        expect(assertValidPackageSubscriptionPlans({subscriptionPlans: plans, permissions: ['Subscriptions']})).toBe(plans);
+        expect(assertValidPackageSubscriptionPlans({
+            subscriptionPlans: plans,
+            subscriptionMode: 'optional',
+            permissions: ['Subscriptions'],
+        })).toBe(plans);
     });
 
     it('throws with every error when they are invalid', () => {
@@ -285,24 +353,42 @@ describe('isUnitActive', () => {
 });
 
 describe('InMemorySubscriptions', () => {
-    it('stores and returns reported units per plan', async () => {
+    it('stores reported custom units and billed units per plan', async () => {
+        const kitchen: EnyoSubscriptionCustomUnit = {...room, referenceId: 'kitchen'};
         const subscriptions = new InMemorySubscriptions();
-        await subscriptions.setUnits('smart-charging', [wallbox, room]);
-        await subscriptions.setUnits('smart-charging', [wallbox]);
+        await subscriptions.setUnits('smart-charging', [room, kitchen]);
+        await subscriptions.setUnits('smart-charging', [room]);
+        await subscriptions.setBilledUnits('smart-charging', [wallbox]);
 
-        expect(await subscriptions.getUnits('smart-charging')).toEqual([wallbox]);
+        expect(await subscriptions.getUnits('smart-charging')).toEqual([wallbox, room]);
         expect(await subscriptions.getUnits('other')).toEqual([]);
     });
 
     it('rejects invalid units and plans that are not per-unit', async () => {
-        const subscriptions = new InMemorySubscriptions([], [
-            plan({planKey: 'smart-charging', pricingModel: EnyoSubscriptionPricingModelEnum.PerUnit}),
-            plan(),
-        ]);
+        const subscriptions = new InMemorySubscriptions([], [perUnitPlan(), plan()]);
 
-        await expect(subscriptions.setUnits('smart-charging', [wallbox, wallbox])).rejects.toThrow('duplicate unit');
-        await expect(subscriptions.setUnits('premium', [wallbox])).rejects.toThrow('not a per-unit plan');
-        await expect(subscriptions.setUnits('smart-charging', [wallbox])).resolves.toBeUndefined();
+        await expect(subscriptions.setUnits('smart-charging', [room, room])).rejects.toThrow('duplicate unit');
+        await expect(subscriptions.setUnits('premium', [room])).rejects.toThrow('not a per-unit plan');
+        await expect(subscriptions.setBilledUnits('premium', [wallbox])).rejects.toThrow('not a per-unit plan');
+        await expect(subscriptions.setUnits('smart-charging', [room])).resolves.toBeUndefined();
+    });
+
+    it('keeps appliance and vehicle units out of setUnits and custom units out of setBilledUnits', async () => {
+        const subscriptions = new InMemorySubscriptions();
+
+        await expect(subscriptions.setUnits('smart-charging', [wallbox as never]))
+            .rejects.toThrow('mark appliances and vehicles with `billing`');
+        await expect(subscriptions.setBilledUnits('smart-charging', [room]))
+            .rejects.toThrow('only takes appliance and vehicle units');
+    });
+
+    it('checks reported app states against the subscription mode', () => {
+        const optional = new InMemorySubscriptions([], undefined, EnyoSubscriptionModeEnum.Optional);
+        expect(() => optional.assertEnergyAppState(EnergyAppStateEnum.SubscriptionRequired)).toThrow();
+        expect(() => optional.assertEnergyAppState(EnergyAppStateEnum.Running)).not.toThrow();
+
+        const required = new InMemorySubscriptions([], undefined, EnyoSubscriptionModeEnum.Required);
+        expect(() => required.assertEnergyAppState(EnergyAppStateEnum.SubscriptionRequired)).not.toThrow();
     });
 
     it('returns the initial subscriptions without notifying listeners', async () => {

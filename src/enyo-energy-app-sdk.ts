@@ -61,7 +61,13 @@ export enum EnergyAppStateEnum {
     ConfigurationRequired = 'configuration-required',
     /** This state tells the user that an internet connection of the system is required which blocks the energy app from running*/
     InternetConnectionRequired = 'internet-connection-required',
-    /** This state tells the user that a subscription plan is required which blocks the energy app from running. The host shows the plans declared in the package definition. */
+    /**
+     * This state tells the user that a subscription plan is required which blocks the energy app from running. The host shows the plans declared in the package definition.
+     *
+     * Only for packages with `subscriptionMode: 'required'`: such an app reports this state while it has no active
+     * plan, and returns to `Running` once one is active. An app with `subscriptionMode: 'optional'` must never report
+     * it — it keeps its free base running and gates only the paid features with `isPlanActive()` / `isUnitActive()`.
+     */
     SubscriptionRequired = 'subscription-required',
 }
 

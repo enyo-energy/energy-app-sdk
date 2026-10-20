@@ -1,6 +1,7 @@
 import {
     EnyoLinkedVehicle,
     EnyoVehicle,
+    EnyoVehiclePackageUnpairReasonEnum,
     EnyoVehiclePairHandler,
     EnyoVehicleSoc,
     EnyoVehicleUnpairHandler
@@ -48,8 +49,8 @@ import {
  * ```typescript
  * const vehicles = energyApp.useVehicle();
  *
- * vehicles.onPairVehicle(async (vehicle, selection) => {
- *     const cars = await tesla.listVehicles();
+ * vehicles.onPairVehicle(async (vehicle, selection, context) => {
+ *     const cars = await vendorCloud.listVehicles(context?.vendorName);
  *     if (cars.length > 1 && !selection) {
  *         return {
  *             paired: false,
@@ -156,10 +157,18 @@ export interface EnergyAppVehicle {
      * Unlinking a `vehicleId` this package holds no link for is a no-op rather
      * than an error, so a cleanup path can call it without checking first.
      *
+     * Pass a `reason` whenever one is known. When the car is a billed unit of
+     * a subscription plan, the host bills the removal by it:
+     * {@link EnyoVehiclePackageUnpairReasonEnum.VehicleNotFound} drops the
+     * quantity at the next renewal, every other reason — and no reason —
+     * leaves billing unchanged.
+     *
      * Requires the `VehicleIntegration` permission.
      *
      * @param vehicleId - The {@link EnyoVehicle.id} to unlink.
+     * @param reason - Why the package unlinks the car. Defaults to
+     *   {@link EnyoVehiclePackageUnpairReasonEnum.Unknown}.
      * @returns Resolves once the link is gone.
      */
-    unpairVehicle: (vehicleId: string) => Promise<void>;
+    unpairVehicle: (vehicleId: string, reason?: EnyoVehiclePackageUnpairReasonEnum) => Promise<void>;
 }

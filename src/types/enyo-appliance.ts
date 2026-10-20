@@ -1,4 +1,5 @@
 import {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
+import type {EnyoSubscriptionBilling} from "./enyo-subscription.js";
 import type {EnyoAutomationActionTypeEnum} from "./enyo-automation.js";
 import {EnyoChargerApplianceMetadata} from "./enyo-charger-appliance.js";
 import {EnyoHeatpumpApplianceMetadata} from "./enyo-heatpump-appliance.js";
@@ -361,6 +362,15 @@ export interface EnyoAppliance {
      * selected.
      */
     supportedAutomationActions?: EnyoAutomationActionTypeEnum[];
+    /**
+     * Marks the appliance as a billed unit of one of the package's `per-unit`
+     * subscription plans. Set by the owning app when it {@link save}s the
+     * appliance; the host then keeps the plan's units in step with the
+     * appliance — added on save, removed when the appliance is removed or the
+     * mark is cleared. Omit for appliances that are not billed, such as a
+     * meter an app creates alongside the heat pump it bills.
+     */
+    billing?: EnyoSubscriptionBilling;
     /** Optional Metadata of the Appliance */
     metadata?: EnyoApplianceMetadata;
     /** Topology Information of the appliance */

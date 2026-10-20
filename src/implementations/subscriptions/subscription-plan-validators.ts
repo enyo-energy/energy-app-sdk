@@ -17,10 +17,14 @@ import type {
     EnergyAppPackageSubscriptionPlan
 } from '../../energy-app-package-definition.js';
 import {EnergyAppPermissionTypeEnum} from '../../energy-app-permission.type.js';
+import {EnergyAppStateEnum} from '../../enyo-energy-app-sdk.js';
 import {EnyoCurrencyEnum} from '../../types/enyo-currency.js';
 import {
+    EnyoSubscriptionMode,
+    EnyoSubscriptionModeEnum,
     EnyoSubscriptionPaymentIntervalEnum,
     EnyoSubscriptionPricingModelEnum,
+    EnyoSubscriptionBilling,
     EnyoSubscriptionUnit,
     EnyoSubscriptionUnitTypeEnum
 } from '../../types/enyo-subscription.js';
@@ -55,10 +59,12 @@ export interface PackageSubscriptionPlansValidationResult {
 }
 
 /**
- * The parts of a package definition the validator reads: the plans, and the
- * permissions to check that the app can read its subscriptions.
+ * The parts of a package definition the validator reads: the plans, the
+ * subscription mode, and the permissions to check that the app can read its
+ * subscriptions.
  */
-export type PackageSubscriptionPlansSource = Pick<EnergyAppPackageDefinition, 'subscriptionPlans' | 'permissions'>;
+export type PackageSubscriptionPlansSource =
+    Pick<EnergyAppPackageDefinition, 'subscriptionPlans' | 'permissions' | 'subscriptionMode'>;
 
 /** A plan key — the same kebab-case slug shape used for public file names. */
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -148,12 +154,15 @@ function validateStoreEntries(plan: EnergyAppPackageSubscriptionPlan, at: string
  * Structural validation of a package's subscription plans: plan keys are
  * unique kebab-case slugs, the payment interval is known, every plan has at
  * least one positive net price per currency with at most two decimal places,
- * trial days are a positive whole number and not used on a one-time plan, every plan is translated into
- * German and English, and the package requests the `Subscriptions`
- * permission so the app can read what was bought.
+ * trial days are a positive whole number and not used on a one-time plan,
+ * every plan is translated into German and English, `subscriptionMode` is
+ * declared, and the package requests the `Subscriptions` permission so the
+ * app can read what was bought.
  *
- * @param definition - The package definition, or just its `subscriptionPlans`
- *   and `permissions`. A package without plans is trivially valid.
+ * A `subscriptionMode` without plans is a warning: it has no effect.
+ *
+ * @param definition - The package definition, or just its `subscriptionPlans`,
+ *   `subscriptionMode` and `permissions`. A package without plans is valid.
  * @returns The {@link PackageSubscriptionPlansValidationResult}.
  *
  * @example
@@ -168,12 +177,26 @@ export function validatePackageSubscriptionPlans(
     const errors: string[] = [];
     const warnings: string[] = [];
     const plans = definition.subscriptionPlans;
+    const mode = definition.subscriptionMode;
 
-    if (!plans?.length) return {ok: true, errors, warnings};
+    if (!plans?.length) {
+        if (mode !== undefined) {
+            warnings.push('subscriptionMode is set but no subscriptionPlans are declared — it has no effect.');
+        }
+        return {ok: true, errors, warnings};
+    }
 
-    const hasPermission = (definition.permissions ?? []).some(entry =>
-        (typeof entry === 'string' ? entry : entry.permission) === EnergyAppPermissionTypeEnum.Subscriptions);
-    if (!hasPermission) {
+    if (mode === undefined) {
+        errors.push(
+            'subscriptionMode is required when subscriptionPlans are declared — declare whether the app works without a plan (`required` or `optional`).',
+        );
+    } else if (!Object.values(EnyoSubscriptionModeEnum).includes(mode as EnyoSubscriptionModeEnum)) {
+        errors.push(`subscriptionMode "${mode}" is not supported — use \`required\` or \`optional\`.`);
+    }
+
+    const permissions = new Set((definition.permissions ?? []).map(entry =>
+        typeof entry === 'string' ? entry : entry.permission));
+    if (!permissions.has(EnergyAppPermissionTypeEnum.Subscriptions)) {
         errors.push(
             'subscriptionPlans are declared but the `Subscriptions` permission is missing — the app could not read what was bought.',
         );
@@ -217,6 +240,66 @@ export function validatePackageSubscriptionPlans(
     }
 
     return {ok: errors.length === 0, errors, warnings};
+}
+
+/**
+ * Checks a billing mark on an appliance or a vehicle
+ * ({@link EnyoAppliance.billing}, {@link EnyoVehiclePairResult.billing})
+ * against the package's plans: the mark must name a plan of the package whose
+ * `pricingModel` is `per-unit`. The host applies the same rule and rejects the
+ * save or the pairing otherwise.
+ *
+ * @param billing - The billing mark, or `undefined` when the appliance or
+ *   vehicle is not billed (always valid).
+ * @param plans - The package's {@link EnergyAppPackageDefinition.subscriptionPlans}.
+ * @returns The blocking errors; empty when the mark is valid.
+ *
+ * @example
+ * ```typescript
+ * const errors = validateSubscriptionBilling(appliance.billing, packageDef.subscriptionPlans);
+ * expect(errors).toEqual([]);
+ * ```
+ */
+export function validateSubscriptionBilling(
+    billing: EnyoSubscriptionBilling | undefined,
+    plans: EnergyAppPackageSubscriptionPlan[] | undefined,
+): string[] {
+    if (billing === undefined) return [];
+    if (typeof billing.billed !== 'boolean') return ['billing.billed must be true or false.'];
+
+    const plan = plans?.find(candidate => candidate.planKey === billing.planKey);
+    if (!plan) return [`billing.planKey "${billing.planKey}" is not a plan of this package.`];
+    if (plan.pricingModel !== EnyoSubscriptionPricingModelEnum.PerUnit) {
+        return [`billing.planKey "${billing.planKey}" is not a per-unit plan.`];
+    }
+    return [];
+}
+
+/**
+ * Checks an app state against the package's subscription mode: an app with
+ * `subscriptionMode: 'optional'` keeps its free base running and must never
+ * report {@link EnergyAppStateEnum.SubscriptionRequired}.
+ *
+ * @param subscriptionMode - The package's
+ *   {@link EnergyAppPackageDefinition.subscriptionMode}, or `undefined` for a
+ *   free package.
+ * @param state - The state the app is about to report.
+ * @throws {Error} When an `optional` package reports `subscription-required`.
+ *
+ * @example
+ * ```typescript
+ * assertEnergyAppStateMatchesSubscriptionMode(packageDef.subscriptionMode, EnergyAppStateEnum.Running);
+ * ```
+ */
+export function assertEnergyAppStateMatchesSubscriptionMode(
+    subscriptionMode: EnyoSubscriptionMode | undefined,
+    state: EnergyAppStateEnum | `${EnergyAppStateEnum}`,
+): void {
+    if (subscriptionMode === EnyoSubscriptionModeEnum.Optional && state === EnergyAppStateEnum.SubscriptionRequired) {
+        throw new Error(
+            'A package with subscriptionMode "optional" must not report "subscription-required" — keep the free base running and gate only the paid features.',
+        );
+    }
 }
 
 /**

@@ -51,6 +51,10 @@ export interface EnergyAppAppliance {
     listenForApplianceUpdated: (listener: (appliance: EnyoAppliance) => void | Promise<void>) => string;
     /**
      * Listen for appliance removals.
+     *
+     * When the appliance was marked as billed ({@link EnyoAppliance.billing}),
+     * the host has already removed it from the plan's units — only stop
+     * serving it.
      * @param listener - Callback invoked with the ID of the removed appliance
      * @returns A unique listener ID that can be used to remove the listener
      */

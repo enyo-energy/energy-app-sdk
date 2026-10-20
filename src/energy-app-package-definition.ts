@@ -4,6 +4,7 @@ import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
 import type {
+    EnyoSubscriptionMode,
     EnyoSubscriptionPaymentInterval,
     EnyoSubscriptionPrice,
     EnyoSubscriptionPricingModel
@@ -359,8 +360,10 @@ export interface EnergyAppPackageSubscriptionPlan {
     /**
      * Whether the price is charged once for the package on the device
      * (`per-package`, the default) or once per unit (`per-unit`). For
-     * `per-unit` the app reports the units — appliances, vehicles or custom
-     * units — at runtime with {@link EnergyAppSubscriptions.setUnits}.
+     * `per-unit` the units are the appliances and vehicles the app marks as
+     * billed under this plan ({@link EnyoAppliance.billing},
+     * {@link EnyoVehiclePairResult.billing}), plus the custom units it reports
+     * with {@link EnergyAppSubscriptions.setUnits}.
      */
     pricingModel?: EnyoSubscriptionPricingModel;
     /**
@@ -922,6 +925,20 @@ export interface EnergyAppPackageDefinition {
      * Omit for packages that are free.
      */
     subscriptionPlans?: EnergyAppPackageSubscriptionPlan[];
+    /**
+     * Whether the app needs one of its plans to work at all.
+     *
+     * - `'required'`: without an active plan the app does nothing useful and
+     *   reports {@link EnergyAppStateEnum.SubscriptionRequired}. enyo offers no
+     *   free option, and cancelling warns that the app stops working.
+     * - `'optional'`: the app has a free base; its plans add features. The app
+     *   never reports `SubscriptionRequired`. enyo offers a free base option
+     *   and lets the customer downgrade to it.
+     *
+     * Required as soon as {@link subscriptionPlans} is set; omit it for free
+     * packages.
+     */
+    subscriptionMode?: EnyoSubscriptionMode;
 }
 
 /**

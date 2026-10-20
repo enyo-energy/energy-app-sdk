@@ -1,3 +1,4 @@
+import type {EnyoSubscriptionBilling} from "./enyo-subscription.js";
 import type {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from "./enyo-data-bus-value.js";
 
 /**
@@ -361,6 +362,52 @@ export interface EnyoVehiclePairSelection {
 }
 
 /**
+ * What the user chose in the enyo app before the host asked the package to
+ * pair a vehicle.
+ *
+ * Passed as the third argument to {@link EnyoVehiclePairHandler}, on the first
+ * and on the second call alike.
+ */
+export interface EnyoVehiclePairContext {
+    /**
+     * The vendor (brand) the user selected for the car, e.g. `"BMW"`. Matches
+     * the `vendorName` of one of the package's declared `compatibility`
+     * vendors. A package serving several brands through one cloud — an
+     * aggregator — uses it to pick the right vendor API or account.
+     *
+     * Absent when the user selected no vendor, for example with a package that
+     * declares only one.
+     */
+    vendorName?: string;
+}
+
+/**
+ * Why a package unlinks a car itself through `useVehicle().unpairVehicle()`.
+ *
+ * Unlike {@link EnyoVehicleUnpairReasonEnum}, which says why the host tore a
+ * link down, this one comes from the package. The host uses it to decide how
+ * the removal is billed when the car is a billed unit of a subscription plan
+ * ({@link EnyoVehiclePairResult.billing}).
+ */
+export enum EnyoVehiclePackageUnpairReasonEnum {
+    /**
+     * The car is no longer in the vendor account — sold, or removed by the
+     * user in the vendor's own app. Use it only when the vendor API confirms
+     * the car is gone, not after a failed request. Billed like a car the user
+     * unlinked: the quantity drops at the next renewal.
+     */
+    VehicleNotFound = 'vehicle-not-found',
+    /**
+     * The vendor revoked the package's access to the car — the user withdrew
+     * consent, or the vendor's own subscription for remote access lapsed.
+     * Usually granted again, so billing stays unchanged.
+     */
+    AccessRevoked = 'access-revoked',
+    /** No more specific reason applies. Billing stays unchanged. */
+    Unknown = 'unknown',
+}
+
+/**
  * What a car-integration app answers when asked to pair a vehicle.
  *
  * The attribute fields are not decoration: the vendor's cloud usually knows the
@@ -402,6 +449,14 @@ export interface EnyoVehiclePairResult {
     /** How many phases the car charges over — typically `1` or `3`. */
     numberOfPhases?: number;
     /**
+     * Marks the paired car as a billed unit of one of the package's
+     * `per-unit` subscription plans. The host keeps the plan's units in step
+     * with the link — added on pairing, removed on unpairing — and reports the
+     * unit with the enyo vehicle id. Ignored when {@link paired} is `false`.
+     * Omit when the car is not billed.
+     */
+    billing?: EnyoSubscriptionBilling;
+    /**
      * Why pairing did not happen. Set whenever {@link paired} is `false`;
      * omitting it leaves the enyo app with nothing to tell the user.
      */
@@ -433,6 +488,10 @@ export interface EnyoLinkedVehicle {
     vin?: string;
     /** What the package called the car at pairing time. */
     displayName?: string;
+    /** The billing mark set at pairing ({@link EnyoVehiclePairResult.billing}), if any. */
+    billing?: EnyoSubscriptionBilling;
+    /** The vendor the user selected at pairing ({@link EnyoVehiclePairContext.vendorName}), if any. */
+    vendorName?: string;
     /** When the link was established, ISO 8601. */
     pairedAtIso: string;
 }
@@ -467,6 +526,9 @@ export enum EnyoVehicleUnpairReasonEnum {
  * find the matching car in the vendor account it is signed into and answer with
  * an {@link EnyoVehiclePairResult}.
  *
+ * `context` carries what the user chose before pairing — the vendor they
+ * selected — and is passed on both calls.
+ *
  * On the first call `selection` is absent. A handler whose account holds
  * several cars answers
  * {@link EnyoVehiclePairFailureReasonEnum.SelectionRequired} with
@@ -479,7 +541,8 @@ export enum EnyoVehicleUnpairReasonEnum {
  */
 export type EnyoVehiclePairHandler = (
     vehicle: EnyoVehicle,
-    selection?: EnyoVehiclePairSelection
+    selection?: EnyoVehiclePairSelection,
+    context?: EnyoVehiclePairContext
 ) => Promise<EnyoVehiclePairResult>;
 
 /**
@@ -494,6 +557,10 @@ export type EnyoVehiclePairHandler = (
  * **Not called for an unpair the package itself requested** through
  * `useVehicle().unpairVehicle()` — the package already knows, and calling back
  * into it would invite a loop.
+ *
+ * When the link was marked as billed ({@link EnyoLinkedVehicle.billing}), the
+ * host has already removed the vehicle from the plan's units — only stop
+ * serving it.
  */
 export type EnyoVehicleUnpairHandler = (
     link: EnyoLinkedVehicle,

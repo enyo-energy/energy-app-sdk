@@ -244,7 +244,8 @@ energyApp.onShutdown(async () => {
 - `running`: App is functioning normally
 - `configuration-required`: App needs user configuration
 - `internet-connection-required`: App needs internet connectivity
-- `subscription-required`: App needs a subscription plan; the host shows the plans declared in the package definition
+- `subscription-required`: App needs a subscription plan; the host shows the plans declared in the package definition.
+  Only for packages with `subscriptionMode: 'required'` — see [Subscription mode](#subscription-mode)
 
 ### Package Definition
 
@@ -886,8 +887,10 @@ vehicles and it does not go looking for them — the flow starts with the user:
 ```typescript
 const vehicles = energyApp.useVehicle();
 
-vehicles.onPairVehicle(async (vehicle, selection) => {
-    const cars = await vendorApi.listVehicles();
+vehicles.onPairVehicle(async (vehicle, selection, context) => {
+    // The brand the user selected in the enyo app, from the package's `compatibility`
+    // vendors — lets an aggregator package pick the right vendor API.
+    const cars = await vendorApi.listVehicles(context?.vendorName);
 
     // Several cars in the account and nothing to tell them apart —
     // hand the choice back to the user instead of guessing
@@ -929,6 +932,9 @@ vehicles.onPairVehicle(async (vehicle, selection) => {
 
 The handler is called a second time with `selection` after the user picks from
 `candidates`. A package serving single-car accounts can ignore the parameter.
+`context.vendorName` is the vendor the user selected and is passed on both calls; it is
+also kept on the link (`EnyoLinkedVehicle.vendorName`) so the package can read it back
+after a restart.
 
 Once paired, the package has the `vehicleId` it was always missing and publishes
 readings the normal way — `VehicleSocUpdateV1`, keyed by that id. Nothing about
@@ -947,9 +953,11 @@ vehicles.onUnpairVehicle(async (link, reason) => {
     }
 });
 
-// The car vanished from the vendor account, or the subscription lapsed.
+// The car vanished from the vendor account, or the vendor revoked access.
 // Does NOT call onUnpairVehicle — the package already knows.
-await vehicles.unpairVehicle(vehicleId);
+// The reason decides how a billed car is billed — see "What a removal means for billing".
+await vehicles.unpairVehicle(vehicleId, EnyoVehiclePackageUnpairReasonEnum.VehicleNotFound);
+await vehicles.unpairVehicle(otherVehicleId, EnyoVehiclePackageUnpairReasonEnum.AccessRevoked);
 
 // Handlers only fire on change, so pick the links back up after a restart
 for (const link of await vehicles.listLinkedVehicles()) {
@@ -2322,7 +2330,8 @@ subscriptions.listenForSubscriptionChanges(async ({ subscription, previousStatus
 - **Per-unit plans:** report the units with `setUnits(planKey, units)` and check each one with
   `isUnitActive(subscriptions, planKey, unit)` — see [Per-unit plans](#per-unit-plans).
 - **Point the user to an offer** with a notification target `{ type: 'subscription-offer', planKey: 'premium' }`,
-  or set `EnergyAppStateEnum.SubscriptionRequired` when the whole app needs a plan.
+  or set `EnergyAppStateEnum.SubscriptionRequired` when the whole app needs a plan (`subscriptionMode: 'required'`
+  only).
 
 For tests, `InMemorySubscriptions` implements the same interface; `upsertSubscription()` plays the part of enyo
 and notifies the listeners.
@@ -2949,6 +2958,7 @@ import {
     defineSubscriptionPlan,
     EnergyAppPermissionTypeEnum,
     EnyoCurrencyEnum,
+    EnyoSubscriptionModeEnum,
     EnyoSubscriptionPaymentIntervalEnum,
     validatePackageSubscriptionPlans
 } from '@enyo-energy/energy-app-sdk';
@@ -2956,6 +2966,7 @@ import {
 const packageDef = defineEnergyAppPackage({
     // ...
     permissions: [EnergyAppPermissionTypeEnum.Subscriptions /* , ... */],
+    subscriptionMode: EnyoSubscriptionModeEnum.Required,   // see "Subscription mode" below
     subscriptionPlans: [
         defineSubscriptionPlan({
             planKey: 'premium',
@@ -2985,7 +2996,7 @@ const packageDef = defineEnergyAppPackage({
 |---|---|
 | `planKey` | Kebab-case slug, unique in the package. Subscriptions refer to the plan by it — treat it as an API. |
 | `paymentInterval` | `one-time`, `monthly` or `yearly`. One-time purchases never renew and stay `active` until refunded. |
-| `pricingModel` | `per-package` (default): one price for the package on the device. `per-unit`: the price is charged per unit the app reports — see [Per-unit plans](#per-unit-plans). |
+| `pricingModel` | `per-package` (default): one price for the package on the device. `per-unit`: the price is charged per unit — see [Per-unit plans](#per-unit-plans). |
 | `prices` | One net price per currency. `amountWithoutTax` is always the **total for one interval** — per month, per year, or the single one-time amount; per unit for `per-unit` plans — in the currency (not cent), at most two decimals; enyo adds VAT. |
 | `trialDays` | Optional free trial in days. Not allowed for `one-time` plans. |
 | `storeEntry` | Title, short description and optional benefits; `de` and `en` are required. |
@@ -2994,50 +3005,112 @@ const packageDef = defineEnergyAppPackage({
 What a plan unlocks is decided by the app: check `isPlanActive(subscriptions, planKey)` at runtime (see
 [`useSubscriptions()`](#usesubscriptions-energyappsubscriptions)).
 
+### Subscription mode
+
+As soon as a package declares `subscriptionPlans`, it must also declare `subscriptionMode`: does the app work
+without a plan at all? enyo uses it to decide what to offer — a free base option next to the plans, a downgrade to
+that base in the subscription management, and the wording of the cancellation and uninstall texts.
+
+| `subscriptionMode` | Meaning | App state without an active plan |
+|---|---|---|
+| `required` | The app sells its whole function; without a plan it does nothing useful. enyo offers no free option, and cancelling warns that the app stops working. | Reports `SubscriptionRequired`, and `Running` again once a plan is active. |
+| `optional` | The app has a free base; its plans add features. enyo offers the free base and lets the customer downgrade to it. | Keeps running. **Never** reports `SubscriptionRequired` — gate only the paid features with `isPlanActive()` / `isUnitActive()`. |
+
+```typescript
+defineEnergyAppPackage({
+    // ...
+    subscriptionMode: EnyoSubscriptionModeEnum.Optional,
+    subscriptionPlans: [/* price optimisation on top of free basic control */]
+});
+```
+
+In tests, `InMemorySubscriptions` takes the mode as its third constructor argument; `assertEnergyAppState(state)`
+throws when an `optional` package reports `SubscriptionRequired`. The same check is available as
+`assertEnergyAppStateMatchesSubscriptionMode(mode, state)`.
+
 ### Per-unit plans
 
-For a `per-unit` plan the price is charged once per unit, and the **quantity comes from the energy app**. The app
-reports every unit it currently manages with `setUnits()` — on boot and whenever a unit is added or removed. Each
-unit has a `type` and a `referenceId` it is paid under:
+For a `per-unit` plan the price is charged once per unit — 3 units on a yearly plan for 10 € cost 30 € per year
+(net). Each unit has a `type` and a `referenceId` it is paid under:
 
 | `type` | `referenceId` | Name shown to the customer |
 |---|---|---|
-| `appliance` | the appliance id | taken from the appliance |
-| `vehicle` | the vehicle id | taken from the vehicle |
+| `appliance` | the enyo appliance id (`EnyoAppliance.id`) | taken from the appliance |
+| `vehicle` | the enyo vehicle id (`EnyoVehicle.id` = `EnyoLinkedVehicle.vehicleId`), **never** the vendor's `externalId` | taken from the vehicle |
 | `custom` | an id chosen by the app | `name`, translated; `de` and `en` are required |
+
+Where a unit comes from depends on its type:
+
+| Unit | How the app declares it | Who keeps the list |
+|---|---|---|
+| Appliance | `billing: { billed: true, planKey }` on the appliance it saves | The host — added on save, removed when the appliance is removed or the mark is cleared |
+| Vehicle | `billing: { billed: true, planKey }` in the pair result | The host — added on pairing, removed on unpairing |
+| Custom | `setUnits(planKey, units)` — on boot and whenever one is added or removed | The app |
+
+Marking appliances and vehicles where they are created keeps the billed units in step with what is actually
+connected, gives every unit the right enyo id, and lets the host bill a removal by its reason (see below). An app
+that also creates appliances it doesn't bill, such as a meter next to the heat pump, simply leaves `billing` off
+them. `onUnpairVehicle` and `listenForApplianceRemoved` then only need to stop serving the unit. `billing.planKey`
+must name a `per-unit` plan of the package; check it with `validateSubscriptionBilling(billing, plans)`.
+
+```typescript
+// A heat pump billed per unit; the meter the app also creates is not billed.
+await energyApp.useAppliances().save({
+    ...heatpump,
+    billing: { billed: true, planKey: 'heatpump-optimisation' }
+});
+await energyApp.useAppliances().save(meter);
+
+// A car billed per unit, marked in the pair result.
+vehicles.onPairVehicle(async (vehicle, selection) => ({
+    paired: true,
+    externalId: car.id,
+    billing: { billed: true, planKey: 'smartcar-vehicle' }
+}));
+```
+
+For anything else, report custom units yourself. `setUnits()` only takes custom units:
 
 ```typescript
 import { EnyoSubscriptionUnitTypeEnum, isUnitActive } from '@enyo-energy/energy-app-sdk';
 
 const subscriptions = energyApp.useSubscriptions();
-const wallboxes = await energyApp.useAppliances().list();
 
-// 3 wallboxes on a yearly plan for 10 € → 30 € per year (net).
-await subscriptions.setUnits('smart-charging', wallboxes.map(wallbox => ({
-    type: EnyoSubscriptionUnitTypeEnum.Appliance,
-    referenceId: wallbox.id
-})));
-
-// A custom unit carries its own translated name.
 await subscriptions.setUnits('room-climate', [{
     type: EnyoSubscriptionUnitTypeEnum.Custom,
     referenceId: 'living-room',
     name: [{ language: 'en', value: 'Living room' }, { language: 'de', value: 'Wohnzimmer' }]
 }]);
 
-// Only the units the customer paid for are active.
+// Whatever the type: only the units the customer paid for are active.
 const all = await subscriptions.getSubscriptions();
-for (const wallbox of wallboxes) {
-    setSmartCharging(wallbox, isUnitActive(all, 'smart-charging', { type: 'appliance', referenceId: wallbox.id }));
-}
+setClimateControl('living-room', isUnitActive(all, 'room-climate', { type: 'custom', referenceId: 'living-room' }));
+setOptimisation(heatpump, isUnitActive(all, 'heatpump-optimisation', { type: 'appliance', referenceId: heatpump.id }));
 ```
 
+`getUnits(planKey)` returns all units of a plan — the billed appliances and vehicles plus the custom units.
+
 - **Reporting a unit does not pay for it.** Paid units are listed in `subscription.units`; when the customer pays
-  for more units, the change listeners are called.
+  for more units, or a unit is removed, the change listeners are called.
 - **Keep `referenceId` stable.** `type` plus `referenceId` identify the unit; a new reference is a new, unpaid unit.
-- **enyo decides how a changed quantity is charged**, e.g. pro rata for the rest of the period.
 - `validateSubscriptionUnits(units)` applies the host's rules up front: known type, non-empty reference, no unit
   twice, `de` and `en` names on custom units.
+
+#### What a removal means for billing
+
+The host decides, never the app's unit list:
+
+| Unit leaves because… | Billing |
+|---|---|
+| The customer confirmed „Trennen" / „Entfernen" in the enyo app (vehicle unpaired by the user, appliance removed by the user) | The quantity drops at the next renewal; removing the last unit cancels the subscription at the end of the period. Nothing is refunded. |
+| The vehicle was deleted in the enyo app | Same as above. |
+| The app unlinked the car because it is gone from the vendor account — `unpairVehicle(id, EnyoVehiclePackageUnpairReasonEnum.VehicleNotFound)` | Same as above. |
+| Vendor sign-out | **Unchanged.** Usually followed by signing in again; a paid unit stays paid. |
+| The app unlinked the car because the vendor revoked access — `unpairVehicle(id, EnyoVehiclePackageUnpairReasonEnum.AccessRevoked)` | Unchanged — access is usually granted again. |
+| Unknown reason, `unpairVehicle()` without a reason, or the app's own report shrinks | Unchanged. |
+
+A shorter unit list alone — an expired token, an app bug — never cancels anything a customer paid for. Every
+change takes effect at the next renewal or at the end of the paid period; there are no pro-rata refunds.
 
 **A price change needs a new release** and only applies to new purchases — running subscriptions keep the price
 they were bought at.
@@ -3049,10 +3122,10 @@ const { ok, errors } = validatePackageSubscriptionPlans(packageDef);
 // or: assertValidPackageSubscriptionPlans(packageDef) — throws PackageSubscriptionPlansValidationError
 ```
 
-It checks that plan keys are unique slugs, that the payment interval and pricing model are known, that every plan has at least one
-positive price per currency with at most two decimals, that `trialDays` is a positive whole number and not set on a
-`one-time` plan, that `de` and
-`en` store entries exist, and that the package requests the `Subscriptions` permission.
+It checks that `subscriptionMode` is declared, that plan keys are unique slugs, that the payment interval and
+pricing model are known, that every plan has at least one positive price per currency with at most two decimals,
+that `trialDays` is a positive whole number and not set on a `one-time` plan, that `de` and `en` store entries
+exist, and that the package requests the `Subscriptions` permission. A `subscriptionMode` without plans is a warning.
 
 ## Printable Manual Setup Guide
 

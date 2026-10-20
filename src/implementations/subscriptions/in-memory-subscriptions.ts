@@ -1,12 +1,19 @@
 import type {EnergyAppPackageSubscriptionPlan} from '../../energy-app-package-definition.js';
+import type {EnergyAppStateEnum} from '../../enyo-energy-app-sdk.js';
 import type {EnergyAppSubscriptions} from '../../packages/energy-app-subscriptions.js';
 import {
     EnyoSubscription,
     EnyoSubscriptionChangeListener,
+    EnyoSubscriptionMode,
     EnyoSubscriptionPricingModelEnum,
-    EnyoSubscriptionUnit
+    EnyoSubscriptionCustomUnit,
+    EnyoSubscriptionUnit,
+    EnyoSubscriptionUnitTypeEnum
 } from '../../types/enyo-subscription.js';
-import {validateSubscriptionUnits} from './subscription-plan-validators.js';
+import {
+    assertEnergyAppStateMatchesSubscriptionMode,
+    validateSubscriptionUnits
+} from './subscription-plan-validators.js';
 
 /**
  * In-memory implementation of {@link EnergyAppSubscriptions} for tests and
@@ -16,7 +23,9 @@ import {validateSubscriptionUnits} from './subscription-plan-validators.js';
  * {@link upsertSubscription} simulates a purchase, renewal, cancellation,
  * failed payment or expiry and notifies the registered listeners exactly like
  * the host would. Units reported with {@link setUnits} are kept per plan and
- * can be read back with {@link getUnits}.
+ * can be read back with {@link getUnits}, together with the billed appliance
+ * and vehicle units a test sets with {@link setBilledUnits}. {@link assertEnergyAppState}
+ * checks a reported app state against the package's subscription mode.
  *
  * @example
  * ```typescript
@@ -40,19 +49,24 @@ import {validateSubscriptionUnits} from './subscription-plan-validators.js';
 export class InMemorySubscriptions implements EnergyAppSubscriptions {
     private readonly subscriptions = new Map<string, EnyoSubscription>();
     private readonly listeners = new Map<string, EnyoSubscriptionChangeListener>();
-    private readonly unitsByPlan = new Map<string, EnyoSubscriptionUnit[]>();
+    private readonly customUnitsByPlan = new Map<string, EnyoSubscriptionCustomUnit[]>();
+    private readonly billedUnitsByPlan = new Map<string, EnyoSubscriptionUnit[]>();
     private nextListenerId = 1;
 
     /**
      * @param initialSubscriptions - Subscriptions that exist before the app
      *   starts. They do not trigger listeners.
-     * @param plans - Optional plans of the package. When given, {@link setUnits}
-     *   rejects plan keys that are not declared as `per-unit`, like the host
-     *   does. When omitted, every plan key is accepted.
+     * @param plans - Optional plans of the package. When given,
+     *   {@link setUnits} and {@link setBilledUnits} reject plan keys that are
+     *   not declared as `per-unit`, like the host does. When omitted, every
+     *   plan key is accepted.
+     * @param subscriptionMode - Optional subscription mode of the package,
+     *   checked by {@link assertEnergyAppState}.
      */
     constructor(
         initialSubscriptions: EnyoSubscription[] = [],
         private readonly plans?: EnergyAppPackageSubscriptionPlan[],
+        private readonly subscriptionMode?: EnyoSubscriptionMode,
     ) {
         for (const subscription of initialSubscriptions) {
             this.subscriptions.set(subscription.subscriptionId, structuredClone(subscription));
@@ -60,36 +74,77 @@ export class InMemorySubscriptions implements EnergyAppSubscriptions {
     }
 
     /**
-     * Stores the units reported for a `per-unit` plan, replacing earlier ones.
+     * Stores the custom units reported for a `per-unit` plan, replacing
+     * earlier ones.
      *
      * @param planKey - The key of the plan.
-     * @param units - Every unit the app currently manages for the plan.
+     * @param units - Every custom unit the app currently manages for the plan.
      * @returns Promise that resolves once the units are stored
-     * @throws {Error} If the units are invalid, or `plans` were given and
-     *   `planKey` is not a `per-unit` plan among them.
+     * @throws {Error} If a unit is not a custom unit or invalid, or `plans`
+     *   were given and `planKey` is not a `per-unit` plan among them.
      */
-    async setUnits(planKey: string, units: EnyoSubscriptionUnit[]): Promise<void> {
-        if (this.plans) {
-            const plan = this.plans.find(candidate => candidate.planKey === planKey);
-            if (plan?.pricingModel !== EnyoSubscriptionPricingModelEnum.PerUnit) {
-                throw new Error(`Plan "${planKey}" is not a per-unit plan of this package.`);
-            }
+    async setUnits(planKey: string, units: EnyoSubscriptionCustomUnit[]): Promise<void> {
+        this.assertPerUnitPlan(planKey);
+
+        const notCustom = units.filter(unit => unit.type !== EnyoSubscriptionUnitTypeEnum.Custom);
+        if (notCustom.length > 0) {
+            throw new Error(
+                `setUnits() only takes custom units — mark appliances and vehicles with \`billing\` instead (got ${notCustom.map(unit => unit.type).join(', ')}).`,
+            );
         }
+        this.assertValidUnits(units);
 
-        const {ok, errors} = validateSubscriptionUnits(units);
-        if (!ok) throw new Error(`Invalid subscription units:\n- ${errors.join('\n- ')}`);
-
-        this.unitsByPlan.set(planKey, units.map(unit => structuredClone(unit)));
+        this.customUnitsByPlan.set(planKey, units.map(unit => structuredClone(unit)));
     }
 
     /**
-     * Returns copies of the units last reported for a plan.
+     * Test helper: sets the appliance and vehicle units the host keeps for a
+     * plan from their billing marks, replacing earlier ones — as if the app
+     * had saved those appliances or paired those vehicles with
+     * `billing: {billed: true, planKey}`.
+     *
+     * @param planKey - The key of the plan.
+     * @param units - The billed appliance and vehicle units.
+     * @returns Promise that resolves once the units are stored
+     * @throws {Error} If a unit is a custom unit or invalid, or `plans` were
+     *   given and `planKey` is not a `per-unit` plan among them.
+     */
+    async setBilledUnits(planKey: string, units: EnyoSubscriptionUnit[]): Promise<void> {
+        this.assertPerUnitPlan(planKey);
+
+        if (units.some(unit => unit.type === EnyoSubscriptionUnitTypeEnum.Custom)) {
+            throw new Error('setBilledUnits() only takes appliance and vehicle units — report custom units with setUnits().');
+        }
+        this.assertValidUnits(units);
+
+        this.billedUnitsByPlan.set(planKey, units.map(unit => structuredClone(unit)));
+    }
+
+    /**
+     * Test helper: checks an app state against the subscription mode given to
+     * the constructor. Call it wherever the app under test reports its state.
+     *
+     * @param state - The state the app reports.
+     * @throws {Error} When the package's subscription mode is `optional` and
+     *   the state is `subscription-required`.
+     */
+    assertEnergyAppState(state: EnergyAppStateEnum | `${EnergyAppStateEnum}`): void {
+        assertEnergyAppStateMatchesSubscriptionMode(this.subscriptionMode, state);
+    }
+
+    /**
+     * Returns copies of the current units of a plan: the billed appliances and
+     * vehicles set with {@link setBilledUnits}, followed by the custom units
+     * reported with {@link setUnits}.
      *
      * @param planKey - The key of the plan.
      * @returns Promise that resolves to the units; an empty list when none were reported
      */
     async getUnits(planKey: string): Promise<EnyoSubscriptionUnit[]> {
-        return (this.unitsByPlan.get(planKey) ?? []).map(unit => structuredClone(unit));
+        return [
+            ...(this.billedUnitsByPlan.get(planKey) ?? []),
+            ...(this.customUnitsByPlan.get(planKey) ?? []),
+        ].map(unit => structuredClone(unit));
     }
 
     /**
@@ -145,5 +200,29 @@ export class InMemorySubscriptions implements EnergyAppSubscriptions {
         for (const listener of [...this.listeners.values()]) {
             await listener({subscription: structuredClone(subscription), previousStatus});
         }
+    }
+
+    /**
+     * Throws when `plans` were given and `planKey` is not a `per-unit` plan
+     * among them.
+     *
+     * @param planKey - The key of the plan.
+     */
+    private assertPerUnitPlan(planKey: string): void {
+        if (!this.plans) return;
+        const plan = this.plans.find(candidate => candidate.planKey === planKey);
+        if (plan?.pricingModel !== EnyoSubscriptionPricingModelEnum.PerUnit) {
+            throw new Error(`Plan "${planKey}" is not a per-unit plan of this package.`);
+        }
+    }
+
+    /**
+     * Throws when the units break the host's rules.
+     *
+     * @param units - The units to check.
+     */
+    private assertValidUnits(units: EnyoSubscriptionUnit[]): void {
+        const {ok, errors} = validateSubscriptionUnits(units);
+        if (!ok) throw new Error(`Invalid subscription units:\n- ${errors.join('\n- ')}`);
     }
 }

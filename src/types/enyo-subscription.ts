@@ -76,12 +76,78 @@ export enum EnyoSubscriptionPricingModelEnum {
 export type EnyoSubscriptionPricingModel = `${EnyoSubscriptionPricingModelEnum}`;
 
 /**
+ * Whether an app needs one of its plans to work at all, declared in
+ * {@link EnergyAppPackageDefinition.subscriptionMode}.
+ *
+ * enyo uses it to decide what it offers: a free base option next to the
+ * plans, a downgrade to that base in the subscription management, and the
+ * wording of the cancellation and uninstall texts.
+ */
+export enum EnyoSubscriptionModeEnum {
+    /**
+     * Without an active plan the app does nothing useful and reports
+     * {@link EnergyAppStateEnum.SubscriptionRequired}. enyo offers no free
+     * option, and cancelling warns that the app stops working.
+     */
+    Required = 'required',
+    /**
+     * The app has a free base; its plans add features. The app never reports
+     * {@link EnergyAppStateEnum.SubscriptionRequired}. enyo offers the free
+     * base next to the plans and lets the customer downgrade to it.
+     */
+    Optional = 'optional',
+}
+
+/**
+ * String union of every subscription mode, derived from
+ * {@link EnyoSubscriptionModeEnum} so both spellings stay interchangeable.
+ */
+export type EnyoSubscriptionMode = `${EnyoSubscriptionModeEnum}`;
+
+/**
+ * Marks an appliance or a vehicle as a billed unit of one of the package's
+ * `per-unit` plans.
+ *
+ * Set on {@link EnyoAppliance.billing} when the app saves an appliance, and on
+ * {@link EnyoVehiclePairResult.billing} when it pairs a vehicle. The host keeps
+ * the plan's units from these marks: it adds the unit when a billed appliance
+ * is saved or a billed vehicle is paired, and removes it when the appliance is
+ * removed or the vehicle unpaired. The app does not report these units with
+ * {@link EnergyAppSubscriptions.setUnits}.
+ *
+ * Marking a unit does not pay for it; the customer still buys the plan for it.
+ *
+ * @example
+ * ```typescript
+ * await energyApp.useAppliances().save({
+ *     ...heatpump,
+ *     billing: {billed: true, planKey: 'heatpump-optimisation'}
+ * });
+ * ```
+ */
+export interface EnyoSubscriptionBilling {
+    /**
+     * Whether the appliance or vehicle is a unit of the plan. `false` keeps
+     * the mark but takes the unit out of the plan, the same as omitting
+     * {@link EnyoAppliance.billing}.
+     */
+    billed: boolean;
+    /**
+     * The key of the `per-unit` plan the unit is billed under. Must match a
+     * {@link EnergyAppPackageSubscriptionPlan.planKey} of this package whose
+     * `pricingModel` is `per-unit`; the host rejects the save or the pairing
+     * otherwise.
+     */
+    planKey: string;
+}
+
+/**
  * What kind of thing a unit of a `per-unit` plan is.
  */
 export enum EnyoSubscriptionUnitTypeEnum {
-    /** An appliance; the reference is its appliance id. */
+    /** An appliance; the reference is its appliance id. Reported by the host from {@link EnyoAppliance.billing}. */
     Appliance = 'appliance',
-    /** A vehicle; the reference is its vehicle id. */
+    /** A vehicle; the reference is its vehicle id. Reported by the host from {@link EnyoVehiclePairResult.billing}. */
     Vehicle = 'vehicle',
     /** Anything else; the reference is chosen by the app and the unit carries a translated name. */
     Custom = 'custom',
@@ -121,22 +187,42 @@ interface EnyoSubscriptionUnitBase {
 
 /**
  * An appliance billed as one unit. Its name is taken from the appliance.
+ *
+ * The host reports it for every appliance whose {@link EnyoAppliance.billing}
+ * marks it as billed under the plan; the app never reports it itself.
  */
 export interface EnyoSubscriptionApplianceUnit extends EnyoSubscriptionUnitBase {
     /** Discriminator identifying this as an appliance unit. */
     type: 'appliance';
+    /**
+     * The enyo appliance id ({@link EnyoAppliance.id}). enyo looks the
+     * appliance up by it to name the unit on the offer screen and the invoice.
+     */
+    referenceId: string;
 }
 
 /**
  * A vehicle billed as one unit. Its name is taken from the vehicle.
+ *
+ * The host reports it for every linked vehicle whose pairing marked it as
+ * billed under the plan ({@link EnyoVehiclePairResult.billing}); the app never
+ * reports it itself.
  */
 export interface EnyoSubscriptionVehicleUnit extends EnyoSubscriptionUnitBase {
     /** Discriminator identifying this as a vehicle unit. */
     type: 'vehicle';
+    /**
+     * The enyo vehicle id ({@link EnyoVehicle.id}, which is
+     * {@link EnyoLinkedVehicle.vehicleId}), never the vendor's id
+     * ({@link EnyoLinkedVehicle.externalId}). enyo looks the vehicle up by it
+     * to name the unit on the offer screen and the invoice.
+     */
+    referenceId: string;
 }
 
 /**
  * Any other thing billed as one unit, for example a room or a charging card.
+ * The app reports it with {@link EnergyAppSubscriptions.setUnits}.
  */
 export interface EnyoSubscriptionCustomUnit extends EnyoSubscriptionUnitBase {
     /** Discriminator identifying this as a custom unit. */
