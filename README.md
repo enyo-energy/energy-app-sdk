@@ -860,6 +860,8 @@ energyApp.useDataBus().sendMessage([{
     data: {
         vehicleId,
         socPercent: 62,
+        // optional: remaining range in km, when the source reports it (e.g. Smartcar)
+        rangeKm: 280,
         // omit only when the reading came straight off the wire
         measuredAtIso: new Date().toISOString(),
     },
@@ -869,6 +871,19 @@ energyApp.useDataBus().sendMessage([{
 That message is the only write path for a state of charge; it needs the
 `SendDataBusValues` permission. `getSoc()` resolves to `undefined` when nothing
 is known — an ordinary answer for a car with no SoC source, not an error.
+
+The vehicle's battery size is written the same way: publish
+`VehicleBatterySizeUpdateV1` with the usable capacity in watt-hours, and the
+host stores it on the vehicle (replacing the previous value, including one the
+user entered). It is read back as `batterySizeKwh`.
+
+```typescript
+energyApp.useDataBus().sendMessage([{
+    type: 'message',
+    message: 'VehicleBatterySizeUpdateV1',
+    data: {vehicleId, batterySizeWh: 75_000},
+}]);
+```
 
 ##### Car integrations: pairing a vehicle
 

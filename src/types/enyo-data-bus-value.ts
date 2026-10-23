@@ -1601,6 +1601,8 @@ export enum EnyoDataBusMessageEnum {
     StopAirConditioningV1 = 'StopAirConditioningV1',
     ChangeAirConditioningOptimizationModeV1 = 'ChangeAirConditioningOptimizationModeV1',
     VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
+    /** Provide or update the usable traction battery capacity of a vehicle, in Wh. */
+    VehicleBatterySizeUpdateV1 = 'VehicleBatterySizeUpdateV1',
     /** Request the current or estimated state of charge of a vehicle, by vehicle id. */
     RequestVehicleSocEstimateV1 = 'RequestVehicleSocEstimateV1',
     /** Answer to {@link RequestVehicleSocEstimateV1} — the estimate with its age and source, or why none could be given. */
@@ -5102,7 +5104,8 @@ export interface EnyoDataBusChangeAirConditioningOptimizationModeV1 extends Enyo
 }
 
 /**
- * Informational message reporting the state of charge of an electric vehicle.
+ * Informational message reporting the state of charge of an electric vehicle,
+ * optionally with its remaining driving range.
  *
  * **This message is the write path for a state of charge.** `EnergyAppVehicle`
  * is read-only by design — there is no `vehicles.update()` — so an app that can
@@ -5122,6 +5125,7 @@ export interface EnyoDataBusChangeAirConditioningOptimizationModeV1 extends Enyo
  *     data: {
  *         vehicleId,
  *         socPercent: 62,
+ *         rangeKm: 280, // optional, when the source reports it
  *         measuredAtIso: new Date().toISOString(),
  *     },
  * }]);
@@ -5137,6 +5141,15 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
         vehicleId: string;
         /** Current state of charge of the vehicle's traction battery in percent (0-100) */
         socPercent: number;
+        /**
+         * Remaining driving range in kilometres at this state of charge, as the
+         * vehicle or its cloud API estimates it — e.g. the `range` Smartcar's
+         * battery endpoint returns alongside the percentage. Convert from miles
+         * before sending, and omit it rather than deriving one from
+         * {@link socPercent}: a range depends on the car's consumption, which
+         * only the car knows.
+         */
+        rangeKm?: number;
         /** Total usable capacity of the vehicle's traction battery in kWh, if known */
         batterySizeKwh?: number;
         /**
@@ -5154,6 +5167,58 @@ export interface EnyoDataBusVehicleSocUpdateV1 extends EnyoDataBusMessage {
          * Where this reading came from. Set it when you know — a value the car
          * reported and one derived from energy delivered since plug-in are not
          * interchangeable, and the app tells the user which it is showing.
+         */
+        source?: EnyoVehicleSocSourceEnum;
+    };
+}
+
+/**
+ * Provides or updates the usable capacity of a vehicle's traction battery.
+ *
+ * **This message is the write path for a vehicle's battery size.**
+ * `EnergyAppVehicle` is read-only, so an app that knows the capacity — a
+ * manufacturer or Smartcar cloud integration, a wallbox reading it over
+ * ISO 15118 — publishes it here and the host stores it on the vehicle. It is
+ * read back as `EnyoVehicle.batterySizeKwh` (the value divided by 1000).
+ *
+ * Unlike {@link EnyoDataBusVehicleSocUpdateV1.data.batterySizeKwh}, which only
+ * travels with one reading, this updates the vehicle itself and replaces the
+ * value stored on it — including one the user entered — because it is what
+ * every charging plan for the car is sized against. Send it when the app first
+ * learns the capacity and whenever it changes (e.g. the vendor reports a
+ * degraded usable capacity); there is no need to repeat an unchanged value.
+ *
+ * Only send a value you actually read. An invented or rounded-up capacity is
+ * planned against as if it were measured, and the car is charged short.
+ *
+ * ```typescript
+ * energyApp.useDataBus().sendMessage([{
+ *     type: 'message',
+ *     message: 'VehicleBatterySizeUpdateV1',
+ *     data: {
+ *         vehicleId,
+ *         batterySizeWh: 75_000,
+ *     },
+ * }]);
+ * ```
+ *
+ * Requires the `SendDataBusValues` permission.
+ */
+export interface EnyoDataBusVehicleBatterySizeUpdateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.VehicleBatterySizeUpdateV1;
+    data: {
+        /** ID of the vehicle the battery size belongs to */
+        vehicleId: string;
+        /**
+         * Usable (net) capacity of the traction battery in watt-hours — what
+         * can actually be charged, not the gross capacity on the spec sheet.
+         * Must be greater than 0.
+         */
+        batterySizeWh: number;
+        /**
+         * Where the value came from. A manufacturer or Smartcar cloud reading
+         * is {@link EnyoVehicleSocSourceEnum.Vehicle}.
          */
         source?: EnyoVehicleSocSourceEnum;
     };

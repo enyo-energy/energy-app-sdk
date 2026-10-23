@@ -37,6 +37,13 @@ import {
  * That message is the only write path for a state of charge; publishing it
  * requires the `SendDataBusValues` permission.
  *
+ * ## Writing a battery size
+ *
+ * The same holds for the vehicle's battery size: an app that knows it publishes
+ * `EnyoDataBusVehicleBatterySizeUpdateV1` with `batterySizeWh`, and the host
+ * stores it on the vehicle, replacing the previous value. It is read back as
+ * {@link EnyoVehicle.batterySizeKwh}.
+ *
  * ## Pairing a car integration
  *
  * A package in the `vehicle` category — a manufacturer cloud integration —
