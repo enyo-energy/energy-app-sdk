@@ -3,6 +3,7 @@ import type {EnyoNetworkDevice} from "../../types/enyo-network-device.js";
 import {
     EnyoAppliance, EnyoApplianceAvailableFeaturesEnum,
     EnyoApplianceConnectionType,
+    EnyoApplianceGroup,
     EnyoApplianceMetadata,
     EnyoApplianceName,
     EnyoApplianceStateEnum,
@@ -77,6 +78,43 @@ export class ApplianceManagerDisposedError extends Error {
 }
 
 /**
+ * Thrown by the {@link ApplianceManager} group helpers when no group with the
+ * given key exists in the package.
+ */
+export class ApplianceGroupNotFoundError extends Error {
+    /** The group key that was looked up */
+    readonly key: string;
+
+    constructor(key: string) {
+        super(`No appliance group with key "${key}" exists.`);
+        this.name = 'ApplianceGroupNotFoundError';
+        this.key = key;
+    }
+}
+
+/**
+ * Configuration for creating or updating an appliance group via
+ * {@link ApplianceManager.createOrUpdateGroup}. See {@link EnyoApplianceGroup}
+ * for what a group is and how the UI shows it.
+ */
+export interface ApplianceGroupConfig {
+    /**
+     * Stable, app-defined key identifying the group within the package — e.g.
+     * the serial number of the gateway the members sit behind. A group with
+     * this key is updated in place; otherwise a new one is created.
+     */
+    key: string;
+    /** Name of the group shown in the UI, in the supported languages */
+    name: EnyoApplianceName[];
+    /**
+     * IDs of the member appliances (your package's own), in display order.
+     * Must not be empty — use {@link ApplianceManager.removeGroup} to drop a
+     * group. Appliances currently in another group are moved into this one.
+     */
+    applianceIds: string[];
+}
+
+/**
  * Configuration for creating or updating an appliance.
  */
 export interface ApplianceConfig {
@@ -114,6 +152,12 @@ export interface ApplianceConfig {
      * appliance is created or updated.
      */
     cloudPackageId?: string;
+    /**
+     * Whether the appliance is hidden. Forwarded to {@link EnyoAppliance.hidden}
+     * when the appliance is created or updated. Omit to keep the stored value on
+     * an update; pass `false` to unhide it.
+     */
+    hidden?: boolean;
 }
 
 /**
@@ -332,6 +376,7 @@ export class ApplianceManager {
             ...(appliance.cloudPackageId !== undefined && {cloudPackageId: appliance.cloudPackageId}),
             ...(appliance.availableFeatures !== undefined && {availableFeatures: appliance.availableFeatures}),
             ...(appliance.compatibilityModes !== undefined && {compatibilityModes: appliance.compatibilityModes}),
+            ...(appliance.hidden !== undefined && {hidden: appliance.hidden}),
         };
 
         let applianceData = newApplianceData;
@@ -917,6 +962,181 @@ export class ApplianceManager {
     }
 
     /**
+     * Creates the group with the given {@link ApplianceGroupConfig.key}, or
+     * updates it when it already exists. The group is shown in the UI as one
+     * collapsible entry with the summed values of its members.
+     *
+     * An appliance belongs to at most one group, so members currently listed
+     * in another group of the package are taken out of it first; a group left
+     * empty by that is removed.
+     *
+     * @param config The group's key, name and member appliance IDs
+     * @returns The ID of the saved group
+     * @throws {Error} when `config.applianceIds` is empty
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async createOrUpdateGroup(config: ApplianceGroupConfig): Promise<string> {
+        this.throwIfDisposed();
+        const applianceIds = [...new Set(config.applianceIds)];
+        if (applianceIds.length === 0) {
+            throw new Error(`Appliance group "${config.key}" needs at least one appliance; use removeGroup to drop it.`);
+        }
+
+        const groups = await this.loadGroups();
+        const existing = groups.find(g => g.key === config.key);
+
+        // Take the members out of every other group before saving, otherwise
+        // the host rejects the save for an appliance being in two groups.
+        const members = new Set(applianceIds);
+        for (const other of groups) {
+            if (other === existing || !other.applianceIds.some(id => members.has(id))) continue;
+            const remaining = other.applianceIds.filter(id => !members.has(id));
+            if (remaining.length === 0) {
+                await this.deleteGroup(other.id);
+            } else {
+                await this.persistGroup({...this.withoutId(other), applianceIds: remaining}, other.id);
+            }
+        }
+
+        return this.persistGroup({key: config.key, name: config.name, applianceIds}, existing?.id);
+    }
+
+    /**
+     * Returns all appliance groups of the package.
+     *
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async getGroups(): Promise<EnyoApplianceGroup[]> {
+        this.throwIfDisposed();
+        return this.loadGroups();
+    }
+
+    /**
+     * Returns the group with the given key, or `null` when there is none.
+     *
+     * @param key The app-defined group key
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async findGroupByKey(key: string): Promise<EnyoApplianceGroup | null> {
+        this.throwIfDisposed();
+        return (await this.loadGroups()).find(g => g.key === key) ?? null;
+    }
+
+    /**
+     * Returns the group an appliance belongs to, or `null` when it is not
+     * grouped.
+     *
+     * @param applianceId The appliance to look up
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async findGroupOfAppliance(applianceId: string): Promise<EnyoApplianceGroup | null> {
+        this.throwIfDisposed();
+        return (await this.loadGroups()).find(g => g.applianceIds.includes(applianceId)) ?? null;
+    }
+
+    /**
+     * Adds an appliance to the end of an existing group, moving it out of any
+     * other group it was in. Does nothing when it is already a member.
+     *
+     * @param key The key of the group to add the appliance to
+     * @param applianceId The appliance to add
+     * @returns The ID of the group
+     * @throws {ApplianceGroupNotFoundError} when no group has the given key
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async addApplianceToGroup(key: string, applianceId: string): Promise<string> {
+        this.throwIfDisposed();
+        const group = await this.findGroupByKey(key);
+        if (!group) {
+            throw new ApplianceGroupNotFoundError(key);
+        }
+        if (group.applianceIds.includes(applianceId)) {
+            return group.id;
+        }
+        return this.createOrUpdateGroup({
+            key,
+            name: group.name,
+            applianceIds: [...group.applianceIds, applianceId],
+        });
+    }
+
+    /**
+     * Takes an appliance out of its group, so the UI shows it individually
+     * again. A group left without members is removed.
+     *
+     * @param applianceId The appliance to take out of its group
+     * @returns `true` when the appliance was in a group, `false` otherwise
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async removeApplianceFromGroup(applianceId: string): Promise<boolean> {
+        this.throwIfDisposed();
+        const group = await this.findGroupOfAppliance(applianceId);
+        if (!group) {
+            return false;
+        }
+        const remaining = group.applianceIds.filter(id => id !== applianceId);
+        if (remaining.length === 0) {
+            await this.deleteGroup(group.id);
+        } else {
+            await this.persistGroup({...this.withoutId(group), applianceIds: remaining}, group.id);
+        }
+        return true;
+    }
+
+    /**
+     * Removes the group with the given key. Its members stay and are shown
+     * individually again.
+     *
+     * @param key The key of the group to remove
+     * @returns `true` when a group was removed, `false` when none had the key
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async removeGroup(key: string): Promise<boolean> {
+        this.throwIfDisposed();
+        const group = await this.findGroupByKey(key);
+        if (!group) {
+            return false;
+        }
+        await this.deleteGroup(group.id);
+        return true;
+    }
+
+    /**
+     * Loads the package's appliance groups from storage. `protected` so
+     * subclasses (e.g. {@link InMemoryApplianceManager}) can swap the storage
+     * the group helpers run on.
+     */
+    protected async loadGroups(): Promise<EnyoApplianceGroup[]> {
+        return this.energyApp.useAppliances().listGroups();
+    }
+
+    /**
+     * Saves an appliance group to storage.
+     *
+     * @param group The group to save
+     * @param groupId ID of the group to update, or `undefined` to create one
+     * @returns The ID of the saved group
+     */
+    protected async persistGroup(group: Omit<EnyoApplianceGroup, 'id'>, groupId: string | undefined): Promise<string> {
+        return this.energyApp.useAppliances().saveGroup(group, groupId);
+    }
+
+    /**
+     * Deletes an appliance group from storage.
+     *
+     * @param groupId ID of the group to delete
+     */
+    protected async deleteGroup(groupId: string): Promise<void> {
+        await this.energyApp.useAppliances().removeGroup(groupId);
+    }
+
+    /** Returns a copy of the group without its `id`, ready to be saved again. */
+    private withoutId(group: EnyoApplianceGroup): Omit<EnyoApplianceGroup, 'id'> {
+        const {id: _id, ...rest} = group;
+        return rest;
+    }
+
+    /**
      * Gets the current identifier strategy.
      */
     getIdentifierStrategy(): IdentifierStrategy {
@@ -997,5 +1217,6 @@ export interface PartialEnyoAppliance {
      * Optional identifier of the cloud-deployed energy app package that manages
      * this appliance. Mirrors {@link EnyoAppliance.cloudPackageId}.
      */
-    cloudPackageId?: string;
+    cloudPackageId?: string;    /** Whether the appliance is hidden. Mirrors {@link EnyoAppliance.hidden}. */
+    hidden?: boolean;
 }

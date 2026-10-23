@@ -410,4 +410,69 @@ export interface EnyoAppliance {
      * downstream consumers can correlate the appliance with its owning package.
      */
     cloudPackageId?: string;
+    /**
+     * Marks the appliance as hidden: it is kept in the system but treated as
+     * if it did not exist everywhere else.
+     *
+     * A hidden appliance:
+     * - is not shown in any UI (appliance lists, live views, reports, onboarding
+     *   summaries, notifications);
+     * - is not used for energy management — it is neither controlled nor
+     *   counted in energy flows, forecasts, savings or health evaluation;
+     * - has its data bus values, timeseries and events ignored by the host
+     *   and by other packages;
+     * - is excluded from `useAppliances().listAll()` and from appliance
+     *   events delivered to other packages.
+     *
+     * The owning package still sees it through
+     * `useAppliances().list()` and `getById()`,
+     * so it can keep recognising the device on rediscovery instead of creating
+     * it again, and unhide it later by saving it with `hidden: false`.
+     *
+     * Use it for appliances the package has to keep track of but that must not
+     * surface — e.g. a duplicate entity a device exposes alongside the real one,
+     * or a sub-device the user chose to ignore. Differs from
+     * {@link EnyoApplianceStatusEnum.Deactivated}, which keeps the appliance
+     * visible and only takes it out of energy management. Omitted means visible.
+     */
+    hidden?: boolean;
+}
+/**
+ * A named group of appliances that the app UI shows as one collapsible entry.
+ *
+ * Grouping is purely visual. The UI shows the group under its {@link name}
+ * with the summed values its members share (power, energy, …) and a
+ * collapse/expand toggle that reveals the individual members. The members stay
+ * ordinary appliances: their data is counted exactly as without the group,
+ * commands still target each member, and the group itself is never an
+ * appliance — so nothing is counted twice.
+ *
+ * Groups are defined by the energy app that owns the member appliances, and
+ * every user of the site sees the same groups. Use it when an app brings many
+ * appliances of one installation — e.g. dozens of micro-inverters — that would
+ * otherwise flood the appliance list.
+ *
+ * Rules enforced by the host:
+ * - every member must be an appliance of the package saving the group;
+ * - an appliance belongs to at most one group;
+ * - an appliance that is removed or marked {@link EnyoAppliance.hidden} drops
+ *   out of its group, and a group left without members is removed.
+ *
+ * Members may be of different {@link EnyoApplianceTypeEnum types}; the UI then
+ * sums only the values all members share and shows the rest per member.
+ */
+export interface EnyoApplianceGroup {
+    /** Unique identifier of the group, assigned by the host on first save */
+    id: string;
+    /**
+     * Stable, app-defined key of the group, unique within the package — e.g.
+     * the serial number of the gateway the members sit behind. Lets the app
+     * find its group again after a restart instead of creating a second one.
+     * Recommended; the `ApplianceManager` group helpers require it.
+     */
+    key?: string;
+    /** Name of the group shown in the UI, in the supported languages */
+    name: EnyoApplianceName[];
+    /** IDs of the member appliances, in the order the UI lists them when expanded */
+    applianceIds: string[];
 }

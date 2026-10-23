@@ -3,6 +3,7 @@ import type {EnyoNetworkDevice} from "../../types/enyo-network-device.js";
 import {
     EnyoAppliance,
     EnyoApplianceConnectionType,
+    EnyoApplianceGroup,
     EnyoApplianceMetadata,
     EnyoApplianceStateEnum,
     EnyoApplianceTypeEnum
@@ -20,6 +21,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
     private memoryStore: Map<string, EnyoAppliance> = new Map();
     private nextId: number = 1;
     private networkDevicesStore: Map<string, EnyoNetworkDevice[]> = new Map();
+    private groupStore: Map<string, EnyoApplianceGroup> = new Map();
 
     /**
      * Creates a new DemoApplianceManager instance.
@@ -91,6 +93,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
             ...(appliance.cloudPackageId !== undefined && {cloudPackageId: appliance.cloudPackageId}),
             ...(appliance.availableFeatures !== undefined && {availableFeatures: appliance.availableFeatures}),
             ...(appliance.compatibilityModes !== undefined && {compatibilityModes: appliance.compatibilityModes}),
+            ...(appliance.hidden !== undefined && {hidden: appliance.hidden}),
         };
 
         // On update, merge onto the stored appliance so type-specific metadata and
@@ -255,6 +258,17 @@ export class InMemoryApplianceManager extends ApplianceManager {
         if (this.memoryStore.has(applianceId)) {
             this.memoryStore.delete(applianceId);
             this.networkDevicesStore.delete(applianceId);
+            // Mirror the host: a removed appliance drops out of its group,
+            // and a group left without members is removed.
+            for (const group of [...this.groupStore.values()]) {
+                if (!group.applianceIds.includes(applianceId)) continue;
+                const remaining = group.applianceIds.filter(id => id !== applianceId);
+                if (remaining.length === 0) {
+                    this.groupStore.delete(group.id);
+                } else {
+                    this.groupStore.set(group.id, {...group, applianceIds: remaining});
+                }
+            }
 
             // Clean up cache (from parent class)
             this.clearCache();
@@ -348,11 +362,40 @@ export class InMemoryApplianceManager extends ApplianceManager {
     }
 
     /**
+     * Loads the appliance groups from memory.
+     * @returns Copies of all stored groups
+     */
+    protected async loadGroups(): Promise<EnyoApplianceGroup[]> {
+        return Array.from(this.groupStore.values(), g => structuredClone(g));
+    }
+
+    /**
+     * Saves an appliance group in memory.
+     * @param group The group to save
+     * @param groupId ID of the group to update, or `undefined` to create one
+     * @returns The ID of the saved group
+     */
+    protected async persistGroup(group: Omit<EnyoApplianceGroup, 'id'>, groupId: string | undefined): Promise<string> {
+        const id = groupId ?? randomUUID();
+        this.groupStore.set(id, {...structuredClone(group), id});
+        return id;
+    }
+
+    /**
+     * Deletes an appliance group from memory.
+     * @param groupId ID of the group to delete
+     */
+    protected async deleteGroup(groupId: string): Promise<void> {
+        this.groupStore.delete(groupId);
+    }
+
+    /**
      * Clears all data from memory (for testing purposes).
      */
     clearAllData(): void {
         this.memoryStore.clear();
         this.networkDevicesStore.clear();
+        this.groupStore.clear();
         this.clearCache();
         this.nextId = 1;
         console.log('[DEMO] All data cleared from memory');

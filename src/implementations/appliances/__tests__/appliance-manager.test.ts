@@ -3,6 +3,7 @@ import type {EnergyApp} from '../../../energy-app.js';
 import {
     type EnyoAppliance,
     EnyoApplianceAvailableFeaturesEnum,
+    type EnyoApplianceGroup,
     EnyoApplianceConnectionType,
     EnyoApplianceStateEnum,
     EnyoApplianceTypeEnum,
@@ -24,6 +25,7 @@ import {
 import type {EnyoApplianceCreatedFilter} from '../../../packages/energy-app-appliance.js';
 import {
     type ApplianceConfig,
+    ApplianceGroupNotFoundError,
     ApplianceManager,
     ApplianceManagerDisposedError,
     MissingIdentifierError,
@@ -41,13 +43,18 @@ type AppliancesFake = {
     listenForApplianceRemoved: ReturnType<typeof vi.fn>;
     listenForApplianceCreated: ReturnType<typeof vi.fn>;
     removeListener: ReturnType<typeof vi.fn>;
+    saveGroup: ReturnType<typeof vi.fn>;
+    listGroups: ReturnType<typeof vi.fn>;
+    removeGroup: ReturnType<typeof vi.fn>;
     emitUpdated: (appliance: EnyoAppliance) => Promise<void>;
     emitRemoved: (id: string) => Promise<void>;
     emitCreated: (appliance: EnyoAppliance) => Promise<void>;
 };
 
-function createAppliancesFake(seed: EnyoAppliance[] = []): AppliancesFake {
+function createAppliancesFake(seed: EnyoAppliance[] = [], groupSeed: EnyoApplianceGroup[] = []): AppliancesFake {
     const store = new Map(seed.map(a => [a.id, structuredClone(a)]));
+    const groups = new Map(groupSeed.map(g => [g.id, structuredClone(g)]));
+    let nextGroupId = groupSeed.length + 1;
     const updatedListeners: { id: string; fn: (a: EnyoAppliance) => void | Promise<void> }[] = [];
     const removedListeners: { id: string; fn: (id: string) => void | Promise<void> }[] = [];
     const createdListeners: {
@@ -93,6 +100,21 @@ function createAppliancesFake(seed: EnyoAppliance[] = []): AppliancesFake {
                 const idx = arr.findIndex(l => l.id === id);
                 if (idx >= 0) arr.splice(idx, 1);
             }
+        }),
+        saveGroup: vi.fn(async (data: Omit<EnyoApplianceGroup, 'id'>, id?: string) => {
+            // Mirror the host rule: an appliance belongs to at most one group.
+            for (const other of groups.values()) {
+                if (other.id !== id && other.applianceIds.some(a => data.applianceIds.includes(a))) {
+                    throw new Error(`appliance already in group ${other.id}`);
+                }
+            }
+            const groupId = id ?? `grp-${nextGroupId++}`;
+            groups.set(groupId, {...structuredClone(data), id: groupId});
+            return groupId;
+        }),
+        listGroups: vi.fn(async () => Array.from(groups.values()).map(g => structuredClone(g))),
+        removeGroup: vi.fn(async (id: string) => {
+            groups.delete(id);
         }),
         emitUpdated: async (appliance) => {
             // Mirror the SDK behaviour where the listener fires *after* the store reflects the change.
@@ -428,6 +450,24 @@ describe('ApplianceManager', () => {
             await manager.createOrUpdateAppliance({...makeConfig('SN-1'), cloudPackageId: 'pkg-2'});
             saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
             expect(saved.cloudPackageId).toBe('pkg-2');
+
+            manager.dispose();
+        });
+
+        it('preserves stored hidden flag when an update omits it, and unhides when false is supplied', async () => {
+            const existing = makeAppliance('existing-1', {hidden: true}, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            // Omit hidden — must be preserved.
+            await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+            let saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.hidden).toBe(true);
+
+            // Supply false — must unhide.
+            await manager.createOrUpdateAppliance({...makeConfig('SN-1'), hidden: false});
+            saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.hidden).toBe(false);
 
             manager.dispose();
         });
@@ -1010,6 +1050,101 @@ describe('ApplianceManager', () => {
             // accidentally exercising a live manager.
             expect(() => manager.findAppliancesByNetworkDeviceId('any')).toThrow(ApplianceManagerDisposedError);
         });
+    });
+});
+
+describe('ApplianceManager appliance groups', () => {
+    const name = [{language: 'en', name: 'Roof inverters'}] as EnyoApplianceGroup['name'];
+
+    it('creates a group and updates it in place on the same key', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        const id = await manager.createOrUpdateGroup({key: 'gw-1', name, applianceIds: ['a1', 'a2']});
+        const updatedId = await manager.createOrUpdateGroup({key: 'gw-1', name, applianceIds: ['a1', 'a2', 'a3']});
+
+        expect(updatedId).toBe(id);
+        const groups = await manager.getGroups();
+        expect(groups).toHaveLength(1);
+        expect(groups[0]).toEqual({id, key: 'gw-1', name, applianceIds: ['a1', 'a2', 'a3']});
+
+        manager.dispose();
+    });
+
+    it('moves members out of another group and removes a group left empty', async () => {
+        const sdk = createAppliancesFake([], [
+            {id: 'grp-a', key: 'a', name, applianceIds: ['a1', 'a2']},
+            {id: 'grp-b', key: 'b', name, applianceIds: ['a3']},
+        ]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        await manager.createOrUpdateGroup({key: 'c', name, applianceIds: ['a2', 'a3']});
+
+        expect((await manager.findGroupByKey('a'))?.applianceIds).toEqual(['a1']);
+        expect(await manager.findGroupByKey('b')).toBeNull();
+        expect((await manager.findGroupOfAppliance('a3'))?.key).toBe('c');
+
+        manager.dispose();
+    });
+
+    it('rejects a group without appliances', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        await expect(manager.createOrUpdateGroup({key: 'gw-1', name, applianceIds: []})).rejects.toThrow();
+        expect(sdk.saveGroup).not.toHaveBeenCalled();
+
+        manager.dispose();
+    });
+
+    it('adds an appliance to an existing group and throws for an unknown key', async () => {
+        const sdk = createAppliancesFake([], [{id: 'grp-1', key: 'gw-1', name, applianceIds: ['a1']}]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        expect(await manager.addApplianceToGroup('gw-1', 'a2')).toBe('grp-1');
+        expect((await manager.findGroupByKey('gw-1'))?.applianceIds).toEqual(['a1', 'a2']);
+        await expect(manager.addApplianceToGroup('missing', 'a3')).rejects.toBeInstanceOf(ApplianceGroupNotFoundError);
+
+        manager.dispose();
+    });
+
+    it('takes an appliance out of its group and removes the group once empty', async () => {
+        const sdk = createAppliancesFake([], [{id: 'grp-1', key: 'gw-1', name, applianceIds: ['a1', 'a2']}]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        expect(await manager.removeApplianceFromGroup('a1')).toBe(true);
+        expect((await manager.findGroupByKey('gw-1'))?.applianceIds).toEqual(['a2']);
+        expect(await manager.removeApplianceFromGroup('a2')).toBe(true);
+        expect(await manager.getGroups()).toEqual([]);
+        expect(await manager.removeApplianceFromGroup('a2')).toBe(false);
+
+        manager.dispose();
+    });
+
+    it('removes a group by key', async () => {
+        const sdk = createAppliancesFake([], [{id: 'grp-1', key: 'gw-1', name, applianceIds: ['a1']}]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        expect(await manager.removeGroup('gw-1')).toBe(true);
+        expect(sdk.removeGroup).toHaveBeenCalledWith('grp-1');
+        expect(await manager.removeGroup('gw-1')).toBe(false);
+
+        manager.dispose();
+    });
+
+    it('keeps groups in memory for InMemoryApplianceManager and drops removed appliances', async () => {
+        const sdk = createAppliancesFake();
+        const manager = new InMemoryApplianceManager(createEnergyAppFake(sdk), silent);
+        const a1 = await manager.createOrUpdateAppliance(makeConfig('SN-1'));
+        const a2 = await manager.createOrUpdateAppliance(makeConfig('SN-2'));
+
+        await manager.createOrUpdateGroup({key: 'gw-1', name, applianceIds: [a1, a2]});
+        await manager.removeAppliance(a1);
+
+        expect((await manager.findGroupByKey('gw-1'))?.applianceIds).toEqual([a2]);
+        expect(sdk.saveGroup).not.toHaveBeenCalled();
+
+        manager.dispose();
     });
 });
 
