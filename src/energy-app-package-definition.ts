@@ -3,6 +3,7 @@ import {getSdkVersion} from "./version.js";
 import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
+import type {EnyoOnboardingTranslatedContent} from "./types/enyo-onboarding.js";
 import type {
     EnyoSubscriptionMode,
     EnyoSubscriptionPaymentInterval,
@@ -415,12 +416,55 @@ export enum EnergyAppPackageCompatibilityStatus {
 }
 
 /**
+ * The model years a {@link EnergyAppPackageCompatibilityModel} entry covers,
+ * both ends inclusive.
+ *
+ * Model names alone are ambiguous for products that are sold under one name
+ * for many years: a 2020 "ID.3" and a 2024 "ID.3" can talk to completely
+ * different vendor APIs, and the same holds for inverter generations. The range
+ * lets the enyo Store, onboarding flows and the customer portal tell a user
+ * whether *their* device is covered.
+ *
+ * Years are whole calendar years (model years for vehicles, years of
+ * manufacture for other devices). Leave out {@link to} for a model that is
+ * still being built; leave out {@link from} only when the start is genuinely
+ * unknown. A product with several generations is declared as several model
+ * entries, one range each.
+ *
+ * Validated by `validatePackageCompatibility()`.
+ *
+ * @example
+ * ```typescript
+ * models: [
+ *     {modelName: 'ID.3', modelYears: {from: 2020, to: 2023}, features: [...]},
+ *     {modelName: 'ID.3', modelYears: {from: 2024}, features: [...]},
+ * ]
+ * ```
+ */
+export interface EnergyAppPackageCompatibilityYearRange {
+    /** First supported year, inclusive. Omit when the start is unknown. */
+    from?: number;
+    /** Last supported year, inclusive. Omit while the model is still built. */
+    to?: number;
+}
+
+/**
  * A specific device model supported by an Energy App package.
  * the concrete models the package has been verified to work with.
  */
 export interface EnergyAppPackageCompatibilityModel {
     /** Human-readable model name as marketed by the vendor (e.g. "SE10K-RW0TEBNN4") */
     modelName: string;
+    /**
+     * Optional range of model years this entry covers.
+     *
+     * Recommended for every model whose name is reused across generations —
+     * always for vehicles, and for inverters, wallboxes or heat pumps where a
+     * name spans hardware revisions. The same `modelName` may appear more than
+     * once per vendor as long as the ranges do not overlap. Omit when the entry
+     * applies to every year the model was built.
+     */
+    modelYears?: EnergyAppPackageCompatibilityYearRange;
     /**
      * Optional internal display name shown in the enyo Store / Admin UI when
      * different from the official `modelName` (e.g. a friendlier label).
@@ -703,6 +747,119 @@ export interface EnergyAppPackageFirmwareFile {
 }
 
 /**
+ * The values enyo can insert into an
+ * {@link EnergyAppPackageInstallerMail installer mail}.
+ *
+ * Write a placeholder into the subject or body as `{{name}}` — for example
+ * `{{customerName}}` — or build it with `installerMailPlaceholder()`. The list
+ * is closed: the mail is sent by enyo while the app is not involved, so every
+ * value has to come from enyo, and `validatePackageInstallerMail()` rejects
+ * any name not listed here.
+ *
+ * Any value can be missing when the mail is sent (a customer without a phone
+ * number, a serial number the customer skipped). enyo then inserts an empty
+ * string, so write sentences that still read well without the value — put
+ * placeholders in lists of details rather than in the middle of a sentence.
+ */
+export enum EnyoInstallerMailPlaceholder {
+    /** Full name of the customer. */
+    CustomerName = 'customerName',
+    /** The customer's enyo customer number. */
+    CustomerNumber = 'customerNumber',
+    /** The customer's e-mail address — where the installer can reply. */
+    CustomerEmail = 'customerEmail',
+    /** The customer's phone number. */
+    CustomerPhone = 'customerPhone',
+    /** Street and house number of the installation site. */
+    InstallationStreet = 'installationStreet',
+    /** Postal code of the installation site. */
+    InstallationZip = 'installationZip',
+    /** City of the installation site. */
+    InstallationCity = 'installationCity',
+    /**
+     * Serial number of the device to set up (e.g. the inverter), as the
+     * customer entered it in the portal. enyo does not know it from anywhere
+     * else, so it is the value most likely to be missing.
+     */
+    SerialNumber = 'serialNumber',
+    /** Vendor the customer selected, one of the package's `compatibility` vendors. */
+    VendorName = 'vendorName',
+    /** Model the customer selected, one of that vendor's `compatibility` models. */
+    ModelName = 'modelName',
+    /** Display title of the Energy App from its store entry, in the mail's language. */
+    EnergyAppName = 'energyAppName',
+    /**
+     * Public link to the PDF rendered from
+     * {@link EnergyAppPackageDefinition.onboardingGuide}. Only allowed when the
+     * package declares that guide.
+     */
+    OnboardingGuideUrl = 'onboardingGuideUrl',
+}
+
+/**
+ * A mail the customer sends to their installer from the enyo customer portal,
+ * declared in {@link EnergyAppPackageDefinition.onboardingFlowInstallerMail}.
+ *
+ * ## Format
+ *
+ * - {@link subject} is plain text on one line.
+ * - {@link body} is Markdown (CommonMark: paragraphs, headings, emphasis,
+ *   lists, links). enyo renders it into its HTML mail template, so do not add a
+ *   greeting header, footer or styling of your own. Raw HTML is not rendered.
+ * - Both may contain {@link EnyoInstallerMailPlaceholder placeholders} written
+ *   as `{{name}}`. enyo inserts the values as text, escaped for Markdown, so a
+ *   customer name cannot break the layout.
+ * - Both need a `de` and an `en` entry; enyo picks the one matching the
+ *   customer's language.
+ *
+ * @example
+ * ```typescript
+ * const p = installerMailPlaceholder;
+ * const P = EnyoInstallerMailPlaceholder;
+ *
+ * onboardingFlowInstallerMail: defineInstallerMail({
+ *     subject: [
+ *         {language: 'de', value: `Einrichtung ${p(P.EnergyAppName)} für ${p(P.CustomerName)}`},
+ *         {language: 'en', value: `${p(P.EnergyAppName)} setup for ${p(P.CustomerName)}`},
+ *     ],
+ *     body: [
+ *         {language: 'de', value: [
+ *             'Bitte aktiviere Modbus TCP am Wechselrichter, damit enyo ihn steuern kann.',
+ *             '',
+ *             `- Kunde: ${p(P.CustomerName)} (${p(P.CustomerNumber)})`,
+ *             `- Seriennummer: ${p(P.SerialNumber)}`,
+ *             '',
+ *             `[Anleitung (PDF)](${p(P.OnboardingGuideUrl)})`,
+ *         ].join('\n')},
+ *         {language: 'en', value: '...'},
+ *     ],
+ * })
+ * ```
+ */
+export interface EnergyAppPackageInstallerMail {
+    /** Translated subject line: plain text, one line, may contain placeholders. */
+    subject: EnyoOnboardingTranslatedContent[];
+    /** Translated Markdown body, may contain placeholders. */
+    body: EnyoOnboardingTranslatedContent[];
+    /**
+     * Whether enyo attaches the PDF rendered from
+     * {@link EnergyAppPackageDefinition.onboardingGuide}. Defaults to `true`
+     * when the package declares that guide. Setting it to `true` without a
+     * guide is a validation error.
+     */
+    attachOnboardingGuide?: boolean;
+    /**
+     * Further attachments, by the `name` of a file declared in
+     * {@link EnergyAppPackageDefinition.files} (a datasheet, a wiring diagram).
+     * Those files are public anyway; attaching them only saves the installer
+     * a download.
+     */
+    attachments?: string[];
+    /** Optional internal note explaining this mail; never shown to anyone. */
+    internalComment?: string;
+}
+
+/**
  * Complete definition for a enyo Energy App package.
  * This interface defines all the metadata, permissions, and configuration
  * required to register a package with the enyo Hub.
@@ -912,6 +1069,24 @@ export interface EnergyAppPackageDefinition {
      * Omit the field for packages that have no manual setup to document.
      */
     onboardingGuide?: EnyoOnboardingV2Guide;
+    /**
+     * The mail a customer sends to their installer from the enyo customer
+     * portal, telling the installer what to do to set the device up.
+     *
+     * The enyo CLI reads it at release time. In the portal the customer enters
+     * the installer's address and the details only they know (such as the
+     * device's serial number); enyo fills in the
+     * {@link EnyoInstallerMailPlaceholder placeholders}, renders the Markdown
+     * body as an HTML mail and sends it — attaching the PDF of
+     * {@link onboardingGuide} unless told otherwise.
+     *
+     * Validate it with `validatePackageInstallerMail()` before publishing; the
+     * CLI refuses the release on errors. See
+     * {@link EnergyAppPackageInstallerMail} for the format.
+     *
+     * Omit for packages that need no installer.
+     */
+    onboardingFlowInstallerMail?: EnergyAppPackageInstallerMail;
     /**
      * Subscription plans this package sells, including their prices. The enyo
      * CLI reads them at release time; enyo offers them to the customer and

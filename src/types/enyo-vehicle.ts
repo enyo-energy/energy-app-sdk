@@ -379,6 +379,22 @@ export interface EnyoVehiclePairContext {
      * declares only one.
      */
     vendorName?: string;
+    /**
+     * The model the user selected for the car, e.g. `"ID.3"`. Matches a
+     * `modelName` of the selected vendor's declared `compatibility` models.
+     *
+     * Absent when the user selected no model — always the case for a vendor
+     * the package declares without models.
+     */
+    modelName?: string;
+    /**
+     * The model year the user selected for the car, e.g. `2022`. Lies within
+     * the `modelYears` of the selected `compatibility` model when that model
+     * declares a range.
+     *
+     * Absent when the user selected no year.
+     */
+    modelYear?: number;
 }
 
 /**

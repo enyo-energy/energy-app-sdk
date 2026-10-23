@@ -34,6 +34,8 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [Startup pattern](#startup-pattern)
 - [Package Files](#package-files)
 - [Printable Manual Setup Guide](#printable-manual-setup-guide)
+- [Installer Mail](#installer-mail)
+- [Compatibility Declaration](#compatibility-declaration)
 - [Firmware Update Registry](#firmware-update-registry)
   - [Declaring firmware](#declaring-firmware)
   - [Firmware modes](#firmware-modes)
@@ -994,23 +996,36 @@ Pairing needs the `VehicleIntegration` permission; reading vehicles needs only
 
 ##### Declaring supported brands
 
-Car integrations declare brands, not model lines — the vendor's cloud serves
-every car in the account and the line-up changes yearly. An empty `models`
-array with `default: true` reads as "every car of this brand":
+Declare every brand the package serves. Where you know the model line-up, list the models
+with their **model years** — a model name alone is ambiguous, because the same name is sold
+across generations that talk to different APIs. Give each generation its own entry; the same
+`modelName` may appear more than once as long as the `modelYears` ranges do not overlap.
+Leave out `to` while a model is still built.
 
 ```typescript
 categories: [EnergyAppPackageCategory.Vehicle],
 compatibility: [{
+    vendorName: 'Volkswagen',
+    defaultEnergyApp: true,
+    models: [
+        {modelName: 'ID.3', modelYears: {from: 2020, to: 2023}, features: [EnergyAppModelFeatureEnum.VehicleSocReadout]},
+        {modelName: 'ID.3', modelYears: {from: 2024}, features: [EnergyAppModelFeatureEnum.VehicleSocReadout]},
+    ],
+}, {
+    // Brand-wide support: an empty `models` array reads as "every car of this brand".
     vendorName: 'Tesla',
-    default: true,
+    defaultEnergyApp: true,
     models: [],
 }],
 ```
 
-Declare per-model entries only where support genuinely differs, and set
-`features` honestly — a brand whose API only reports SoC
+When the user picked a model and year in the enyo app, the pair handler receives them as
+`context.modelName` and `context.modelYear` next to `context.vendorName`.
+
+Set `features` honestly — a brand whose API only reports SoC
 (`VehicleSocReadout`) should not look like one that can also start a charge
-(`VehicleChargeStartStop`). See `EnergyAppModelFeatureEnum`'s vehicle group.
+(`VehicleChargeStartStop`). See `EnergyAppModelFeatureEnum`'s vehicle group, and validate
+the list with `validatePackageCompatibility()` (see [Compatibility Declaration](#compatibility-declaration)).
 
 ##### Charge modes
 
@@ -3296,6 +3311,99 @@ const {ok, errors, warnings} = validatePackageOnboardingGuide(packageDef);
 
 The complete authoring guide, with the reason behind each rule and a full example, is the
 JSDoc of `EnergyAppPackageDefinition.onboardingGuide`.
+
+## Installer Mail
+
+A package can declare the mail a customer sends to their installer from the enyo customer
+portal, telling the installer what to do. The enyo CLI reads it during `enyo release`. In the
+portal the customer enters the installer's address and details only they know, such as the
+device's serial number; enyo fills in the placeholders, renders the Markdown body as an HTML
+mail and sends it — with the PDF of the [Printable Manual Setup Guide](#printable-manual-setup-guide)
+attached when the package declares one (`attachOnboardingGuide: false` turns that off).
+
+- `subject` is plain text on one line, `body` is Markdown (raw HTML is not rendered); both
+  need `de` and `en`.
+- Placeholders are written as `{{name}}`; `installerMailPlaceholder()` writes them for you.
+  The list is closed (`EnyoInstallerMailPlaceholder`): `customerName`, `customerNumber`,
+  `customerEmail`, `customerPhone`, `installationStreet`, `installationZip`,
+  `installationCity`, `serialNumber` (entered by the customer), `vendorName`, `modelName`,
+  `energyAppName`, `onboardingGuideUrl`.
+- Any value can be missing when the mail is sent and is then left empty — put placeholders in
+  lists of details rather than in the middle of a sentence.
+- `attachments` names further files declared in `files`.
+
+```typescript
+import {
+    defineEnergyAppPackage,
+    defineInstallerMail,
+    EnyoInstallerMailPlaceholder as P,
+    installerMailPlaceholder as p,
+    renderInstallerMail,
+    validatePackageInstallerMail
+} from '@enyo-energy/energy-app-sdk';
+
+const packageDef = defineEnergyAppPackage({
+    // ...
+    onboardingGuide: manualSetupGuide,
+    onboardingFlowInstallerMail: defineInstallerMail({
+        subject: [
+            {language: 'de', value: `Einrichtung ${p(P.EnergyAppName)} bei ${p(P.CustomerName)}`},
+            {language: 'en', value: `${p(P.EnergyAppName)} setup for ${p(P.CustomerName)}`}
+        ],
+        body: [
+            {language: 'de', value: [
+                'Bitte aktiviere Modbus TCP am Wechselrichter, damit enyo ihn steuern kann.',
+                '',
+                `- **Kunde:** ${p(P.CustomerName)} (${p(P.CustomerNumber)})`,
+                `- **Adresse:** ${p(P.InstallationStreet)}, ${p(P.InstallationZip)} ${p(P.InstallationCity)}`,
+                `- **Gerät:** ${p(P.VendorName)} ${p(P.ModelName)}, Seriennummer ${p(P.SerialNumber)}`,
+                '',
+                `Die Schritt-für-Schritt-Anleitung findest du [hier](${p(P.OnboardingGuideUrl)}).`
+            ].join('\n')},
+            {language: 'en', value: '...'}
+        ]
+    })
+});
+
+const {ok, errors, warnings} = validatePackageInstallerMail(packageDef);
+
+// Preview what the installer receives:
+const preview = renderInstallerMail(packageDef.onboardingFlowInstallerMail!, 'de', {
+    [P.CustomerName]: 'Erika Mustermann',
+    [P.SerialNumber]: 'SN-123'
+});
+```
+
+Unknown placeholders, unpaired `{{` / `}}`, a missing language, a multi-line subject,
+`{{onboardingGuideUrl}}` or `attachOnboardingGuide: true` without an `onboardingGuide`, and
+attachments not declared in `files` are errors; raw HTML in the body and different
+placeholders per language are warnings.
+
+## Compatibility Declaration
+
+`compatibility` is the list of vendors and models enyo shows customers in the enyo Store,
+the onboarding flows and the customer portal. Each model may carry `modelYears`
+(`{from?, to?}`, both inclusive) — use it whenever a model name spans several generations,
+for vehicles as well as for inverters, wallboxes or heat pumps.
+
+```typescript
+import {isYearInCompatibilityRange, validatePackageCompatibility} from '@enyo-energy/energy-app-sdk';
+
+compatibility: [{
+    vendorName: 'SolarEdge',
+    models: [
+        {modelName: 'SE10K', modelYears: {from: 2016, to: 2020}, features: []},
+        {modelName: 'SE10K-RW0TEBNN4', modelYears: {from: 2021}, features: []}
+    ]
+}]
+
+const {ok, errors, warnings} = validatePackageCompatibility(packageDef);
+isYearInCompatibilityRange({from: 2021}, 2023); // true
+```
+
+Duplicate vendors, the same model name for overlapping years, `from` after `to` and years
+outside 1990 to two years ahead are errors. An empty range, and a vehicle model without
+`modelYears`, are warnings.
 
 ## Firmware Update Registry
 
