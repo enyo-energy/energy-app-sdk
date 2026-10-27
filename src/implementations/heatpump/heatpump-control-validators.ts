@@ -3,6 +3,7 @@ import {
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
     EnyoDataBusHeatpumpProgramSwitchV3,
+    EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
     EnyoHeatpumpControlAction,
     EnyoHeatpumpControlTargetEnum,
     EnyoHeatpumpHeatSourceEnum,
@@ -365,6 +366,80 @@ export function validateHeatpumpProgramSwitch(
     }
     if (isOverride && !(zone?.supportedProgramModes ?? []).includes(data.mode as EnyoHeatpumpOverrideProgramMode)) {
         return notSupported(`The ${data.target} zone ${zone?.index ?? data.index ?? 0} cannot be switched to ${data.mode}.`);
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+}
+
+/** The answer {@link validateHeatpumpHeatingCurveOffset} gives a `SetHeatpumpHeatingCurveOffsetV1`. */
+export interface HeatpumpHeatingCurveOffsetValidationResult {
+    /** `Accepted` when every rule holds. */
+    answer: EnyoCommandAcknowledgeAnswerEnum;
+    /** Why the offset was rejected or is not supported. */
+    rejectionReason?: string;
+}
+
+/**
+ * Validates a `SetHeatpumpHeatingCurveOffsetV1` against the heatpump's
+ * metadata and returns the answer it deserves.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls
+ * `handleHeatpumpHeatingCurveOffset`; an integration handling the message
+ * itself can call it too.
+ *
+ * Rules, in order — the first that fails decides:
+ * 1. `heatingCircuitIndex` is an integer ≥ 0 and `offsetK` a finite number
+ *    (**Rejected**).
+ * 2. The heatpump does not declare `HeatingCurveOffset` (**NotSupported**).
+ * 3. No heating circuit has the message's index (**Rejected**).
+ * 4. `offsetK` is not `0` and the circuit has no `heatingCurveOffsetRangeK`
+ *    or `offsetK` lies outside it (**Rejected**). `0` — restoring the initial
+ *    curve — is always allowed.
+ *
+ * Without metadata only rule 1 can be checked.
+ *
+ * @param data - The message's data.
+ * @param metadata - The heatpump's metadata, if known.
+ * @returns The answer: `Accepted` when every rule holds.
+ *
+ * @example
+ * ```typescript
+ * const result = validateHeatpumpHeatingCurveOffset(message.data, appliance.heatpump);
+ * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * ```
+ */
+export function validateHeatpumpHeatingCurveOffset(
+    data: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1['data'],
+    metadata: EnyoHeatpumpApplianceMetadata | undefined,
+): HeatpumpHeatingCurveOffsetValidationResult {
+    const rejected = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason});
+
+    if (!Number.isInteger(data.heatingCircuitIndex) || data.heatingCircuitIndex < 0) {
+        return rejected(`heatingCircuitIndex must be an integer ≥ 0; got ${data.heatingCircuitIndex}.`);
+    }
+    if (typeof data.offsetK !== 'number' || !Number.isFinite(data.offsetK)) {
+        return rejected(`offsetK must be a finite number; got ${data.offsetK}.`);
+    }
+
+    if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    if (!(metadata.availableFeatures ?? []).includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset)) {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'The heatpump does not support heating curve offsets (no HeatingCurveOffset).',
+        };
+    }
+    const circuit = (metadata.heatingCircuits ?? []).find((c) => c.index === data.heatingCircuitIndex);
+    if (!circuit) {
+        return rejected(`No heating circuit with index ${data.heatingCircuitIndex}.`);
+    }
+    if (data.offsetK === 0) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    const range = circuit.heatingCurveOffsetRangeK;
+    if (!range) {
+        return rejected(`Heating circuit ${circuit.index} declares no heatingCurveOffsetRangeK; only offsetK 0 is accepted.`);
+    }
+    if (data.offsetK < range.minK || data.offsetK > range.maxK) {
+        return rejected(
+            `offsetK ${data.offsetK} K is outside the range ${range.minK}…${range.maxK} K of heating circuit ${circuit.index}.`,
+        );
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }

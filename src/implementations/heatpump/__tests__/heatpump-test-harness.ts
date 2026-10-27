@@ -6,6 +6,7 @@ import {
     EnyoDataBusHeatpumpProgramSwitchV3,
     EnyoDataBusMessage,
     EnyoDataBusMessageEnum,
+    EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
 } from '../../../types/enyo-data-bus-value.js';
 import {EnyoHeatpumpApplianceMetadata} from '../../../types/enyo-heatpump-appliance.js';
 import {EnyoSourceEnum} from '../../../types/enyo-source.enum.js';
@@ -42,6 +43,7 @@ interface Dispatchers {
     dispatchHeatpumpControl(message: EnyoDataBusHeatpumpControlV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpControlCancel(message: EnyoDataBusHeatpumpControlCancelV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpProgramSwitch(message: EnyoDataBusHeatpumpProgramSwitchV3): Promise<IntegrationCommandResponse>;
+    dispatchHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1): Promise<IntegrationCommandResponse>;
 }
 
 /**
@@ -57,6 +59,9 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
     readonly switches: HeatpumpProgramSwitchRequest[] = [];
     /** Without it the base class's default (`NotSupported`) answers program switches. */
     programSwitchResponse?: (request: HeatpumpProgramSwitchRequest) => Promise<IntegrationCommandResponse>;
+    readonly curveOffsets: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1[] = [];
+    /** Without it the base class's default (`NotSupported`) answers heating curve offsets. */
+    curveOffsetResponse?: (message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) => Promise<IntegrationCommandResponse>;
 
     constructor() {
         super({source: EnyoSourceEnum.Device, applianceIds: ['hp-1'], autoStart: false, autoStopOnShutdown: false});
@@ -93,6 +98,19 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         });
     }
 
+    /** Sends a heating curve offset through the base class, as the data bus would. */
+    heatingCurveOffset(data: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1['data']): Promise<IntegrationCommandResponse> {
+        return (this as unknown as Dispatchers).dispatchHeatpumpHeatingCurveOffset({
+            id: `offset-${data.offsetK}`,
+            type: 'message',
+            message: EnyoDataBusMessageEnum.SetHeatpumpHeatingCurveOffsetV1,
+            source: EnyoSourceEnum.Device,
+            applianceId: 'hp-1',
+            timestampIso: new Date().toISOString(),
+            data,
+        });
+    }
+
     /** Exposes the protected action check. */
     check(message: EnyoDataBusHeatpumpControlV3): Promise<EnyoCommandAcknowledgeActionResult[]> {
         return this.checkHeatpumpControlActions(message);
@@ -109,6 +127,12 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         if (!this.programSwitchResponse) return super.handleHeatpumpProgramSwitch(request);
         this.switches.push(request);
         return this.programSwitchResponse(request);
+    }
+
+    protected async handleHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) {
+        if (!this.curveOffsetResponse) return super.handleHeatpumpHeatingCurveOffset(message);
+        this.curveOffsets.push(message);
+        return this.curveOffsetResponse(message);
     }
 
     protected async handleHeatpumpOverheating() {

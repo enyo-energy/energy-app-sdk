@@ -16,6 +16,7 @@ import {
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusMessageEnum,
     EnyoDataBusSetHeatpumpAvailablePowerV2,
+    EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
     EnyoDataBusSetHeatpumpRoomTemperatureV1,
     EnyoDataBusCommandReason,
     EnyoHeatpumpControlTargetEnum,
@@ -32,6 +33,7 @@ import {
 } from "../types/enyo-heatpump-appliance.js";
 import {
     validateHeatpumpControlAction,
+    validateHeatpumpHeatingCurveOffset,
     validateHeatpumpProgramSwitch
 } from "../implementations/heatpump/heatpump-control-validators.js";
 import {
@@ -149,6 +151,11 @@ export function combineHeatpumpControlAnswers(answers: EnyoCommandAcknowledgeAns
  *  - `SetHeatpumpRoomTemperatureV1` — measured room temperature input
  *    (optional: override {@link handleSetHeatpumpRoomTemperature}; answers
  *    `NotSupported` by default).
+ *  - `SetHeatpumpHeatingCurveOffsetV1` — shift a heating circuit's curve
+ *    permanently, relative to its initial curve (optional: override
+ *    {@link handleHeatpumpHeatingCurveOffset} and declare
+ *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset}).
+ *    The base class validates it with {@link checkHeatingCurveOffset} first.
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  *
  * Publishes `HeatpumpFlexibilityAnnouncementV3` offers via
@@ -233,6 +240,10 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         this.registerCommandHandler<EnyoDataBusHeatpumpProgramSwitchV3>(
             EnyoDataBusMessageEnum.HeatpumpProgramSwitchV3,
             (msg) => this.dispatchHeatpumpProgramSwitch(msg)
+        );
+        this.registerCommandHandler<EnyoDataBusSetHeatpumpHeatingCurveOffsetV1>(
+            EnyoDataBusMessageEnum.SetHeatpumpHeatingCurveOffsetV1,
+            (msg) => this.dispatchHeatpumpHeatingCurveOffset(msg)
         );
     }
 
@@ -669,6 +680,88 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     }
 
     /**
+     * Handles a `SetHeatpumpHeatingCurveOffsetV1` command: shifts the heating
+     * curve of circuit `message.data.heatingCircuitIndex` so that it lies
+     * `message.data.offsetK` Kelvin of flow temperature above (positive) or
+     * below (negative) the circuit's initial curve. Answers `NotSupported` by
+     * default. Override it, declare
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset}
+     * and publish the circuit's `heatingCurveOffsetRangeK` to support it.
+     *
+     * What an implementation must do:
+     * - Before the first offset other than `0`, remember the curve currently
+     *   set on the device with `ApplianceManager.rememberHeatpumpInitialHeatingCurve`
+     *   (keeps an already stored one).
+     * - Always shift relative to `initialHeatingCurve`, never to the current
+     *   curve — the same message may arrive twice.
+     * - Convert to the vendor's unit (K of room temperature, steps, …) and
+     *   write the curve; answer `Accepted` only once it is written.
+     * - `offsetK: 0` restores the initial curve exactly, including
+     *   vendor-specific parameters, then call
+     *   `ApplianceManager.clearHeatpumpInitialHeatingCurve`.
+     * - Report the effective shift in K of flow temperature as
+     *   `activeHeatingCurveOffsetK`, read back from the device.
+     * - Answer `Rejected` (with `rejectionReason`) when the device cannot take
+     *   it right now, e.g. it is in a manual mode.
+     *
+     * The base class has already validated the message with
+     * {@link checkHeatingCurveOffset}: the feature is declared, the circuit
+     * exists and `offsetK` lies within its range.
+     *
+     * @param _message - The heating curve offset command.
+     * @returns `Accepted` once the shifted curve is written, `Rejected` (with
+     *   `rejectionReason`) when it cannot be written right now, `NotSupported`
+     *   when the integration cannot shift curves.
+     *
+     * @example
+     * ```ts
+     * protected async handleHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) {
+     *     const {heatingCircuitIndex: index, offsetK} = message.data;
+     *     if (offsetK !== 0) {
+     *         await this.appliances.rememberHeatpumpInitialHeatingCurve(message.applianceId, index, await this.readCurve(index));
+     *     }
+     *     await this.device.writeCurveShift(index, offsetK / this.flowKPerVendorStep);
+     *     if (offsetK === 0) {
+     *         await this.appliances.clearHeatpumpInitialHeatingCurve(message.applianceId, index);
+     *     } else {
+     *         await this.appliances.updateHeatpumpHeatingCircuit(message.applianceId, index, {
+     *             activeHeatingCurveOffsetK: await this.readEffectiveShiftK(index),
+     *         });
+     *     }
+     *     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+     * }
+     * ```
+     */
+    protected async handleHeatpumpHeatingCurveOffset(
+        _message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'Heatpump integration does not support SetHeatpumpHeatingCurveOffsetV1',
+        };
+    }
+
+    /**
+     * Validates a `SetHeatpumpHeatingCurveOffsetV1` with
+     * {@link validateHeatpumpHeatingCurveOffset} against the heatpump's
+     * metadata ({@link resolveHeatpumpMetadata}): the feature flag, the
+     * circuit index and the circuit's `heatingCurveOffsetRangeK`.
+     *
+     * Called by the base class before {@link handleHeatpumpHeatingCurveOffset};
+     * an integration handling the message differently can call it too.
+     *
+     * @param message - The heating curve offset command.
+     * @returns `Accepted` when the command may be applied, otherwise the
+     *   answer and reason to send back.
+     */
+    protected async checkHeatingCurveOffset(
+        message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1
+    ): Promise<IntegrationCommandResponse> {
+        const metadata = await this.resolveHeatpumpMetadata(message.applianceId);
+        return validateHeatpumpHeatingCurveOffset(message.data, metadata);
+    }
+
+    /**
      * @inheritDoc
      */
     protected abstract handleGridOperatorPowerLimitation(
@@ -851,6 +944,16 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         } catch (error) {
             console.error(`HeatpumpIntegrationEnergyApp: switching ${target} ${index ?? 0} of ${applianceId} back to its program failed`, error);
         }
+    }
+
+    private async dispatchHeatpumpHeatingCurveOffset(
+        message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1
+    ): Promise<IntegrationCommandResponse> {
+        const validation = await this.checkHeatingCurveOffset(message);
+        if (validation.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            return validation;
+        }
+        return this.handleHeatpumpHeatingCurveOffset(message);
     }
 
     private async dispatchHeatpumpControlCancel(

@@ -107,6 +107,21 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
      * {@link EnyoHeatpumpApplianceDomesticHotWater.supportedProgramModes}.
      */
     ProgramSwitch = 'ProgramSwitch',
+    /**
+     * If the heatpump's app can shift the heating curve of a heating circuit
+     * permanently and in parallel via
+     * {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1}, remembers the curve
+     * that was set before the first shift
+     * ({@link EnyoHeatpumpApplianceHeatingCircuit.initialHeatingCurve}) and can
+     * restore it exactly. The energy manager sends the message only to
+     * heatpumps declaring this feature.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleHeatpumpHeatingCurveOffset`, and state
+     * per circuit the allowed range in
+     * {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurveOffsetRangeK}.
+     */
+    HeatingCurveOffset = 'HeatingCurveOffset',
 }
 
 /**
@@ -439,6 +454,93 @@ export interface EnyoHeatpumpRoomTemperatureSensorReference {
 }
 
 /**
+ * How far the energy manager lowers a heating curve at most, in Kelvin of flow
+ * temperature — the same for every circuit, the customer does not choose it.
+ * A device whose {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurveOffsetRangeK}
+ * allows less caps it further.
+ */
+export const HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K = 3;
+
+/**
+ * The target temperature of a room whose customer has not set one, in °C.
+ */
+export const HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C = 21;
+
+/**
+ * One room a heating circuit heats, as the host resolves it for the heating
+ * curve optimisation: the room's target temperature and the temperature
+ * sensors assigned to that room. Read-only for apps — the host fills it from
+ * {@link EnyoHeatpumpHeatingCurveOptimizationSettings.roomIds} and the rooms
+ * the customer set up in the enyo app.
+ */
+export interface EnyoHeatpumpCurveOptimizationRoom {
+    /** ID of the room in the enyo app. */
+    roomId: string;
+    /** The room's name, as the customer called it — for logs and diagnostics. */
+    name?: string;
+    /**
+     * The room temperature in °C the customer wants in this room — a setpoint
+     * of the energy manager's controller, **not** written to the heatpump.
+     * {@link HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C} until the customer
+     * sets one. Raising it means the customer is too cold there, and the
+     * energy manager reacts at once.
+     */
+    targetRoomTemperatureC: number;
+    /**
+     * The temperature sensors assigned to this room. Empty when the room has
+     * none: such a room is part of the circuit but cannot be judged, and the
+     * energy manager leaves it out. With several, the coldest counts.
+     */
+    sensors: EnyoHeatpumpRoomTemperatureSensorReference[];
+}
+
+/**
+ * The range of {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1.data}
+ * `offsetK` a heating circuit accepts, in Kelvin of flow temperature relative
+ * to its {@link EnyoHeatpumpApplianceHeatingCircuit.initialHeatingCurve}.
+ * Must contain `0`.
+ */
+export interface EnyoHeatpumpHeatingCurveOffsetRange {
+    /** Lowest accepted offset in K (≤ 0), e.g. `-5` */
+    minK: number;
+    /** Highest accepted offset in K (≥ 0), e.g. `5` */
+    maxK: number;
+}
+
+/**
+ * What the customer chose for the room-temperature based optimisation of one
+ * heating circuit's heating curve: the energy manager lowers the curve as far
+ * as possible without any of the {@link rooms} falling below its own target,
+ * using {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1}.
+ *
+ * **Customer-owned.** Set in the enyo app, never by an integration: the host
+ * keeps the customer's value whenever an integration saves the appliance.
+ * Integrations and the energy manager only read it.
+ */
+export interface EnyoHeatpumpHeatingCurveOptimizationSettings {
+    /**
+     * Whether the customer turned the optimisation on. Off by default — the
+     * energy manager changes the curve only after the customer actively agreed.
+     * Turning it off makes the energy manager restore the initial curve
+     * (`offsetK: 0`).
+     */
+    enabled: boolean;
+    /**
+     * IDs of the rooms (as set up in the enyo app) this circuit heats — chosen
+     * by the customer, whether or not a room has a temperature sensor.
+     */
+    roomIds?: string[];
+    /**
+     * Those rooms resolved by the host: each with its target and its sensors.
+     * The room furthest below its target decides how low the curve may go;
+     * rooms without a sensor are left out. Without any room that has a sensor
+     * the optimisation cannot run. The curve is lowered by at most
+     * {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}. Read-only for apps.
+     */
+    rooms?: EnyoHeatpumpCurveOptimizationRoom[];
+}
+
+/**
  * A domestic-hot-water zone of the installation.
  *
  * In a combi installation
@@ -631,6 +733,49 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
      * manager notices when the user switched it by hand. Omitted means unknown.
      */
     activeProgramMode?: EnyoHeatpumpProgramModeEnum;
+    /**
+     * The range of `offsetK` this circuit accepts in
+     * {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1}, in Kelvin of flow
+     * temperature. Needs
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset};
+     * without it, every offset other than `0` is rejected.
+     */
+    heatingCurveOffsetRangeK?: EnyoHeatpumpHeatingCurveOffsetRange;
+    /**
+     * The offset in Kelvin of flow temperature currently in effect, relative to
+     * {@link initialHeatingCurve}, as read back from the device. `0` or omitted
+     * means the curve is not shifted.
+     *
+     * Vendors shift in different units (some in K of room temperature, some in
+     * steps); the integration converts and reports the effective flow
+     * temperature shift here. The energy manager waits for this value to match
+     * what it sent before it changes the offset again.
+     *
+     * If the curve read from the device differs from
+     * `initialHeatingCurve + activeHeatingCurveOffsetK` by more than 0.5 K at
+     * any point (see `isHeatingCurveManuallyChanged`), someone changed it by
+     * hand: the integration then stores the read curve as the new
+     * {@link initialHeatingCurve}, sets this to `0` and logs it. The energy
+     * manager sees the jump to `0` and restarts its controller.
+     */
+    activeHeatingCurveOffsetK?: number;
+    /**
+     * The heating curve as it was before the first
+     * {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1} changed it — what
+     * `offsetK: 0` restores. Set and persisted by the integration on the first
+     * offset other than `0`, so it survives restarts, updates and offline
+     * periods; cleared when the curve is restored. Use
+     * `ApplianceManager.rememberHeatpumpInitialHeatingCurve` /
+     * `ApplianceManager.clearHeatpumpInitialHeatingCurve`.
+     */
+    initialHeatingCurve?: EnyoHeatpumpApplianceHeatingCurve;
+    /**
+     * What the customer chose for the room-temperature based optimisation of
+     * this circuit's heating curve. Customer-owned: integrations must not set
+     * it, the host keeps the customer's value. Omitted means the optimisation
+     * is off.
+     */
+    curveOptimization?: EnyoHeatpumpHeatingCurveOptimizationSettings;
 }
 
 /**
@@ -695,6 +840,16 @@ export interface EnyoHeatpumpApplianceBuildingModel {
      * fit and may disregard a stale one.
      */
     fittedAtMs: number;
+    /**
+     * The heating curve this building actually needs, learned from the days on
+     * which the room held the customer's target temperature — outdoor → flow
+     * temperature pairs, sorted by strictly increasing outdoor temperature.
+     *
+     * Absent until enough days were observed. Informational: it shows the
+     * customer and installer how far the curve set on the device could be
+     * lowered; nothing writes it to the heatpump.
+     */
+    recommendedHeatingCurve?: EnyoHeatpumpApplianceHeatingCurvePoint[];
 }
 
 export interface EnyoHeatpumpApplianceMetadata {

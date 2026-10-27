@@ -691,6 +691,33 @@ describe('ApplianceManager', () => {
             manager.dispose();
         });
 
+        it('remembers the initial heating curve once and clears it again', async () => {
+            const sdk = createAppliancesFake([heatpump()]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+            const shifted = {points: curve.points.map(p => ({...p, flowTemperatureC: p.flowTemperatureC - 2}))};
+
+            expect(await manager.rememberHeatpumpInitialHeatingCurve('hp-1', 0, curve)).toBe(true);
+            // A later, already shifted curve must not replace the initial one.
+            expect(await manager.rememberHeatpumpInitialHeatingCurve('hp-1', 0, shifted)).toBe(false);
+            await manager.updateHeatpumpHeatingCircuit('hp-1', 0, {activeHeatingCurveOffsetK: -2});
+
+            let saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump?.heatingCircuits?.[0]).toEqual({
+                index: 0, customName: 'Ground floor', targetRoomTemperatureC: 21,
+                initialHeatingCurve: curve, activeHeatingCurveOffsetK: -2,
+            });
+
+            await manager.clearHeatpumpInitialHeatingCurve('hp-1', 0);
+
+            saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump?.heatingCircuits).toEqual([
+                {index: 0, customName: 'Ground floor', targetRoomTemperatureC: 21, activeHeatingCurveOffsetK: 0},
+                {index: 2, customName: 'Attic'},
+            ]);
+
+            manager.dispose();
+        });
+
         it('does nothing for an unknown appliance', async () => {
             const sdk = createAppliancesFake([heatpump()]);
             const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);

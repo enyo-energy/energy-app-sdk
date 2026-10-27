@@ -106,6 +106,73 @@ function checkProgramModes(
     }
 }
 
+/** Range the customer may choose for a room's `targetRoomTemperatureC`, in °C. */
+const CURVE_OPTIMIZATION_TARGET_RANGE_C = {min: 16, max: 26};
+
+/**
+ * Validates the heating-curve-offset fields of one heating circuit
+ * (`heatingCurveOffsetRangeK`, `activeHeatingCurveOffsetK`,
+ * `curveOptimization`) and appends the problems to `errors`.
+ *
+ * Errors: the range is not finite or does not contain `0`; the active offset
+ * is not finite or lies outside the range; a room id is empty; a resolved room
+ * lacks its `roomId`, a sensor lacks its `applianceId` / `sensorId`, or its
+ * target lies outside 16…26 °C.
+ *
+ * @param circuit - The heating circuit.
+ * @param prefix - Path prefix for the messages, e.g. `heatingCircuits[index=0]`.
+ * @param errors - Receives blocking problems.
+ */
+function checkHeatingCurveOffset(
+    circuit: EnyoHeatpumpApplianceHeatingCircuit,
+    prefix: string,
+    errors: string[],
+): void {
+    const range = circuit.heatingCurveOffsetRangeK;
+    const rangeValid = range !== undefined && isFiniteNumber(range.minK) && isFiniteNumber(range.maxK);
+    if (range !== undefined) {
+        if (!rangeValid) {
+            errors.push(`${prefix}: heatingCurveOffsetRangeK.minK and maxK must be finite numbers`);
+        } else if (!(range.minK <= 0 && range.maxK >= 0)) {
+            errors.push(`${prefix}: heatingCurveOffsetRangeK ${range.minK}…${range.maxK} K must contain 0`);
+        }
+    }
+    const active = circuit.activeHeatingCurveOffsetK;
+    if (active !== undefined) {
+        if (!isFiniteNumber(active)) {
+            errors.push(`${prefix}: activeHeatingCurveOffsetK must be a finite number`);
+        } else if (rangeValid && (active < range.minK || active > range.maxK)) {
+            errors.push(`${prefix}: activeHeatingCurveOffsetK ${active} K is outside heatingCurveOffsetRangeK ${range.minK}…${range.maxK} K`);
+        }
+    }
+
+    const settings = circuit.curveOptimization;
+    if (!settings) return;
+    (settings.roomIds ?? []).forEach((roomId, i) => {
+        if (typeof roomId !== 'string' || roomId.length === 0) {
+            errors.push(`${prefix}: curveOptimization.roomIds[${i}] must be a non-empty string`);
+        }
+    });
+    (settings.rooms ?? []).forEach((room, i) => {
+        if (!room?.roomId) {
+            errors.push(`${prefix}: curveOptimization.rooms[${i}] needs a roomId`);
+        }
+        (room?.sensors ?? []).forEach((sensor, j) => {
+            if (!sensor?.applianceId || !sensor?.sensorId) {
+                errors.push(`${prefix}: curveOptimization.rooms[${i}].sensors[${j}] needs applianceId and sensorId`);
+            }
+        });
+        const target = room?.targetRoomTemperatureC;
+        if (!(isFiniteNumber(target)
+            && target >= CURVE_OPTIMIZATION_TARGET_RANGE_C.min && target <= CURVE_OPTIMIZATION_TARGET_RANGE_C.max)) {
+            errors.push(
+                `${prefix}: curveOptimization.rooms[${i}].targetRoomTemperatureC must lie within ` +
+                `${CURVE_OPTIMIZATION_TARGET_RANGE_C.min}…${CURVE_OPTIMIZATION_TARGET_RANGE_C.max} °C; got ${target}`,
+            );
+        }
+    });
+}
+
 /**
  * Parses an `HH:mm` time of day into minutes since midnight.
  *
@@ -380,6 +447,9 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *    `EnyoHeatpumpProgramModeEnum` member. Warning: eco is above comfort.
  *  - Warning: `ProgramSwitch` is declared but no zone lists
  *    `supportedProgramModes`, or a zone lists them without `ProgramSwitch`.
+ *  - Heating curve offset: errors from {@link checkHeatingCurveOffset}.
+ *    Warning: `HeatingCurveOffset` is declared but no circuit has a
+ *    `heatingCurveOffsetRangeK` — no offset other than `0` could be accepted.
  *
  * @param metadata - The heatpump metadata to validate.
  * @returns The validation result.
@@ -439,9 +509,18 @@ export function validateHeatpumpAdvancedMetadata(
         warnings.push('ProgramSwitch is declared but no zone lists supportedProgramModes — no switch could ever be accepted');
     }
 
+    if (features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset)
+        && !circuits.some((c) => c.heatingCurveOffsetRangeK)) {
+        warnings.push('HeatingCurveOffset is declared but no heating circuit has a heatingCurveOffsetRangeK — only offset 0 could be accepted');
+    }
+
     for (const circuit of circuits) {
         const prefix = `heatingCircuits[index=${circuit.index}]`;
         if (circuit.heatingCurve) merge(`${prefix}.heatingCurve`, validateHeatpumpHeatingCurve(circuit.heatingCurve));
+        checkHeatingCurveOffset(circuit, prefix, errors);
+        if (circuit.initialHeatingCurve) {
+            merge(`${prefix}.initialHeatingCurve`, validateHeatpumpHeatingCurve(circuit.initialHeatingCurve));
+        }
         if (circuit.timeProgram) merge(`${prefix}.timeProgram`, validateHeatpumpTimeProgram(circuit.timeProgram));
 
         const isExternal = circuit.roomTemperatureSource === EnyoHeatpumpRoomTemperatureSourceEnum.External;
