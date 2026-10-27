@@ -3666,12 +3666,13 @@ Drives a heatpump. Manages building / DHW overheating commands and grid-power-av
 
 > **Preferred: control heatpumps with the V3 messages.** `HeatpumpControlV3` (power, power sources, which zones to heat now, until when), `HeatpumpControlCancelV3` (cancel a session) and `HeatpumpControlStatusV3` (progress) are the preferred way to control a heatpump — for energy managers sending commands and for integrations receiving them. Use them for all new work. `HeatpumpOverheatingV1`, `SetHeatpumpAvailablePowerV2` and `HeatpumpAvailablePowerAnnouncementV1` are deprecated and only remain for heatpumps that do not declare `ControlV3`. See [HeatpumpControlV3](#heatpumpcontrolv3). Likewise, a heatpump offers its flexibility with `HeatpumpFlexibilityAnnouncementV3` rather than the generic `ApplianceFlexibilityAnnouncementV1` / `V2` — see [HeatpumpFlexibilityAnnouncementV3](#heatpumpflexibilityannouncementv3).
 
-- **Subscribed commands:** `HeatpumpControlV3`, `HeatpumpControlCancelV3`, `HeatpumpProgramSwitchV3`, `HeatpumpOverheatingV1` (deprecated), `HeatpumpAvailablePowerAnnouncementV1` (deprecated), `SetHeatpumpAvailablePowerV2` (deprecated), `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Subscribed commands:** `HeatpumpControlV3`, `HeatpumpControlCancelV3`, `HeatpumpProgramSwitchV3`, `SetHeatpumpHeatingCurveOffsetV1`, `HeatpumpOverheatingV1` (deprecated), `HeatpumpAvailablePowerAnnouncementV1` (deprecated), `SetHeatpumpAvailablePowerV2` (deprecated), `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
 - **Implement:** `handleHeatpumpOverheating`, `handleHeatpumpAvailablePowerAnnouncement`, `handleSetHeatpumpAvailablePower`, `handleGridOperatorPowerLimitation`
 - **Optional overrides:**
   - `handleSetHeatpumpRoomTemperature` — write a measured room temperature into a heating circuit. Answers `NotSupported` by default; override it when the heatpump declares `RoomTemperatureInput`.
   - `handleHeatpumpControl` — support `HeatpumpControlV3` (see below). Answers `NotSupported` by default; override it and declare `ControlV3`.
   - `handleHeatpumpProgramSwitch(request)` — switch a zone to comfort or eco, or back to its time program (see [HeatpumpProgramSwitchV3](#heatpumpprogramswitchv3)). Answers `NotSupported` by default; override it and declare `ProgramSwitch`.
+  - `handleHeatpumpHeatingCurveOffset(message)` — shift a heating circuit's curve permanently, relative to its initial curve (see [SetHeatpumpHeatingCurveOffsetV1](#setheatpumpheatingcurveoffsetv1)). Answers `NotSupported` by default; override it and declare `HeatingCurveOffset`.
   - `handleHeatpumpControlCancel` — withdraw a cancelled session on the device. By default `Accepted` for heatpumps declaring `ControlV3`, `NotSupported` otherwise.
   - `onHeatpumpControlEnded(applianceId, cause)` — return the heatpump to its own behaviour when a session ends; `cause` is `HeatpumpControlEndCauseEnum.Expired`, `Ended` or `Cancelled`. Does nothing by default.
   - `resolveHeatpumpMetadata(applianceId)` — the metadata actions are validated against. Defaults to the stored appliance's `heatpump` metadata.
@@ -3732,6 +3733,44 @@ Switches one heating circuit or DHW zone to its **comfort** or **eco** setpoint 
 - **Owner's consent for price-driven eco.** An energy manager switches zones to eco for price reasons only while the general setting `heatpumpEcoModeInExpensiveTimes` (and `heatpumpControl`) is `true` — see [General settings](#general-settings).
 - **Validation** (run by the base class before the handler, or `validateHeatpumpProgramSwitch(data, metadata)` directly): target `Room` / `Dhw`, a known mode, a valid `untilIso` for comfort / eco (`Rejected`); `ProgramSwitch` declared and the mode listed for the zone (`NotSupported`); a known zone index (`Rejected`).
 
+#### SetHeatpumpHeatingCurveOffsetV1
+
+Shifts the heating curve of one heating circuit in parallel — **permanently**, until the next message. The energy manager uses it to lower the curve as far as the measured room temperature allows (less flow temperature, roughly 2.5 % less heating electricity per K).
+
+```typescript
+{
+    heatingCircuitIndex: 0,
+    offsetK: -1.5,   // K of flow temperature, relative to the initial curve; 0 restores it
+}
+```
+
+- **Relative to the initial curve, never to the current one.** Before the first offset other than `0`, the integration stores the curve set on the device as `heatingCircuits[].initialHeatingCurve` (`ApplianceManager.rememberHeatpumpInitialHeatingCurve` keeps an already stored one). The same message may therefore arrive twice.
+- **`offsetK: 0` restores** the initial curve exactly, including vendor parameters, then clears it (`ApplianceManager.clearHeatpumpInitialHeatingCurve`, which also sets `activeHeatingCurveOffsetK` to `0`).
+- **No expiry.** If the hub is offline nobody could reset it anyway; the stored initial curve is the safety net.
+- **Vendor units.** Convert to whatever the device shifts in (K of room temperature, steps, …) and report the effective shift in K of flow temperature as `heatingCircuits[].activeHeatingCurveOffsetK`, read back from the device. The energy manager waits for it before the next change.
+- **Changed by hand.** If the curve read from the device differs from `initialHeatingCurve` shifted by `activeHeatingCurveOffsetK` by more than 0.5 K at any point (`isHeatingCurveManuallyChanged(initial, offsetK, read)`), store the read curve as the new `initialHeatingCurve`, set `activeHeatingCurveOffsetK` to `0` and log it in a plain sentence.
+- **Alongside `HeatpumpControlV3` and `HeatpumpProgramSwitchV3`.** Boost and eco act on top; the offset is the new base.
+- **Validation** (run by the base class before the handler via `checkHeatingCurveOffset`, or `validateHeatpumpHeatingCurveOffset(data, metadata)` directly): a valid index and finite `offsetK` (`Rejected`); `HeatingCurveOffset` declared (`NotSupported`); a known circuit and — unless `offsetK` is `0` — within `heatingCurveOffsetRangeK` (`Rejected`).
+- **Customer settings.** Whether to optimise at all, and which rooms of the home the circuit heats (`roomIds`, whether or not a room has a sensor), live in `heatingCircuits[].curveOptimization`. The host resolves them into `rooms`: per room its target temperature (set in the enyo app, `HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C` = 21 °C until then) and the temperature sensors assigned to it. Rooms without a sensor are left out; the room furthest below its target counts, and the curve is lowered by at most `HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K` (3 K). Integrations only read them.
+
+```typescript
+protected async handleHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) {
+    const {heatingCircuitIndex: index, offsetK} = message.data;
+    if (offsetK !== 0) {
+        await this.appliances.rememberHeatpumpInitialHeatingCurve(message.applianceId, index, await this.readCurve(index));
+    }
+    await this.device.writeCurveShift(index, offsetK);
+    if (offsetK === 0) {
+        await this.appliances.clearHeatpumpInitialHeatingCurve(message.applianceId, index);
+    } else {
+        await this.appliances.updateHeatpumpHeatingCircuit(message.applianceId, index, {
+            activeHeatingCurveOffsetK: await this.readEffectiveShiftK(index),
+        });
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+}
+```
+
 #### HeatpumpFlexibilityAnnouncementV3
 
 The heatpump's offer, in the vocabulary of `HeatpumpControlV3`: per zone (`target` + `index`), how far it can be raised right now (`maxDeltaK` above `setpointC`, room in Kelvin of room temperature) and the smallest raise that actually starts it (`minDeltaK`, e.g. the remaining hysteresis), with which heat source at what power (`heatSources`: compressor and heating rod as separate entries, each with a `power` band and an optional `estimatedElectricalKwh` for the full raise), and when (`earliestStartIso` / `latestStartIso`, `minDurationMinutes`). An optional `required: {deltaK, byIso}` turns a "may" into a "must, by then" — e.g. hot water dropping below comfort at 18:00. Declare `FlexibilityAnnouncementV3` on the heatpump; for such heatpumps it supersedes the generic `ApplianceFlexibilityAnnouncementV1` / `V2`.
@@ -3767,6 +3806,9 @@ Beyond tanks and circuits, the heatpump metadata (`EnyoHeatpumpApplianceMetadata
 | `ProgramSwitch` | `heatingCircuits[].supportedProgramModes` / `programModeTemperaturesC` / `activeProgramMode` and the same on `domesticHotWater[]` — which zones can be switched to comfort / eco with `HeatpumpProgramSwitchV3`, at which setpoints, and the mode they run in now |
 | `RoomTemperature` | `heatingCircuits[].roomTemperatureC` in `HeatpumpTemperaturesUpdateV1`; where it is measured goes in `heatingCircuits[].roomTemperatureSource` (`None` / `Internal` / `External`) and, for an enyo sensor, `roomTemperatureSensor` |
 | `RoomTemperatureInput` | The heatpump accepts measured room temperatures via `SetHeatpumpRoomTemperatureV1` |
+| `HeatingCurveOffset` | The heatpump's app shifts a circuit's curve via `SetHeatpumpHeatingCurveOffsetV1`. `heatingCircuits[].heatingCurveOffsetRangeK` (allowed range, must contain 0), `activeHeatingCurveOffsetK` (effective shift read back) and `initialHeatingCurve` (the curve before the first shift) |
+| — | `heatingCircuits[].curveOptimization` — the customer's choice for the room-temperature based curve optimisation: `enabled` (off by default), `roomIds` (the rooms the circuit heats) and, resolved by the host, `rooms` — per room `roomId`, `name`, its `targetRoomTemperatureC` (16–26 °C) and the `sensors` assigned to it. Customer-owned; integrations only read it |
+| — | `building.recommendedHeatingCurve` — the curve the building actually needs, learned from the days the room held its target |
 | `PvSurplusSignal` | The heatpump takes `availablePowerW` of `HeatpumpControlV3` as a PV surplus signal (e.g. Lambda register 102). Supersedes the deprecated `AvailablePowerAnnouncement` |
 | `ControlV3` | The heatpump's app handles `HeatpumpControlV3` / `HeatpumpControlCancelV3` and reports `HeatpumpControlStatusV3`. The energy manager sends V3 only to heatpumps declaring it. Needs at least one overheating feature to be actionable |
 | `FlexibilityAnnouncementV3` | The heatpump publishes `HeatpumpFlexibilityAnnouncementV3` offers; the energy manager plans from them instead of deriving the headroom from metadata. Needs at least one overheating feature to be actionable |

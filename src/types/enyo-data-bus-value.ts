@@ -1628,6 +1628,8 @@ export enum EnyoDataBusMessageEnum {
     SetSmartPlugSwitchV1 = 'SetSmartPlugSwitchV1',
     /** Control command: write a measured room temperature into a heatpump that accepts it as control input. */
     SetHeatpumpRoomTemperatureV1 = 'SetHeatpumpRoomTemperatureV1',
+    /** Control command: shift the heating curve of a heatpump heating circuit permanently, relative to its initial curve. Only for heatpumps declaring the `HeatingCurveOffset` feature. */
+    SetHeatpumpHeatingCurveOffsetV1 = 'SetHeatpumpHeatingCurveOffsetV1',
     /**
      * Control command: one heatpump control session — how much power, from which sources, which zones to heat now (DHW / buffer tank / room) and until when. Only for heatpumps declaring the `ControlV3` feature.
      * Supersedes {@link EnyoDataBusMessageEnum.SetHeatpumpAvailablePowerV2} and {@link EnyoDataBusMessageEnum.HeatpumpOverheatingV1}.
@@ -4261,6 +4263,65 @@ export interface EnyoDataBusSetHeatpumpRoomTemperatureV1 extends EnyoDataBusMess
          * Omit to leave the fallback to the heatpump.
          */
         validForSeconds?: number;
+    };
+}
+
+/**
+ * Command message shifting the heating curve of one heating circuit in
+ * parallel — permanently, until the next such message.
+ *
+ * Only send it to heatpumps that declare
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset}.
+ *
+ * - **No expiry.** The offset holds until a new one arrives.
+ * - `offsetK` is always **relative to the initial curve**
+ *   ({@link EnyoHeatpumpApplianceHeatingCircuit.initialHeatingCurve}), never to
+ *   the current one, so the message is idempotent and may be re-sent.
+ * - `offsetK: 0` restores the initial curve exactly (including vendor-specific
+ *   parameters) and then clears `initialHeatingCurve`.
+ * - Vendors shift in different units (K of room temperature, steps, …). The
+ *   integration converts and reports the effective shift in K of flow
+ *   temperature in
+ *   {@link EnyoHeatpumpApplianceHeatingCircuit.activeHeatingCurveOffsetK}.
+ * - Runs alongside {@link EnyoDataBusHeatpumpControlV3} (boost) and
+ *   {@link EnyoDataBusHeatpumpProgramSwitchV3} (eco): those act **on top** of
+ *   the offset, which becomes the new base.
+ *
+ * The receiving integration answers with an
+ * {@link EnyoDataBusCommandAcknowledgeV1}: `Accepted` only once the curve is
+ * written, `Rejected` with a reason (e.g. outside
+ * {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurveOffsetRangeK}, or the
+ * device is in a manual mode), `NotSupported` without the feature.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1 = {
+ *     id: 'msg-1',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.SetHeatpumpHeatingCurveOffsetV1,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: new Date().toISOString(),
+ *     data: {heatingCircuitIndex: 0, offsetK: -1.5},
+ * };
+ * ```
+ */
+export interface EnyoDataBusSetHeatpumpHeatingCurveOffsetV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetHeatpumpHeatingCurveOffsetV1;
+    /** ID of the heatpump appliance whose heating curve is shifted */
+    applianceId: string;
+    data: {
+        /** Index of the heating circuit whose curve is shifted */
+        heatingCircuitIndex: number;
+        /**
+         * Shift in Kelvin of flow temperature, relative to the initial curve
+         * ({@link EnyoHeatpumpApplianceHeatingCircuit.initialHeatingCurve}).
+         * Negative lowers the curve. `0` restores the initial curve.
+         */
+        offsetK: number;
+        /** Optional reason why this command was issued */
+        reason?: EnyoDataBusCommandReason;
     };
 }
 

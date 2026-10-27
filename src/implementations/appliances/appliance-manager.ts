@@ -15,6 +15,7 @@ import type {EnyoChargerApplianceMetadata} from "../../types/enyo-charger-applia
 import type {
     EnyoHeatpumpApplianceDomesticHotWater,
     EnyoHeatpumpApplianceHeatingCircuit,
+    EnyoHeatpumpApplianceHeatingCurve,
     EnyoHeatpumpApplianceMetadata,
 } from "../../types/enyo-heatpump-appliance.js";
 import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-appliance.js";
@@ -804,6 +805,67 @@ export class ApplianceManager {
         }
         await this.energyApp.useAppliances().save(
             this.mergeApplianceData(appliance, {heatpump: {domesticHotWater: zones}}),
+            applianceId,
+        );
+        await this.primeCacheFromSdk(applianceId);
+    }
+
+    /**
+     * Remembers the heating curve a circuit had before the first
+     * `SetHeatpumpHeatingCurveOffsetV1` changed it, as the circuit's
+     * `initialHeatingCurve` — the curve `offsetK: 0` restores. Call it before
+     * writing the first offset other than `0`.
+     *
+     * Keeps an already stored initial curve: every later offset is relative to
+     * the curve before the *first* change, so it must not be overwritten with
+     * an already shifted one. Works like {@link updateHeatpumpHeatingCircuit}
+     * otherwise.
+     *
+     * Does nothing when the appliance does not exist.
+     *
+     * @param applianceId The ID of the heatpump appliance
+     * @param index The `index` of the heating circuit
+     * @param curve The curve currently set on the device
+     * @returns `true` when the curve was stored, `false` when an initial curve
+     *   was already stored or the appliance does not exist
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async rememberHeatpumpInitialHeatingCurve(
+        applianceId: string,
+        index: number,
+        curve: EnyoHeatpumpApplianceHeatingCurve,
+    ): Promise<boolean> {
+        this.throwIfDisposed();
+        const appliance = await this.energyApp.useAppliances().getById(applianceId);
+        if (!appliance) return false;
+        const circuit = appliance.heatpump?.heatingCircuits?.find(c => c.index === index);
+        if (circuit?.initialHeatingCurve) return false;
+        await this.updateHeatpumpHeatingCircuit(applianceId, index, {initialHeatingCurve: curve});
+        return true;
+    }
+
+    /**
+     * Forgets a circuit's `initialHeatingCurve` after the integration restored
+     * it on the device (`offsetK: 0`), and sets `activeHeatingCurveOffsetK` to
+     * `0`. Other circuits and fields are left untouched.
+     *
+     * Does nothing when the appliance or the circuit does not exist.
+     *
+     * @param applianceId The ID of the heatpump appliance
+     * @param index The `index` of the heating circuit
+     * @throws {ApplianceManagerDisposedError} when called after {@link dispose}
+     */
+    async clearHeatpumpInitialHeatingCurve(applianceId: string, index: number): Promise<void> {
+        this.throwIfDisposed();
+        const appliance = await this.energyApp.useAppliances().getById(applianceId);
+        if (!appliance) return;
+        const circuits = [...(appliance.heatpump?.heatingCircuits ?? [])];
+        const position = circuits.findIndex(c => c.index === index);
+        if (position < 0) return;
+        const {initialHeatingCurve: _removed, ...rest} = circuits[position];
+        circuits[position] = {...rest, activeHeatingCurveOffsetK: 0};
+        await this.energyApp.useAppliances().save(
+            this.mergeApplianceData(appliance, {heatpump: {heatingCircuits: circuits}}),
             applianceId,
         );
         await this.primeCacheFromSdk(applianceId);
