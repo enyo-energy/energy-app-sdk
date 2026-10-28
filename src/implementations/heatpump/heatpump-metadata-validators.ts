@@ -19,6 +19,7 @@ import {
     EnyoHeatpumpHeatingControlReferenceEnum,
     EnyoHeatpumpProgramModeEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
+    EnyoHeatpumpRoomThermostatControlEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../types/enyo-heatpump-appliance.js';
 import type {
@@ -169,6 +170,10 @@ function checkHeatingCurveOffset(
                 `${prefix}: curveOptimization.rooms[${i}].targetRoomTemperatureC must lie within ` +
                 `${CURVE_OPTIMIZATION_TARGET_RANGE_C.min}…${CURVE_OPTIMIZATION_TARGET_RANGE_C.max} °C; got ${target}`,
             );
+        }
+        const control = room?.thermostatControl;
+        if (control !== undefined && !Object.values(EnyoHeatpumpRoomThermostatControlEnum).includes(control)) {
+            errors.push(`${prefix}: curveOptimization.rooms[${i}].thermostatControl is unknown; got ${control}`);
         }
     });
 }

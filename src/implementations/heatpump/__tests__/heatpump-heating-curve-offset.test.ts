@@ -4,6 +4,7 @@ import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum as Feature,
     EnyoHeatpumpApplianceHeatingCurve,
     EnyoHeatpumpApplianceMetadata,
+    EnyoHeatpumpRoomThermostatControlEnum,
 } from '../../../types/enyo-heatpump-appliance.js';
 import {validateHeatpumpHeatingCurveOffset} from '../heatpump-control-validators.js';
 import {validateHeatpumpAdvancedMetadata} from '../heatpump-metadata-validators.js';
@@ -167,6 +168,7 @@ describe('validateHeatpumpAdvancedMetadata — heating curve offset', () => {
                     rooms: [
                         {roomId: 'living', targetRoomTemperatureC: 21, sensors: [{applianceId: 'shelly-1', sensorId: ''}]},
                         {roomId: '', targetRoomTemperatureC: 30, sensors: []},
+                        {roomId: 'bath', targetRoomTemperatureC: 22, sensors: [], thermostatControl: 'Valve' as EnyoHeatpumpRoomThermostatControlEnum},
                     ],
                 },
             }],
@@ -179,6 +181,7 @@ describe('validateHeatpumpAdvancedMetadata — heating curve offset', () => {
         expect(result.errors.join('\n')).toMatch(/rooms\[0\]\.sensors\[0\] needs applianceId and sensorId/);
         expect(result.errors.join('\n')).toMatch(/rooms\[1\] needs a roomId/);
         expect(result.errors.join('\n')).toMatch(/rooms\[1\]\.targetRoomTemperatureC must lie within 16…26 °C; got 30/);
+        expect(result.errors.join('\n')).toMatch(/rooms\[2\]\.thermostatControl is unknown; got Valve/);
     });
 
     it('warns when HeatingCurveOffset is declared without any range', () => {

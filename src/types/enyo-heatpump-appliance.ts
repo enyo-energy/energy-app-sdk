@@ -492,6 +492,32 @@ export interface EnyoHeatpumpCurveOptimizationRoom {
      * energy manager leaves it out. With several, the coldest counts.
      */
     sensors: EnyoHeatpumpRoomTemperatureSensorReference[];
+    /**
+     * How the room's thermostat behaves, as the customer told the enyo app —
+     * it decides what a room at its target means. Absent:
+     * {@link EnyoHeatpumpRoomThermostatControlEnum.Open}.
+     */
+    thermostatControl?: EnyoHeatpumpRoomThermostatControlEnum;
+}
+
+/**
+ * How the thermostat of a room of a heating circuit behaves while the energy
+ * manager lowers the heating curve.
+ */
+export enum EnyoHeatpumpRoomThermostatControlEnum {
+    /**
+     * Nothing holds the room back: no thermostat, or a manual one turned fully
+     * open. The room follows the curve, so a room at its target means the
+     * curve is just right.
+     */
+    Open = 'Open',
+    /**
+     * An electronic thermostat that holds its own setpoint. It opens further
+     * as the curve is lowered, so the room stays at its target while the curve
+     * still has room to spare — only a room falling below its target shows
+     * that the curve went one step too far.
+     */
+    SelfRegulating = 'SelfRegulating',
 }
 
 /**
