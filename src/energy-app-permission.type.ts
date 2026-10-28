@@ -64,7 +64,8 @@ export enum EnergyAppPermissionTypeEnum {
     Calibration = 'Calibration',
     VehicleIntegration = 'VehicleIntegration',
     Webhook = 'Webhook',
-    Subscriptions = 'Subscriptions'
+    Subscriptions = 'Subscriptions',
+    Room = 'Room'
 }
 
 /**

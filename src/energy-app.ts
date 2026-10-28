@@ -54,6 +54,7 @@ import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
 import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
 import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
 import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
+import {EnergyAppRoom} from "./packages/energy-app-room.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -664,6 +665,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useSubscriptions(): EnergyAppSubscriptions {
         return this.energyAppSdk.useSubscriptions();
+    }
+
+    /**
+     * Gets the Room API for reading the rooms of the home: their name, the
+     * appliances and temperature sensors in them, the temperature the customer
+     * wants there and, for the heating curve optimisation, their warmth and
+     * thermostat. Read the rooms with `getRooms()` and react to changes with
+     * `listenForRoomsChanged()`.
+     * @returns The Room API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Room` permission is
+     *         not granted.
+     */
+    public useRoom(): EnergyAppRoom {
+        return this.energyAppSdk.useRoom();
     }
 
     /**

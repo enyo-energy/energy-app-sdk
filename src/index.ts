@@ -94,6 +94,7 @@ export * from './implementations/heatpump/heatpump-control-validators.js'
 export * from './implementations/heatpump/heatpump-control-session.js'
 export * from './implementations/heatpump/heatpump-flexibility-validators.js'
 export * from './implementations/heatpump/heatpump-heating-curve-offset.js'
+export * from './implementations/heatpump/heatpump-curve-optimization-rooms.js'
 export * from './types/enyo-inverter-appliance.js'
 export * from './types/enyo-onboarding.js'
 export * from './packages/energy-app-onboarding.js'
@@ -191,6 +192,8 @@ export * from './types/enyo-webhook.js';
 export * from './packages/energy-app-webhook.js';
 export * from './types/enyo-subscription.js';
 export * from './packages/energy-app-subscriptions.js';
+export * from './types/enyo-room.js';
+export * from './packages/energy-app-room.js';
 export * from './implementations/subscriptions/define-subscription-plan.js';
 export * from './implementations/subscriptions/subscription-plan-validators.js';
 export * from './implementations/subscriptions/in-memory-subscriptions.js';

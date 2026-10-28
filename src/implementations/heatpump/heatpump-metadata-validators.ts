@@ -19,7 +19,6 @@ import {
     EnyoHeatpumpHeatingControlReferenceEnum,
     EnyoHeatpumpProgramModeEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
-    EnyoHeatpumpRoomThermostatControlEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../types/enyo-heatpump-appliance.js';
 import type {
@@ -107,18 +106,13 @@ function checkProgramModes(
     }
 }
 
-/** Range the customer may choose for a room's `targetRoomTemperatureC`, in °C. */
-const CURVE_OPTIMIZATION_TARGET_RANGE_C = {min: 16, max: 26};
-
 /**
  * Validates the heating-curve-offset fields of one heating circuit
  * (`heatingCurveOffsetRangeK`, `activeHeatingCurveOffsetK`,
  * `curveOptimization`) and appends the problems to `errors`.
  *
  * Errors: the range is not finite or does not contain `0`; the active offset
- * is not finite or lies outside the range; a room id is empty; a resolved room
- * lacks its `roomId`, a sensor lacks its `applianceId` / `sensorId`, or its
- * target lies outside 16…26 °C.
+ * is not finite or lies outside the range; a room id is empty.
  *
  * @param circuit - The heating circuit.
  * @param prefix - Path prefix for the messages, e.g. `heatingCircuits[index=0]`.
@@ -152,28 +146,6 @@ function checkHeatingCurveOffset(
     (settings.roomIds ?? []).forEach((roomId, i) => {
         if (typeof roomId !== 'string' || roomId.length === 0) {
             errors.push(`${prefix}: curveOptimization.roomIds[${i}] must be a non-empty string`);
-        }
-    });
-    (settings.rooms ?? []).forEach((room, i) => {
-        if (!room?.roomId) {
-            errors.push(`${prefix}: curveOptimization.rooms[${i}] needs a roomId`);
-        }
-        (room?.sensors ?? []).forEach((sensor, j) => {
-            if (!sensor?.applianceId || !sensor?.sensorId) {
-                errors.push(`${prefix}: curveOptimization.rooms[${i}].sensors[${j}] needs applianceId and sensorId`);
-            }
-        });
-        const target = room?.targetRoomTemperatureC;
-        if (!(isFiniteNumber(target)
-            && target >= CURVE_OPTIMIZATION_TARGET_RANGE_C.min && target <= CURVE_OPTIMIZATION_TARGET_RANGE_C.max)) {
-            errors.push(
-                `${prefix}: curveOptimization.rooms[${i}].targetRoomTemperatureC must lie within ` +
-                `${CURVE_OPTIMIZATION_TARGET_RANGE_C.min}…${CURVE_OPTIMIZATION_TARGET_RANGE_C.max} °C; got ${target}`,
-            );
-        }
-        const control = room?.thermostatControl;
-        if (control !== undefined && !Object.values(EnyoHeatpumpRoomThermostatControlEnum).includes(control)) {
-            errors.push(`${prefix}: curveOptimization.rooms[${i}].thermostatControl is unknown; got ${control}`);
         }
     });
 }
