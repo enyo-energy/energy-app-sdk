@@ -161,14 +161,7 @@ describe('validateHeatpumpAdvancedMetadata — heating curve offset', () => {
                 heatingCurveOffsetRangeK: {minK: 1, maxK: 5},
                 activeHeatingCurveOffsetK: -2,
                 initialHeatingCurve: {points: [{outdoorTemperatureC: 0, flowTemperatureC: 34}]},
-                curveOptimization: {
-                    enabled: true,
-                    roomIds: [''],
-                    rooms: [
-                        {roomId: 'living', targetRoomTemperatureC: 21, sensors: [{applianceId: 'shelly-1', sensorId: ''}]},
-                        {roomId: '', targetRoomTemperatureC: 30, sensors: []},
-                    ],
-                },
+                curveOptimization: {enabled: true, roomIds: ['']},
             }],
         });
         expect(result.ok).toBe(false);
@@ -176,9 +169,6 @@ describe('validateHeatpumpAdvancedMetadata — heating curve offset', () => {
         expect(result.errors.join('\n')).toMatch(/activeHeatingCurveOffsetK -2 K is outside/);
         expect(result.errors.join('\n')).toMatch(/initialHeatingCurve/);
         expect(result.errors.join('\n')).toMatch(/roomIds\[0\] must be a non-empty string/);
-        expect(result.errors.join('\n')).toMatch(/rooms\[0\]\.sensors\[0\] needs applianceId and sensorId/);
-        expect(result.errors.join('\n')).toMatch(/rooms\[1\] needs a roomId/);
-        expect(result.errors.join('\n')).toMatch(/rooms\[1\]\.targetRoomTemperatureC must lie within 16…26 °C; got 30/);
     });
 
     it('warns when HeatingCurveOffset is declared without any range', () => {

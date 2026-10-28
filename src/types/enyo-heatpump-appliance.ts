@@ -462,37 +462,10 @@ export interface EnyoHeatpumpRoomTemperatureSensorReference {
 export const HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K = 3;
 
 /**
- * The target temperature of a room whose customer has not set one, in °C.
+ * The target temperature of a room whose customer has not set one, in °C
+ * ({@link EnyoRoom.targetTemperatureC}).
  */
 export const HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C = 21;
-
-/**
- * One room a heating circuit heats, as the host resolves it for the heating
- * curve optimisation: the room's target temperature and the temperature
- * sensors assigned to that room. Read-only for apps — the host fills it from
- * {@link EnyoHeatpumpHeatingCurveOptimizationSettings.roomIds} and the rooms
- * the customer set up in the enyo app.
- */
-export interface EnyoHeatpumpCurveOptimizationRoom {
-    /** ID of the room in the enyo app. */
-    roomId: string;
-    /** The room's name, as the customer called it — for logs and diagnostics. */
-    name?: string;
-    /**
-     * The room temperature in °C the customer wants in this room — a setpoint
-     * of the energy manager's controller, **not** written to the heatpump.
-     * {@link HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C} until the customer
-     * sets one. Raising it means the customer is too cold there, and the
-     * energy manager reacts at once.
-     */
-    targetRoomTemperatureC: number;
-    /**
-     * The temperature sensors assigned to this room. Empty when the room has
-     * none: such a room is part of the circuit but cannot be judged, and the
-     * energy manager leaves it out. With several, the coldest counts.
-     */
-    sensors: EnyoHeatpumpRoomTemperatureSensorReference[];
-}
 
 /**
  * The range of {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1.data}
@@ -510,7 +483,7 @@ export interface EnyoHeatpumpHeatingCurveOffsetRange {
 /**
  * What the customer chose for the room-temperature based optimisation of one
  * heating circuit's heating curve: the energy manager lowers the curve as far
- * as possible without any of the {@link rooms} falling below its own target,
+ * as possible without any of the circuit's rooms falling below its own target,
  * using {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1}.
  *
  * **Customer-owned.** Set in the enyo app, never by an integration: the host
@@ -526,18 +499,17 @@ export interface EnyoHeatpumpHeatingCurveOptimizationSettings {
      */
     enabled: boolean;
     /**
-     * IDs of the rooms (as set up in the enyo app) this circuit heats — chosen
-     * by the customer, whether or not a room has a temperature sensor.
+     * IDs of the rooms ({@link EnyoRoom.id}) this circuit heats — chosen by the
+     * customer, whether or not a room has a temperature sensor. Read the rooms
+     * with {@link EnergyAppRoom.getRoomsById}; {@link curveOptimizationRooms}
+     * picks the ones the curve is judged by, and
+     * {@link EnergyAppRoomTemperatures} gives their measured temperatures. The
+     * room furthest below its target decides how low the curve may go; rooms
+     * without a sensor are left out, and without any room that has one the
+     * optimisation cannot run. The
+     * curve is lowered by at most {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}.
      */
     roomIds?: string[];
-    /**
-     * Those rooms resolved by the host: each with its target and its sensors.
-     * The room furthest below its target decides how low the curve may go;
-     * rooms without a sensor are left out. Without any room that has a sensor
-     * the optimisation cannot run. The curve is lowered by at most
-     * {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}. Read-only for apps.
-     */
-    rooms?: EnyoHeatpumpCurveOptimizationRoom[];
 }
 
 /**
