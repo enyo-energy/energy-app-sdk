@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import type {EnyoRoom} from '../../../types/enyo-room.js';
+import {type EnyoRoom, EnyoRoomThermostatEnum as Thermostat, EnyoRoomWarmthEnum as Warmth} from '../../../types/enyo-room.js';
 import {
     type CurveRoomTraits,
     curveJudgedRoomIds,
@@ -11,7 +11,6 @@ const room = (id: string, extra: Partial<EnyoRoom> = {}): EnyoRoom => ({
     id,
     name: id,
     applianceIds: [],
-    temperatureSensors: [],
     targetTemperatureC: 21,
     ...extra,
 });
@@ -19,15 +18,15 @@ const room = (id: string, extra: Partial<EnyoRoom> = {}): EnyoRoom => ({
 describe('isManualRoomThermostat', () => {
     it('counts the dials and an unknown thermostat as manual', () => {
         expect(isManualRoomThermostat(undefined)).toBe(true);
-        expect(isManualRoomThermostat('steps-6')).toBe(true);
-        expect(isManualRoomThermostat('celsius-dial')).toBe(true);
-        expect(isManualRoomThermostat('self-regulating')).toBe(false);
-        expect(isManualRoomThermostat('none')).toBe(false);
+        expect(isManualRoomThermostat(Thermostat.Steps6)).toBe(true);
+        expect(isManualRoomThermostat(Thermostat.CelsiusDial)).toBe(true);
+        expect(isManualRoomThermostat(Thermostat.SelfRegulating)).toBe(false);
+        expect(isManualRoomThermostat(Thermostat.None)).toBe(false);
     });
 });
 
 describe('curveJudgedRoomIds', () => {
-    const traits: Record<string, CurveRoomTraits> = {bed: {warmth: 'cool'}, bath: {warmth: 'warm'}};
+    const traits: Record<string, CurveRoomTraits> = {bed: {warmth: Warmth.Cool}, bath: {warmth: Warmth.Warm}};
     const traitsOf = (roomId: string) => traits[roomId];
 
     it('judges every room when all ask for the same', () => {
@@ -40,9 +39,9 @@ describe('curveJudgedRoomIds', () => {
 
     it('always judges a room behind a self-regulating thermostat or none', () => {
         const mixed: Record<string, CurveRoomTraits> = {
-            bath: {warmth: 'warm'},
-            bed: {warmth: 'cool', thermostat: 'self-regulating'},
-            hall: {warmth: 'cool', thermostat: 'none'},
+            bath: {warmth: Warmth.Warm},
+            bed: {warmth: Warmth.Cool, thermostat: Thermostat.SelfRegulating},
+            hall: {warmth: Warmth.Cool, thermostat: Thermostat.None},
         };
         expect(curveJudgedRoomIds(['bath', 'bed', 'hall'], (roomId) => mixed[roomId])).toEqual(['bath', 'bed', 'hall']);
     });
@@ -51,9 +50,9 @@ describe('curveJudgedRoomIds', () => {
 describe('curveOptimizationRooms', () => {
     it("resolves the circuit's judged rooms and drops the ones that are gone", () => {
         const rooms = [
-            room('living', {warmth: 'warm', temperatureSensors: [{applianceId: 'shelly-1', sensorId: 'ambient'}]}),
-            room('bed', {warmth: 'cool'}),
-            room('office', {thermostat: 'self-regulating'}),
+            room('living', {warmth: Warmth.Warm}),
+            room('bed', {warmth: Warmth.Cool}),
+            room('office', {thermostat: Thermostat.SelfRegulating}),
         ];
         expect(curveOptimizationRooms({enabled: true, roomIds: ['living', 'bed', 'office', 'gone']}, rooms).map((r) => r.id))
             .toEqual(['living', 'office']);

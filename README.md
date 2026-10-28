@@ -409,6 +409,8 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`GridFeeRegister`** / **`GridFeeUse`**: Publish / resolve dynamic grid fees (time-variable network charges)
 - **`CommandLog`**: Record and read back the commands apps issued to appliances
 - **`Subscriptions`**: Read the subscriptions bought for the app on this device
+- **`Room`**: Read the rooms of the home the customer set up in the enyo app
+- **`RoomTemperatures`**: Read the current and past temperatures measured in those rooms
 
 #### Site & Identity Permissions
 
@@ -1770,16 +1772,34 @@ if (full) console.log(`lat=${full.latitude} lon=${full.longitude}`);
 
 #### `useRoom(): EnergyAppRoom`
 
-Read the rooms of the home, as the customer set them up in the enyo app: name, the appliances and room temperature sensors in each, the temperature the customer wants there (`HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C` = 21 °C until set) and, for the heating curve optimisation, the room's `warmth` and `thermostat`. Read-only.
+Read the rooms of the home, as the customer set them up in the enyo app: name, the appliances in each, the temperature the customer wants there (`targetTemperatureC`, optional — use `HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C` = 21 °C until set) and, for the heating curve optimisation, the room's `warmth` (`EnyoRoomWarmthEnum`) and `thermostat` (`EnyoRoomThermostatEnum`). Read-only.
 
 ```typescript
 const rooms = energyApp.useRoom();
 
 applyRooms(await rooms.getRooms());
+const circuitRooms = await rooms.getRoomsById(circuit.curveOptimization?.roomIds ?? []);
 rooms.listenForRoomsChanged((all) => applyRooms(all));
 ```
 
 Requires the `Room` permission.
+
+#### `useRoomTemperatures(): EnergyAppRoomTemperatures`
+
+Read the temperatures measured in the rooms, per sensor — a room can have several. `getCurrentRoomTemperatures(roomIds)` returns the latest reading of each sensor, `getRoomTemperatureHistory({roomIds, startDateIso, endDateIso, resolution})` the past ones in `'1m'` or `'15m'` buckets (average, min, max). There is no listener: follow the sensors named in the current values (`applianceId`, `sensorId`) via `TemperatureSensorValuesUpdateV1` on the data bus.
+
+```typescript
+const roomTemperatures = energyApp.useRoomTemperatures();
+
+const current = await roomTemperatures.getCurrentRoomTemperatures(['living', 'bath']);
+const history = await roomTemperatures.getRoomTemperatureHistory({
+    roomIds: ['living', 'bath'],
+    startDateIso: '2026-10-27T00:00:00Z',
+    endDateIso: '2026-10-28T00:00:00Z',
+});
+```
+
+Requires the `RoomTemperatures` permission.
 
 #### `useGridConnectionPoint(): EnergyAppGridConnectionPoint`
 
@@ -3764,7 +3784,7 @@ Shifts the heating curve of one heating circuit in parallel — **permanently**,
 - **Changed by hand.** If the curve read from the device differs from `initialHeatingCurve` shifted by `activeHeatingCurveOffsetK` by more than 0.5 K at any point (`isHeatingCurveManuallyChanged(initial, offsetK, read)`), store the read curve as the new `initialHeatingCurve`, set `activeHeatingCurveOffsetK` to `0` and log it in a plain sentence.
 - **Alongside `HeatpumpControlV3` and `HeatpumpProgramSwitchV3`.** Boost and eco act on top; the offset is the new base.
 - **Validation** (run by the base class before the handler via `checkHeatingCurveOffset`, or `validateHeatpumpHeatingCurveOffset(data, metadata)` directly): a valid index and finite `offsetK` (`Rejected`); `HeatingCurveOffset` declared (`NotSupported`); a known circuit and — unless `offsetK` is `0` — within `heatingCurveOffsetRangeK` (`Rejected`).
-- **Customer settings.** Whether to optimise at all, and which rooms of the home the circuit heats (`roomIds`, whether or not a room has a sensor), live in `heatingCircuits[].curveOptimization`. The rooms themselves come from `useRoom().getRooms()`; `curveOptimizationRooms(curveOptimization, rooms)` picks the ones the curve is judged by (the warmest rooms behind a manual thermostat, and every room with a self-regulating thermostat or none). A room at its target means the curve is just right when its thermostat is open, but only a room falling below its target shows the curve went too far behind a self-regulating one. Rooms without a sensor are left out; the room furthest below its target counts, and the curve is lowered by at most `HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K` (3 K). Integrations only read them.
+- **Customer settings.** Whether to optimise at all, and which rooms of the home the circuit heats (`roomIds`, whether or not a room has a sensor), live in `heatingCircuits[].curveOptimization`. The rooms themselves come from `useRoom().getRoomsById(roomIds)`, their measured temperatures from `useRoomTemperatures()`; `curveOptimizationRooms(curveOptimization, rooms)` picks the ones the curve is judged by (the warmest rooms behind a manual thermostat, and every room with a self-regulating thermostat or none). A room at its target means the curve is just right when its thermostat is open, but only a room falling below its target shows the curve went too far behind a self-regulating one. Rooms without a sensor are left out; the room furthest below its target counts, and the curve is lowered by at most `HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K` (3 K). Integrations only read them.
 
 ```typescript
 protected async handleHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) {

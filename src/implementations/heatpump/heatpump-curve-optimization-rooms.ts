@@ -6,17 +6,27 @@
  */
 
 import type {EnyoHeatpumpHeatingCurveOptimizationSettings} from '../../types/enyo-heatpump-appliance.js';
-import type {EnyoRoom, EnyoRoomThermostat, EnyoRoomWarmth} from '../../types/enyo-room.js';
+import {type EnyoRoom, EnyoRoomThermostatEnum, EnyoRoomWarmthEnum} from '../../types/enyo-room.js';
 
 /** What the curve rules need to know about a room. */
 export interface CurveRoomTraits {
-    /** Absent: `normal`. */
-    warmth?: EnyoRoomWarmth;
-    /** Absent: `steps-5`. */
-    thermostat?: EnyoRoomThermostat;
+    /** Absent: {@link EnyoRoomWarmthEnum.Normal}. */
+    warmth?: EnyoRoomWarmthEnum;
+    /** Absent: {@link EnyoRoomThermostatEnum.Steps5}. */
+    thermostat?: EnyoRoomThermostatEnum;
 }
 
-const WARMTH_RANK: Record<EnyoRoomWarmth, number> = {cool: 0, normal: 1, warm: 2};
+const WARMTH_RANK: Record<EnyoRoomWarmthEnum, number> = {
+    [EnyoRoomWarmthEnum.Cool]: 0,
+    [EnyoRoomWarmthEnum.Normal]: 1,
+    [EnyoRoomWarmthEnum.Warm]: 2,
+};
+
+const MANUAL_THERMOSTATS: ReadonlySet<EnyoRoomThermostatEnum> = new Set([
+    EnyoRoomThermostatEnum.Steps5,
+    EnyoRoomThermostatEnum.Steps6,
+    EnyoRoomThermostatEnum.CelsiusDial,
+]);
 
 /**
  * How much warmth a room asks for compared with the other rooms of its
@@ -26,7 +36,7 @@ const WARMTH_RANK: Record<EnyoRoomWarmth, number> = {cool: 0, normal: 1, warm: 2
  * @returns The rank.
  */
 export function curveWarmthRank(traits: CurveRoomTraits | undefined): number {
-    return WARMTH_RANK[traits?.warmth ?? 'normal'];
+    return WARMTH_RANK[traits?.warmth ?? EnyoRoomWarmthEnum.Normal];
 }
 
 /**
@@ -36,8 +46,8 @@ export function curveWarmthRank(traits: CurveRoomTraits | undefined): number {
  * @param thermostat - The room's thermostat.
  * @returns `true` for a manual thermostat.
  */
-export function isManualRoomThermostat(thermostat: EnyoRoomThermostat | undefined): boolean {
-    return thermostat === undefined || thermostat === 'steps-5' || thermostat === 'steps-6' || thermostat === 'celsius-dial';
+export function isManualRoomThermostat(thermostat: EnyoRoomThermostatEnum | undefined): boolean {
+    return thermostat === undefined || MANUAL_THERMOSTATS.has(thermostat);
 }
 
 /**
@@ -83,9 +93,10 @@ export function curveJudgedRoomIds(
 
 /**
  * The rooms a heating circuit's curve optimisation is judged by, resolved
- * against the rooms of the home ({@link EnergyAppRoom.getRooms}). A room that
- * no longer exists is dropped; a judged room without a temperature sensor
- * stays, so the caller can see it cannot be measured.
+ * against the rooms of the home ({@link EnergyAppRoom.getRooms} or
+ * {@link EnergyAppRoom.getRoomsById}). A room that no longer exists is
+ * dropped. Whether a judged room can be measured is up to
+ * {@link EnergyAppRoomTemperatures}.
  *
  * @param settings - The circuit's {@link EnyoHeatpumpApplianceHeatingCircuit.curveOptimization}.
  * @param rooms - Every room of the home.

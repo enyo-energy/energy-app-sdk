@@ -194,6 +194,8 @@ export * from './types/enyo-subscription.js';
 export * from './packages/energy-app-subscriptions.js';
 export * from './types/enyo-room.js';
 export * from './packages/energy-app-room.js';
+export * from './types/enyo-room-temperature.js';
+export * from './packages/energy-app-room-temperatures.js';
 export * from './implementations/subscriptions/define-subscription-plan.js';
 export * from './implementations/subscriptions/subscription-plan-validators.js';
 export * from './implementations/subscriptions/in-memory-subscriptions.js';

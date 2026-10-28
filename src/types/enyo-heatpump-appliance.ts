@@ -501,10 +501,12 @@ export interface EnyoHeatpumpHeatingCurveOptimizationSettings {
     /**
      * IDs of the rooms ({@link EnyoRoom.id}) this circuit heats — chosen by the
      * customer, whether or not a room has a temperature sensor. Read the rooms
-     * with {@link EnergyAppRoom.getRooms}; {@link curveOptimizationRooms}
-     * picks the ones the curve is judged by. The room furthest below its
-     * target decides how low the curve may go; rooms without a sensor are left
-     * out, and without any room that has one the optimisation cannot run. The
+     * with {@link EnergyAppRoom.getRoomsById}; {@link curveOptimizationRooms}
+     * picks the ones the curve is judged by, and
+     * {@link EnergyAppRoomTemperatures} gives their measured temperatures. The
+     * room furthest below its target decides how low the curve may go; rooms
+     * without a sensor are left out, and without any room that has one the
+     * optimisation cannot run. The
      * curve is lowered by at most {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}.
      */
     roomIds?: string[];

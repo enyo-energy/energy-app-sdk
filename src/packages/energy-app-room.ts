@@ -6,7 +6,8 @@ import {EnyoRoom, EnyoRoomsChangedListener} from "../types/enyo-room.js";
  * Rooms are set up by the customer in the enyo app: a name, the appliances in
  * it, the temperature the customer wants there and — for the heating curve
  * optimisation — how warm it should be compared with the other rooms of its
- * heating circuit and which thermostat it has. Apps only read them.
+ * heating circuit and which thermostat it has. Apps only read them. The
+ * temperatures measured in a room come from {@link EnergyAppRoomTemperatures}.
  *
  * Access to this API requires the `Room` permission
  * ({@link EnergyAppPermissionType}).
@@ -30,6 +31,17 @@ export interface EnergyAppRoom {
      * @throws {EnergyAppPermissionNotGrantedError} If the `Room` permission is not granted.
      */
     getRooms(): Promise<EnyoRoom[]>;
+    /**
+     * Returns the rooms with the given IDs, e.g. the
+     * {@link EnyoHeatpumpHeatingCurveOptimizationSettings.roomIds} of a
+     * heating circuit. An ID without a room — the customer removed it — is
+     * left out.
+     *
+     * @param roomIds - IDs of the rooms to return
+     * @returns Promise that resolves to the rooms found, in the order of `roomIds`
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Room` permission is not granted.
+     */
+    getRoomsById(roomIds: string[]): Promise<EnyoRoom[]>;
     /**
      * Registers a listener called with every room of the home whenever the
      * customer creates, changes or removes one.
