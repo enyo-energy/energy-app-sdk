@@ -1255,6 +1255,33 @@ settings.listenForSettingsChanges((settingName, newValue) => {
 const allSettings = await settings.getSettingsConfig();
 ```
 
+##### Action settings (buttons)
+
+A setting of type `'action'` renders as a button for a one-off command (restart a device, start a self-test, …). Every tap writes the current time as an ISO 8601 string to the setting, so each tap arrives as a change event — react to the event, not to the stored value.
+
+Use an action only for something that *happens*. Anything that has a state the user turns on or off (e.g. "charging cable locked") is a `checkbox`, not an action.
+
+```typescript
+await settings.addSettingConfig({
+    name: `restart-${applianceId}`,
+    applianceId,
+    type: 'action',
+    required: false,
+    fieldName: [{ language: 'en', value: 'Restart wallbox' }, { language: 'de', value: 'Wallbox neu starten' }],
+    actionOptions: {
+        buttonCaption: [{ language: 'en', value: 'Restart now' }, { language: 'de', value: 'Jetzt neu starten' }],
+        // optional: ask before triggering
+        confirmationText: [{ language: 'en', value: 'Restart the wallbox?' }, { language: 'de', value: 'Wallbox neu starten?' }],
+    },
+});
+
+settings.listenForSettingsChanges((event) => {
+    if (event.settingName === `restart-${applianceId}`) {
+        void restartWallbox();
+    }
+});
+```
+
 #### `useConfigurationManager(): EnergyAppConfigurationManager`
 
 Register **internal**, non user-facing configurations for your package and react to value changes. Unlike `useSettings()`, configurations registered here are NOT rendered in the Energy App UI — they are intended for values the package itself reads and writes at runtime (e.g. internal feature toggles, tuning parameters, calibration values) and need to be persisted across restarts.

@@ -95,13 +95,33 @@ export interface EnyoPackageConfigurationSettingTextOptions {
 }
 
 /**
+ * Configuration options for action-type settings.
+ *
+ * An action setting renders as a button instead of an input, for a one-off command (restart a
+ * device, start a self-test). Anything with an on/off state belongs in a `checkbox` instead.
+ * It holds no meaningful value of its own: every tap writes the current time as an ISO 8601
+ * string (e.g. `"2026-10-29T10:15:00.000Z"`) to the setting, so each tap reaches
+ * {@link EnyoSettingsChangeListener} as a change event with a new value — even a second tap
+ * of the same button. Packages react to the event, not to the stored value.
+ */
+export interface EnyoPackageConfigurationSettingActionOptions {
+    /** Translated caption of the button (e.g. "Restart now") */
+    buttonCaption: EnyoPackageConfigurationTranslatedValue[];
+    /**
+     * Optional translated question the user has to confirm before the action is triggered.
+     * Omit it to trigger the action on the first tap.
+     */
+    confirmationText?: EnyoPackageConfigurationTranslatedValue[];
+}
+
+/**
  * Represents a single configuration setting for an Energy App package.
  */
 export interface EnyoPackageConfigurationSetting {
     /** internal name of the setting - must be unique */
     name: string;
     /** the type of the setting */
-    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox' | 'time' | 'priority';
+    type: 'text' | 'select' | 'float' | 'integer' | 'checkbox' | 'time' | 'priority' | 'action';
     /** if the setting is required */
     required: boolean;
     /** The displayed name of the field */
@@ -122,6 +142,8 @@ export interface EnyoPackageConfigurationSetting {
     timeOptions?: EnyoPackageConfigurationSettingTimeOptions;
     /** Optional configuration for priority-type settings, defining the available priority options with order indices */
     priorityOptions?: EnyoPackageConfigurationSettingPriorityOption[];
+    /** Configuration for action-type settings (a button). Required when `type` is `'action'`. */
+    actionOptions?: EnyoPackageConfigurationSettingActionOptions;
 }
 
 /**
