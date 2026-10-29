@@ -97,14 +97,15 @@ export interface EnyoPackageConfigurationSettingTextOptions {
 /**
  * Configuration options for action-type settings.
  *
- * An action setting renders as a button instead of an input. It holds no meaningful value of
- * its own: every tap writes the current time as an ISO 8601 string (e.g.
- * `"2026-10-29T10:15:00.000Z"`) to the setting, so each tap reaches
+ * An action setting renders as a button instead of an input, for a one-off command (restart a
+ * device, start a self-test). Anything with an on/off state belongs in a `checkbox` instead.
+ * It holds no meaningful value of its own: every tap writes the current time as an ISO 8601
+ * string (e.g. `"2026-10-29T10:15:00.000Z"`) to the setting, so each tap reaches
  * {@link EnyoSettingsChangeListener} as a change event with a new value — even a second tap
  * of the same button. Packages react to the event, not to the stored value.
  */
 export interface EnyoPackageConfigurationSettingActionOptions {
-    /** Translated caption of the button (e.g. "Unlock cable now") */
+    /** Translated caption of the button (e.g. "Restart now") */
     buttonCaption: EnyoPackageConfigurationTranslatedValue[];
     /**
      * Optional translated question the user has to confirm before the action is triggered.

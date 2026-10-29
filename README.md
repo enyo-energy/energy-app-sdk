@@ -1257,25 +1257,27 @@ const allSettings = await settings.getSettingsConfig();
 
 ##### Action settings (buttons)
 
-A setting of type `'action'` renders as a button. Every tap writes the current time as an ISO 8601 string to the setting, so each tap arrives as a change event — react to the event, not to the stored value:
+A setting of type `'action'` renders as a button for a one-off command (restart a device, start a self-test, …). Every tap writes the current time as an ISO 8601 string to the setting, so each tap arrives as a change event — react to the event, not to the stored value.
+
+Use an action only for something that *happens*. Anything that has a state the user turns on or off (e.g. "charging cable locked") is a `checkbox`, not an action.
 
 ```typescript
 await settings.addSettingConfig({
-    name: `unlock-cable-${applianceId}`,
+    name: `restart-${applianceId}`,
     applianceId,
     type: 'action',
     required: false,
-    fieldName: [{ language: 'en', value: 'Charging cable' }, { language: 'de', value: 'Ladekabel' }],
+    fieldName: [{ language: 'en', value: 'Restart wallbox' }, { language: 'de', value: 'Wallbox neu starten' }],
     actionOptions: {
-        buttonCaption: [{ language: 'en', value: 'Unlock now' }, { language: 'de', value: 'Jetzt entriegeln' }],
+        buttonCaption: [{ language: 'en', value: 'Restart now' }, { language: 'de', value: 'Jetzt neu starten' }],
         // optional: ask before triggering
-        confirmationText: [{ language: 'en', value: 'Unlock the cable?' }, { language: 'de', value: 'Kabel entriegeln?' }],
+        confirmationText: [{ language: 'en', value: 'Restart the wallbox?' }, { language: 'de', value: 'Wallbox neu starten?' }],
     },
 });
 
 settings.listenForSettingsChanges((event) => {
-    if (event.settingName === `unlock-cable-${applianceId}`) {
-        void unlockCable();
+    if (event.settingName === `restart-${applianceId}`) {
+        void restartWallbox();
     }
 });
 ```
