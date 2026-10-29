@@ -28,6 +28,7 @@ import {
     EnyoSubscriptionUnit,
     EnyoSubscriptionUnitTypeEnum
 } from '../../types/enyo-subscription.js';
+import {validatePackageSubscriptionOffer} from './subscription-offer-validators.js';
 
 /**
  * Thrown by {@link assertValidPackageSubscriptionPlans} when a package's
@@ -60,11 +61,13 @@ export interface PackageSubscriptionPlansValidationResult {
 
 /**
  * The parts of a package definition the validator reads: the plans, the
- * subscription mode, and the permissions to check that the app can read its
- * subscriptions.
+ * subscription mode, the permissions to check that the app can read its
+ * subscriptions, and optionally how the plans are promoted (features, free
+ * tier and offer screen).
  */
 export type PackageSubscriptionPlansSource =
-    Pick<EnergyAppPackageDefinition, 'subscriptionPlans' | 'permissions' | 'subscriptionMode'>;
+    Pick<EnergyAppPackageDefinition, 'subscriptionPlans' | 'permissions' | 'subscriptionMode'>
+    & Partial<Pick<EnergyAppPackageDefinition, 'subscriptionFeatures' | 'subscriptionFreeTier' | 'subscriptionOfferScreen'>>;
 
 /** A plan key — the same kebab-case slug shape used for public file names. */
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -161,6 +164,10 @@ function validateStoreEntries(plan: EnergyAppPackageSubscriptionPlan, at: string
  *
  * A `subscriptionMode` without plans is a warning: it has no effect.
  *
+ * Also runs `validatePackageSubscriptionOffer()` on the feature catalog, the
+ * free tier, the offer screen and the plans' `includedFeatures` and
+ * `highlight`, and merges its errors and warnings into the result.
+ *
  * @param definition - The package definition, or just its `subscriptionPlans`,
  *   `subscriptionMode` and `permissions`. A package without plans is valid.
  * @returns The {@link PackageSubscriptionPlansValidationResult}.
@@ -178,6 +185,9 @@ export function validatePackageSubscriptionPlans(
     const warnings: string[] = [];
     const plans = definition.subscriptionPlans;
     const mode = definition.subscriptionMode;
+
+    const offer = validatePackageSubscriptionOffer(definition);
+    warnings.push(...offer.warnings);
 
     if (!plans?.length) {
         if (mode !== undefined) {
@@ -239,6 +249,7 @@ export function validatePackageSubscriptionPlans(
         validateStoreEntries(plan, at, errors);
     }
 
+    errors.push(...offer.errors);
     return {ok: errors.length === 0, errors, warnings};
 }
 

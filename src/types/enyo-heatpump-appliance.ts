@@ -154,6 +154,85 @@ export enum EnyoHeatpumpApplianceConnectionTypeEnum {
 }
 
 /**
+ * What an SG Ready relay of a heatpump installation acts on
+ * ({@link EnyoHeatpumpApplianceSgReadyRelay.function}).
+ *
+ * Installations often wire more than one SG Ready input — e.g. one for space
+ * heating and one for domestic hot water — so the energy manager can raise one
+ * without the other.
+ */
+export enum EnyoHeatpumpSgReadyFunctionEnum {
+    /** Heats domestic hot water with the electric heating rod of the DHW tank. */
+    DhwHeatingRod = 'dhw-heating-rod',
+    /** Heats domestic hot water with the heatpump's compressor. */
+    DhwHeatpump = 'dhw-heatpump',
+    /** Space heating of a heating circuit. */
+    Heating = 'heating',
+}
+
+/**
+ * The four operating states of an SG Ready input, numbered 1–4 by the SG Ready
+ * label of the Bundesverband Wärmepumpe.
+ */
+export enum EnyoHeatpumpSgReadyStateEnum {
+    /** State 1 (contacts 1:0): operation blocked, e.g. by the grid operator. */
+    Blocked = 'blocked',
+    /** State 2 (contacts 0:0): normal operation; the heatpump follows its own control. */
+    Normal = 'normal',
+    /** State 3 (contacts 0:1): switch-on recommended; the heatpump raises its setpoints. */
+    Recommended = 'recommended',
+    /** State 4 (contacts 1:1): switch-on forced; the heatpump runs at its maximum setpoints. */
+    Forced = 'forced',
+}
+
+/**
+ * One SG Ready input of a heatpump installation — the two relay contacts that
+ * switch the four {@link EnyoHeatpumpSgReadyStateEnum | SG Ready states} — and
+ * what it acts on. Declared in {@link EnyoHeatpumpApplianceMetadata.sgReadyRelays}.
+ *
+ * An input wired with only one contact can switch only two states; declare
+ * them in {@link supportedStates}, e.g. `[Normal, Recommended]`.
+ *
+ * @example
+ * ```typescript
+ * sgReadyRelays: [
+ *     {index: 0, function: EnyoHeatpumpSgReadyFunctionEnum.Heating, zoneIndex: 0, name: 'K1/K2'},
+ *     {index: 1, function: EnyoHeatpumpSgReadyFunctionEnum.DhwHeatpump, zoneIndex: 0, name: 'K3/K4'},
+ *     {
+ *         index: 2,
+ *         function: EnyoHeatpumpSgReadyFunctionEnum.DhwHeatingRod,
+ *         supportedStates: [EnyoHeatpumpSgReadyStateEnum.Normal, EnyoHeatpumpSgReadyStateEnum.Forced]
+ *     }
+ * ]
+ * ```
+ */
+export interface EnyoHeatpumpApplianceSgReadyRelay {
+    /**
+     * Zero-based index of this relay, unique within the heatpump. Stable for as
+     * long as the wiring stays the same, so commands and readings can refer to
+     * the relay by it.
+     */
+    index: number;
+    /** What the relay acts on. */
+    function: EnyoHeatpumpSgReadyFunctionEnum;
+    /**
+     * The zone the relay acts on: the {@link EnyoHeatpumpApplianceHeatingCircuit.index}
+     * for {@link EnyoHeatpumpSgReadyFunctionEnum.Heating}, the
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.index} for the DHW
+     * functions. Omit for the first (or only) zone.
+     */
+    zoneIndex?: number;
+    /** Optional label for installers and the UI, e.g. the terminal names `'K1/K2'`. */
+    name?: string;
+    /**
+     * The SG Ready states this relay can switch. Omit when all four are wired.
+     */
+    supportedStates?: EnyoHeatpumpSgReadyStateEnum[];
+    /** The state the relay is currently in, when known. Must be one of {@link supportedStates}. */
+    activeState?: EnyoHeatpumpSgReadyStateEnum;
+}
+
+/**
  * Additional heating devices that can be attached to / combined with a
  * heatpump installation.
  */
@@ -838,6 +917,16 @@ export interface EnyoHeatpumpApplianceMetadata {
      * states, while an API connection typically allows direct read/write.
      */
     connectionType?: EnyoHeatpumpApplianceConnectionTypeEnum;
+    /**
+     * The SG Ready relays of the installation, 0 to n, each with the function
+     * it acts on (space heating, DHW by heatpump, DHW by heating rod). Omit or
+     * leave empty when no SG Ready input is wired.
+     *
+     * Independent of {@link connectionType}: an installation read through an
+     * API can still have SG Ready relays wired for control. Validate with
+     * `validateHeatpumpAdvancedMetadata()`.
+     */
+    sgReadyRelays?: EnyoHeatpumpApplianceSgReadyRelay[];
     /**
      * Whether the energy manager is allowed to actively control (steer) this
      * heatpump. When `false`, the heatpump is treated as read-only/monitor-only

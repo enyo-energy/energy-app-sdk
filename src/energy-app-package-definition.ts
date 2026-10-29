@@ -10,6 +10,13 @@ import type {
     EnyoSubscriptionPrice,
     EnyoSubscriptionPricingModel
 } from "./types/enyo-subscription.js";
+import type {
+    EnyoSubscriptionFeature,
+    EnyoSubscriptionFreeTier,
+    EnyoSubscriptionIncludedFeature,
+    EnyoSubscriptionOfferScreen,
+    EnyoSubscriptionPlanHighlight
+} from "./types/enyo-subscription-offer.js";
 
 export type EnergyAppPackageLanguage = 'de' | 'en';
 
@@ -317,7 +324,13 @@ export interface EnergyAppPackageSubscriptionPlanStoreEntry {
     title: string;
     /** One sentence describing what the plan unlocks */
     shortDescription: string;
-    /** Optional list of benefits, shown as bullet points on the offer screen */
+    /**
+     * Optional list of benefits, shown as bullet points on the plan card.
+     *
+     * Prefer {@link EnergyAppPackageSubscriptionPlan.includedFeatures}: features
+     * carry icons and descriptions and feed the comparison table. The host
+     * shows `benefits` only for plans without `includedFeatures`.
+     */
     benefits?: string[];
 }
 
@@ -382,6 +395,21 @@ export interface EnergyAppPackageSubscriptionPlan {
     trialDays?: number;
     /** Localized store information. Entries for `de` and `en` are required. */
     storeEntry: EnergyAppPackageSubscriptionPlanStoreEntry[];
+    /**
+     * The features this plan includes, as keys of
+     * {@link EnergyAppPackageDefinition.subscriptionFeatures} — or with a
+     * translated value such as "up to 5 vehicles" — in display order. Shown on
+     * the plan card and in the comparison table.
+     *
+     * List every feature the customer gets with the plan, including those of
+     * the free tier, so the comparison table reads correctly.
+     */
+    includedFeatures?: EnyoSubscriptionIncludedFeature[];
+    /**
+     * Optional badge that makes this plan stand out on the offer screen, e.g.
+     * `recommended`. At most one plan of a package may be highlighted.
+     */
+    highlight?: EnyoSubscriptionPlanHighlight;
     /** Optional internal note explaining this plan; never shown to users. */
     internalComment?: string;
 }
@@ -1100,6 +1128,29 @@ export interface EnergyAppPackageDefinition {
      * Omit for packages that are free.
      */
     subscriptionPlans?: EnergyAppPackageSubscriptionPlan[];
+    /**
+     * The package's feature catalog: every feature that the plans and the free
+     * tier refer to, declared once with its icon and translations. enyo builds
+     * the feature lists and the comparison table of the offer screen from it.
+     *
+     * Only used together with {@link subscriptionPlans}. Validate it with
+     * `validatePackageSubscriptionPlans()`.
+     */
+    subscriptionFeatures?: EnyoSubscriptionFeature[];
+    /**
+     * What the app offers without a plan, shown as the free column of the
+     * comparison table. Only allowed with `subscriptionMode: 'optional'`.
+     */
+    subscriptionFreeTier?: EnyoSubscriptionFreeTier;
+    /**
+     * The blocks of the screen on which enyo offers the plans — a headline,
+     * feature lists, a comparison table, hints such as why the app costs
+     * money, and the plan cards — in display order.
+     *
+     * Omit to show only the plan cards. Validate it with
+     * `validatePackageSubscriptionPlans()`.
+     */
+    subscriptionOfferScreen?: EnyoSubscriptionOfferScreen;
     /**
      * Whether the app needs one of its plans to work at all.
      *

@@ -3207,7 +3207,9 @@ const packageDef = defineEnergyAppPackage({
 | `pricingModel` | `per-package` (default): one price for the package on the device. `per-unit`: the price is charged per unit — see [Per-unit plans](#per-unit-plans). |
 | `prices` | One net price per currency. `amountWithoutTax` is always the **total for one interval** — per month, per year, or the single one-time amount; per unit for `per-unit` plans — in the currency (not cent), at most two decimals; enyo adds VAT. |
 | `trialDays` | Optional free trial in days. Not allowed for `one-time` plans. |
-| `storeEntry` | Title, short description and optional benefits; `de` and `en` are required. |
+| `storeEntry` | Title, short description and optional benefits; `de` and `en` are required. Prefer `includedFeatures` over `benefits`. |
+| `includedFeatures` | Optional feature keys from `subscriptionFeatures`, or `{ featureKey, value }` with a translated value — see [Offer screen](#offer-screen). |
+| `highlight` | Optional badge: `recommended`, `best-value` or `most-popular`. At most one plan per package. |
 | `internalComment` | Optional note, never shown to users. |
 
 What a plan unlocks is decided by the app: check `isPlanActive(subscriptions, planKey)` at runtime (see
@@ -3235,6 +3237,97 @@ defineEnergyAppPackage({
 In tests, `InMemorySubscriptions` takes the mode as its third constructor argument; `assertEnergyAppState(state)`
 throws when an `optional` package reports `SubscriptionRequired`. The same check is available as
 `assertEnergyAppStateMatchesSubscriptionMode(mode, state)`.
+
+### Offer screen
+
+Promote the plans on the screen where enyo sells them: declare a **feature catalog** once, say which features the
+**free tier** and each plan include, and build the screen from **blocks**. All three are optional. Without an offer
+screen, enyo shows only the plan cards.
+
+```typescript
+import {
+    defineSubscriptionFeature,
+    defineSubscriptionOfferScreen,
+    EnyoSubscriptionOfferHintKindEnum,
+    EnyoSubscriptionOfferIconEnum,
+    EnyoSubscriptionPlanHighlightEnum
+} from '@enyo-energy/energy-app-sdk';
+
+defineEnergyAppPackage({
+    // ...
+    subscriptionMode: EnyoSubscriptionModeEnum.Optional,
+    subscriptionFeatures: [
+        defineSubscriptionFeature({
+            featureKey: 'pv-charging',
+            icon: EnyoSubscriptionOfferIconEnum.Sun,
+            storeEntry: [
+                { language: 'en', title: 'PV surplus charging' },
+                { language: 'de', title: 'PV-Überschussladen' }
+            ]
+        }),
+        defineSubscriptionFeature({
+            featureKey: 'price-optimisation',
+            icon: EnyoSubscriptionOfferIconEnum.PiggyBank,
+            storeEntry: [
+                { language: 'en', title: 'Dynamic price optimisation', description: 'Charges when electricity is cheapest.' },
+                { language: 'de', title: 'Optimierung nach dynamischen Preisen', description: 'Lädt, wenn Strom am günstigsten ist.' }
+            ]
+        }),
+        defineSubscriptionFeature({
+            featureKey: 'vehicles',
+            icon: EnyoSubscriptionOfferIconEnum.Car,
+            storeEntry: [{ language: 'en', title: 'Connected vehicles' }, { language: 'de', title: 'Verbundene Fahrzeuge' }]
+        })
+    ],
+    subscriptionFreeTier: {
+        storeEntry: [{ language: 'en', title: 'Basic' }, { language: 'de', title: 'Basis' }],
+        includedFeatures: ['pv-charging']
+    },
+    subscriptionPlans: [
+        defineSubscriptionPlan({
+            planKey: 'premium',
+            highlight: EnyoSubscriptionPlanHighlightEnum.Recommended,
+            includedFeatures: [
+                'pv-charging',
+                'price-optimisation',
+                { featureKey: 'vehicles', value: [{ language: 'en', value: 'up to 5' }, { language: 'de', value: 'bis zu 5' }] }
+            ],
+            // paymentInterval, prices, storeEntry ...
+        })
+    ],
+    subscriptionOfferScreen: defineSubscriptionOfferScreen({
+        blocks: [
+            { type: 'hero', icon: 'piggy-bank', storeEntry: [
+                { language: 'en', title: 'Charge for less', text: 'Smart charging with dynamic prices.' },
+                { language: 'de', title: 'Günstiger laden', text: 'Intelligentes Laden mit dynamischen Preisen.' }
+            ] },
+            { type: 'comparison' },                     // Basic vs. Premium, one row per feature
+            { type: 'hint', kind: EnyoSubscriptionOfferHintKindEnum.PricingReason, icon: 'handshake', storeEntry: [
+                { language: 'en', title: 'Why does this cost money?', text: 'The car vendors charge us for every connected vehicle.' },
+                { language: 'de', title: 'Warum kostet das Geld?', text: 'Die Fahrzeughersteller berechnen uns jedes verbundene Fahrzeug.' }
+            ] },
+            { type: 'plans' }
+        ]
+    })
+});
+```
+
+| Block | Shows | Notes |
+|---|---|---|
+| `hero` | A large headline with optional text and icon | `title` is required. |
+| `features` | Features with icon and description | `featureKeys` picks and orders them; omit it to list all. |
+| `comparison` | A table: one row per feature, one column per tier | The free column is shown when a free tier is declared (`includeFreeTier` overrides this). `planKeys` and `featureKeys` pick the columns and rows. A cell shows a check mark, the feature's `value`, or nothing. Needs at least two columns. |
+| `hint` | A highlighted note | `kind`: `pricing-reason` (why it costs money), `requirement`, `info`, `legal`. `text` is required. |
+| `plans` | The plan cards and checkout | At most one. Without it, the plans follow the last block. |
+
+- **Icons** come from a fixed set, `EnyoSubscriptionOfferIconEnum` (`piggy-bank`, `sun`, `car`, `wallbox`, `heat-pump`,
+  `handshake`, …), so every app's offer screen looks the same.
+- **A plan's `includedFeatures` should list everything the customer gets with it**, including the free tier's
+  features. The comparison table takes each column straight from the tier's list.
+- **`subscriptionFreeTier` is only allowed with `subscriptionMode: 'optional'`**.
+- Every text needs `de` and `en`. `validatePackageSubscriptionPlans()` checks all of this as well (it calls
+  `validatePackageSubscriptionOffer()`). It also warns about features that no tier includes and comparison rows
+  that stay empty.
 
 ### Per-unit plans
 
@@ -3899,6 +3992,26 @@ await applianceManager.updateHeatpumpDomesticHotWater(applianceId, 0, { timeProg
 ```
 
 Validate before publishing with `validateHeatpumpHeatingCurve`, `validateHeatpumpTimeProgram` or `validateHeatpumpAdvancedMetadata` (or their `assertValid*` counterparts). Each returns `{ ok, errors, warnings }`.
+
+**SG Ready relays.** You can declare 0–n SG Ready inputs in `metadata.heatpump.sgReadyRelays`. Each one has a
+`function` that says what it acts on: `heating` (a heating circuit), `dhw-heatpump` (DHW heated by the compressor)
+or `dhw-heating-rod` (DHW heated by the heating rod). `zoneIndex` names the heating circuit or DHW zone; omit it for
+the first one. If only some of the four states (`blocked`, `normal`, `recommended`, `forced`) are wired, list them
+in `supportedStates`. `activeState` reports the current state. This works independently of `connectionType`.
+
+```typescript
+sgReadyRelays: [
+    { index: 0, function: EnyoHeatpumpSgReadyFunctionEnum.Heating, zoneIndex: 0, name: 'K1/K2' },
+    { index: 1, function: EnyoHeatpumpSgReadyFunctionEnum.DhwHeatpump, name: 'K3/K4' },
+    { index: 2, function: EnyoHeatpumpSgReadyFunctionEnum.DhwHeatingRod,
+      supportedStates: [EnyoHeatpumpSgReadyStateEnum.Normal, EnyoHeatpumpSgReadyStateEnum.Forced] },
+]
+```
+
+`validateHeatpumpAdvancedMetadata` checks the relays too. It rejects duplicate indexes, unknown functions or
+states, and an `activeState` that is not in `supportedStates`. It warns about unknown zones, two relays with the
+same function on one zone, a relay without `normal`, and a `dhw-heating-rod` relay when `additionalDevices` has
+no `HeatingRod`.
 
 ### WallboxIntegrationEnergyApp
 

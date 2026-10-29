@@ -2,7 +2,8 @@
  * Client-side validation for the advanced heatpump metadata an integration
  * publishes: heating curves ({@link EnyoHeatpumpApplianceHeatingCurve}), time
  * programs ({@link EnyoHeatpumpTimeProgram}), the room-temperature wiring of
- * heating circuits and the program-switch modes of circuits and DHW zones.
+ * heating circuits, the program-switch modes of circuits and DHW zones, and
+ * the SG Ready relays ({@link EnyoHeatpumpApplianceSgReadyRelay}).
  *
  * None of these shapes can be checked at the type level — a curve with one
  * point, an unsorted curve, `'25:00'` as a switching time or a period on day
@@ -15,10 +16,13 @@
  */
 
 import {
+    EnyoHeatpumpApplianceAdditionalDeviceEnum,
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpHeatingControlReferenceEnum,
     EnyoHeatpumpProgramModeEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
+    EnyoHeatpumpSgReadyFunctionEnum,
+    EnyoHeatpumpSgReadyStateEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../types/enyo-heatpump-appliance.js';
 import type {
@@ -27,6 +31,7 @@ import type {
     EnyoHeatpumpApplianceHeatingCurve,
     EnyoHeatpumpApplianceHeatingCurvePoint,
     EnyoHeatpumpApplianceMetadata,
+    EnyoHeatpumpApplianceSgReadyRelay,
     EnyoHeatpumpTimeProgram,
 } from '../../types/enyo-heatpump-appliance.js';
 
@@ -66,6 +71,8 @@ const TIME_OF_DAY = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const LEVELS = new Set<string>(Object.values(EnyoHeatpumpTimeProgramLevelEnum));
 const PROGRAM_MODES = new Set<string>(Object.values(EnyoHeatpumpProgramModeEnum));
 const OVERRIDE_PROGRAM_MODES = new Set<string>([EnyoHeatpumpProgramModeEnum.Comfort, EnyoHeatpumpProgramModeEnum.Eco]);
+const SG_READY_FUNCTIONS = new Set<string>(Object.values(EnyoHeatpumpSgReadyFunctionEnum));
+const SG_READY_STATES = new Set<string>(Object.values(EnyoHeatpumpSgReadyStateEnum));
 
 /**
  * Validates the program-switch fields of one heating circuit or DHW zone
@@ -148,6 +155,87 @@ function checkHeatingCurveOffset(
             errors.push(`${prefix}: curveOptimization.roomIds[${i}] must be a non-empty string`);
         }
     });
+}
+
+/**
+ * Validates the SG Ready relays of a heatpump and appends the problems to
+ * `errors` / `warnings`.
+ *
+ * Errors: duplicate relay `index`, an unknown `function`, an unknown or empty
+ * `supportedStates`, an unknown `activeState` or one outside
+ * `supportedStates`.
+ *
+ * Warnings: a `zoneIndex` naming no declared heating circuit / DHW zone, two
+ * relays with the same function on the same zone, `supportedStates` without
+ * `Normal` or with duplicates, a `dhw-heating-rod` relay while the
+ * installation does not list a heating rod in `additionalDevices`.
+ *
+ * @param relays - The declared SG Ready relays.
+ * @param metadata - The heatpump metadata, for zones and additional devices.
+ * @param errors - Receives blocking problems.
+ * @param warnings - Receives advisory problems.
+ */
+function checkSgReadyRelays(
+    relays: EnyoHeatpumpApplianceSgReadyRelay[],
+    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'heatingCircuits' | 'domesticHotWater' | 'additionalDevices'>,
+    errors: string[],
+    warnings: string[],
+): void {
+    const indexes = relays.map(relay => relay.index);
+    const duplicates = indexes.filter((index, i) => indexes.indexOf(index) !== i);
+    if (duplicates.length > 0) {
+        errors.push(`sgReadyRelays contains duplicate index ${[...new Set(duplicates)].join(', ')}`);
+    }
+
+    const targets = new Set<string>();
+    for (const relay of relays) {
+        const prefix = `sgReadyRelays[index=${relay.index}]`;
+        if (!SG_READY_FUNCTIONS.has(relay.function)) {
+            errors.push(`${prefix}: function "${relay.function}" is not a valid value`);
+            continue;
+        }
+
+        const isHeating = relay.function === EnyoHeatpumpSgReadyFunctionEnum.Heating;
+        const zones = isHeating ? metadata.heatingCircuits : metadata.domesticHotWater;
+        const zoneField = isHeating ? 'heatingCircuits' : 'domesticHotWater';
+        const zoneIndex = relay.zoneIndex ?? zones?.[0]?.index ?? 0;
+        if (relay.zoneIndex !== undefined && zones?.length && !zones.some(zone => zone.index === relay.zoneIndex)) {
+            warnings.push(`${prefix}: zoneIndex ${relay.zoneIndex} is not an index of ${zoneField}`);
+        }
+        const target = `${relay.function}@${zoneIndex}`;
+        if (targets.has(target)) {
+            warnings.push(`${prefix}: another relay already has function ${relay.function} on zone ${zoneIndex}`);
+        }
+        targets.add(target);
+
+        if (relay.function === EnyoHeatpumpSgReadyFunctionEnum.DhwHeatingRod
+            && !(metadata.additionalDevices ?? []).includes(EnyoHeatpumpApplianceAdditionalDeviceEnum.HeatingRod)) {
+            warnings.push(`${prefix}: function dhw-heating-rod is declared but additionalDevices does not list a HeatingRod`);
+        }
+
+        const supported = relay.supportedStates;
+        if (supported !== undefined) {
+            if (supported.length === 0) {
+                errors.push(`${prefix}: supportedStates must not be empty — omit it when all four states are wired`);
+            }
+            for (const state of supported) {
+                if (!SG_READY_STATES.has(state)) errors.push(`${prefix}: supportedStates contains unknown state "${state}"`);
+            }
+            if (new Set(supported).size !== supported.length) {
+                warnings.push(`${prefix}: supportedStates contains duplicate states`);
+            }
+            if (supported.length > 0 && !supported.includes(EnyoHeatpumpSgReadyStateEnum.Normal)) {
+                warnings.push(`${prefix}: supportedStates does not include normal — the relay could never release the heatpump`);
+            }
+        }
+        if (relay.activeState !== undefined) {
+            if (!SG_READY_STATES.has(relay.activeState)) {
+                errors.push(`${prefix}: activeState "${relay.activeState}" is not a valid value`);
+            } else if (supported !== undefined && !supported.includes(relay.activeState)) {
+                errors.push(`${prefix}: activeState ${relay.activeState} is not one of supportedStates`);
+            }
+        }
+    }
 }
 
 /**
@@ -427,12 +515,14 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *  - Heating curve offset: errors from {@link checkHeatingCurveOffset}.
  *    Warning: `HeatingCurveOffset` is declared but no circuit has a
  *    `heatingCurveOffsetRangeK` — no offset other than `0` could be accepted.
+ *  - SG Ready relays: errors and warnings from {@link checkSgReadyRelays}.
  *
  * @param metadata - The heatpump metadata to validate.
  * @returns The validation result.
  */
 export function validateHeatpumpAdvancedMetadata(
-    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>,
+    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>
+        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'additionalDevices'>>,
 ): HeatpumpMetadataValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -541,6 +631,7 @@ export function validateHeatpumpAdvancedMetadata(
             merge(`domesticHotWater[index=${zone.index}].timeProgram`, validateHeatpumpTimeProgram(zone.timeProgram));
         }
     }
+    checkSgReadyRelays(metadata.sgReadyRelays ?? [], metadata, errors, warnings);
 
     return {ok: errors.length === 0, errors, warnings};
 }

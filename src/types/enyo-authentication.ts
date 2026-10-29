@@ -185,6 +185,17 @@ export interface EnyoAuthentication {
      * presented before or after the onboarding guide. When omitted, the host decides the default.
      */
     onboardingOrder?: EnyoAuthenticationOnboardingOrder;
+    /**
+     * Forces the host to show this authentication step even when the package is already in
+     * {@link EnyoAuthenticationStateEnum.Authenticated} state.
+     *
+     * By default the host skips the authentication step if the package reports it is already
+     * authenticated. Set this to `true` when the user must authenticate again regardless of the
+     * current state — for example to re-link an account, grant additional scopes, or authenticate
+     * a newly added appliance against the same vendor account. When omitted or `false`, the
+     * host keeps its default behaviour and may skip the step.
+     */
+    authenticationRequired?: boolean;
 }
 
 export interface EnyoApiKeyAuthenticationResponse {

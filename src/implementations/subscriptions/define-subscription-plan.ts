@@ -20,6 +20,11 @@ import {
     EnyoSubscriptionStatusEnum,
     EnyoSubscriptionUnit
 } from '../../types/enyo-subscription.js';
+import type {
+    EnyoSubscriptionFeature,
+    EnyoSubscriptionIncludedFeature,
+    EnyoSubscriptionOfferScreen
+} from '../../types/enyo-subscription-offer.js';
 
 /**
  * Subscription statuses in which the customer may use what a plan unlocks.
@@ -136,4 +141,52 @@ export function isUnitActive(
         subscription.planKey === planKey
         && isSubscriptionActive(subscription)
         && (subscription.units ?? []).some(paid => isSameSubscriptionUnit(paid, unit)));
+}
+
+/**
+ * Identity helper that type-checks a feature of the package's feature catalog
+ * ({@link EnergyAppPackageDefinition.subscriptionFeatures}) where it is
+ * written.
+ *
+ * @param feature - The feature declaration.
+ * @returns The same feature, unchanged.
+ *
+ * @example
+ * ```typescript
+ * defineSubscriptionFeature({
+ *     featureKey: 'price-optimisation',
+ *     icon: EnyoSubscriptionOfferIconEnum.PiggyBank,
+ *     storeEntry: [
+ *         {language: 'en', title: 'Dynamic price optimisation'},
+ *         {language: 'de', title: 'Optimierung nach dynamischen Preisen'}
+ *     ]
+ * })
+ * ```
+ */
+export function defineSubscriptionFeature(feature: EnyoSubscriptionFeature): EnyoSubscriptionFeature {
+    return feature;
+}
+
+/**
+ * Identity helper that type-checks the package's offer screen
+ * ({@link EnergyAppPackageDefinition.subscriptionOfferScreen}) where it is
+ * written.
+ *
+ * @param screen - The offer screen declaration.
+ * @returns The same offer screen, unchanged.
+ */
+export function defineSubscriptionOfferScreen(screen: EnyoSubscriptionOfferScreen): EnyoSubscriptionOfferScreen {
+    return screen;
+}
+
+/**
+ * Returns the feature key of an included feature, whether it was declared as
+ * a plain key or with a value.
+ *
+ * @param feature - An entry of {@link EnergyAppPackageSubscriptionPlan.includedFeatures}
+ *   or {@link EnyoSubscriptionFreeTier.includedFeatures}.
+ * @returns Its {@link EnyoSubscriptionFeature.featureKey}.
+ */
+export function getIncludedFeatureKey(feature: EnyoSubscriptionIncludedFeature): string {
+    return typeof feature === 'string' ? feature : feature.featureKey;
 }

@@ -8,8 +8,11 @@ import {
     validateHeatpumpTimeProgram,
 } from '../heatpump-metadata-validators.js';
 import {
+    EnyoHeatpumpApplianceAdditionalDeviceEnum,
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
+    EnyoHeatpumpSgReadyFunctionEnum,
+    EnyoHeatpumpSgReadyStateEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../../types/enyo-heatpump-appliance.js';
 import type {
@@ -227,5 +230,72 @@ describe('validateHeatpumpAdvancedMetadata', () => {
             }],
         });
         expect(wired).toEqual({ok: true, errors: [], warnings: []});
+    });
+});
+
+describe('validateHeatpumpAdvancedMetadata sgReadyRelays', () => {
+    const {Heating, DhwHeatpump, DhwHeatingRod} = EnyoHeatpumpSgReadyFunctionEnum;
+    const {Blocked, Normal, Recommended, Forced} = EnyoHeatpumpSgReadyStateEnum;
+    const base = {
+        availableFeatures: [],
+        heatingCircuits: [{index: 0}],
+        domesticHotWater: [{index: 0, targetTemperatureC: 50}],
+        additionalDevices: [EnyoHeatpumpApplianceAdditionalDeviceEnum.HeatingRod],
+    };
+
+    it('accepts no relays and several relays with different functions', () => {
+        expect(validateHeatpumpAdvancedMetadata(base)).toEqual({ok: true, errors: [], warnings: []});
+        expect(validateHeatpumpAdvancedMetadata({...base, sgReadyRelays: []}).ok).toBe(true);
+        expect(validateHeatpumpAdvancedMetadata({
+            ...base,
+            sgReadyRelays: [
+                {index: 0, function: Heating, zoneIndex: 0, name: 'K1/K2', activeState: Normal},
+                {index: 1, function: DhwHeatpump},
+                {index: 2, function: DhwHeatingRod, supportedStates: [Normal, Forced], activeState: Forced},
+            ],
+        })).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it('rejects duplicate indexes, unknown functions and invalid states', () => {
+        const result = validateHeatpumpAdvancedMetadata({
+            ...base,
+            sgReadyRelays: [
+                {index: 0, function: Heating, supportedStates: []},
+                {index: 0, function: 'cooling' as EnyoHeatpumpSgReadyFunctionEnum},
+                {index: 1, function: DhwHeatpump, supportedStates: ['off' as EnyoHeatpumpSgReadyStateEnum, Normal]},
+                {index: 2, function: DhwHeatingRod, supportedStates: [Normal, Recommended], activeState: Forced},
+                {index: 3, function: Heating, zoneIndex: 1, activeState: 'on' as EnyoHeatpumpSgReadyStateEnum},
+            ],
+            heatingCircuits: [{index: 0}, {index: 1}],
+        });
+        expect(result.errors).toEqual([
+            'sgReadyRelays contains duplicate index 0',
+            'sgReadyRelays[index=0]: supportedStates must not be empty — omit it when all four states are wired',
+            'sgReadyRelays[index=0]: function "cooling" is not a valid value',
+            'sgReadyRelays[index=1]: supportedStates contains unknown state "off"',
+            'sgReadyRelays[index=2]: activeState forced is not one of supportedStates',
+            'sgReadyRelays[index=3]: activeState "on" is not a valid value',
+        ]);
+    });
+
+    it('warns about unknown zones, duplicate targets, a missing normal state and a missing heating rod', () => {
+        const result = validateHeatpumpAdvancedMetadata({
+            ...base,
+            additionalDevices: [],
+            sgReadyRelays: [
+                {index: 0, function: Heating},
+                {index: 1, function: Heating, zoneIndex: 0},
+                {index: 2, function: DhwHeatpump, zoneIndex: 3},
+                {index: 3, function: DhwHeatingRod, supportedStates: [Blocked, Forced, Forced]},
+            ],
+        });
+        expect(result.ok).toBe(true);
+        expect(result.warnings).toEqual([
+            'sgReadyRelays[index=1]: another relay already has function heating on zone 0',
+            'sgReadyRelays[index=2]: zoneIndex 3 is not an index of domesticHotWater',
+            'sgReadyRelays[index=3]: function dhw-heating-rod is declared but additionalDevices does not list a HeatingRod',
+            'sgReadyRelays[index=3]: supportedStates contains duplicate states',
+            'sgReadyRelays[index=3]: supportedStates does not include normal — the relay could never release the heatpump',
+        ]);
     });
 });
