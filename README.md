@@ -1255,6 +1255,31 @@ settings.listenForSettingsChanges((settingName, newValue) => {
 const allSettings = await settings.getSettingsConfig();
 ```
 
+##### Action settings (buttons)
+
+A setting of type `'action'` renders as a button. Every tap writes the current time as an ISO 8601 string to the setting, so each tap arrives as a change event — react to the event, not to the stored value:
+
+```typescript
+await settings.addSettingConfig({
+    name: `unlock-cable-${applianceId}`,
+    applianceId,
+    type: 'action',
+    required: false,
+    fieldName: [{ language: 'en', value: 'Charging cable' }, { language: 'de', value: 'Ladekabel' }],
+    actionOptions: {
+        buttonCaption: [{ language: 'en', value: 'Unlock now' }, { language: 'de', value: 'Jetzt entriegeln' }],
+        // optional: ask before triggering
+        confirmationText: [{ language: 'en', value: 'Unlock the cable?' }, { language: 'de', value: 'Kabel entriegeln?' }],
+    },
+});
+
+settings.listenForSettingsChanges((event) => {
+    if (event.settingName === `unlock-cable-${applianceId}`) {
+        void unlockCable();
+    }
+});
+```
+
 #### `useConfigurationManager(): EnergyAppConfigurationManager`
 
 Register **internal**, non user-facing configurations for your package and react to value changes. Unlike `useSettings()`, configurations registered here are NOT rendered in the Energy App UI — they are intended for values the package itself reads and writes at runtime (e.g. internal feature toggles, tuning parameters, calibration values) and need to be persisted across restarts.
