@@ -1282,6 +1282,41 @@ settings.listenForSettingsChanges((event) => {
 });
 ```
 
+##### Expert settings and onboarding
+
+These two optional flags work on a single setting and on a setting group:
+
+- `expertSetting: true` hides the setting from the default view and shows it only in the expert / advanced section,
+  e.g. for installers.
+- `showInOnboarding: true` shows the setting during onboarding, so the user can set it while setting up the app.
+
+A setting without its own value inherits the flag from its group. A value set on the setting overrides the group's.
+Both default to `false`.
+
+```typescript
+await settings.addSettingGroup({
+    groupName: 'modbus',
+    caption: [{ language: 'en', value: 'Modbus' }, { language: 'de', value: 'Modbus' }],
+    expertSetting: true,                 // all settings of the group are expert settings ...
+    settings: [
+        {
+            name: 'modbus-host',
+            type: 'text',
+            required: true,
+            fieldName: [{ language: 'en', value: 'IP address' }, { language: 'de', value: 'IP-Adresse' }],
+            expertSetting: false,        // ... except this one, which overrides the group
+            showInOnboarding: true,
+        },
+        {
+            name: 'modbus-unit-id',
+            type: 'integer',
+            required: false,
+            fieldName: [{ language: 'en', value: 'Unit ID' }, { language: 'de', value: 'Unit-ID' }],
+        },
+    ],
+});
+```
+
 #### `useConfigurationManager(): EnergyAppConfigurationManager`
 
 Register **internal**, non user-facing configurations for your package and react to value changes. Unlike `useSettings()`, configurations registered here are NOT rendered in the Energy App UI — they are intended for values the package itself reads and writes at runtime (e.g. internal feature toggles, tuning parameters, calibration values) and need to be persisted across restarts.
@@ -4379,6 +4414,26 @@ Two charger facts belong on the appliance rather than on a forecast, and `EnyoCh
 - `phaseSwitchThresholdKw` — the surplus at which the EMS switches this charger to three phases (typically ≈ 4.1 kW). Absent on chargers that cannot switch.
 
 Both are for marking on the same power scale a consumer already draws from `maxChargingPowerKw`, instead of hard-coding thresholds only the EMS knows.
+
+**DC chargers.** A DC charger (CCS, CHAdeMO) declares the `DcCharging` feature in `availableFeatures`. The EMS
+controls it by power in watts, not by current per phase. These fields apply:
+- `minChargingPowerKw`: the DC minimum, often several kW.
+- `maxChargingPowerKw`: the maximum power.
+- `powerStepW`: the granularity of power setpoints, e.g. `500` for 0.5 kW steps. Omit it when the charger accepts
+  any watt value.
+
+The current- and phase-based fields (`minChargingCurrentAmpere`, `ampereStep`, `availablePhases`, phase switching)
+do not apply to DC chargers.
+
+```typescript
+charger: {
+    availableFeatures: [EnyoChargerApplianceAvailableFeaturesEnum.DcCharging, EnyoChargerApplianceAvailableFeaturesEnum.PowerLimitation],
+    minChargingPowerKw: 5,
+    maxChargingPowerKw: 22,
+    powerStepW: 500,
+    // status, authorizationMode, ...
+}
+```
 
 ### BatteryCommandForecast
 

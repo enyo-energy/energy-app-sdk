@@ -144,6 +144,27 @@ export interface EnyoPackageConfigurationSetting {
     priorityOptions?: EnyoPackageConfigurationSettingPriorityOption[];
     /** Configuration for action-type settings (a button). Required when `type` is `'action'`. */
     actionOptions?: EnyoPackageConfigurationSettingActionOptions;
+    /**
+     * Marks the setting as an expert setting. The host hides expert settings
+     * from the default view and shows them only in an expert / advanced
+     * section, e.g. for installers.
+     *
+     * When omitted, the setting inherits
+     * {@link EnyoPackageConfigurationSettingGroup.expertSetting} of its group,
+     * and is a normal setting outside a group. An explicit value overrides
+     * the group's.
+     */
+    expertSetting?: boolean;
+    /**
+     * Shows the setting during onboarding, so the user can set it while
+     * setting up the app instead of looking for it in the settings later.
+     *
+     * When omitted, the setting inherits
+     * {@link EnyoPackageConfigurationSettingGroup.showInOnboarding} of its
+     * group, and is not shown in onboarding outside a group. An explicit value
+     * overrides the group's.
+     */
+    showInOnboarding?: boolean;
 }
 
 /**
@@ -192,6 +213,18 @@ export interface EnyoPackageConfigurationSettingGroup {
     caption?: EnyoPackageConfigurationTranslatedValue[];
     /** The settings belonging to this group (1 or more) */
     settings: EnyoPackageConfigurationSetting[];
+    /**
+     * Marks every setting of the group as an expert setting (see
+     * {@link EnyoPackageConfigurationSetting.expertSetting}). A setting can
+     * override it with its own value. Defaults to `false`.
+     */
+    expertSetting?: boolean;
+    /**
+     * Shows every setting of the group during onboarding (see
+     * {@link EnyoPackageConfigurationSetting.showInOnboarding}). A setting can
+     * override it with its own value. Defaults to `false`.
+     */
+    showInOnboarding?: boolean;
 }
 
 /**
@@ -205,4 +238,8 @@ export interface EnyoSettingGroupWithValues {
     caption?: EnyoPackageConfigurationTranslatedValue[];
     /** The settings belonging to this group, including IDs and current values */
     settings: EnyoSettingConfigWithValue[];
+    /** Whether the group is an expert group, see {@link EnyoPackageConfigurationSettingGroup.expertSetting}. */
+    expertSetting?: boolean;
+    /** Whether the group is shown during onboarding, see {@link EnyoPackageConfigurationSettingGroup.showInOnboarding}. */
+    showInOnboarding?: boolean;
 }

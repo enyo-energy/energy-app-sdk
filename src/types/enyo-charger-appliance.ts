@@ -94,7 +94,20 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
      * Once the charger is in {@link EnyoChargerApplianceStatusEnum.Finishing}, no new charge can be
      * started remotely; the customer has to unplug the vehicle and plug it in again.
      */
-    DisconnectToRestartCharge = 'DisconnectToRestartCharge'
+    DisconnectToRestartCharge = 'DisconnectToRestartCharge',
+    /**
+     * If the charger is a DC charger (e.g. CCS or CHAdeMO), converting to DC
+     * itself instead of feeding AC to the vehicle's on-board charger.
+     *
+     * A DC charger is controlled by power in Watts, not by current per phase:
+     * the EMS uses {@link EnyoChargerApplianceMetadata.minChargingPowerKw},
+     * {@link EnyoChargerApplianceMetadata.maxChargingPowerKw} and
+     * {@link EnyoChargerApplianceMetadata.powerStepW}, and ignores the
+     * Ampere-based fields ({@link EnyoChargerApplianceMetadata.minChargingCurrentAmpere},
+     * {@link EnyoChargerApplianceMetadata.ampereStep}) and phase switching
+     * ({@link EnyoChargerApplianceMetadata.availablePhases}).
+     */
+    DcCharger = 'DcCharger'
 }
 
 /**
@@ -134,7 +147,9 @@ export interface EnyoChargerApplianceMetadata {
      * Lowest power the charger can hold a session at, in kilowatts.
      *
      * The floor below which a session cannot be throttled but only paused —
-     * typically 6 A on one phase (≈ 1.4 kW). Consumers mark it on the power
+     * typically 6 A on one phase (≈ 1.4 kW) on an AC charger. A DC charger
+     * ({@link EnyoChargerApplianceAvailableFeaturesEnum.DcCharger}) states its
+     * own DC minimum here, often several kW. Consumers mark it on the power
      * scale so an owner can see why a plan pauses instead of trickling, and
      * the EMS must not issue a non-zero setpoint below it.
      */
@@ -203,6 +218,18 @@ export interface EnyoChargerApplianceMetadata {
      * @default 1
      */
     ampereStep?: number;
+    /**
+     * Granularity, in Watts, at which the charging power can be set on this
+     * charger. Any non-zero power the EMS issues
+     * ({@link EnyoDataBusSetChargerAvailablePowerV2}) should be a multiple of
+     * this step, e.g. `500` for a DC charger that regulates in 0.5 kW steps.
+     *
+     * The power counterpart of {@link ampereStep}, used by chargers controlled
+     * by power rather than current — above all DC chargers
+     * ({@link EnyoChargerApplianceAvailableFeaturesEnum.DcCharging}). Omit when
+     * the charger accepts any Watt value.
+     */
+    powerStepW?: number;
     /**
      * Phase configurations the charger supports. Each value indicates
      * a phase mode the hardware can operate in:
