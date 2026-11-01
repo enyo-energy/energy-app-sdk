@@ -1762,6 +1762,18 @@ export interface EnyoDataBusMeterValuesUpdateV1 extends EnyoDataBusMessage {
         selfConsumptionW?: number;
         /** Self consumed energy (in Watt hours) */
         selfConsumptionWh?: number;
+        /** Voltage of phase L1 to N measured at the meter (in Volt). Omit when the meter does not report it. */
+        voltageL1V?: number;
+        /** Voltage of phase L2 to N measured at the meter (in Volt). Omit when the meter does not report it. */
+        voltageL2V?: number;
+        /** Voltage of phase L3 to N measured at the meter (in Volt). Omit when the meter does not report it. */
+        voltageL3V?: number;
+        /**
+         * Grid frequency measured at the meter (in Hertz, nominally 50 Hz in
+         * Europe). Omit when the meter does not report it — do not send `0` as
+         * a stand-in for "unknown".
+         */
+        gridFrequencyHz?: number;
     }
 }
 
