@@ -17,6 +17,12 @@ export enum EnyoInverterApplianceAvailableFeaturesEnum {
     ReactivePowerControl = 'ReactivePowerControl',
     /** The inverter reports its own AC energy meter reading. */
     EnergyMeterReadout = 'EnergyMeterReadout',
+    /**
+     * The inverter detects grid outages and reports whether the site is on
+     * grid or off grid via `GridStatusUpdateV1` data bus messages (see
+     * `EnyoDataBusGridStatusUpdateV1`).
+     */
+    GridOutageDetection = 'GridOutageDetection',
 }
 
 export interface EnyoInverterDcString {

@@ -23,6 +23,8 @@ export enum EnergyAppModelFeatureEnum {
     PvFeedInLimitation = 'pv-feed-in-limitation',
     /** The inverter active power output can be limited */
     InverterPowerLimitation = 'inverter-power-limitation',
+    /** The inverter detects grid outages and reports on grid / off grid status */
+    InverterGridOutageDetection = 'inverter-grid-outage-detection',
 
     // Wallbox / Charging
 

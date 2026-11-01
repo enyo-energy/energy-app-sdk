@@ -4103,6 +4103,7 @@ Drives a PV inverter. Controls grid feed-in limits and publishes electrical metr
 - **Implement:** `handleSetInverterFeedInLimit` (`data.feedInLimitW` may be `null` to clear), `handleGridOperatorPowerLimitation`.
 - **Publish helpers:**
   - `publishInverterValuesUpdate(applianceId, data)` — DC strings, AC voltages, total PV power, operating state.
+  - `publishGridStatusUpdate(applianceId, data)` — grid outage detection: reports `EnyoGridStatusEnum.OnGrid` / `OffGrid` (plus optional `sinceIso` and `backupPowerActive`) as a `GridStatusUpdateV1` message. Only for inverters declaring `EnyoInverterApplianceAvailableFeaturesEnum.GridOutageDetection`; publish on every status change and once on startup.
 
 ### AirConditioningIntegrationEnergyApp
 
@@ -5153,6 +5154,46 @@ A hold that keeps an appliance **off** after a stop has its own type, `RestartDe
 A session kept running because it **must not be paused** at all — the charger's or the car's `cannotBePaused` is `true` — has its own type, `CannotBePaused` (category `DeviceProtection`), with `powerW` set to the minimum it is held at and no `context.switching` — e.g. "Kept charging at the minimum of 1.4 kW — this car cannot pause charging." Do not send it as `DeviceProtection` / `KeptOn`: that reads "Kept running for its minimum run time", which is untrue for a hold that lasts until the session is complete.
 
 **Fluctuating PV surplus.** When the surplus jumps around (clouds passing) and the energy manager holds an appliance's power steady instead of following every dip, state `PvSurplusFluctuating` (category `PvSurplus`) with `powerW` set to the power being held — e.g. "Charging power held steady while clouds pass." / "Ladeleistung wird gehalten, solange Wolken durchziehen." It is a smoothing decision, told apart from `PvSurplusAvailable` / `PvSurplusUnavailable`.
+
+## Battery Charge Now
+
+A one-time user request to charge a home battery to full — or to a target SoC — right now. The request is a data bus message **addressed to the battery appliance** but **handled by the energy manager**. The battery integration ignores it, and the energy manager charges the battery with its regular storage commands. If the request went to the battery integration directly, the energy manager's next optimization cycle would override it.
+
+```
+App ──RequestBatteryChargeNowV1 (applianceId = battery)──▶ Energy manager ──SetStorageControlV2 (Charge, reason UserRequest)──▶ Battery integration
+ ▲                                                              │
+ └──────────────BatteryChargeNowStatusV1 (accepted → running → completed / cancelled / aborted / rejected)
+```
+
+| Message | Sent by | Purpose |
+|---|---|---|
+| `RequestBatteryChargeNowV1` | app / core | Start: optional `targetSocPercent` (default 100), `allowGridCharging` (default: allowed), `maxDurationMinutes` (safety stop) |
+| `CancelBatteryChargeNowV1` | app / core | Stop early. Optional `requestMessageId` to cancel only that request. Idempotent |
+| `BatteryChargeNowStatusV1` | energy manager | Progress for the request's `id`: `state`, `stopReason`, `effectiveTargetSocPercent`, `currentSocPercent`, `chargingPowerW`, `estimatedCompletionIso` |
+
+**Offer the button only when someone will act on it.** The app shows "charge battery full now" only if the active energy manager declares `EnergyManagerFeatureEnum.BatteryChargeNow` (check `EnergyManagerInfo.features`) and the battery allows control (`controlAllowed` is not `false`, and its `features` include `ManualCharge` when the list is given).
+
+**What the energy manager must do:**
+
+- Validate the request with `validateBatteryChargeNowRequest(message, metadata, currentSoc)` and publish the result as the first status: `Accepted`, or `Rejected` with a `stopReason`.
+- Rank the request above regular optimization (arbitrage, PV priority, EV discharge rules), but below a grid operator limitation (§14a) and device protection. While one of those caps the battery, the request stays `Running`.
+- Charge with `SetStorageControlV2` (`Controlled` / `Charge`, maximum charging power, reason `UserRequest`). Charge from the grid unless the request says `allowGridCharging: false`. The explicit request overrides the general `BatteryChargeFromGrid` setting.
+- End with `Completed` when the effective target is reached (the requested target, capped at `maxSoC`), with `Aborted` + `MaxDurationReached` / `BatteryStoppedCharging` / `ApplianceOffline` when it can't be finished, or with `Cancelled` on `CancelBatteryChargeNowV1`. Then return to regular planning.
+- Keep at most one request per battery: a new request replaces the running one, which ends `Aborted` + `Superseded`.
+
+```typescript
+em.registerFeatures([EnergyManagerFeatureEnum.BatteryChargeNow]);
+
+dataBus.listenForMessages([EnyoDataBusMessageEnum.RequestBatteryChargeNowV1], (msg) => {
+    const request = msg as EnyoDataBusRequestBatteryChargeNowV1;
+    const battery = appliances.get(request.applianceId);
+    const result = validateBatteryChargeNowRequest(request, battery?.metadata?.battery, currentSoc(request.applianceId));
+    publishStatus(request, result.state, result.stopReason, result.effectiveTargetSocPercent);
+    if (result.state === EnyoBatteryChargeNowStateEnum.Accepted) {
+        startChargeNow(request, result.effectiveTargetSocPercent!);
+    }
+});
+```
 
 ## Dynamic Grid Fees & Tariff Bonuses
 

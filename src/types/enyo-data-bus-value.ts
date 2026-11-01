@@ -19,6 +19,8 @@ import {
     PreviewChargingScheduleCostComparison,
     PreviewChargingScheduleUnavailableReasonEnum
 } from "./enyo-energy-manager.js";
+import type {EnergyManagerFeatureEnum} from "./enyo-energy-manager.js";
+import type {EnyoBatteryFeature} from "./enyo-battery-appliance.js";
 import {
     EnyoVehicleSocSourceEnum,
     EnyoVehicleSocUnavailableReasonEnum
@@ -45,6 +47,7 @@ import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
 import type {EnyoEnergyDistributionSnapshot} from "./enyo-energy-distribution.js";
 import type {EnergyManagerBatteryEvDischargeModeEnum} from "./enyo-energy-manager-settings.js";
 import type {ForecastResolutionEnum} from "./enyo-forecasting.js";
+import type {EnyoInverterApplianceAvailableFeaturesEnum} from "./enyo-inverter-appliance.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -1340,6 +1343,23 @@ export enum EnyoInverterStateEnum {
 }
 
 /**
+ * Whether the public grid is available at the site, as detected by an
+ * appliance declaring
+ * {@link EnyoInverterApplianceAvailableFeaturesEnum.GridOutageDetection}.
+ * Reported on the data bus via {@link EnyoDataBusGridStatusUpdateV1}.
+ */
+export enum EnyoGridStatusEnum {
+    /** The public grid is available and the site is connected to it */
+    OnGrid = 'on-grid',
+    /**
+     * The public grid is not available (grid outage) — the site is
+     * disconnected from it and, where supported, running in backup / island
+     * operation
+     */
+    OffGrid = 'off-grid',
+}
+
+/**
  * Operating state of a heating rod as reported on the data bus via
  * {@link EnyoDataBusHeatingRodValuesV1}.
  *
@@ -1577,6 +1597,8 @@ export enum EnyoDataBusMessageEnum {
     SetStorageChargeLimitV1 = 'SetStorageChargeLimitV1',
     SetStorageScheduleV1 = 'SetStorageScheduleV1',
     SetInverterFeedInLimitV1 = 'SetInverterFeedInLimitV1',
+    /** An appliance capable of grid outage detection reports whether the site is on grid or off grid (grid outage). */
+    GridStatusUpdateV1 = 'GridStatusUpdateV1',
     CommandAcknowledgeV1 = 'CommandAcknowledgeV1',
     TemperatureSensorValuesUpdateV1 = 'TemperatureSensorValuesUpdateV1',
     HeatpumpTemperaturesUpdateV1 = 'HeatpumpTemperaturesUpdateV1',
@@ -1622,6 +1644,12 @@ export enum EnyoDataBusMessageEnum {
     SetHeatingRodAvailablePowerV2 = 'SetHeatingRodAvailablePowerV2',
     /** V2 control command: prescribe a single-setpoint control (mode + direction + power) to a battery/storage appliance. */
     SetStorageControlV2 = 'SetStorageControlV2',
+    /** One-time user request: charge a battery appliance to full (or a target SoC) now. Handled by the energy manager. */
+    RequestBatteryChargeNowV1 = 'RequestBatteryChargeNowV1',
+    /** Cancel a running {@link EnyoDataBusMessageEnum.RequestBatteryChargeNowV1} request on a battery appliance. */
+    CancelBatteryChargeNowV1 = 'CancelBatteryChargeNowV1',
+    /** The energy manager reports how a {@link EnyoDataBusMessageEnum.RequestBatteryChargeNowV1} request progresses. */
+    BatteryChargeNowStatusV1 = 'BatteryChargeNowStatusV1',
     /** Live values of a smart plug: relay state, power draw and energy meter reading. */
     SmartPlugValuesUpdateV1 = 'SmartPlugValuesUpdateV1',
     /** Control command: switch a smart plug / relay channel on or off. */
@@ -1884,6 +1912,42 @@ export interface EnyoDataBusInverterValuesV1 extends EnyoDataBusMessage {
         /** Grid operator power limitation currently applied by the inverter, if any */
         gridOperatorLimit?: EnyoGridOperatorLimit;
     }
+}
+
+/**
+ * Grid status of the site — on grid or off grid (grid outage) — as detected
+ * by an appliance, typically an inverter declaring
+ * {@link EnyoInverterApplianceAvailableFeaturesEnum.GridOutageDetection}.
+ *
+ * Publish this immediately whenever the detected status changes, and
+ * additionally once on startup so consumers learn the current status without
+ * having to wait for the next transition. Consumers such as an energy manager
+ * can use it to suspend grid-dependent strategies (grid charging, feed-in
+ * optimization, dynamic tariffs) while the site is
+ * {@link EnyoGridStatusEnum.OffGrid}.
+ */
+export interface EnyoDataBusGridStatusUpdateV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.GridStatusUpdateV1;
+    /** ID of the appliance that detected the grid status */
+    applianceId: string;
+    data: {
+        /** Detected grid status */
+        gridStatus: EnyoGridStatusEnum;
+        /**
+         * ISO 8601 timestamp of when the appliance detected the transition into
+         * the current {@link gridStatus}. Omit when the integration cannot tell
+         * (e.g. the status was only read after startup).
+         */
+        sinceIso?: string;
+        /**
+         * Whether the appliance is currently supplying the site's loads in
+         * backup / island operation. Only meaningful while
+         * {@link EnyoGridStatusEnum.OffGrid}; omit when unknown or not
+         * supported by the device.
+         */
+        backupPowerActive?: boolean;
+    };
 }
 
 
@@ -3792,6 +3856,197 @@ export interface EnyoDataBusSetStorageControlV2 extends EnyoDataBusMessage {
         };
         /** Optional reason why this command was issued. */
         reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * One-time user request to charge a battery appliance to full — or to
+ * {@link data.targetSocPercent} — right now ("Batterie jetzt voll laden").
+ *
+ * **Addressed to the battery appliance, handled by the energy manager.** The
+ * battery integration does not act on this message itself: an energy manager
+ * declaring {@link EnergyManagerFeatureEnum.BatteryChargeNow} picks it up and
+ * charges the battery through its regular storage commands (typically
+ * {@link EnyoDataBusSetStorageControlV2} with direction `Charge` at the
+ * battery's maximum charging power and reason
+ * {@link EnyoDataBusCommandReasonTypeEnum.UserRequest}). Routing it through the
+ * energy manager is what keeps the next optimization cycle from overriding the
+ * user's request.
+ *
+ * Energy manager contract:
+ * - The request ranks above the regular optimization (price arbitrage, PV
+ *   priority, EV discharge rules), but below a grid operator limitation
+ *   (§14a EnWG) and device protection — while one of those caps the battery,
+ *   the request keeps {@link EnyoBatteryChargeNowStateEnum.Running} and
+ *   resumes once the cap lifts.
+ * - It ends on its own when the battery reaches the target SoC (or its
+ *   `maxSoC`, or reports full), when {@link data.maxDurationMinutes} has
+ *   elapsed, or when a {@link EnyoDataBusCancelBatteryChargeNowV1} arrives.
+ *   Afterwards the energy manager returns to its regular planning — it does not
+ *   release the battery to `Auto` unless that is what its planning does anyway.
+ * - At most one request per battery: a new request replaces a running one, and
+ *   the replaced one ends with {@link EnyoBatteryChargeNowStopReasonEnum.Superseded}.
+ * - Every state change is reported with {@link EnyoDataBusBatteryChargeNowStatusV1}
+ *   referencing this message's `id`.
+ */
+export interface EnyoDataBusRequestBatteryChargeNowV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.RequestBatteryChargeNowV1;
+    /** ID of the battery/storage appliance to charge. */
+    applianceId: string;
+    data: {
+        /**
+         * State of charge in percent (1–100) to charge to. Defaults to `100`.
+         * The energy manager stops earlier when the battery's `maxSoC` is
+         * lower.
+         */
+        targetSocPercent?: number;
+        /**
+         * Whether the battery may be charged from the grid to fulfil the
+         * request.
+         *
+         * Omitted or `true`: grid charging is allowed — the explicit request
+         * overrides the energy manager's general `BatteryChargeFromGrid`
+         * setting, since "charge full now" is rarely possible from PV alone.
+         * It still needs a battery declaring {@link EnyoBatteryFeature.GridCharging}.
+         * `false`: charge from PV surplus only, at the highest priority.
+         */
+        allowGridCharging?: boolean;
+        /**
+         * Safety stop: the request ends with
+         * {@link EnyoBatteryChargeNowStopReasonEnum.MaxDurationReached} after
+         * this many minutes even if the target was not reached. When omitted
+         * the energy manager applies its own limit.
+         */
+        maxDurationMinutes?: number;
+        /** Optional reason why this request was issued, usually {@link EnyoDataBusCommandReasonTypeEnum.UserRequest}. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Cancels a running {@link EnyoDataBusRequestBatteryChargeNowV1} request on a
+ * battery appliance. Handled by the energy manager, which ends the request with
+ * {@link EnyoBatteryChargeNowStateEnum.Cancelled} and returns to its regular
+ * planning.
+ *
+ * Idempotent: cancelling when no request is running, or a request that already
+ * ended, is not an error.
+ */
+export interface EnyoDataBusCancelBatteryChargeNowV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.CancelBatteryChargeNowV1;
+    /** ID of the battery/storage appliance whose request is cancelled. */
+    applianceId: string;
+    data: {
+        /**
+         * `id` of the {@link EnyoDataBusRequestBatteryChargeNowV1} message to
+         * cancel. When given, only that request is cancelled, so a newer one
+         * that replaced it is left alone. When omitted, whatever request is
+         * running on the appliance is cancelled.
+         */
+        requestMessageId?: string;
+        /** Optional reason why the request is cancelled. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Where a {@link EnyoDataBusRequestBatteryChargeNowV1} request stands.
+ *
+ * `Accepted` and `Running` are intermediate; `Completed`, `Cancelled`,
+ * `Aborted` and `Rejected` are final — no further status follows for that
+ * request.
+ */
+export enum EnyoBatteryChargeNowStateEnum {
+    /** The energy manager took the request on but is not charging yet. */
+    Accepted = 'accepted',
+    /**
+     * The battery is being charged for the request — or would be, but a grid
+     * operator limitation or device protection is capping it right now.
+     */
+    Running = 'running',
+    /** The battery reached the target SoC (or its `maxSoC`, or reported full). Final. */
+    Completed = 'completed',
+    /** The request was cancelled via {@link EnyoDataBusCancelBatteryChargeNowV1}. Final. */
+    Cancelled = 'cancelled',
+    /** The request started but ended before reaching the target. See the stop reason. Final. */
+    Aborted = 'aborted',
+    /** The request was refused and never started. See the stop reason. Final. */
+    Rejected = 'rejected',
+}
+
+/**
+ * Why a {@link EnyoDataBusRequestBatteryChargeNowV1} request was
+ * {@link EnyoBatteryChargeNowStateEnum.Rejected} or
+ * {@link EnyoBatteryChargeNowStateEnum.Aborted}.
+ */
+export enum EnyoBatteryChargeNowStopReasonEnum {
+    /** The request itself is malformed — e.g. `targetSocPercent` outside 1–100 or a non-positive `maxDurationMinutes`. */
+    InvalidRequest = 'invalid-request',
+    /** No battery appliance with the given `applianceId` exists. */
+    ApplianceNotFound = 'appliance-not-found',
+    /** The battery is offline / unreachable. */
+    ApplianceOffline = 'appliance-offline',
+    /**
+     * The battery integration does not permit control (`controlAllowed` is
+     * `false`) or does not declare {@link EnyoBatteryFeature.ManualCharge}.
+     */
+    ControlNotAllowed = 'control-not-allowed',
+    /**
+     * The user switched battery control off in the energy manager settings
+     * (`BatteryControl`). Actionable: point the user at the setting.
+     */
+    ControlDisabledByUser = 'control-disabled-by-user',
+    /**
+     * Grid charging was allowed for the request but the battery does not
+     * declare {@link EnyoBatteryFeature.GridCharging}, and there is no PV
+     * surplus to charge from.
+     */
+    GridChargingNotSupported = 'grid-charging-not-supported',
+    /** The battery already is at or above the target SoC (or its `maxSoC`). */
+    AlreadyAtTarget = 'already-at-target',
+    /** {@link EnyoDataBusRequestBatteryChargeNowV1.data.maxDurationMinutes} (or the energy manager's own limit) elapsed. */
+    MaxDurationReached = 'max-duration-reached',
+    /** A newer request for the same battery replaced this one. */
+    Superseded = 'superseded',
+    /** The battery stopped accepting charge below the target (e.g. a device-side limit or fault). */
+    BatteryStoppedCharging = 'battery-stopped-charging',
+}
+
+/**
+ * Status of a {@link EnyoDataBusRequestBatteryChargeNowV1} request, published
+ * by the energy manager on every state change — and, while
+ * {@link EnyoBatteryChargeNowStateEnum.Running}, whenever the estimate changes
+ * noticeably — so the app can show progress and the outcome.
+ */
+export interface EnyoDataBusBatteryChargeNowStatusV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.BatteryChargeNowStatusV1;
+    /** ID of the battery/storage appliance the request is for. */
+    applianceId: string;
+    data: {
+        /** `id` of the {@link EnyoDataBusRequestBatteryChargeNowV1} message this status refers to. */
+        requestMessageId: string;
+        /** Where the request stands. */
+        state: EnyoBatteryChargeNowStateEnum;
+        /**
+         * Why the request ended early. Set exactly when {@link state} is
+         * {@link EnyoBatteryChargeNowStateEnum.Rejected} or
+         * {@link EnyoBatteryChargeNowStateEnum.Aborted}.
+         */
+        stopReason?: EnyoBatteryChargeNowStopReasonEnum;
+        /**
+         * The target SoC in percent the energy manager actually charges to —
+         * the requested target, lowered to the battery's `maxSoC` if needed.
+         */
+        effectiveTargetSocPercent?: number;
+        /** The battery's current state of charge in percent, when known. */
+        currentSocPercent?: number;
+        /** Charging power in Watt currently applied for the request, when known. */
+        chargingPowerW?: number;
+        /** Estimated time the target SoC is reached, in ISO 8601 format. Only while running. */
+        estimatedCompletionIso?: string;
     };
 }
 

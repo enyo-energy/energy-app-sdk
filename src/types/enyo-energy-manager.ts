@@ -21,6 +21,16 @@ export enum EnergyManagerFeatureEnum {
     BatteryPeakShaving = 'battery-peak-shaving',
     /** Reserve battery capacity for power outages */
     BatteryBackupPower = 'battery-backup-power',
+    /**
+     * The energy manager handles one-time user requests to charge a battery
+     * now (`RequestBatteryChargeNowV1` / `CancelBatteryChargeNowV1`) and
+     * reports their progress with `BatteryChargeNowStatusV1`.
+     *
+     * The app only offers the "charge battery full now" button when the active
+     * energy manager declares this feature — without it nobody would act on
+     * the request.
+     */
+    BatteryChargeNow = 'battery-charge-now',
 
     // Wallbox / EV Charging
 

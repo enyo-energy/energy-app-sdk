@@ -3,6 +3,7 @@ import {IntegrationCommandResponse, IntegrationEnergyAppOptions} from "./integra
 import {EnyoApplianceTypeEnum} from "../types/enyo-appliance.js";
 import {
     EnyoDataBusGridOperatorPowerLimitationV1,
+    EnyoDataBusGridStatusUpdateV1,
     EnyoDataBusInverterValuesV1,
     EnyoDataBusMessageEnum,
     EnyoDataBusSetInverterFeedInLimitV1
@@ -66,6 +67,30 @@ export abstract class InverterIntegrationEnergyApp extends IntegrationEnergyApp 
             source: this.source,
             applianceId,
             timestampIso: new Date().toISOString(),
+            data
+        };
+        this.useDataBus().sendMessage([msg]);
+    }
+
+    /**
+     * Publishes a `GridStatusUpdateV1` message reporting whether the site is
+     * on grid or off grid (grid outage), as detected by the inverter.
+     *
+     * Only for inverters declaring the `GridOutageDetection` feature. Call it
+     * whenever the detected grid status changes, and once on startup.
+     */
+    public publishGridStatusUpdate(
+        applianceId: string,
+        data: EnyoDataBusGridStatusUpdateV1['data']
+    ): void {
+        const msg: EnyoDataBusGridStatusUpdateV1 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.GridStatusUpdateV1,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            resolution: 'dynamic',
             data
         };
         this.useDataBus().sendMessage([msg]);
