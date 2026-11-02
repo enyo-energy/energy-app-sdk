@@ -66,7 +66,8 @@ export enum EnergyAppPermissionTypeEnum {
     Webhook = 'Webhook',
     Subscriptions = 'Subscriptions',
     Room = 'Room',
-    RoomTemperatures = 'RoomTemperatures'
+    RoomTemperatures = 'RoomTemperatures',
+    TimeseriesStore = 'TimeseriesStore'
 }
 
 /**

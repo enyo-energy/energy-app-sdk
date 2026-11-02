@@ -411,6 +411,7 @@ Energy Apps use a granular permissions system to control access to system resour
 - **`Subscriptions`**: Read the subscriptions bought for the app on this device
 - **`Room`**: Read the rooms of the home the customer set up in the enyo app
 - **`RoomTemperatures`**: Read the current and past temperatures measured in those rooms
+- **`TimeseriesStore`**: Store the app's own number and text timeseries and query them raw or aggregated
 
 #### Site & Identity Permissions
 
@@ -2460,6 +2461,42 @@ Notes worth respecting when producing a report:
 - **Units follow the platform:** energy in Wh, power in W, prices per kWh, currency as `EnyoCurrencyEnum`.
 
 Requires the `Savings` permission.
+
+#### `useTimeseriesStore(): EnergyAppTimeseriesStore`
+
+Store your app's own timeseries — numbers (temperatures, internal registers, learned parameters) and text (states, modes, error codes) — and query them back. Use it for anything that is not already on the data bus (`useTimeseries()` covers that) and that changes over time (`useStorage()` rewrites a whole object per key and is the wrong fit).
+
+- **Define once.** `defineSeries({name, valueType, unit?, retentionDays?})` is idempotent, so call it on every start. The `valueType` (`Number` or `Text`) is fixed so the host can store numbers compressed and text deduplicated. Series belong to your package only.
+- **Write in batches.** `write(points)` takes up to 1000 points across several series. A point is identified by series, tags and timestamp, so writing it again overwrites it and retries are safe. Invalid points come back in `rejected`, and the rest of the batch is stored. For values that arrive one at a time, use `TimeseriesStoreWriteBuffer`: it stamps each point when added, writes in batches on size or on an interval, keeps points across failed writes, and flushes on `dispose()`.
+- **Tags are for a few fixed dimensions** (`{phase: 'L1'}`, `{circuit: '2'}`), at most 8 per point. Every combination is its own stream, so never put changing values into tags.
+- **Query.**
+  - `queryPoints({series, fromIso, untilIso, tags?, order?, limit?, cursor?})` returns raw points page by page.
+  - `queryAggregated({series, fromIso, untilIso, resolution, aggregations, tags?, groupByTags?})` returns host-side buckets (`'1m'` to `'1d'`, UTC-aligned) with `avg`/`min`/`max`/`sum` (number series only) and `count`/`first`/`last`. Only non-empty buckets are returned.
+  - `getLatest(series, tags?)` returns the newest point per stream, e.g. to restore state after a restart.
+- **Clean up.** The host drops points after the retention. `deletePoints({series, fromIso, untilIso, tags?})` removes a range, and `deleteSeries(name)` removes everything.
+
+```typescript
+const store = energyApp.useTimeseriesStore();
+await store.defineSeries({name: 'compressor.temperature', valueType: EnyoTimeseriesStoreValueTypeEnum.Number, unit: '°C', retentionDays: 90});
+await store.defineSeries({name: 'compressor.state', valueType: EnyoTimeseriesStoreValueTypeEnum.Text});
+
+const buffer = new TimeseriesStoreWriteBuffer({store, interval: energyApp.useInterval(), flushInterval: '30s'});
+energyApp.onShutdown(() => buffer.dispose());
+
+buffer.add({series: 'compressor.temperature', value: 61.5, tags: {circuit: '1'}});
+buffer.add({series: 'compressor.state', value: 'defrost'});
+
+const hourly = await store.queryAggregated({
+    series: 'compressor.temperature',
+    fromIso: '2026-11-01T00:00:00Z',
+    untilIso: '2026-11-02T00:00:00Z',
+    resolution: '1h',
+    aggregations: [EnyoTimeseriesStoreAggregationEnum.Avg, EnyoTimeseriesStoreAggregationEnum.Max],
+    groupByTags: ['circuit'],
+});
+```
+
+Validate during development with `validateTimeseriesStoreSeriesDefinition`, `validateTimeseriesStorePoints` and `validateTimeseriesStoreAggregatedQuery`. Requires the `TimeseriesStore` permission.
 
 #### `useCommandLog(): EnergyAppCommandLog`
 

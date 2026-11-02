@@ -56,6 +56,7 @@ import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
 import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
 import {EnergyAppRoom} from "./packages/energy-app-room.js";
 import {EnergyAppRoomTemperatures} from "./packages/energy-app-room-temperatures.js";
+import {EnergyAppTimeseriesStore} from "./packages/energy-app-timeseries-store.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 /**
@@ -694,6 +695,22 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useRoomTemperatures(): EnergyAppRoomTemperatures {
         return this.energyAppSdk.useRoomTemperatures();
+    }
+
+    /**
+     * Gets the Timeseries Store API for storing the app's own timeseries —
+     * numbers and text — and querying them back raw or aggregated by the host.
+     *
+     * Define each series once with `defineSeries()`, write points in batches
+     * with `write()` (or through a `TimeseriesStoreWriteBuffer`), and read them
+     * with `queryPoints()`, `queryAggregated()` or `getLatest()`. Every series
+     * belongs to this package; the host drops points after the series' retention.
+     * @returns The Timeseries Store API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `TimeseriesStore`
+     *         permission is not granted.
+     */
+    public useTimeseriesStore(): EnergyAppTimeseriesStore {
+        return this.energyAppSdk.useTimeseriesStore();
     }
 
     /**

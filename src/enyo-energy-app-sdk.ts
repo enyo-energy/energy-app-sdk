@@ -54,6 +54,7 @@ import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
 import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
 import {EnergyAppRoom} from "./packages/energy-app-room.js";
 import {EnergyAppRoomTemperatures} from "./packages/energy-app-room-temperatures.js";
+import {EnergyAppTimeseriesStore} from "./packages/energy-app-timeseries-store.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
 export enum EnergyAppStateEnum {
@@ -206,4 +207,6 @@ export interface EnyoEnergyAppSdk {
     useRoom: () => EnergyAppRoom;
     /** Get the Room Temperatures API for reading the current and past temperatures measured in the rooms of the home */
     useRoomTemperatures: () => EnergyAppRoomTemperatures;
+    /** Get the Timeseries Store API for storing the app's own number and text timeseries and querying them raw or aggregated */
+    useTimeseriesStore: () => EnergyAppTimeseriesStore;
 }
