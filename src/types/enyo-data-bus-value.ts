@@ -4250,8 +4250,13 @@ export interface EnyoDataBusHeatpumpTemperaturesV1 extends EnyoDataBusMessage {
              * reports it. Prefer the explicit {@link flowTemperatureC} and
              * {@link roomTemperatureC} where available — this field does not
              * say which of the two it is.
+             *
+             * Optional, but every circuit must carry at least one current
+             * temperature: this field, {@link roomTemperatureC},
+             * {@link flowTemperatureC} or {@link returnTemperatureC}. See
+             * {@link validateHeatpumpTemperatures}.
              */
-            temperatureC: number;
+            temperatureC?: number;
             /** Target room temperature in Celsius */
             targetRoomTemperatureC?: number;
             /**

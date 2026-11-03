@@ -26,6 +26,7 @@ import {
     heatpumpFlexibilityOfferId,
     validateHeatpumpFlexibilityAnnouncement
 } from "../implementations/heatpump/heatpump-flexibility-validators.js";
+import {validateHeatpumpTemperatures} from "../implementations/heatpump/heatpump-temperatures-validators.js";
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceMetadata,
@@ -800,11 +801,17 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      * @param applianceId - The heatpump appliance ID this update is for.
      * @param temperatures - Temperature payload — see
      *   {@link EnyoDataBusHeatpumpTemperaturesV1.data}.
+     * @throws Error when the payload fails {@link validateHeatpumpTemperatures},
+     *   e.g. a heating circuit without any current temperature.
      */
     public publishHeatpumpTemperatures(
         applianceId: string,
         temperatures: EnyoDataBusHeatpumpTemperaturesV1['data']
     ): void {
+        const {ok, errors} = validateHeatpumpTemperatures(temperatures);
+        if (!ok) {
+            throw new Error(`Invalid heatpump temperatures: ${errors.join('; ')}`);
+        }
         const message: EnyoDataBusHeatpumpTemperaturesV1 = {
             id: this.generateMessageId(),
             type: 'message',

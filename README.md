@@ -3906,7 +3906,7 @@ Drives a heatpump. Manages building / DHW overheating commands and grid-power-av
   - `publishHeatpumpControlStatus(applianceId, {sessionId, actions})` — how a session's actions progress (`HeatpumpControlStatusV3`).
   - `publishHeatpumpFlexibility(applianceId, options, {validForSeconds?, repeatEverySeconds?})` — offer per zone how far the heatpump can be raised right now (`HeatpumpFlexibilityAnnouncementV3`); repeated automatically until replaced (see below).
   - `publishHeatpumpValuesUpdate(applianceId, values)` — operation mode, electrical and thermal power, energies.
-  - `publishHeatpumpTemperatures(applianceId, temperatures)` — outdoor, flow / target flow / return, DHW tanks, heating circuits (room, flow, target flow, return), buffer tank.
+  - `publishHeatpumpTemperatures(applianceId, temperatures)` — outdoor, flow / target flow / return, DHW tanks, heating circuits (room, flow, target flow, return), buffer tank. Each heating circuit must set at least one current temperature (`temperatureC`, `roomTemperatureC`, `flowTemperatureC` or `returnTemperatureC`) — `temperatureC` itself is optional; the payload is checked with the exported `validateHeatpumpTemperatures(data)` and an invalid one throws.
 
 #### HeatpumpControlV3
 
