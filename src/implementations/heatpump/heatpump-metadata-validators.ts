@@ -515,6 +515,10 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *  - Heating curve offset: errors from {@link checkHeatingCurveOffset}.
  *    Warning: `HeatingCurveOffset` is declared but no circuit has a
  *    `heatingCurveOffsetRangeK` — no offset other than `0` could be accepted.
+ *  - Error: a circuit's `roomSetpointHoldRangeC` is not finite or has
+ *    `minC` above `maxC`. Warning: `RoomSetpointHold` is declared but no
+ *    circuit has a `roomSetpointHoldRangeC`, or a circuit has one without
+ *    `RoomSetpointHold`.
  *  - SG Ready relays: errors and warnings from {@link checkSgReadyRelays}.
  *
  * @param metadata - The heatpump metadata to validate.
@@ -579,6 +583,24 @@ export function validateHeatpumpAdvancedMetadata(
     if (features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset)
         && !circuits.some((c) => c.heatingCurveOffsetRangeK)) {
         warnings.push('HeatingCurveOffset is declared but no heating circuit has a heatingCurveOffsetRangeK — only offset 0 could be accepted');
+    }
+
+    const declaresRoomSetpointHold = features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomSetpointHold);
+    if (declaresRoomSetpointHold && !circuits.some((c) => c.roomSetpointHoldRangeC)) {
+        warnings.push('RoomSetpointHold is declared but no heating circuit has a roomSetpointHoldRangeC — no hold could ever be accepted');
+    }
+    for (const circuit of circuits) {
+        const range = circuit.roomSetpointHoldRangeC;
+        if (!range) continue;
+        const prefix = `heatingCircuits[index=${circuit.index}]`;
+        if (!isFiniteNumber(range.minC) || !isFiniteNumber(range.maxC)) {
+            errors.push(`${prefix}: roomSetpointHoldRangeC.minC and maxC must be finite numbers`);
+        } else if (range.minC > range.maxC) {
+            errors.push(`${prefix}: roomSetpointHoldRangeC ${range.minC}…${range.maxC} °C has minC above maxC`);
+        }
+        if (!declaresRoomSetpointHold) {
+            warnings.push(`${prefix}: roomSetpointHoldRangeC is set but the heatpump does not declare RoomSetpointHold`);
+        }
     }
 
     for (const circuit of circuits) {

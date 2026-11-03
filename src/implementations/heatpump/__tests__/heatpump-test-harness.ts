@@ -3,7 +3,9 @@ import {
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusHeatpumpControlCancelV3,
     EnyoDataBusHeatpumpControlV3,
+    EnyoDataBusHeatpumpDomesticHotWaterPauseV1,
     EnyoDataBusHeatpumpProgramSwitchV3,
+    EnyoDataBusHeatpumpRoomSetpointHoldV1,
     EnyoDataBusMessage,
     EnyoDataBusMessageEnum,
     EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
@@ -44,6 +46,8 @@ interface Dispatchers {
     dispatchHeatpumpControlCancel(message: EnyoDataBusHeatpumpControlCancelV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpProgramSwitch(message: EnyoDataBusHeatpumpProgramSwitchV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1): Promise<IntegrationCommandResponse>;
+    dispatchHeatpumpRoomSetpointHold(message: EnyoDataBusHeatpumpRoomSetpointHoldV1): Promise<IntegrationCommandResponse>;
+    dispatchHeatpumpDomesticHotWaterPause(message: EnyoDataBusHeatpumpDomesticHotWaterPauseV1): Promise<IntegrationCommandResponse>;
 }
 
 /**
@@ -62,6 +66,12 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
     readonly curveOffsets: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1[] = [];
     /** Without it the base class's default (`NotSupported`) answers heating curve offsets. */
     curveOffsetResponse?: (message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) => Promise<IntegrationCommandResponse>;
+    readonly holds: EnyoDataBusHeatpumpRoomSetpointHoldV1[] = [];
+    /** Without it the base class's default (`NotSupported`) answers room setpoint holds. */
+    holdResponse?: (message: EnyoDataBusHeatpumpRoomSetpointHoldV1) => Promise<IntegrationCommandResponse>;
+    readonly dhwPauses: EnyoDataBusHeatpumpDomesticHotWaterPauseV1[] = [];
+    /** Without it the base class's default (`NotSupported`) answers hot water pauses. */
+    dhwPauseResponse?: (message: EnyoDataBusHeatpumpDomesticHotWaterPauseV1) => Promise<IntegrationCommandResponse>;
 
     constructor() {
         super({source: EnyoSourceEnum.Device, applianceIds: ['hp-1'], autoStart: false, autoStopOnShutdown: false});
@@ -111,6 +121,32 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         });
     }
 
+    /** Sends a room setpoint hold through the base class, as the data bus would. */
+    roomSetpointHold(data: EnyoDataBusHeatpumpRoomSetpointHoldV1['data']): Promise<IntegrationCommandResponse> {
+        return (this as unknown as Dispatchers).dispatchHeatpumpRoomSetpointHold({
+            id: `hold-${data.untilIso}`,
+            type: 'message',
+            message: EnyoDataBusMessageEnum.HeatpumpRoomSetpointHoldV1,
+            source: EnyoSourceEnum.Device,
+            applianceId: 'hp-1',
+            timestampIso: new Date().toISOString(),
+            data,
+        });
+    }
+
+    /** Sends a hot water pause through the base class, as the data bus would. */
+    domesticHotWaterPause(data: EnyoDataBusHeatpumpDomesticHotWaterPauseV1['data']): Promise<IntegrationCommandResponse> {
+        return (this as unknown as Dispatchers).dispatchHeatpumpDomesticHotWaterPause({
+            id: `dhw-pause-${data.untilIso}`,
+            type: 'message',
+            message: EnyoDataBusMessageEnum.HeatpumpDomesticHotWaterPauseV1,
+            source: EnyoSourceEnum.Device,
+            applianceId: 'hp-1',
+            timestampIso: new Date().toISOString(),
+            data,
+        });
+    }
+
     /** Exposes the protected action check. */
     check(message: EnyoDataBusHeatpumpControlV3): Promise<EnyoCommandAcknowledgeActionResult[]> {
         return this.checkHeatpumpControlActions(message);
@@ -133,6 +169,18 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         if (!this.curveOffsetResponse) return super.handleHeatpumpHeatingCurveOffset(message);
         this.curveOffsets.push(message);
         return this.curveOffsetResponse(message);
+    }
+
+    protected async handleHeatpumpRoomSetpointHold(message: EnyoDataBusHeatpumpRoomSetpointHoldV1) {
+        if (!this.holdResponse) return super.handleHeatpumpRoomSetpointHold(message);
+        this.holds.push(message);
+        return this.holdResponse(message);
+    }
+
+    protected async handleHeatpumpDomesticHotWaterPause(message: EnyoDataBusHeatpumpDomesticHotWaterPauseV1) {
+        if (!this.dhwPauseResponse) return super.handleHeatpumpDomesticHotWaterPause(message);
+        this.dhwPauses.push(message);
+        return this.dhwPauseResponse(message);
     }
 
     protected async handleHeatpumpOverheating() {

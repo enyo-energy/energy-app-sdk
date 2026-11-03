@@ -1,8 +1,10 @@
 import {
     EnyoCommandAcknowledgeActionResult,
     EnyoCommandAcknowledgeAnswerEnum,
+    EnyoDataBusHeatpumpDomesticHotWaterPauseV1,
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
     EnyoDataBusHeatpumpProgramSwitchV3,
+    EnyoDataBusHeatpumpRoomSetpointHoldV1,
     EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
     EnyoHeatpumpControlAction,
     EnyoHeatpumpControlTargetEnum,
@@ -440,6 +442,169 @@ export function validateHeatpumpHeatingCurveOffset(
         return rejected(
             `offsetK ${data.offsetK} K is outside the range ${range.minK}…${range.maxK} K of heating circuit ${circuit.index}.`,
         );
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+}
+
+/** The answer {@link validateHeatpumpRoomSetpointHold} or {@link validateHeatpumpDomesticHotWaterPause} gives. */
+export interface HeatpumpHoldValidationResult {
+    /** `Accepted` when every rule holds. */
+    answer: EnyoCommandAcknowledgeAnswerEnum;
+    /** Why the command was rejected or is not supported. */
+    rejectionReason?: string;
+}
+
+/**
+ * Whether a `HeatpumpRoomSetpointHoldV1` or `HeatpumpDomesticHotWaterPauseV1`
+ * ends the hold or pause instead of starting or renewing it: its `untilIso`
+ * lies at or before now.
+ *
+ * @param untilIso - The message's `untilIso`.
+ * @param nowMs - The current time in epoch milliseconds; injectable for tests.
+ * @returns `true` when the hold or pause is to end right away.
+ *
+ * @example
+ * ```typescript
+ * if (isHeatpumpHoldEnding(message.data.untilIso)) await this.device.endHolidayMode();
+ * ```
+ */
+export function isHeatpumpHoldEnding(untilIso: string, nowMs: number = Date.now()): boolean {
+    return Date.parse(untilIso) <= nowMs;
+}
+
+/**
+ * Checks the `index` and `untilIso` both hold commands share.
+ *
+ * @param data - The message's data.
+ * @returns A rejection reason, or `undefined` when both are well-formed.
+ */
+function checkHoldIndexAndUntil(data: {index?: number; untilIso: string}): string | undefined {
+    if (data.index !== undefined && (!Number.isInteger(data.index) || data.index < 0)) {
+        return `index must be an integer ≥ 0 or omitted; got ${data.index}.`;
+    }
+    if (typeof data.untilIso !== 'string' || !Number.isFinite(Date.parse(data.untilIso))) {
+        return `untilIso must be an ISO 8601 timestamp; got ${data.untilIso}.`;
+    }
+    return undefined;
+}
+
+/**
+ * Validates a `HeatpumpRoomSetpointHoldV1` against the heatpump's metadata and
+ * returns the answer it deserves.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls
+ * `handleHeatpumpRoomSetpointHold`; an integration handling the message itself
+ * can call it too, and the energy manager can use it to decide between the
+ * hold and the eco fallback.
+ *
+ * Rules, in order — the first that fails decides:
+ * 1. `index` is omitted or an integer ≥ 0, `untilIso` is an ISO 8601
+ *    timestamp and `targetTemperatureC` a finite number (**Rejected**).
+ * 2. The heatpump does not declare `RoomSetpointHold` (**NotSupported**).
+ * 3. The metadata lists heating circuits but none with the message's `index`
+ *    (**Rejected**).
+ * 4. Unless the hold ends ({@link isHeatpumpHoldEnding}): an addressed circuit
+ *    has no `roomSetpointHoldRangeC` (**NotSupported**), or
+ *    `targetTemperatureC` lies outside it (**Rejected**). Without `index`,
+ *    every circuit is addressed.
+ *
+ * Without metadata only rule 1 can be checked.
+ *
+ * @param data - The message's data.
+ * @param metadata - The heatpump's metadata, if known.
+ * @param nowMs - The current time in epoch milliseconds; injectable for tests.
+ * @returns The answer: `Accepted` when every rule holds.
+ *
+ * @example
+ * ```typescript
+ * const result = validateHeatpumpRoomSetpointHold(message.data, appliance.heatpump);
+ * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * ```
+ */
+export function validateHeatpumpRoomSetpointHold(
+    data: EnyoDataBusHeatpumpRoomSetpointHoldV1['data'],
+    metadata: EnyoHeatpumpApplianceMetadata | undefined,
+    nowMs: number = Date.now(),
+): HeatpumpHoldValidationResult {
+    const rejected = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason});
+    const notSupported = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported, rejectionReason});
+
+    const malformed = checkHoldIndexAndUntil(data);
+    if (malformed) return rejected(malformed);
+    if (typeof data.targetTemperatureC !== 'number' || !Number.isFinite(data.targetTemperatureC)) {
+        return rejected(`targetTemperatureC must be a finite number; got ${data.targetTemperatureC}.`);
+    }
+
+    if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    if (!(metadata.availableFeatures ?? []).includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomSetpointHold)) {
+        return notSupported('The heatpump does not support room setpoint holds (no RoomSetpointHold).');
+    }
+
+    const circuits = metadata.heatingCircuits ?? [];
+    const addressed = data.index === undefined ? circuits : circuits.filter((c) => c.index === data.index);
+    if (circuits.length > 0 && addressed.length === 0) {
+        return rejected(`No heating circuit with index ${data.index}.`);
+    }
+    if (isHeatpumpHoldEnding(data.untilIso, nowMs)) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    for (const circuit of addressed) {
+        const range = circuit.roomSetpointHoldRangeC;
+        if (!range) {
+            return notSupported(`Heating circuit ${circuit.index} declares no roomSetpointHoldRangeC; it cannot hold a setpoint.`);
+        }
+        if (data.targetTemperatureC < range.minC || data.targetTemperatureC > range.maxC) {
+            return rejected(
+                `targetTemperatureC ${data.targetTemperatureC} °C is outside the range ${range.minC}…${range.maxC} °C ` +
+                    `of heating circuit ${circuit.index}.`,
+            );
+        }
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+}
+
+/**
+ * Validates a `HeatpumpDomesticHotWaterPauseV1` against the heatpump's
+ * metadata and returns the answer it deserves.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls
+ * `handleHeatpumpDomesticHotWaterPause`; an integration handling the message
+ * itself can call it too.
+ *
+ * Rules, in order — the first that fails decides:
+ * 1. `index` is omitted or an integer ≥ 0 and `untilIso` is an ISO 8601
+ *    timestamp (**Rejected**).
+ * 2. The heatpump does not declare `DomesticHotWaterPause` (**NotSupported**).
+ * 3. The metadata lists DHW zones but none with the message's `index`
+ *    (**Rejected**).
+ *
+ * Without metadata only rule 1 can be checked.
+ *
+ * @param data - The message's data.
+ * @param metadata - The heatpump's metadata, if known.
+ * @returns The answer: `Accepted` when every rule holds.
+ *
+ * @example
+ * ```typescript
+ * const result = validateHeatpumpDomesticHotWaterPause(message.data, appliance.heatpump);
+ * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * ```
+ */
+export function validateHeatpumpDomesticHotWaterPause(
+    data: EnyoDataBusHeatpumpDomesticHotWaterPauseV1['data'],
+    metadata: EnyoHeatpumpApplianceMetadata | undefined,
+): HeatpumpHoldValidationResult {
+    const malformed = checkHoldIndexAndUntil(data);
+    if (malformed) return {answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason: malformed};
+
+    if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    if (!(metadata.availableFeatures ?? []).includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.DomesticHotWaterPause)) {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'The heatpump does not support hot water pauses (no DomesticHotWaterPause).',
+        };
+    }
+    const zones = metadata.domesticHotWater ?? [];
+    if (data.index !== undefined && zones.length > 0 && !zones.some((z) => z.index === data.index)) {
+        return {answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason: `No DHW zone with index ${data.index}.`};
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }

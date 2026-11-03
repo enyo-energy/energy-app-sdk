@@ -203,6 +203,8 @@ export * from './types/enyo-room.js';
 export * from './packages/energy-app-room.js';
 export * from './types/enyo-room-temperature.js';
 export * from './packages/energy-app-room-temperatures.js';
+export * from './types/enyo-vacation.js';
+export * from './packages/energy-app-vacations.js';
 export * from './implementations/subscriptions/define-subscription-plan.js';
 export * from './implementations/subscriptions/subscription-plan-validators.js';
 export * from './implementations/subscriptions/subscription-offer-validators.js';

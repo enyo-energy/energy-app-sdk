@@ -56,6 +56,7 @@ import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
 import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
 import {EnergyAppRoom} from "./packages/energy-app-room.js";
 import {EnergyAppRoomTemperatures} from "./packages/energy-app-room-temperatures.js";
+import {EnergyAppVacations} from "./packages/energy-app-vacations.js";
 import {EnergyAppTimeseriesStore} from "./packages/energy-app-timeseries-store.js";
 import {UseFetchOptions} from "./types/enyo-fetch.js";
 
@@ -695,6 +696,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useRoomTemperatures(): EnergyAppRoomTemperatures {
         return this.energyAppSdk.useRoomTemperatures();
+    }
+
+    /**
+     * Gets the Vacations API for reading the customer's absences (vacation
+     * mode): departure and return, what the heatpump heats to meanwhile,
+     * whether hot water pauses, whether to pre-heat for the return and how the
+     * battery is used. Read them with `getVacations()` and react to changes
+     * with `listenForVacationsChanged()`.
+     * @returns The Vacations API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `EnergyManager`
+     *         permission is not granted.
+     */
+    public useVacations(): EnergyAppVacations {
+        return this.energyAppSdk.useVacations();
     }
 
     /**
