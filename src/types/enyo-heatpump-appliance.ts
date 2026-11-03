@@ -123,31 +123,41 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
      */
     HeatingCurveOffset = 'HeatingCurveOffset',
     /**
-     * If the heatpump's app handles {@link EnyoDataBusHeatpumpRoomSetpointHoldV1}:
-     * the energy manager can hold the room setpoint of one or all heating
-     * circuits — frost protection or a lowered temperature — until a given
-     * time, e.g. while the customer is on vacation. The energy manager sends
-     * it only to heatpumps declaring this feature, and otherwise falls back to
-     * eco via {@link EnyoDataBusHeatpumpProgramSwitchV3}.
+     * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
+     * `heating.mode` {@link EnyoVacationHeatingEnum.FrostProtection}: while the
+     * customer is away, the device only keeps the house from freezing, with
+     * its own frost protection (≈ {@link VACATION_FROST_PROTECTION_C}).
      *
      * Declare it only when the app overrides
-     * `HeatpumpIntegrationEnergyApp.handleHeatpumpRoomSetpointHold`, and state
-     * per circuit which setpoints it can hold in
-     * {@link EnyoHeatpumpApplianceHeatingCircuit.roomSetpointHoldRangeC}.
+     * `HeatpumpIntegrationEnergyApp.handleVacationStarted` /
+     * `handleVacationStopped`. Without any vacation feature the energy manager
+     * falls back to eco via {@link EnyoDataBusHeatpumpProgramSwitchV3}.
      */
-    RoomSetpointHold = 'RoomSetpointHold',
+    VacationFrostProtection = 'VacationFrostProtection',
     /**
-     * If the heatpump's app handles {@link EnyoDataBusHeatpumpDomesticHotWaterPauseV1}:
-     * the energy manager can pause the hot water heating of one or all DHW
-     * zones until a given time, while legionella protection keeps running.
-     * The energy manager sends it only to heatpumps declaring this feature.
+     * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
+     * `heating.mode` {@link EnyoVacationHeatingEnum.Lowered}: while the
+     * customer is away, the device holds all its circuits at a lowered room
+     * temperature.
      *
      * Declare it only when the app overrides
-     * `HeatpumpIntegrationEnergyApp.handleHeatpumpDomesticHotWaterPause`, and
-     * only when the device keeps its legionella protection running during the
-     * pause.
+     * `HeatpumpIntegrationEnergyApp.handleVacationStarted` /
+     * `handleVacationStopped`, and state the setpoints it can hold in
+     * {@link EnyoHeatpumpApplianceMetadata.vacationLoweredRangeC} (required
+     * with this feature).
      */
-    DomesticHotWaterPause = 'DomesticHotWaterPause',
+    VacationLowered = 'VacationLowered',
+    /**
+     * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
+     * `pauseHotWater: true`: while the customer is away, hot water is not
+     * reheated.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleVacationStarted` /
+     * `handleVacationStopped`, and **only if legionella protection keeps
+     * running** during the pause.
+     */
+    VacationHotWaterPause = 'VacationHotWaterPause',
 }
 
 /**
@@ -586,14 +596,14 @@ export interface EnyoHeatpumpHeatingCurveOffsetRange {
 }
 
 /**
- * The room setpoints in °C a heating circuit can hold with
- * {@link EnyoDataBusHeatpumpRoomSetpointHoldV1}. A circuit that can only
- * hold frost protection states `{minC: 7, maxC: 7}`.
+ * The room setpoints in °C a heatpump can hold for all its circuits while the
+ * customer is away ({@link EnyoVacationHeatingEnum.Lowered}), see
+ * {@link EnyoHeatpumpApplianceMetadata.vacationLoweredRangeC}.
  */
-export interface EnyoHeatpumpRoomSetpointHoldRange {
-    /** Lowest setpoint the circuit can hold in °C, e.g. `5` */
+export interface EnyoHeatpumpVacationLoweredRange {
+    /** Lowest setpoint the heatpump can hold in °C, e.g. `5` */
     minC: number;
-    /** Highest setpoint the circuit can hold in °C, e.g. `20` */
+    /** Highest setpoint the heatpump can hold in °C, e.g. `20` */
     maxC: number;
 }
 
@@ -831,16 +841,6 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
      */
     heatingCurveOffsetRangeK?: EnyoHeatpumpHeatingCurveOffsetRange;
     /**
-     * The room setpoints this circuit can hold with
-     * {@link EnyoDataBusHeatpumpRoomSetpointHoldV1}, in °C. Needs
-     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomSetpointHold};
-     * omitted means this circuit cannot hold a setpoint. The energy manager
-     * sends a hold only with a `targetTemperatureC` inside the range of every
-     * circuit it addresses, and otherwise falls back to eco via
-     * {@link EnyoDataBusHeatpumpProgramSwitchV3}.
-     */
-    roomSetpointHoldRangeC?: EnyoHeatpumpRoomSetpointHoldRange;
-    /**
      * The offset in Kelvin of flow temperature currently in effect, relative to
      * {@link initialHeatingCurve}, as read back from the device. `0` or omitted
      * means the curve is not shifted.
@@ -1019,4 +1019,14 @@ export interface EnyoHeatpumpApplianceMetadata {
      * substituting design values for an unknown building.
      */
     building?: EnyoHeatpumpApplianceBuildingModel;
+    /**
+     * The room setpoints in °C the heatpump can hold for all its circuits
+     * while the customer is away ({@link EnyoVacationHeatingEnum.Lowered}).
+     * Required when
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered} is
+     * declared, omitted otherwise. The energy manager sends a lowered
+     * vacation only with a `targetTemperatureC` inside it, and otherwise
+     * falls back to eco via {@link EnyoDataBusHeatpumpProgramSwitchV3}.
+     */
+    vacationLoweredRangeC?: EnyoHeatpumpVacationLoweredRange;
 }

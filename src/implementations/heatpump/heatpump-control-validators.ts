@@ -1,16 +1,17 @@
 import {
     EnyoCommandAcknowledgeActionResult,
     EnyoCommandAcknowledgeAnswerEnum,
-    EnyoDataBusHeatpumpDomesticHotWaterPauseV1,
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
     EnyoDataBusHeatpumpProgramSwitchV3,
-    EnyoDataBusHeatpumpRoomSetpointHoldV1,
     EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
+    EnyoDataBusVacationStartedV1,
+    EnyoDataBusVacationStoppedV1,
     EnyoHeatpumpControlAction,
     EnyoHeatpumpControlTargetEnum,
     EnyoHeatpumpHeatSourceEnum,
     EnyoPowerSourceEnum,
     EnyoPowerSourceShare,
+    EnyoVacationHeatingEnum,
 } from '../../types/enyo-data-bus-value.js';
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
@@ -446,8 +447,8 @@ export function validateHeatpumpHeatingCurveOffset(
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }
 
-/** The answer {@link validateHeatpumpRoomSetpointHold} or {@link validateHeatpumpDomesticHotWaterPause} gives. */
-export interface HeatpumpHoldValidationResult {
+/** The answer {@link validateVacationStarted} or {@link validateVacationStopped} gives. */
+export interface HeatpumpVacationValidationResult {
     /** `Accepted` when every rule holds. */
     answer: EnyoCommandAcknowledgeAnswerEnum;
     /** Why the command was rejected or is not supported. */
@@ -455,156 +456,116 @@ export interface HeatpumpHoldValidationResult {
 }
 
 /**
- * Whether a `HeatpumpRoomSetpointHoldV1` or `HeatpumpDomesticHotWaterPauseV1`
- * ends the hold or pause instead of starting or renewing it: its `untilIso`
- * lies at or before now.
+ * Whether a value is a parsable ISO 8601 timestamp.
  *
- * @param untilIso - The message's `untilIso`.
- * @param nowMs - The current time in epoch milliseconds; injectable for tests.
- * @returns `true` when the hold or pause is to end right away.
- *
- * @example
- * ```typescript
- * if (isHeatpumpHoldEnding(message.data.untilIso)) await this.device.endHolidayMode();
- * ```
+ * @param value - The value to check.
+ * @returns `true` for a string `Date.parse` understands.
  */
-export function isHeatpumpHoldEnding(untilIso: string, nowMs: number = Date.now()): boolean {
-    return Date.parse(untilIso) <= nowMs;
+function isIsoTimestamp(value: unknown): value is string {
+    return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
 /**
- * Checks the `index` and `untilIso` both hold commands share.
- *
- * @param data - The message's data.
- * @returns A rejection reason, or `undefined` when both are well-formed.
- */
-function checkHoldIndexAndUntil(data: {index?: number; untilIso: string}): string | undefined {
-    if (data.index !== undefined && (!Number.isInteger(data.index) || data.index < 0)) {
-        return `index must be an integer ≥ 0 or omitted; got ${data.index}.`;
-    }
-    if (typeof data.untilIso !== 'string' || !Number.isFinite(Date.parse(data.untilIso))) {
-        return `untilIso must be an ISO 8601 timestamp; got ${data.untilIso}.`;
-    }
-    return undefined;
-}
-
-/**
- * Validates a `HeatpumpRoomSetpointHoldV1` against the heatpump's metadata and
- * returns the answer it deserves.
+ * Validates a `VacationStartedV1` against the heatpump's metadata and returns
+ * the answer it deserves.
  *
  * Used by `HeatpumpIntegrationEnergyApp` before it calls
- * `handleHeatpumpRoomSetpointHold`; an integration handling the message itself
- * can call it too, and the energy manager can use it to decide between the
- * hold and the eco fallback.
+ * `handleVacationStarted`; an integration handling the message itself can call
+ * it too, and the energy manager can use it to decide between the vacation
+ * message and the eco fallback.
  *
  * Rules, in order — the first that fails decides:
- * 1. `index` is omitted or an integer ≥ 0, `untilIso` is an ISO 8601
- *    timestamp and `targetTemperatureC` a finite number (**Rejected**).
- * 2. The heatpump does not declare `RoomSetpointHold` (**NotSupported**).
- * 3. The metadata lists heating circuits but none with the message's `index`
- *    (**Rejected**).
- * 4. Unless the hold ends ({@link isHeatpumpHoldEnding}): an addressed circuit
- *    has no `roomSetpointHoldRangeC` (**NotSupported**), or
- *    `targetTemperatureC` lies outside it (**Rejected**). Without `index`,
- *    every circuit is addressed.
+ * 1. Malformed data (**Rejected**): `vacationId` is not a non-empty string,
+ *    `returnIso` / `untilIso` are not ISO 8601 timestamps, `pauseHotWater` is
+ *    not a boolean, or `heating` has an unknown `mode` or a non-finite
+ *    `targetTemperatureC`.
+ * 2. `heating` asks for a mode whose feature is missing —
+ *    `VacationFrostProtection` or `VacationLowered` (**NotSupported**).
+ * 3. A lowered `targetTemperatureC` outside `vacationLoweredRangeC`, or no
+ *    range declared (**NotSupported**).
+ * 4. `pauseHotWater` without `VacationHotWaterPause` (**NotSupported**).
  *
  * Without metadata only rule 1 can be checked.
  *
  * @param data - The message's data.
  * @param metadata - The heatpump's metadata, if known.
- * @param nowMs - The current time in epoch milliseconds; injectable for tests.
  * @returns The answer: `Accepted` when every rule holds.
  *
  * @example
  * ```typescript
- * const result = validateHeatpumpRoomSetpointHold(message.data, appliance.heatpump);
+ * const result = validateVacationStarted(message.data, appliance.heatpump);
  * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
  * ```
  */
-export function validateHeatpumpRoomSetpointHold(
-    data: EnyoDataBusHeatpumpRoomSetpointHoldV1['data'],
+export function validateVacationStarted(
+    data: EnyoDataBusVacationStartedV1['data'],
     metadata: EnyoHeatpumpApplianceMetadata | undefined,
-    nowMs: number = Date.now(),
-): HeatpumpHoldValidationResult {
+): HeatpumpVacationValidationResult {
     const rejected = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason});
     const notSupported = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported, rejectionReason});
 
-    const malformed = checkHoldIndexAndUntil(data);
-    if (malformed) return rejected(malformed);
-    if (typeof data.targetTemperatureC !== 'number' || !Number.isFinite(data.targetTemperatureC)) {
-        return rejected(`targetTemperatureC must be a finite number; got ${data.targetTemperatureC}.`);
+    if (typeof data.vacationId !== 'string' || data.vacationId.length === 0) {
+        return rejected(`vacationId must be a non-empty string; got ${data.vacationId}.`);
+    }
+    if (!isIsoTimestamp(data.returnIso)) return rejected(`returnIso must be an ISO 8601 timestamp; got ${data.returnIso}.`);
+    if (!isIsoTimestamp(data.untilIso)) return rejected(`untilIso must be an ISO 8601 timestamp; got ${data.untilIso}.`);
+    if (typeof data.pauseHotWater !== 'boolean') return rejected(`pauseHotWater must be a boolean; got ${data.pauseHotWater}.`);
+    const heating = data.heating;
+    if (heating) {
+        if (!Object.values(EnyoVacationHeatingEnum).includes(heating.mode)) {
+            return rejected(`heating.mode must be one of ${Object.values(EnyoVacationHeatingEnum).join(', ')}; got ${heating.mode}.`);
+        }
+        if (typeof heating.targetTemperatureC !== 'number' || !Number.isFinite(heating.targetTemperatureC)) {
+            return rejected(`heating.targetTemperatureC must be a finite number; got ${heating.targetTemperatureC}.`);
+        }
     }
 
     if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
-    if (!(metadata.availableFeatures ?? []).includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomSetpointHold)) {
-        return notSupported('The heatpump does not support room setpoint holds (no RoomSetpointHold).');
+    const features = metadata.availableFeatures ?? [];
+    if (heating?.mode === EnyoVacationHeatingEnum.FrostProtection
+        && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection)) {
+        return notSupported('The heatpump does not support vacation frost protection (no VacationFrostProtection).');
     }
-
-    const circuits = metadata.heatingCircuits ?? [];
-    const addressed = data.index === undefined ? circuits : circuits.filter((c) => c.index === data.index);
-    if (circuits.length > 0 && addressed.length === 0) {
-        return rejected(`No heating circuit with index ${data.index}.`);
-    }
-    if (isHeatpumpHoldEnding(data.untilIso, nowMs)) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
-    for (const circuit of addressed) {
-        const range = circuit.roomSetpointHoldRangeC;
-        if (!range) {
-            return notSupported(`Heating circuit ${circuit.index} declares no roomSetpointHoldRangeC; it cannot hold a setpoint.`);
+    if (heating?.mode === EnyoVacationHeatingEnum.Lowered) {
+        if (!features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered)) {
+            return notSupported('The heatpump does not support a lowered vacation temperature (no VacationLowered).');
         }
-        if (data.targetTemperatureC < range.minC || data.targetTemperatureC > range.maxC) {
-            return rejected(
-                `targetTemperatureC ${data.targetTemperatureC} °C is outside the range ${range.minC}…${range.maxC} °C ` +
-                    `of heating circuit ${circuit.index}.`,
+        const range = metadata.vacationLoweredRangeC;
+        if (!range) return notSupported('The heatpump declares no vacationLoweredRangeC.');
+        if (heating.targetTemperatureC < range.minC || heating.targetTemperatureC > range.maxC) {
+            return notSupported(
+                `heating.targetTemperatureC ${heating.targetTemperatureC} °C is outside vacationLoweredRangeC ${range.minC}…${range.maxC} °C.`,
             );
         }
+    }
+    if (data.pauseHotWater && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause)) {
+        return notSupported('The heatpump does not support pausing hot water while away (no VacationHotWaterPause).');
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }
 
 /**
- * Validates a `HeatpumpDomesticHotWaterPauseV1` against the heatpump's
- * metadata and returns the answer it deserves.
+ * Validates a `VacationStoppedV1` and returns the answer it deserves. It is
+ * only `Rejected` when malformed (`vacationId` not a non-empty string) — a
+ * stop must be accepted even when nothing runs, so it needs no metadata.
  *
  * Used by `HeatpumpIntegrationEnergyApp` before it calls
- * `handleHeatpumpDomesticHotWaterPause`; an integration handling the message
- * itself can call it too.
- *
- * Rules, in order — the first that fails decides:
- * 1. `index` is omitted or an integer ≥ 0 and `untilIso` is an ISO 8601
- *    timestamp (**Rejected**).
- * 2. The heatpump does not declare `DomesticHotWaterPause` (**NotSupported**).
- * 3. The metadata lists DHW zones but none with the message's `index`
- *    (**Rejected**).
- *
- * Without metadata only rule 1 can be checked.
+ * `handleVacationStopped`.
  *
  * @param data - The message's data.
- * @param metadata - The heatpump's metadata, if known.
- * @returns The answer: `Accepted` when every rule holds.
+ * @returns The answer: `Accepted` unless the data is malformed.
  *
  * @example
  * ```typescript
- * const result = validateHeatpumpDomesticHotWaterPause(message.data, appliance.heatpump);
- * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * const result = validateVacationStopped(message.data);
  * ```
  */
-export function validateHeatpumpDomesticHotWaterPause(
-    data: EnyoDataBusHeatpumpDomesticHotWaterPauseV1['data'],
-    metadata: EnyoHeatpumpApplianceMetadata | undefined,
-): HeatpumpHoldValidationResult {
-    const malformed = checkHoldIndexAndUntil(data);
-    if (malformed) return {answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason: malformed};
-
-    if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
-    if (!(metadata.availableFeatures ?? []).includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.DomesticHotWaterPause)) {
+export function validateVacationStopped(data: EnyoDataBusVacationStoppedV1['data']): HeatpumpVacationValidationResult {
+    if (typeof data.vacationId !== 'string' || data.vacationId.length === 0) {
         return {
-            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
-            rejectionReason: 'The heatpump does not support hot water pauses (no DomesticHotWaterPause).',
+            answer: EnyoCommandAcknowledgeAnswerEnum.Rejected,
+            rejectionReason: `vacationId must be a non-empty string; got ${data.vacationId}.`,
         };
-    }
-    const zones = metadata.domesticHotWater ?? [];
-    if (data.index !== undefined && zones.length > 0 && !zones.some((z) => z.index === data.index)) {
-        return {answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason: `No DHW zone with index ${data.index}.`};
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }

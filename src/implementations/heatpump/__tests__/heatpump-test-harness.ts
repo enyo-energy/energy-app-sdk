@@ -3,12 +3,12 @@ import {
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusHeatpumpControlCancelV3,
     EnyoDataBusHeatpumpControlV3,
-    EnyoDataBusHeatpumpDomesticHotWaterPauseV1,
     EnyoDataBusHeatpumpProgramSwitchV3,
-    EnyoDataBusHeatpumpRoomSetpointHoldV1,
     EnyoDataBusMessage,
     EnyoDataBusMessageEnum,
     EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
+    EnyoDataBusVacationStartedV1,
+    EnyoDataBusVacationStoppedV1,
 } from '../../../types/enyo-data-bus-value.js';
 import {EnyoHeatpumpApplianceMetadata} from '../../../types/enyo-heatpump-appliance.js';
 import {EnyoSourceEnum} from '../../../types/enyo-source.enum.js';
@@ -46,8 +46,8 @@ interface Dispatchers {
     dispatchHeatpumpControlCancel(message: EnyoDataBusHeatpumpControlCancelV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpProgramSwitch(message: EnyoDataBusHeatpumpProgramSwitchV3): Promise<IntegrationCommandResponse>;
     dispatchHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1): Promise<IntegrationCommandResponse>;
-    dispatchHeatpumpRoomSetpointHold(message: EnyoDataBusHeatpumpRoomSetpointHoldV1): Promise<IntegrationCommandResponse>;
-    dispatchHeatpumpDomesticHotWaterPause(message: EnyoDataBusHeatpumpDomesticHotWaterPauseV1): Promise<IntegrationCommandResponse>;
+    dispatchVacationStarted(message: EnyoDataBusVacationStartedV1): Promise<IntegrationCommandResponse>;
+    dispatchVacationStopped(message: EnyoDataBusVacationStoppedV1): Promise<IntegrationCommandResponse>;
 }
 
 /**
@@ -66,12 +66,12 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
     readonly curveOffsets: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1[] = [];
     /** Without it the base class's default (`NotSupported`) answers heating curve offsets. */
     curveOffsetResponse?: (message: EnyoDataBusSetHeatpumpHeatingCurveOffsetV1) => Promise<IntegrationCommandResponse>;
-    readonly holds: EnyoDataBusHeatpumpRoomSetpointHoldV1[] = [];
-    /** Without it the base class's default (`NotSupported`) answers room setpoint holds. */
-    holdResponse?: (message: EnyoDataBusHeatpumpRoomSetpointHoldV1) => Promise<IntegrationCommandResponse>;
-    readonly dhwPauses: EnyoDataBusHeatpumpDomesticHotWaterPauseV1[] = [];
-    /** Without it the base class's default (`NotSupported`) answers hot water pauses. */
-    dhwPauseResponse?: (message: EnyoDataBusHeatpumpDomesticHotWaterPauseV1) => Promise<IntegrationCommandResponse>;
+    readonly vacationStarts: EnyoDataBusVacationStartedV1[] = [];
+    /** Without it the base class's default (`NotSupported`) answers vacation starts. */
+    vacationStartedResponse?: (message: EnyoDataBusVacationStartedV1) => Promise<IntegrationCommandResponse>;
+    readonly vacationStops: EnyoDataBusVacationStoppedV1[] = [];
+    /** Without it the base class's default (`NotSupported`) answers vacation stops. */
+    vacationStoppedResponse?: (message: EnyoDataBusVacationStoppedV1) => Promise<IntegrationCommandResponse>;
 
     constructor() {
         super({source: EnyoSourceEnum.Device, applianceIds: ['hp-1'], autoStart: false, autoStopOnShutdown: false});
@@ -121,12 +121,12 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         });
     }
 
-    /** Sends a room setpoint hold through the base class, as the data bus would. */
-    roomSetpointHold(data: EnyoDataBusHeatpumpRoomSetpointHoldV1['data']): Promise<IntegrationCommandResponse> {
-        return (this as unknown as Dispatchers).dispatchHeatpumpRoomSetpointHold({
-            id: `hold-${data.untilIso}`,
+    /** Sends a vacation start through the base class, as the data bus would. */
+    vacationStarted(data: EnyoDataBusVacationStartedV1['data']): Promise<IntegrationCommandResponse> {
+        return (this as unknown as Dispatchers).dispatchVacationStarted({
+            id: `vacation-started-${data.vacationId}`,
             type: 'message',
-            message: EnyoDataBusMessageEnum.HeatpumpRoomSetpointHoldV1,
+            message: EnyoDataBusMessageEnum.VacationStartedV1,
             source: EnyoSourceEnum.Device,
             applianceId: 'hp-1',
             timestampIso: new Date().toISOString(),
@@ -134,12 +134,12 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         });
     }
 
-    /** Sends a hot water pause through the base class, as the data bus would. */
-    domesticHotWaterPause(data: EnyoDataBusHeatpumpDomesticHotWaterPauseV1['data']): Promise<IntegrationCommandResponse> {
-        return (this as unknown as Dispatchers).dispatchHeatpumpDomesticHotWaterPause({
-            id: `dhw-pause-${data.untilIso}`,
+    /** Sends a vacation stop through the base class, as the data bus would. */
+    vacationStopped(data: EnyoDataBusVacationStoppedV1['data']): Promise<IntegrationCommandResponse> {
+        return (this as unknown as Dispatchers).dispatchVacationStopped({
+            id: `vacation-stopped-${data.vacationId}`,
             type: 'message',
-            message: EnyoDataBusMessageEnum.HeatpumpDomesticHotWaterPauseV1,
+            message: EnyoDataBusMessageEnum.VacationStoppedV1,
             source: EnyoSourceEnum.Device,
             applianceId: 'hp-1',
             timestampIso: new Date().toISOString(),
@@ -171,16 +171,16 @@ export class TestHeatpump extends HeatpumpIntegrationEnergyApp {
         return this.curveOffsetResponse(message);
     }
 
-    protected async handleHeatpumpRoomSetpointHold(message: EnyoDataBusHeatpumpRoomSetpointHoldV1) {
-        if (!this.holdResponse) return super.handleHeatpumpRoomSetpointHold(message);
-        this.holds.push(message);
-        return this.holdResponse(message);
+    protected async handleVacationStarted(message: EnyoDataBusVacationStartedV1) {
+        if (!this.vacationStartedResponse) return super.handleVacationStarted(message);
+        this.vacationStarts.push(message);
+        return this.vacationStartedResponse(message);
     }
 
-    protected async handleHeatpumpDomesticHotWaterPause(message: EnyoDataBusHeatpumpDomesticHotWaterPauseV1) {
-        if (!this.dhwPauseResponse) return super.handleHeatpumpDomesticHotWaterPause(message);
-        this.dhwPauses.push(message);
-        return this.dhwPauseResponse(message);
+    protected async handleVacationStopped(message: EnyoDataBusVacationStoppedV1) {
+        if (!this.vacationStoppedResponse) return super.handleVacationStopped(message);
+        this.vacationStops.push(message);
+        return this.vacationStoppedResponse(message);
     }
 
     protected async handleHeatpumpOverheating() {

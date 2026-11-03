@@ -1671,10 +1671,10 @@ export enum EnyoDataBusMessageEnum {
     HeatpumpFlexibilityAnnouncementV3 = 'HeatpumpFlexibilityAnnouncementV3',
     /** Control command: switch a heating circuit or DHW zone to its comfort or eco setpoint regardless of the time program, or back to the program. Only for heatpumps declaring the `ProgramSwitch` feature. */
     HeatpumpProgramSwitchV3 = 'HeatpumpProgramSwitchV3',
-    /** Control command: hold the room setpoint of one or all heating circuits — frost protection or a lowered temperature — until a given time, e.g. during the customer's vacation. Only for heatpumps declaring the `RoomSetpointHold` feature. */
-    HeatpumpRoomSetpointHoldV1 = 'HeatpumpRoomSetpointHoldV1',
-    /** Control command: pause the hot water heating of one or all DHW zones until a given time, while legionella protection keeps running. Only for heatpumps declaring the `DomesticHotWaterPause` feature. */
-    HeatpumpDomesticHotWaterPauseV1 = 'HeatpumpDomesticHotWaterPauseV1',
+    /** Control command: the customer is away — what the heatpump should do right now (heating while away, hot water pause). Idempotent, re-sent whenever the wanted state changes and at least hourly. Only for heatpumps declaring a vacation feature (`VacationFrostProtection`, `VacationLowered`, `VacationHotWaterPause`). */
+    VacationStartedV1 = 'VacationStartedV1',
+    /** Control command: the vacation is over (return, early return or removed) — restore everything. Accepted even when nothing runs. */
+    VacationStoppedV1 = 'VacationStoppedV1',
     /** Live split of the grid power between the household (primary meter) and the meter cascade. Published by the core. */
     CascadeSplitUpdateV1 = 'CascadeSplitUpdateV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
@@ -5154,146 +5154,148 @@ export interface EnyoDataBusHeatpumpProgramSwitchV3 extends EnyoDataBusMessage {
 }
 
 /**
- * Holds the room setpoint of one or all heating circuits at a fixed
- * temperature until a given time — frost protection
- * ({@link VACATION_FROST_PROTECTION_C}) or a lowered temperature while the
- * customer is on vacation ({@link EnergyAppVacations}). When the hold ends,
- * the circuits follow their own time program again.
+ * How the heatpump heats while the customer is away, as sent in
+ * {@link EnyoDataBusVacationStartedV1} (`data.heating.mode`). The energy
+ * manager picks it from the customer's choice ({@link EnyoVacation.heatingMode})
+ * and the vacation features the heatpump declares.
+ */
+export enum EnyoVacationHeatingEnum {
+    /**
+     * Keep the house from freezing — the device's own frost protection
+     * (≈ {@link VACATION_FROST_PROTECTION_C}). Only for heatpumps declaring
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection}.
+     */
+    FrostProtection = 'frost-protection',
+    /**
+     * Hold the rooms at `targetTemperatureC`. Only for heatpumps declaring
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered}, with
+     * a target inside {@link EnyoHeatpumpApplianceMetadata.vacationLoweredRangeC}.
+     */
+    Lowered = 'lowered',
+}
+
+/**
+ * The customer is away ({@link EnergyAppVacations}): what the heatpump should
+ * do right now. The integration decides how to realise it — ideally with the
+ * device's own holiday / absence mode, written with `untilIso` as its end.
  *
- * Send it only to heatpumps declaring
- * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomSetpointHold}, and only
- * with a `targetTemperatureC` inside
- * {@link EnyoHeatpumpApplianceHeatingCircuit.roomSetpointHoldRangeC} of every
- * circuit addressed. Otherwise fall back to eco via
+ * Send it only to heatpumps declaring at least one of
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection},
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered} or
+ * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause};
+ * other heatpumps get the eco fallback via
  * {@link EnyoDataBusHeatpumpProgramSwitchV3}.
  *
- * - **Long-running, ends by itself.** Unlike a program switch, `untilIso` may
- *   lie days or weeks ahead. The integration writes it to the device as the
- *   end of its holiday / absence mode where the device has one, so the hold
- *   ends even when the energy manager or the app is not running; otherwise it
- *   ends the hold itself at `untilIso`.
- * - **Idempotent; re-sent.** The same message may arrive again. The energy
- *   manager re-sends it on its start, whenever the absence changes and at
- *   least hourly while it applies, so an integration without a device-side
- *   end can re-arm its timer after a restart.
- * - **Ending early.** An `untilIso` at or before now ends the hold right away
- *   and returns the circuits to their time program — e.g. when the customer
- *   returns early or the energy manager starts pre-heating for the return.
- *   It is accepted even when no hold is running.
- * - **Precedence.** The hold overrides the circuit's time program and any
- *   {@link EnyoDataBusHeatpumpProgramSwitchV3}. While it runs, the energy
- *   manager sends no program switch and no {@link EnyoDataBusHeatpumpControlV3}
- *   room action for the held circuits.
+ * - **Idempotent; re-sent.** The energy manager re-sends it whenever the
+ *   wanted state changes — e.g. heating resumes ahead of the return while hot
+ *   water is still paused, so it is re-sent without `heating` — and at least
+ *   hourly. Each message describes the complete wanted state: what it leaves
+ *   out runs as usual.
+ * - **Ends by itself.** `untilIso` is the safety net: end everything by then on
+ *   your own if no {@link EnyoDataBusVacationStoppedV1} arrives, e.g. because
+ *   the energy manager stopped.
+ * - **Precedence.** While a vacation heating state is active the energy manager
+ *   sends no {@link EnyoDataBusHeatpumpProgramSwitchV3} and no
+ *   {@link EnyoDataBusHeatpumpControlV3} room action for the heatpump; while
+ *   `pauseHotWater` is set, no hot water boosts.
  *
  * **Answer.** The receiving integration answers with an
- * {@link EnyoDataBusCommandAcknowledgeV1}: `Accepted` once the hold (or its
- * end) is written, `Rejected` with a reason when it cannot be written right
- * now (e.g. the user put the heatpump into a manual mode, or the temperature
- * lies outside the circuit's range), `NotSupported` for heatpumps without the
- * feature, circuits without a `roomSetpointHoldRangeC`, or a single circuit on
- * a device that can only hold all of them.
+ * {@link EnyoDataBusCommandAcknowledgeV1}: `Accepted` once the state is
+ * written, `Rejected` with a reason when it cannot be written right now (e.g.
+ * the user put the heatpump into a manual mode), `NotSupported` when the
+ * heatpump lacks the feature for the requested `heating` mode or
+ * `pauseHotWater`, or a lowered target lies outside its
+ * `vacationLoweredRangeC`.
  *
  * @example
  * ```ts
- * const msg: EnyoDataBusHeatpumpRoomSetpointHoldV1 = {
+ * const msg: EnyoDataBusVacationStartedV1 = {
  *     id: 'msg-6',
  *     type: 'message',
- *     message: EnyoDataBusMessageEnum.HeatpumpRoomSetpointHoldV1,
+ *     message: EnyoDataBusMessageEnum.VacationStartedV1,
  *     source: EnyoSourceEnum.Device,
  *     applianceId: 'heatpump-1',
  *     timestampIso: '2026-12-01T08:00:00.000Z',
  *     data: {
- *         targetTemperatureC: VACATION_FROST_PROTECTION_C,
- *         untilIso: '2026-12-14T16:00:00.000Z',
+ *         vacationId: 'vacation-1',
+ *         returnIso: '2026-12-14T18:00:00.000Z',
+ *         untilIso: '2026-12-14T18:00:00.000Z',
+ *         heating: {mode: EnyoVacationHeatingEnum.FrostProtection, targetTemperatureC: VACATION_FROST_PROTECTION_C},
+ *         pauseHotWater: true,
  *         reason: {type: EnyoDataBusCommandReasonTypeEnum.UserRequest},
  *     },
  * };
  * ```
  */
-export interface EnyoDataBusHeatpumpRoomSetpointHoldV1 extends EnyoDataBusMessage {
+export interface EnyoDataBusVacationStartedV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: EnyoDataBusMessageEnum.HeatpumpRoomSetpointHoldV1;
-    /** ID of the heatpump appliance whose heating circuits are held. */
+    message: EnyoDataBusMessageEnum.VacationStartedV1;
+    /** ID of the heatpump appliance the vacation applies to. */
     applianceId: string;
     data: {
+        /** ID of the absence, as in {@link EnyoVacation.id}. */
+        vacationId: string;
+        /** ISO 8601 timestamp of the customer's planned return. */
+        returnIso: string;
         /**
-         * Index of the heating circuit to hold, as in
-         * {@link EnyoHeatpumpApplianceHeatingCircuit.index}. **Omit to hold
-         * every heating circuit** — unlike
-         * {@link EnyoDataBusHeatpumpProgramSwitchV3}, where an omitted index
-         * means the first circuit.
-         */
-        index?: number;
-        /** Room setpoint in °C to hold, e.g. {@link VACATION_FROST_PROTECTION_C} for frost protection. Ignored when the hold ends. */
-        targetTemperatureC: number;
-        /**
-         * ISO 8601 timestamp the hold ends at; the circuits then follow their
-         * time program again. At or before now ends the hold right away.
+         * Safety net: end everything by this ISO 8601 timestamp on your own if
+         * no {@link EnyoDataBusVacationStoppedV1} arrives (e.g. the energy
+         * manager stopped). Normally equal to {@link returnIso}.
          */
         untilIso: string;
-        /** Why the setpoint is held, e.g. `user-request` for the customer's vacation. */
+        /**
+         * Heating while away. Absent: heat as usual — also when heating has
+         * already resumed for the return.
+         */
+        heating?: {
+            /** How to heat while away. */
+            mode: EnyoVacationHeatingEnum;
+            /**
+             * Room temperature in °C to hold: the frost protection temperature
+             * for {@link EnyoVacationHeatingEnum.FrostProtection}, the
+             * customer's lowered temperature for
+             * {@link EnyoVacationHeatingEnum.Lowered}.
+             */
+            targetTemperatureC: number;
+        };
+        /** Do not reheat domestic hot water. Legionella protection keeps running. */
+        pauseHotWater: boolean;
+        /** Why, e.g. `user-request` for the customer's vacation. */
         reason?: EnyoDataBusCommandReason;
     };
 }
 
 /**
- * Pauses the hot water heating of one or all DHW zones until a given time,
- * e.g. while the customer is on vacation ({@link EnergyAppVacations}).
- * **Legionella protection keeps running** during the pause; when the pause
- * ends, the zones follow their own time program again.
+ * The vacation is over — the customer returned, returned early or removed the
+ * absence: restore everything a {@link EnyoDataBusVacationStartedV1} changed,
+ * so the heatpump follows its own time program again.
  *
- * Send it only to heatpumps declaring
- * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.DomesticHotWaterPause}.
- * There is no fallback for other heatpumps — their hot water keeps heating as
- * usual.
- *
- * Ending, re-sending and precedence work as for
- * {@link EnyoDataBusHeatpumpRoomSetpointHoldV1}: `untilIso` may lie weeks
- * ahead and is written to the device where it can, the message is idempotent
- * and re-sent at least hourly, an `untilIso` at or before now ends the pause
- * right away, and while it runs the energy manager sends no program switch and
- * no {@link EnyoDataBusHeatpumpControlV3} DHW action for the paused zones.
- *
- * **Answer.** The receiving integration answers with an
- * {@link EnyoDataBusCommandAcknowledgeV1}: `Accepted` once the pause (or its
- * end) is written, `Rejected` with a reason when it cannot be written right
- * now, `NotSupported` for heatpumps without the feature or a single zone on a
- * device that can only pause all of them.
+ * **Answer.** An {@link EnyoDataBusCommandAcknowledgeV1}. It must be accepted
+ * even when nothing runs; `Rejected` only when the device cannot be restored
+ * right now.
  *
  * @example
  * ```ts
- * const msg: EnyoDataBusHeatpumpDomesticHotWaterPauseV1 = {
+ * const msg: EnyoDataBusVacationStoppedV1 = {
  *     id: 'msg-7',
  *     type: 'message',
- *     message: EnyoDataBusMessageEnum.HeatpumpDomesticHotWaterPauseV1,
+ *     message: EnyoDataBusMessageEnum.VacationStoppedV1,
  *     source: EnyoSourceEnum.Device,
  *     applianceId: 'heatpump-1',
- *     timestampIso: '2026-12-01T08:00:00.000Z',
- *     data: {
- *         untilIso: '2026-12-14T12:00:00.000Z',
- *         reason: {type: EnyoDataBusCommandReasonTypeEnum.UserRequest},
- *     },
+ *     timestampIso: '2026-12-14T15:00:00.000Z',
+ *     data: {vacationId: 'vacation-1', reason: {type: EnyoDataBusCommandReasonTypeEnum.UserRequest}},
  * };
  * ```
  */
-export interface EnyoDataBusHeatpumpDomesticHotWaterPauseV1 extends EnyoDataBusMessage {
+export interface EnyoDataBusVacationStoppedV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: EnyoDataBusMessageEnum.HeatpumpDomesticHotWaterPauseV1;
-    /** ID of the heatpump appliance whose hot water is paused. */
+    message: EnyoDataBusMessageEnum.VacationStoppedV1;
+    /** ID of the heatpump appliance the vacation applied to. */
     applianceId: string;
     data: {
-        /**
-         * Index of the DHW zone to pause, as in
-         * {@link EnyoHeatpumpApplianceDomesticHotWater.index}. **Omit to pause
-         * every DHW zone.**
-         */
-        index?: number;
-        /**
-         * ISO 8601 timestamp the pause ends at; the zones then follow their
-         * time program again. At or before now ends the pause right away.
-         */
-        untilIso: string;
-        /** Why hot water is paused, e.g. `user-request` for the customer's vacation. */
+        /** ID of the absence that is over, as in {@link EnyoVacation.id}. */
+        vacationId: string;
+        /** Why, e.g. `user-request` for a return or removal. */
         reason?: EnyoDataBusCommandReason;
     };
 }

@@ -515,10 +515,9 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *  - Heating curve offset: errors from {@link checkHeatingCurveOffset}.
  *    Warning: `HeatingCurveOffset` is declared but no circuit has a
  *    `heatingCurveOffsetRangeK` — no offset other than `0` could be accepted.
- *  - Error: a circuit's `roomSetpointHoldRangeC` is not finite or has
- *    `minC` above `maxC`. Warning: `RoomSetpointHold` is declared but no
- *    circuit has a `roomSetpointHoldRangeC`, or a circuit has one without
- *    `RoomSetpointHold`.
+ *  - Error: `VacationLowered` is declared without a `vacationLoweredRangeC`,
+ *    a `vacationLoweredRangeC` is set without `VacationLowered`, or the range
+ *    is not finite or has `minC` above `maxC`.
  *  - SG Ready relays: errors and warnings from {@link checkSgReadyRelays}.
  *
  * @param metadata - The heatpump metadata to validate.
@@ -526,7 +525,7 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  */
 export function validateHeatpumpAdvancedMetadata(
     metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>
-        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'additionalDevices'>>,
+        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'additionalDevices' | 'vacationLoweredRangeC'>>,
 ): HeatpumpMetadataValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -585,21 +584,19 @@ export function validateHeatpumpAdvancedMetadata(
         warnings.push('HeatingCurveOffset is declared but no heating circuit has a heatingCurveOffsetRangeK — only offset 0 could be accepted');
     }
 
-    const declaresRoomSetpointHold = features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.RoomSetpointHold);
-    if (declaresRoomSetpointHold && !circuits.some((c) => c.roomSetpointHoldRangeC)) {
-        warnings.push('RoomSetpointHold is declared but no heating circuit has a roomSetpointHoldRangeC — no hold could ever be accepted');
+    const declaresVacationLowered = features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered);
+    const vacationRange = metadata.vacationLoweredRangeC;
+    if (declaresVacationLowered && !vacationRange) {
+        errors.push('VacationLowered is declared but vacationLoweredRangeC is missing');
     }
-    for (const circuit of circuits) {
-        const range = circuit.roomSetpointHoldRangeC;
-        if (!range) continue;
-        const prefix = `heatingCircuits[index=${circuit.index}]`;
-        if (!isFiniteNumber(range.minC) || !isFiniteNumber(range.maxC)) {
-            errors.push(`${prefix}: roomSetpointHoldRangeC.minC and maxC must be finite numbers`);
-        } else if (range.minC > range.maxC) {
-            errors.push(`${prefix}: roomSetpointHoldRangeC ${range.minC}…${range.maxC} °C has minC above maxC`);
+    if (vacationRange) {
+        if (!declaresVacationLowered) {
+            errors.push('vacationLoweredRangeC is set but the heatpump does not declare VacationLowered');
         }
-        if (!declaresRoomSetpointHold) {
-            warnings.push(`${prefix}: roomSetpointHoldRangeC is set but the heatpump does not declare RoomSetpointHold`);
+        if (!isFiniteNumber(vacationRange.minC) || !isFiniteNumber(vacationRange.maxC)) {
+            errors.push('vacationLoweredRangeC.minC and maxC must be finite numbers');
+        } else if (vacationRange.minC > vacationRange.maxC) {
+            errors.push(`vacationLoweredRangeC ${vacationRange.minC}…${vacationRange.maxC} °C has minC above maxC`);
         }
     }
 
