@@ -1866,7 +1866,7 @@ Requires the `RoomTemperatures` permission.
 
 #### `useVacations(): EnergyAppVacations`
 
-Read the customer's absences (vacation mode), as planned in the enyo app — every absence that is not over yet, planned or running; they never overlap. Each `EnyoVacation` carries `startIso` / `endIso`, the `heatingMode` while away (`EnyoVacationHeatingModeEnum`: `FrostProtection` = `VACATION_FROST_PROTECTION_C` 7 °C, `Lowered` to `loweredRoomTemperatureC` between `VACATION_LOWERED_MIN_C` and `VACATION_LOWERED_MAX_C` (10–20 °C), or `Normal`), `pauseHotWater`, `preheatBeforeReturn`, `gridServingBattery` and `batteryMinSocAtReturnPercent`. An early return moves `endIso` to that moment and fires the listener. Read-only. The energy manager turns an absence into [VacationStartedV1 / VacationStoppedV1](#vacationstartedv1--vacationstoppedv1).
+Read the customer's absences (vacation mode), as planned in the enyo app — every absence that is not over yet, planned or running; they never overlap. Each `EnyoVacation` carries `startIso` / `endIso` and the customer's choices per appliance category: `heatpump.heating` — `mode` while away (`EnyoVacationHeatingModeEnum`: `FrostProtection` = `VACATION_FROST_PROTECTION_C` 7 °C, `Lowered` to `loweredTemperatureC` between `VACATION_LOWERED_MIN_C` and `VACATION_LOWERED_MAX_C` (10–20 °C), or `Normal`) and `preheatBeforeReturn` —, `heatpump.domesticHotWater.pause`, and `battery.gridServing` / `battery.minSocAtReturnPercent`. An early return moves `endIso` to that moment and fires the listener. Read-only. The energy manager turns an absence into [VacationStartedV1 / VacationStoppedV1](#vacationstartedv1--vacationstoppedv1).
 
 ```typescript
 const vacations = energyApp.useVacations();
@@ -4012,28 +4012,30 @@ protected async handleHeatpumpHeatingCurveOffset(message: EnyoDataBusSetHeatpump
 
 #### VacationStartedV1 / VacationStoppedV1
 
-The customer is away (`useVacations()`): `VacationStartedV1` carries the customer's preferences — heating while away and whether hot water is paused — and the integration decides how to realise them, ideally with the device's own holiday / absence mode. `VacationStoppedV1` ends the vacation (return, early return or removed): restore everything so the zones follow their own time program again. Both are answered with the usual `CommandAcknowledgeV1`.
+The customer is away (`useVacations()`): `VacationStartedV1` carries the customer's preferences, nested by appliance type — `heatpump` (heating while away, whether hot water is paused) and `battery` — and the integration decides how to realise them, ideally with the device's own holiday / absence mode. `VacationStoppedV1` ends the vacation (return, early return or removed): restore everything so the zones follow their own time program again. Both are answered with the usual `CommandAcknowledgeV1`.
 
 ```typescript
 // VacationStartedV1
 {
     vacationId: 'vacation-1',
-    returnIso: '2026-12-14T18:00:00.000Z',  // the customer's planned return
-    untilIso: '2026-12-14T18:00:00.000Z',   // safety net: end everything by then on your own; normally = returnIso
-    heating: { mode: EnyoVacationHeatingEnum.FrostProtection, targetTemperatureC: 7 },  // absent = heat as usual
-    pauseHotWater: true,                    // legionella protection keeps running
+    returnIso: '2026-12-14T18:00:00.000Z',  // planned return; safety net: end everything by then on your own
+    heatpump: {
+        heating: { mode: EnyoVacationHeatingEnum.FrostProtection, targetTemperatureC: 7 },  // absent = heat as usual
+        domesticHotWater: { pause: true },  // absent or pause: false = hot water as usual; legionella protection keeps running
+    },
+    // battery: { gridServing: true, minSocAtReturnPercent: 50 },  // for batteries with their own vacation handling; not sent by the enyo energy manager today
     reason: { type: EnyoDataBusCommandReasonTypeEnum.UserRequest },
 }
 // VacationStoppedV1
 { vacationId: 'vacation-1' }
 ```
 
-- **Only to heatpumps declaring a vacation feature.** `heating.mode` `FrostProtection` (`EnyoVacationHeatingEnum`, the device's own frost protection ≈ `VACATION_FROST_PROTECTION_C` 7 °C) needs `VacationFrostProtection`; `Lowered` needs `VacationLowered` and a `targetTemperatureC` inside the appliance-level `vacationLoweredRangeC` (the setpoint the device can hold for all its circuits); `pauseHotWater: true` needs `VacationHotWaterPause`. A heatpump without any vacation feature gets the eco fallback via `HeatpumpProgramSwitchV3`.
-- **Idempotent, the complete wanted state.** The energy manager re-sends `VacationStartedV1` whenever the wanted state changes and at least hourly. Pre-heating for the return stays with the energy manager: when heating resumes it re-sends the message without `heating`, when hot water resumes with `pauseHotWater: false`, and when nothing is left it sends `VacationStoppedV1`.
-- **Ends by itself.** Write `untilIso` to the device as the end of its holiday mode, or end everything yourself at `untilIso` if no `VacationStoppedV1` arrives.
+- **Only to heatpumps declaring a vacation feature.** `heatpump.heating.mode` `FrostProtection` (`EnyoVacationHeatingEnum`, the device's own frost protection ≈ `VACATION_FROST_PROTECTION_C` 7 °C) needs `VacationFrostProtection`; `Lowered` needs `VacationLowered` and a `targetTemperatureC` inside the appliance-level `vacationLoweredRangeC` (the setpoint the device can hold for all its circuits); `heatpump.domesticHotWater.pause: true` needs `VacationHotWaterPause`. A heatpump without any vacation feature gets the eco fallback via `HeatpumpProgramSwitchV3`.
+- **Idempotent, the complete wanted state.** The energy manager re-sends `VacationStartedV1` whenever the wanted state changes and at least hourly. Pre-heating for the return stays with the energy manager: when heating resumes it re-sends the message without `heatpump.heating`, when hot water resumes with `domesticHotWater.pause: false`, and when nothing is left it sends `VacationStoppedV1`.
+- **Ends by itself.** Write `returnIso` to the device as the end of its holiday mode, or end everything yourself at `returnIso` if no `VacationStoppedV1` arrives.
 - **Stop is always accepted.** Answer `VacationStoppedV1` `Accepted` even when nothing runs.
-- **Precedence.** While a vacation heating state is active the energy manager sends no `HeatpumpProgramSwitchV3` and no `HeatpumpControlV3` room action for the heatpump; while `pauseHotWater` is set, no hot water boosts.
-- **Validation** (run by the base class before the handlers, or `validateVacationStarted(data, metadata)` / `validateVacationStopped(data)` directly): malformed data is `Rejected`; a `heating` mode whose feature is missing, a lowered target outside `vacationLoweredRangeC` or `pauseHotWater` without `VacationHotWaterPause` is `NotSupported`. A stop is only rejected when malformed.
+- **Precedence.** While a vacation heating state is active the energy manager sends no `HeatpumpProgramSwitchV3` and no `HeatpumpControlV3` room action for the heatpump; while `heatpump.domesticHotWater.pause` is set, no hot water boosts.
+- **Validation** (run by the base class before the handlers, or `validateVacationStarted(data, metadata)` / `validateVacationStopped(data)` directly): malformed data is `Rejected`; a `heatpump.heating` mode whose feature is missing, a lowered target outside `vacationLoweredRangeC` or `heatpump.domesticHotWater.pause: true` without `VacationHotWaterPause` is `NotSupported`. A stop is only rejected when malformed.
 
 #### HeatpumpFlexibilityAnnouncementV3
 
@@ -4071,9 +4073,9 @@ Beyond tanks and circuits, the heatpump metadata (`EnyoHeatpumpApplianceMetadata
 | `RoomTemperature` | `heatingCircuits[].roomTemperatureC` in `HeatpumpTemperaturesUpdateV1`; where it is measured goes in `heatingCircuits[].roomTemperatureSource` (`None` / `Internal` / `External`) and, for an enyo sensor, `roomTemperatureSensor` |
 | `RoomTemperatureInput` | The heatpump accepts measured room temperatures via `SetHeatpumpRoomTemperatureV1` |
 | `HeatingCurveOffset` | The heatpump's app shifts a circuit's curve via `SetHeatpumpHeatingCurveOffsetV1`. `heatingCircuits[].heatingCurveOffsetRangeK` (allowed range, must contain 0), `activeHeatingCurveOffsetK` (effective shift read back) and `initialHeatingCurve` (the curve before the first shift) |
-| `VacationFrostProtection` | The heatpump's app handles `VacationStartedV1` with `heating.mode` `FrostProtection` — the device's own frost protection while the customer is away |
-| `VacationLowered` | The heatpump's app handles `VacationStartedV1` with `heating.mode` `Lowered`. `vacationLoweredRangeC` (required) — the setpoints (°C) the device can hold for all its circuits |
-| `VacationHotWaterPause` | The heatpump's app handles `VacationStartedV1` with `pauseHotWater: true`. Declare it only if legionella protection keeps running |
+| `VacationFrostProtection` | The heatpump's app handles `VacationStartedV1` with `heatpump.heating.mode` `FrostProtection` — the device's own frost protection while the customer is away |
+| `VacationLowered` | The heatpump's app handles `VacationStartedV1` with `heatpump.heating.mode` `Lowered`. `vacationLoweredRangeC` (required) — the setpoints (°C) the device can hold for all its circuits |
+| `VacationHotWaterPause` | The heatpump's app handles `VacationStartedV1` with `heatpump.domesticHotWater.pause: true`. Declare it only if legionella protection keeps running |
 | — | `heatingCircuits[].curveOptimization` — the customer's choice for the room-temperature based curve optimisation: `enabled` (off by default) and `roomIds` (the rooms the circuit heats, see `useRoom()`). Customer-owned; integrations only read it |
 | — | `building.recommendedHeatingCurve` — the curve the building actually needs, learned from the days the room held its target |
 | `PvSurplusSignal` | The heatpump takes `availablePowerW` of `HeatpumpControlV3` as a PV surplus signal (e.g. Lambda register 102). Supersedes the deprecated `AvailablePowerAnnouncement` |

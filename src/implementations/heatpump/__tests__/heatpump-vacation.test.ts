@@ -26,33 +26,39 @@ const METADATA: EnyoHeatpumpApplianceMetadata = {
 };
 
 type StartedData = EnyoDataBusVacationStartedV1['data'];
+type HeatpumpData = NonNullable<StartedData['heatpump']>;
+const FROST = {mode: EnyoVacationHeatingEnum.FrostProtection, targetTemperatureC: VACATION_FROST_PROTECTION_C};
 const started = (overrides: Partial<StartedData> = {}): StartedData => ({
     vacationId: 'vacation-1',
     returnIso: RETURN_ISO,
-    untilIso: RETURN_ISO,
-    heating: {mode: EnyoVacationHeatingEnum.FrostProtection, targetTemperatureC: VACATION_FROST_PROTECTION_C},
-    pauseHotWater: true,
+    heatpump: {heating: FROST, domesticHotWater: {pause: true}},
     reason: {type: EnyoDataBusCommandReasonTypeEnum.UserRequest},
     ...overrides,
 });
-const lowered = (targetTemperatureC: number) => started({heating: {mode: EnyoVacationHeatingEnum.Lowered, targetTemperatureC}});
+const withHeatpump = (heatpump: HeatpumpData) => started({heatpump});
+const lowered = (targetTemperatureC: number) =>
+    withHeatpump({heating: {mode: EnyoVacationHeatingEnum.Lowered, targetTemperatureC}, domesticHotWater: {pause: true}});
 const withFeatures = (...availableFeatures: Feature[]) => ({...METADATA, availableFeatures});
 
 describe('validateVacationStarted', () => {
     it('accepts frost protection, a lowered target inside the range and no heating at all', () => {
         expect(validateVacationStarted(started(), METADATA).answer).toBe(Accepted);
         expect(validateVacationStarted(lowered(15), METADATA).answer).toBe(Accepted);
-        expect(validateVacationStarted(started({heating: undefined, pauseHotWater: false}), METADATA).answer).toBe(Accepted);
+        expect(validateVacationStarted(withHeatpump({domesticHotWater: {pause: false}}), METADATA).answer).toBe(Accepted);
+        expect(validateVacationStarted(started({heatpump: undefined}), METADATA).answer).toBe(Accepted);
+        expect(validateVacationStarted(started({battery: {gridServing: true, minSocAtReturnPercent: 50}}), METADATA).answer)
+            .toBe(Accepted);
     });
 
     it('rejects malformed data', () => {
         const malformed = [
             started({vacationId: ''}),
             started({returnIso: 'soon'}),
-            started({untilIso: 'soon'}),
-            started({pauseHotWater: 'yes' as unknown as boolean}),
-            started({heating: {mode: 'normal' as EnyoVacationHeatingEnum, targetTemperatureC: 20}}),
+            withHeatpump({domesticHotWater: {pause: 'yes' as unknown as boolean}}),
+            withHeatpump({heating: {mode: 'normal' as EnyoVacationHeatingEnum, targetTemperatureC: 20}}),
             lowered(Number.NaN),
+            started({battery: {gridServing: 'yes' as unknown as boolean, minSocAtReturnPercent: 50}}),
+            started({battery: {gridServing: true, minSocAtReturnPercent: 120}}),
         ];
         for (const data of malformed) {
             expect(validateVacationStarted(data, METADATA).answer).toBe(Rejected);
@@ -72,15 +78,17 @@ describe('validateVacationStarted', () => {
         expect(validateVacationStarted(lowered(15), {...METADATA, vacationLoweredRangeC: undefined}).answer).toBe(NotSupported);
     });
 
-    it('answers NotSupported for pauseHotWater without VacationHotWaterPause', () => {
+    it('answers NotSupported for a hot water pause without VacationHotWaterPause', () => {
         const metadata = withFeatures(Feature.VacationFrostProtection);
         expect(validateVacationStarted(started(), metadata).answer).toBe(NotSupported);
-        expect(validateVacationStarted(started({pauseHotWater: false}), metadata).answer).toBe(Accepted);
+        expect(validateVacationStarted(withHeatpump({heating: FROST, domesticHotWater: {pause: false}}), metadata).answer)
+            .toBe(Accepted);
+        expect(validateVacationStarted(withHeatpump({heating: FROST}), metadata).answer).toBe(Accepted);
     });
 
     it('without metadata checks only the message itself', () => {
         expect(validateVacationStarted(lowered(30), undefined).answer).toBe(Accepted);
-        expect(validateVacationStarted(started({untilIso: 'soon'}), undefined).answer).toBe(Rejected);
+        expect(validateVacationStarted(started({returnIso: 'soon'}), undefined).answer).toBe(Rejected);
     });
 });
 

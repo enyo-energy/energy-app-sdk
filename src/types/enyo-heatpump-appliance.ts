@@ -124,7 +124,7 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     HeatingCurveOffset = 'HeatingCurveOffset',
     /**
      * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
-     * `heating.mode` {@link EnyoVacationHeatingEnum.FrostProtection}: while the
+     * `heatpump.heating.mode` {@link EnyoVacationHeatingEnum.FrostProtection}: while the
      * customer is away, the device only keeps the house from freezing, with
      * its own frost protection (≈ {@link VACATION_FROST_PROTECTION_C}).
      *
@@ -136,7 +136,7 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     VacationFrostProtection = 'VacationFrostProtection',
     /**
      * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
-     * `heating.mode` {@link EnyoVacationHeatingEnum.Lowered}: while the
+     * `heatpump.heating.mode` {@link EnyoVacationHeatingEnum.Lowered}: while the
      * customer is away, the device holds all its circuits at a lowered room
      * temperature.
      *
@@ -149,7 +149,7 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     VacationLowered = 'VacationLowered',
     /**
      * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
-     * `pauseHotWater: true`: while the customer is away, hot water is not
+     * `heatpump.domesticHotWater.pause: true`: while the customer is away, hot water is not
      * reheated.
      *
      * Declare it only when the app overrides

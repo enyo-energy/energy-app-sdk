@@ -786,9 +786,10 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     /**
      * Handles a `VacationStartedV1` command: the customer is away, so bring the
      * heatpump into the wanted state — heat with frost protection or at a
-     * lowered room temperature (`message.data.heating`; absent = heat as
-     * usual) and pause hot water (`message.data.pauseHotWater`). How to realise
-     * it is up to the integration. Answers `NotSupported` by default. Override
+     * lowered room temperature (`message.data.heatpump.heating`; absent = heat
+     * as usual) and pause hot water
+     * (`message.data.heatpump.domesticHotWater.pause`). How to realise it is up
+     * to the integration; the `battery` part is not meant for heatpumps. Answers `NotSupported` by default. Override
      * it together with {@link handleVacationStopped} and declare the vacation
      * features the device supports
      * ({@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection},
@@ -798,14 +799,16 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      *
      * What an implementation must do:
      * - Prefer the device's own holiday / absence mode and write
-     *   `message.data.untilIso` as its end, so everything ends even when the
+     *   `message.data.returnIso` as its end, so everything ends even when the
      *   app or the energy manager is not running. Without one, write the
-     *   setpoints and restore them yourself at `untilIso`.
+     *   setpoints and restore them yourself at `returnIso` if no
+     *   `VacationStoppedV1` arrives.
      * - Treat the message as idempotent and as the complete wanted state: the
      *   energy manager re-sends it whenever the wanted state changes and at
-     *   least hourly. A message without `heating` means heating runs as usual
-     *   again (e.g. pre-heating for the return); `pauseHotWater: false` means
-     *   hot water is reheated again.
+     *   least hourly. A message without `heatpump.heating` means heating runs
+     *   as usual again (e.g. pre-heating for the return); without
+     *   `heatpump.domesticHotWater` or with `pause: false`, hot water is
+     *   reheated again.
      * - Keep legionella protection running while hot water is paused.
      * - Answer `Rejected` (with `rejectionReason`) when the state cannot be
      *   written right now, e.g. the device is in a manual mode.
@@ -823,11 +826,11 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      * @example
      * ```ts
      * protected async handleVacationStarted(message: EnyoDataBusVacationStartedV1) {
-     *     const {heating, pauseHotWater, untilIso} = message.data;
+     *     const {heatpump, returnIso} = message.data;
      *     await this.device.writeHolidayMode({
-     *         roomSetpointC: heating?.targetTemperatureC,
-     *         pauseHotWater,
-     *         endIso: untilIso,
+     *         roomSetpointC: heatpump?.heating?.targetTemperatureC,
+     *         pauseHotWater: heatpump?.domesticHotWater?.pause ?? false,
+     *         endIso: returnIso,
      *     });
      *     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
      * }
@@ -850,7 +853,7 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      * together with {@link handleVacationStarted}.
      *
      * An implementation must answer `Accepted` even when nothing runs (e.g.
-     * the device already ended its holiday mode at `untilIso`), and
+     * the device already ended its holiday mode at `returnIso`), and
      * `Rejected` (with `rejectionReason`) only when the device cannot be
      * restored right now.
      *

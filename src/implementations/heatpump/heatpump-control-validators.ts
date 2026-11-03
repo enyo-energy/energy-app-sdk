@@ -476,14 +476,18 @@ function isIsoTimestamp(value: unknown): value is string {
  *
  * Rules, in order — the first that fails decides:
  * 1. Malformed data (**Rejected**): `vacationId` is not a non-empty string,
- *    `returnIso` / `untilIso` are not ISO 8601 timestamps, `pauseHotWater` is
- *    not a boolean, or `heating` has an unknown `mode` or a non-finite
- *    `targetTemperatureC`.
- * 2. `heating` asks for a mode whose feature is missing —
+ *    `returnIso` is not an ISO 8601 timestamp, `heatpump.heating` has an
+ *    unknown `mode` or a non-finite `targetTemperatureC`,
+ *    `heatpump.domesticHotWater.pause` is not a boolean, or `battery` has a
+ *    non-boolean `gridServing` or a `minSocAtReturnPercent` outside 0…100.
+ * 2. `heatpump.heating` asks for a mode whose feature is missing —
  *    `VacationFrostProtection` or `VacationLowered` (**NotSupported**).
  * 3. A lowered `targetTemperatureC` outside `vacationLoweredRangeC`, or no
  *    range declared (**NotSupported**).
- * 4. `pauseHotWater` without `VacationHotWaterPause` (**NotSupported**).
+ * 4. `heatpump.domesticHotWater.pause: true` without `VacationHotWaterPause`
+ *    (**NotSupported**).
+ *
+ * The `battery` part is only checked for its shape — heatpumps ignore it.
  *
  * Without metadata only rule 1 can be checked.
  *
@@ -508,15 +512,29 @@ export function validateVacationStarted(
         return rejected(`vacationId must be a non-empty string; got ${data.vacationId}.`);
     }
     if (!isIsoTimestamp(data.returnIso)) return rejected(`returnIso must be an ISO 8601 timestamp; got ${data.returnIso}.`);
-    if (!isIsoTimestamp(data.untilIso)) return rejected(`untilIso must be an ISO 8601 timestamp; got ${data.untilIso}.`);
-    if (typeof data.pauseHotWater !== 'boolean') return rejected(`pauseHotWater must be a boolean; got ${data.pauseHotWater}.`);
-    const heating = data.heating;
+    const heating = data.heatpump?.heating;
     if (heating) {
         if (!Object.values(EnyoVacationHeatingEnum).includes(heating.mode)) {
-            return rejected(`heating.mode must be one of ${Object.values(EnyoVacationHeatingEnum).join(', ')}; got ${heating.mode}.`);
+            return rejected(
+                `heatpump.heating.mode must be one of ${Object.values(EnyoVacationHeatingEnum).join(', ')}; got ${heating.mode}.`,
+            );
         }
         if (typeof heating.targetTemperatureC !== 'number' || !Number.isFinite(heating.targetTemperatureC)) {
-            return rejected(`heating.targetTemperatureC must be a finite number; got ${heating.targetTemperatureC}.`);
+            return rejected(`heatpump.heating.targetTemperatureC must be a finite number; got ${heating.targetTemperatureC}.`);
+        }
+    }
+    const hotWater = data.heatpump?.domesticHotWater;
+    if (hotWater && typeof hotWater.pause !== 'boolean') {
+        return rejected(`heatpump.domesticHotWater.pause must be a boolean; got ${hotWater.pause}.`);
+    }
+    const battery = data.battery;
+    if (battery) {
+        if (typeof battery.gridServing !== 'boolean') {
+            return rejected(`battery.gridServing must be a boolean; got ${battery.gridServing}.`);
+        }
+        const soc = battery.minSocAtReturnPercent;
+        if (typeof soc !== 'number' || !Number.isFinite(soc) || soc < 0 || soc > 100) {
+            return rejected(`battery.minSocAtReturnPercent must be a number between 0 and 100; got ${soc}.`);
         }
     }
 
@@ -534,11 +552,11 @@ export function validateVacationStarted(
         if (!range) return notSupported('The heatpump declares no vacationLoweredRangeC.');
         if (heating.targetTemperatureC < range.minC || heating.targetTemperatureC > range.maxC) {
             return notSupported(
-                `heating.targetTemperatureC ${heating.targetTemperatureC} °C is outside vacationLoweredRangeC ${range.minC}…${range.maxC} °C.`,
+                `heatpump.heating.targetTemperatureC ${heating.targetTemperatureC} °C is outside vacationLoweredRangeC ${range.minC}…${range.maxC} °C.`,
             );
         }
     }
-    if (data.pauseHotWater && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause)) {
+    if (hotWater?.pause && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause)) {
         return notSupported('The heatpump does not support pausing hot water while away (no VacationHotWaterPause).');
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
