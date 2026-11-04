@@ -492,6 +492,34 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * {@link EnyoDataBusCommandReasonCategoryEnum.Other}.
      */
     SelfManaged = 'self-managed',
+    /**
+     * On a site with more than one house battery, the energy manager steps in
+     * so that one battery does not discharge into another — energy shuffled
+     * between packs only loses efficiency and wears both.
+     *
+     * Stated on each battery's command by the decision maker that split the
+     * power between the packs:
+     * - **Charge with a share** — PV surplus is divided evenly, and
+     *   {@link EnyoDataBusCommandReason.powerW} is this pack's share (e.g.
+     *   `750`): "To keep the batteries from charging each other, each charges
+     *   750 W from solar."
+     * - **Charge 0** — there is no PV surplus to divide, so no pack charges:
+     *   {@link EnyoDataBusCommandReason.powerW} is `0`.
+     * - **Discharge 0** — this pack is held so it does not feed another:
+     *   {@link EnyoDataBusCommandReason.powerW} is `0`.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.batteryTransfer} with the
+     * command's `direction` — the two zero cases are otherwise
+     * indistinguishable, and a consumer without it reads a `0` as Discharge 0
+     * — and optionally `transferW`, the power that was moving between the
+     * packs before the energy manager stepped in.
+     *
+     * Told apart from {@link BatterySoCLow} / {@link BatterySoCHigh} (the pack's
+     * own state of charge is not the reason) and from
+     * {@link BatteryCapacityUnavailable}. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    BatteryTransferPrevented = 'battery-transfer-prevented',
 }
 
 /**
@@ -823,6 +851,13 @@ export interface EnyoDataBusCommandReasonContext {
      */
     batteryDischargeBlock?: EnyoDataBusCommandReasonBatteryDischargeBlockContext;
     /**
+     * Which direction the battery was steered in, and the power that was
+     * moving from one house battery into another before the energy manager
+     * stepped in. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryTransferPrevented}.
+     */
+    batteryTransfer?: EnyoDataBusCommandReasonBatteryTransferContext;
+    /**
      * The EPEX spot price that stood in for grid load. Set on
      * {@link EnyoDataBusCommandReasonTypeEnum.GridLoadOptimized}.
      */
@@ -1006,6 +1041,48 @@ export interface EnyoDataBusCommandReasonGridLoadContext {
 export interface EnyoDataBusCommandReasonBatteryDischargeBlockContext {
     /** The home consumption, in W, above which the battery may not discharge. */
     thresholdW: number;
+}
+
+/**
+ * How a house battery was steered to keep it from charging another one, and
+ * what was moving between the packs before the energy manager stepped in — the
+ * structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.BatteryTransferPrevented}. This
+ * pack's own share travels in {@link EnyoDataBusCommandReason.powerW}.
+ *
+ * @example
+ * ```typescript
+ * // 1.2 kW was flowing from one pack into the other; PV surplus is now split
+ * // evenly and this pack charges its 750 W share:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryTransferPrevented,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     powerW: 750,
+ *     context: {batteryTransfer: {direction: EnyoStorageControlDirectionEnum.Charge, transferW: 1200}},
+ * };
+ *
+ * // This pack is held so it does not feed the other one:
+ * const held: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryTransferPrevented,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     powerW: 0,
+ *     context: {batteryTransfer: {direction: EnyoStorageControlDirectionEnum.Discharge}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonBatteryTransferContext {
+    /**
+     * The direction this battery's command steers it in —
+     * {@link EnyoStorageControlDirectionEnum.Charge} for a PV share or
+     * Charge 0, {@link EnyoStorageControlDirectionEnum.Discharge} for
+     * Discharge 0. Tells the two zero cases apart.
+     */
+    direction: EnyoStorageControlDirectionEnum.Charge | EnyoStorageControlDirectionEnum.Discharge;
+    /**
+     * The power, in W, that was flowing from one battery into another before
+     * the energy manager stepped in. Positive. Omit when unknown.
+     */
+    transferW?: number;
 }
 
 /**
