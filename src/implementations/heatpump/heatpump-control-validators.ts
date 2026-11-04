@@ -4,11 +4,14 @@ import {
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
     EnyoDataBusHeatpumpProgramSwitchV3,
     EnyoDataBusSetHeatpumpHeatingCurveOffsetV1,
+    EnyoDataBusVacationStartedV1,
+    EnyoDataBusVacationStoppedV1,
     EnyoHeatpumpControlAction,
     EnyoHeatpumpControlTargetEnum,
     EnyoHeatpumpHeatSourceEnum,
     EnyoPowerSourceEnum,
     EnyoPowerSourceShare,
+    EnyoVacationHeatingEnum,
 } from '../../types/enyo-data-bus-value.js';
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
@@ -440,6 +443,147 @@ export function validateHeatpumpHeatingCurveOffset(
         return rejected(
             `offsetK ${data.offsetK} K is outside the range ${range.minK}…${range.maxK} K of heating circuit ${circuit.index}.`,
         );
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+}
+
+/** The answer {@link validateVacationStarted} or {@link validateVacationStopped} gives. */
+export interface HeatpumpVacationValidationResult {
+    /** `Accepted` when every rule holds. */
+    answer: EnyoCommandAcknowledgeAnswerEnum;
+    /** Why the command was rejected or is not supported. */
+    rejectionReason?: string;
+}
+
+/**
+ * Whether a value is a parsable ISO 8601 timestamp.
+ *
+ * @param value - The value to check.
+ * @returns `true` for a string `Date.parse` understands.
+ */
+function isIsoTimestamp(value: unknown): value is string {
+    return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+/**
+ * Validates a `VacationStartedV1` against the heatpump's metadata and returns
+ * the answer it deserves.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls
+ * `handleVacationStarted`; an integration handling the message itself can call
+ * it too, and the energy manager can use it to decide between the vacation
+ * message and the eco fallback.
+ *
+ * Rules, in order — the first that fails decides:
+ * 1. Malformed data (**Rejected**): `vacationId` is not a non-empty string,
+ *    `returnIso` is not an ISO 8601 timestamp, `heatpump.heating` has an
+ *    unknown `mode` or a non-finite `targetTemperatureC`,
+ *    `heatpump.domesticHotWater.pause` is not a boolean, or `battery` has a
+ *    non-boolean `gridServing` or a `minSocAtReturnPercent` outside 0…100.
+ * 2. `heatpump.heating` asks for a mode whose feature is missing —
+ *    `VacationFrostProtection` or `VacationLowered` (**NotSupported**).
+ * 3. A lowered `targetTemperatureC` outside `vacationLoweredRangeC`, or no
+ *    range declared (**NotSupported**).
+ * 4. `heatpump.domesticHotWater.pause: true` without `VacationHotWaterPause`
+ *    (**NotSupported**).
+ *
+ * The `battery` part is only checked for its shape — heatpumps ignore it.
+ *
+ * Without metadata only rule 1 can be checked.
+ *
+ * @param data - The message's data.
+ * @param metadata - The heatpump's metadata, if known.
+ * @returns The answer: `Accepted` when every rule holds.
+ *
+ * @example
+ * ```typescript
+ * const result = validateVacationStarted(message.data, appliance.heatpump);
+ * if (result.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) console.warn(result.rejectionReason);
+ * ```
+ */
+export function validateVacationStarted(
+    data: EnyoDataBusVacationStartedV1['data'],
+    metadata: EnyoHeatpumpApplianceMetadata | undefined,
+): HeatpumpVacationValidationResult {
+    const rejected = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.Rejected, rejectionReason});
+    const notSupported = (rejectionReason: string) => ({answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported, rejectionReason});
+
+    if (typeof data.vacationId !== 'string' || data.vacationId.length === 0) {
+        return rejected(`vacationId must be a non-empty string; got ${data.vacationId}.`);
+    }
+    if (!isIsoTimestamp(data.returnIso)) return rejected(`returnIso must be an ISO 8601 timestamp; got ${data.returnIso}.`);
+    const heating = data.heatpump?.heating;
+    if (heating) {
+        if (!Object.values(EnyoVacationHeatingEnum).includes(heating.mode)) {
+            return rejected(
+                `heatpump.heating.mode must be one of ${Object.values(EnyoVacationHeatingEnum).join(', ')}; got ${heating.mode}.`,
+            );
+        }
+        if (typeof heating.targetTemperatureC !== 'number' || !Number.isFinite(heating.targetTemperatureC)) {
+            return rejected(`heatpump.heating.targetTemperatureC must be a finite number; got ${heating.targetTemperatureC}.`);
+        }
+    }
+    const hotWater = data.heatpump?.domesticHotWater;
+    if (hotWater && typeof hotWater.pause !== 'boolean') {
+        return rejected(`heatpump.domesticHotWater.pause must be a boolean; got ${hotWater.pause}.`);
+    }
+    const battery = data.battery;
+    if (battery) {
+        if (typeof battery.gridServing !== 'boolean') {
+            return rejected(`battery.gridServing must be a boolean; got ${battery.gridServing}.`);
+        }
+        const soc = battery.minSocAtReturnPercent;
+        if (typeof soc !== 'number' || !Number.isFinite(soc) || soc < 0 || soc > 100) {
+            return rejected(`battery.minSocAtReturnPercent must be a number between 0 and 100; got ${soc}.`);
+        }
+    }
+
+    if (!metadata) return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+    const features = metadata.availableFeatures ?? [];
+    if (heating?.mode === EnyoVacationHeatingEnum.FrostProtection
+        && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection)) {
+        return notSupported('The heatpump does not support vacation frost protection (no VacationFrostProtection).');
+    }
+    if (heating?.mode === EnyoVacationHeatingEnum.Lowered) {
+        if (!features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered)) {
+            return notSupported('The heatpump does not support a lowered vacation temperature (no VacationLowered).');
+        }
+        const range = metadata.vacationLoweredRangeC;
+        if (!range) return notSupported('The heatpump declares no vacationLoweredRangeC.');
+        if (heating.targetTemperatureC < range.minC || heating.targetTemperatureC > range.maxC) {
+            return notSupported(
+                `heatpump.heating.targetTemperatureC ${heating.targetTemperatureC} °C is outside vacationLoweredRangeC ${range.minC}…${range.maxC} °C.`,
+            );
+        }
+    }
+    if (hotWater?.pause && !features.includes(EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause)) {
+        return notSupported('The heatpump does not support pausing hot water while away (no VacationHotWaterPause).');
+    }
+    return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+}
+
+/**
+ * Validates a `VacationStoppedV1` and returns the answer it deserves. It is
+ * only `Rejected` when malformed (`vacationId` not a non-empty string) — a
+ * stop must be accepted even when nothing runs, so it needs no metadata.
+ *
+ * Used by `HeatpumpIntegrationEnergyApp` before it calls
+ * `handleVacationStopped`.
+ *
+ * @param data - The message's data.
+ * @returns The answer: `Accepted` unless the data is malformed.
+ *
+ * @example
+ * ```typescript
+ * const result = validateVacationStopped(message.data);
+ * ```
+ */
+export function validateVacationStopped(data: EnyoDataBusVacationStoppedV1['data']): HeatpumpVacationValidationResult {
+    if (typeof data.vacationId !== 'string' || data.vacationId.length === 0) {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.Rejected,
+            rejectionReason: `vacationId must be a non-empty string; got ${data.vacationId}.`,
+        };
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
 }

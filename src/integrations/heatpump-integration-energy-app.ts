@@ -11,6 +11,8 @@ import {
     EnyoDataBusHeatpumpFlexibilityAnnouncementV3,
     EnyoDataBusHeatpumpOverheatingV1,
     EnyoDataBusHeatpumpProgramSwitchV3,
+    EnyoDataBusVacationStartedV1,
+    EnyoDataBusVacationStoppedV1,
     EnyoDataBusHeatpumpTemperaturesV1,
     EnyoDataBusHeatpumpValuesV1,
     EnyoCommandAcknowledgeAnswerEnum,
@@ -35,7 +37,9 @@ import {
 import {
     validateHeatpumpControlAction,
     validateHeatpumpHeatingCurveOffset,
-    validateHeatpumpProgramSwitch
+    validateHeatpumpProgramSwitch,
+    validateVacationStarted,
+    validateVacationStopped
 } from "../implementations/heatpump/heatpump-control-validators.js";
 import {
     HeatpumpControlEndCauseEnum,
@@ -157,6 +161,15 @@ export function combineHeatpumpControlAnswers(answers: EnyoCommandAcknowledgeAns
  *    {@link handleHeatpumpHeatingCurveOffset} and declare
  *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset}).
  *    The base class validates it with {@link checkHeatingCurveOffset} first.
+ *  - `VacationStartedV1` / `VacationStoppedV1` — the customer is away: heat
+ *    with frost protection or lowered and / or pause hot water, then restore
+ *    everything (optional: override {@link handleVacationStarted} /
+ *    {@link handleVacationStopped} and declare
+ *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection},
+ *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered} and / or
+ *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause}).
+ *    The base class validates them with {@link validateVacationStarted} /
+ *    {@link validateVacationStopped} first.
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  *
  * Publishes `HeatpumpFlexibilityAnnouncementV3` offers via
@@ -245,6 +258,14 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         this.registerCommandHandler<EnyoDataBusSetHeatpumpHeatingCurveOffsetV1>(
             EnyoDataBusMessageEnum.SetHeatpumpHeatingCurveOffsetV1,
             (msg) => this.dispatchHeatpumpHeatingCurveOffset(msg)
+        );
+        this.registerCommandHandler<EnyoDataBusVacationStartedV1>(
+            EnyoDataBusMessageEnum.VacationStartedV1,
+            (msg) => this.dispatchVacationStarted(msg)
+        );
+        this.registerCommandHandler<EnyoDataBusVacationStoppedV1>(
+            EnyoDataBusMessageEnum.VacationStoppedV1,
+            (msg) => this.dispatchVacationStopped(msg)
         );
     }
 
@@ -763,6 +784,105 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     }
 
     /**
+     * Handles a `VacationStartedV1` command: the customer is away, so bring the
+     * heatpump into the wanted state — heat with frost protection or at a
+     * lowered room temperature (`message.data.heatpump.heating`; absent = heat
+     * as usual) and pause hot water
+     * (`message.data.heatpump.domesticHotWater.pause`). How to realise it is up
+     * to the integration; the `battery` part is not meant for heatpumps. Answers `NotSupported` by default. Override
+     * it together with {@link handleVacationStopped} and declare the vacation
+     * features the device supports
+     * ({@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationFrostProtection},
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered} with
+     * `vacationLoweredRangeC`,
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause}).
+     *
+     * What an implementation must do:
+     * - Prefer the device's own holiday / absence mode and write
+     *   `message.data.returnIso` as its end, so everything ends even when the
+     *   app or the energy manager is not running. Without one, write the
+     *   setpoints and restore them yourself at `returnIso` if no
+     *   `VacationStoppedV1` arrives.
+     * - Treat the message as idempotent and as the complete wanted state: the
+     *   energy manager re-sends it whenever the wanted state changes and at
+     *   least hourly. A message without `heatpump.heating` means heating runs
+     *   as usual again (e.g. pre-heating for the return); without
+     *   `heatpump.domesticHotWater` or with `pause: false`, hot water is
+     *   reheated again.
+     * - Keep legionella protection running while hot water is paused.
+     * - Answer `Rejected` (with `rejectionReason`) when the state cannot be
+     *   written right now, e.g. the device is in a manual mode.
+     *
+     * The base class has already validated the message with
+     * {@link validateVacationStarted}: the data is well-formed, the features
+     * for the requested heating mode and hot water pause are declared and a
+     * lowered target lies inside `vacationLoweredRangeC`.
+     *
+     * @param _message - The vacation started command.
+     * @returns `Accepted` once the state is written, `Rejected` (with
+     *   `rejectionReason`) when it cannot be written right now,
+     *   `NotSupported` when the integration does not support vacations.
+     *
+     * @example
+     * ```ts
+     * protected async handleVacationStarted(message: EnyoDataBusVacationStartedV1) {
+     *     const {heatpump, returnIso} = message.data;
+     *     await this.device.writeHolidayMode({
+     *         roomSetpointC: heatpump?.heating?.targetTemperatureC,
+     *         pauseHotWater: heatpump?.domesticHotWater?.pause ?? false,
+     *         endIso: returnIso,
+     *     });
+     *     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+     * }
+     * ```
+     */
+    protected async handleVacationStarted(
+        _message: EnyoDataBusVacationStartedV1
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'Heatpump integration does not support VacationStartedV1',
+        };
+    }
+
+    /**
+     * Handles a `VacationStoppedV1` command: the vacation is over (return,
+     * early return or removed), so restore everything
+     * {@link handleVacationStarted} changed and let the heatpump follow its
+     * own time program again. Answers `NotSupported` by default; override it
+     * together with {@link handleVacationStarted}.
+     *
+     * An implementation must answer `Accepted` even when nothing runs (e.g.
+     * the device already ended its holiday mode at `returnIso`), and
+     * `Rejected` (with `rejectionReason`) only when the device cannot be
+     * restored right now.
+     *
+     * The base class has already validated the message with
+     * {@link validateVacationStopped}.
+     *
+     * @param _message - The vacation stopped command.
+     * @returns `Accepted` once everything is restored (or nothing ran),
+     *   `Rejected` (with `rejectionReason`) when it cannot be restored right
+     *   now, `NotSupported` when the integration does not support vacations.
+     *
+     * @example
+     * ```ts
+     * protected async handleVacationStopped(_message: EnyoDataBusVacationStoppedV1) {
+     *     await this.device.endHolidayMode();
+     *     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+     * }
+     * ```
+     */
+    protected async handleVacationStopped(
+        _message: EnyoDataBusVacationStoppedV1
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'Heatpump integration does not support VacationStoppedV1',
+        };
+    }
+
+    /**
      * @inheritDoc
      */
     protected abstract handleGridOperatorPowerLimitation(
@@ -961,6 +1081,29 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
             return validation;
         }
         return this.handleHeatpumpHeatingCurveOffset(message);
+    }
+
+    /** Validates a `VacationStartedV1` against the metadata, then calls {@link handleVacationStarted}. */
+    private async dispatchVacationStarted(
+        message: EnyoDataBusVacationStartedV1
+    ): Promise<IntegrationCommandResponse> {
+        const metadata = await this.resolveHeatpumpMetadata(message.applianceId);
+        const validation = validateVacationStarted(message.data, metadata);
+        if (validation.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            return validation;
+        }
+        return this.handleVacationStarted(message);
+    }
+
+    /** Validates a `VacationStoppedV1`, then calls {@link handleVacationStopped}. */
+    private async dispatchVacationStopped(
+        message: EnyoDataBusVacationStoppedV1
+    ): Promise<IntegrationCommandResponse> {
+        const validation = validateVacationStopped(message.data);
+        if (validation.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            return validation;
+        }
+        return this.handleVacationStopped(message);
     }
 
     private async dispatchHeatpumpControlCancel(

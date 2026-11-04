@@ -122,6 +122,42 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
      * {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurveOffsetRangeK}.
      */
     HeatingCurveOffset = 'HeatingCurveOffset',
+    /**
+     * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
+     * `heatpump.heating.mode` {@link EnyoVacationHeatingEnum.FrostProtection}: while the
+     * customer is away, the device only keeps the house from freezing, with
+     * its own frost protection (≈ {@link VACATION_FROST_PROTECTION_C}).
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleVacationStarted` /
+     * `handleVacationStopped`. Without any vacation feature the energy manager
+     * falls back to eco via {@link EnyoDataBusHeatpumpProgramSwitchV3}.
+     */
+    VacationFrostProtection = 'VacationFrostProtection',
+    /**
+     * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
+     * `heatpump.heating.mode` {@link EnyoVacationHeatingEnum.Lowered}: while the
+     * customer is away, the device holds all its circuits at a lowered room
+     * temperature.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleVacationStarted` /
+     * `handleVacationStopped`, and state the setpoints it can hold in
+     * {@link EnyoHeatpumpApplianceMetadata.vacationLoweredRangeC} (required
+     * with this feature).
+     */
+    VacationLowered = 'VacationLowered',
+    /**
+     * If the heatpump's app handles {@link EnyoDataBusVacationStartedV1} with
+     * `heatpump.domesticHotWater.pause: true`: while the customer is away, hot water is not
+     * reheated.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleVacationStarted` /
+     * `handleVacationStopped`, and **only if legionella protection keeps
+     * running** during the pause.
+     */
+    VacationHotWaterPause = 'VacationHotWaterPause',
 }
 
 /**
@@ -560,6 +596,18 @@ export interface EnyoHeatpumpHeatingCurveOffsetRange {
 }
 
 /**
+ * The room setpoints in °C a heatpump can hold for all its circuits while the
+ * customer is away ({@link EnyoVacationHeatingEnum.Lowered}), see
+ * {@link EnyoHeatpumpApplianceMetadata.vacationLoweredRangeC}.
+ */
+export interface EnyoHeatpumpVacationLoweredRange {
+    /** Lowest setpoint the heatpump can hold in °C, e.g. `5` */
+    minC: number;
+    /** Highest setpoint the heatpump can hold in °C, e.g. `20` */
+    maxC: number;
+}
+
+/**
  * What the customer chose for the room-temperature based optimisation of one
  * heating circuit's heating curve: the energy manager lowers the curve as far
  * as possible without any of the circuit's rooms falling below its own target,
@@ -971,4 +1019,14 @@ export interface EnyoHeatpumpApplianceMetadata {
      * substituting design values for an unknown building.
      */
     building?: EnyoHeatpumpApplianceBuildingModel;
+    /**
+     * The room setpoints in °C the heatpump can hold for all its circuits
+     * while the customer is away ({@link EnyoVacationHeatingEnum.Lowered}).
+     * Required when
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationLowered} is
+     * declared, omitted otherwise. The energy manager sends a lowered
+     * vacation only with a `targetTemperatureC` inside it, and otherwise
+     * falls back to eco via {@link EnyoDataBusHeatpumpProgramSwitchV3}.
+     */
+    vacationLoweredRangeC?: EnyoHeatpumpVacationLoweredRange;
 }
