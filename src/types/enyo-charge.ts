@@ -26,10 +26,16 @@ export enum EnyoChargeVehicleAssignmentEnum {
  *
  * A session's ceiling is resolved from the most specific place that has one,
  * and the history needs to say which one won — "why did my car wait?" has a
- * different fix depending on whether the limit sits on the car, the wallbox or
- * the energy manager.
+ * different fix depending on whether the limit sits on the session, the car, the
+ * wallbox or the energy manager.
  */
 export enum EnyoChargePriceLimitSourceEnum {
+    /**
+     * The ceiling set for this one session — at start
+     * ({@link EnyoDataBusStartChargeV1.data.priceLimitMode} and its values) or
+     * changed mid-session ({@link EnyoDataBusChangeChargeModeV1}).
+     */
+    Session = 'session',
     /** The ceiling configured on the vehicle (`EnyoVehicle.priceLimitMode` and its values). */
     Vehicle = 'vehicle',
     /** The ceiling configured on the wallbox (charger appliance) handling the session. */
@@ -38,6 +44,38 @@ export enum EnyoChargePriceLimitSourceEnum {
      * The ceiling set by the energy manager — its house-wide setting
      * (`EnergyManagerSettingEnum.PriceLimitMode` and its values) or one the
      * energy manager chose itself.
+     */
+    EnergyManager = 'energy-manager',
+}
+
+/**
+ * Where the deadline that a {@link EnyoChargeModeEnum.CostOptimized} session
+ * planned against was configured — the counterpart of
+ * {@link EnyoChargePriceLimitSourceEnum} for {@link EnyoCharge.completeAtIsoTimestamp}.
+ *
+ * The deadline is resolved from the most specific place that has one, and the
+ * history needs to say which one won — "why was my car only ready at 9?" has a
+ * different fix depending on whether the time sits on the session, the car, the
+ * wallbox or the energy manager.
+ */
+export enum EnyoChargeCompleteAtSourceEnum {
+    /**
+     * The deadline set for this one session — at start
+     * ({@link EnyoDataBusStartChargeV1.data.completeChargeAtIso}) or changed
+     * mid-session ({@link EnyoDataBusChangeChargeModeV1.data.completeChargeAtIso}).
+     */
+    Session = 'session',
+    /** The departure time configured on the vehicle (`EnyoVehicle.departureTimeHHmm`). */
+    Vehicle = 'vehicle',
+    /**
+     * The deadline configured on the wallbox (charger appliance) handling the
+     * session — its default charge mode's {@link EnyoDefaultChargeMode.completeAtTime}.
+     */
+    Wallbox = 'wallbox',
+    /**
+     * The deadline set by the energy manager — its house-wide setting
+     * (`EnergyManagerSettingEnum.CostOptimizedTarget`) or one the energy
+     * manager chose itself.
      */
     EnergyManager = 'energy-manager',
 }
@@ -163,6 +201,16 @@ export interface EnyoCharge {
     /** Target completion time for the charging session as an ISO 8601 timestamp */
     completeAtIsoTimestamp?: string;
     /**
+     * Where the deadline in {@link completeAtIsoTimestamp} came from — the
+     * session itself, the vehicle, the wallbox or the energy manager. See
+     * {@link EnyoChargeCompleteAtSourceEnum}.
+     *
+     * Only meaningful under {@link EnyoChargeModeEnum.CostOptimized}. Omitted
+     * when there was no deadline, and on sessions recorded before the source
+     * was tracked.
+     */
+    completeAtSource?: EnyoChargeCompleteAtSourceEnum;
+    /**
      * State of charge at plug-in, in percent (0-100) — the host's estimate as
      * the user corrected it.
      *
@@ -207,7 +255,7 @@ export interface EnyoCharge {
     priceLimitSharePercent?: number;
     /**
      * Where the ceiling described by {@link priceLimitMode} came from — the
-     * vehicle, the wallbox or the energy manager. See
+     * session itself, the vehicle, the wallbox or the energy manager. See
      * {@link EnyoChargePriceLimitSourceEnum}.
      *
      * Omitted when there was no ceiling, and on sessions recorded before the
