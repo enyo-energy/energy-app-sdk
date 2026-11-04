@@ -1070,10 +1070,39 @@ duration of a session and a mode change must never move it). The host merges
 session, vehicle and wallbox first, so an app never reproduces the precedence
 rules.
 
-The house-wide `EnergyManagerSettingEnum.DefaultChargeMode`, `PriceLimitMode`,
-`PriceLimitCtPerKwh`, `PriceLimitSharePercent` and `CostOptimizedTarget` are
-being retired — the default mode becomes per-wallbox, the ceiling and the
-deadline per-vehicle — but keep honouring them until the migration has run.
+Charge preferences are **not** energy manager settings. The vehicle and the
+wallbox carry the same set, `EnyoChargePreferences`, which both `EnyoVehicle`
+and `EnyoChargerApplianceMetadata` extend:
+
+| Field | Meaning |
+|---|---|
+| `defaultChargeMode` | `EnyoChargeModeEnum` applied when a session starts without one |
+| `defaultChargeLimitPercent` | target SoC for every session, 0–100 |
+| `priceLimitMode` | `ct-per-kwh` \| `cheapest-share`, absent = no ceiling |
+| `priceLimitCtPerKwh` | ceiling in **ct/kWh**, read under `ct-per-kwh` |
+| `priceLimitSharePercent` | cheapest n % of the day (1–100), read under `cheapest-share` |
+| `immediateReserveKwh` | energy charged at full power after plug-in, before any mode |
+| `departureTimeHHmm` + `departureTimezone` | daily deadline, wall-clock `"07:30"` + IANA zone |
+
+Each preference resolves **session → vehicle → wallbox**: the wallbox values are
+the fallback for a car that is not recognised or has none of its own. The
+wallbox metadata is their only home there — there is no separate
+default-charge-mode API.
+
+One validator checks both:
+
+```typescript
+validateChargePreferences(vehicle);             // {ok, errors, warnings}
+validateChargePreferences(charger.metadata);    // the same checks for a wallbox
+assertValidChargePreferences(vehicle);          // throws ChargePreferencesValidationError
+```
+
+It rejects malformed values (non-enum modes, a charge limit outside 0–100, a
+non-finite ct/kWh price, a share outside 1–100, a negative reserve, a time that
+is not `HH:mm`, an unknown IANA timezone) and warns about likely mistakes: a
+ceiling the `priceLimitMode` does not read or a mode without its value, a
+ct/kWh price outside −100…200 (a EUR/kWh mix-up), a reserve above 200 kWh (a
+Wh mix-up), a charge limit of 0, or a time without a timezone.
 
 #### `useCharge(): EnergyAppCharge`
 
@@ -1929,11 +1958,6 @@ A closed, SDK-defined set of user-facing controls the active energy manager hono
 | `HeatingRodBatteryDischargeSocLimitPercent` | number \| `null`, **%** floor the battery may feed the heating rod down to (absent / `null` = disabled) |
 | `ChargerControl` | boolean |
 | `GridOptimizedEvCharging` | boolean, off by default — cost-optimised charging on a static / time-of-use tariff avoids high grid load (by EPEX spot) |
-| `DefaultChargeMode` | `EnyoChargeModeEnum` |
-| `PriceLimitMode` | `ct-per-kwh` \| `cheapest-share` (absent = no ceiling) |
-| `PriceLimitCtPerKwh` | number, **ct/kWh** (`7` = 7 ct/kWh; only under `ct-per-kwh`) |
-| `PriceLimitSharePercent` | integer **%** of the day (`25` = cheapest quarter; only under `cheapest-share`) |
-| `CostOptimizedTarget` | wall-clock `"07:30"` + IANA timezone |
 
 An energy manager declares what it honours, next to `registerFeatures()`:
 
@@ -1942,7 +1966,7 @@ em.registerSupportedSettings([
     EnergyManagerSettingEnum.BatteryControl,
     EnergyManagerSettingEnum.BatteryChargingMode,
     EnergyManagerSettingEnum.ChargerControl,
-    EnergyManagerSettingEnum.DefaultChargeMode,
+    EnergyManagerSettingEnum.GridOptimizedEvCharging,
 ]);
 
 // seed defaults without ever overriding the user
@@ -1962,8 +1986,8 @@ if (state?.supported.includes(EnergyManagerSettingEnum.ChargerControl)
 }
 
 const id = em.listenForEnergyManagerSettingsChange(async ({ changed, state }) => {
-    if (changed.includes(EnergyManagerSettingEnum.DefaultChargeMode)) {
-        await applyChargeMode(state.values.defaultChargeMode);
+    if (changed.includes(EnergyManagerSettingEnum.ChargerControl)) {
+        await applyChargerControl(state.values.chargerControl);
     }
 });
 em.unsubscribeEnergyManagerSettings(id);
@@ -1978,9 +2002,8 @@ Three things to get right:
 - **The battery can be blocked from discharging under a heavy load.** `BatteryDischargeBlockAboveHomeConsumptionW` (`11000` = no discharge while the house draws more than 11 kW) keeps a sauna or an oven from emptying the battery in minutes. It is in **watts** — the validator warns below 100 W, which catches a kW value. Home consumption means the household plus every appliance the energy manager does **not** track — the same quantity as `homeConsumptionW` in the home consumption timeseries. Tracked appliances (wallbox, heat pump, heating rod, …) and the battery's own charging are excluded, so a charging car alone never trips the block. The block wins over the EV and heating rod discharge permissions; charging is unaffected. Disabled while absent or `null`. A battery held by it carries `HomeConsumptionHigh` with `context.batteryDischargeBlock.thresholdW` and `powerW` set to the current consumption.
 - **Grid-optimised EV charging is about the grid, not the bill.** `GridOptimizedEvCharging` adds no charge mode. It only affects `cost-optimized` sessions while the tariff is static or time-of-use (no effect under a dynamic one): the grid energy PV does not cover is placed in the hours with the lowest EPEX spot price before the deadline — the spot price as a proxy for grid load — instead of as late as possible or in the tariff's cheap windows. PV still comes first, the deadline still holds, and a session's price ceiling still applies against the customer's own tariff. On a time-of-use tariff a low-load hour can be a more expensive one; that is the trade the owner opts into.
 - **Eco mode in expensive times switches setpoints, not temperatures.** `HeatpumpEcoModeInExpensiveTimes` (needs `heatpumpControl`) lets the energy manager send `HeatpumpProgramSwitchV3` with `mode: Eco` to every zone listing `eco` in `supportedProgramModes` while the tariff is expensive, and `mode: Program` once it is not. The user's own eco temperature applies (`programModeTemperaturesC`); the energy manager only chooses *when*. "Expensive" comes from the consumption tariff — the dearest slots under a dynamic tariff, the high-price windows under a time-of-use one; under a static tariff the setting has no effect, as it has on heat pumps without `ProgramSwitch`. Each such switch carries `ElectricityPriceAboveThreshold` (category `EnergyPrice`) with `electricityPricePerKwh`.
-- **Sixteen settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `priceLimitCtPerKwh` only applies under `priceLimitMode: 'ct-per-kwh'`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
-- **`priceLimitCtPerKwh` is in cents**, unlike the SDK's machine-readable price fields (`electricityPricePerKwh`, EUR/kWh). Divide by 100 when comparing. `validateEnergyManagerSettingsState()` warns on values outside a plausible ct band, which catches the mix-up.
-- **A price ceiling is one mode plus its parameter**, the same shape as the battery-to-EV one. `PriceLimitMode` picks how the ceiling is expressed — an absolute `ct-per-kwh` or a relative `cheapest-share` — and each value is read only under its own mode; the mode being absent means no ceiling at all. A relative ceiling ranks the price intervals *known* for the day and treats the cheapest `n` % as importable (the same rule as the `cheapest-share-of-day` automation trigger), so its effective threshold moves when tomorrow's prices publish — re-evaluate it rather than resolving it once.
+- **Eleven settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `batteryEvDischargeFixedWh` only applies under `batteryEvDischargeMode: 'fixed-wh'`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
+- **Charge modes are not here.** The default charge mode, price ceiling and cost-optimised deadline live on the wallbox (`EnyoChargerApplianceMetadata`) and the vehicle (`EnyoVehicle`), not in the energy manager settings.
 
 #### `useElectricityTariff(): EnergyAppElectricityTariff`
 

@@ -2,7 +2,6 @@ import {
     EnyoCharge,
     EnyoChargeFilter,
     EnyoChargeStatus,
-    EnyoDefaultChargeMode
 } from "../types/enyo-charge.js";
 
 /**
@@ -49,26 +48,6 @@ export interface EnergyAppCharge {
      *          Resolves without effect if no active charge exists for the appliance.
      */
     addTransactionIdToActiveCharge: (applianceId: string, transactionId: string) => Promise<void>;
-    /**
-     * Sets the default charging mode for a specific appliance, optionally
-     * with a target completion time and its timezone.
-     *
-     * **Required permission:** `EnergyManager`.
-     *
-     * @param applianceId - The appliance (charger) the default charge mode applies to.
-     * @param defaultChargeMode - The default charge mode configuration to apply.
-     * @returns Promise that resolves once the default charge mode is stored.
-     */
-    setDefaultChargeMode: (applianceId: string, defaultChargeMode: EnyoDefaultChargeMode) => Promise<void>;
-    /**
-     * Retrieves the currently configured default charging mode for a specific appliance.
-     *
-     * No permission is required to read the default charge mode.
-     *
-     * @param applianceId - The appliance (charger) to read the default charge mode for.
-     * @returns Promise resolving to the configured default charge mode
-     */
-    getDefaultChargeMode: (applianceId: string) => Promise<EnyoDefaultChargeMode>;
     /**
      * Listen for charging sessions that have just started.
      *

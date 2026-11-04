@@ -1,5 +1,5 @@
 import type {EnyoSubscriptionBilling} from "./enyo-subscription.js";
-import type {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from "./enyo-data-bus-value.js";
+import type {EnyoChargePreferences} from "./enyo-charge-preferences.js";
 
 /**
  * Represents a vehicle in the enyo system.
@@ -9,13 +9,15 @@ import type {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from "./enyo-data-bus-v
  * price ceiling, immediate reserve and departure time follow the vehicle to
  * every wallbox it is plugged into. Two cars sharing one wallbox would
  * otherwise have to share a departure time, which is wrong for both of them.
+ * Those preferences come from {@link EnyoChargePreferences}, shared with the
+ * wallbox, and take precedence over the wallbox's.
  *
  * The state of charge is deliberately *not* part of this object — it is a
  * reading with an age, not a property of the car. Read it with
  * `useVehicle().getSoc(id)`, which returns an {@link EnyoVehicleSoc} or
  * `undefined`.
  */
-export interface EnyoVehicle {
+export interface EnyoVehicle extends EnyoChargePreferences {
     /** Unique identifier for the vehicle */
     id: string;
     name: string;
@@ -89,77 +91,6 @@ export interface EnyoVehicle {
      * @default false
      */
     phaseSwitchDisabled?: boolean;
-
-    /** Target state of charge for every session, in percent (0-100). */
-    defaultChargeLimitPercent?: number;
-    /** The mode applied whenever this vehicle is recognised or picked. */
-    defaultChargeMode?: EnyoChargeModeEnum;
-    /**
-     * How this car's price ceiling is expressed, or omitted for **no
-     * ceiling** — a deliberate and common answer rather than a missing value.
-     *
-     * The mode decides which of {@link priceLimitCtPerKwh} and
-     * {@link priceLimitSharePercent} is read; the other is ignored. Only
-     * meaningful under {@link EnyoChargeModeEnum.CostOptimized}, the only mode
-     * that imports at all.
-     */
-    priceLimitMode?: EnyoPriceLimitModeEnum;
-    /**
-     * Absolute ceiling for grid energy, in **cents per kWh** — `25` means
-     * 25 ct/kWh, matching the figure the user types and every other ct-native
-     * field in the settings vocabulary. Divide by 100 before comparing it with
-     * the SDK's EUR/kWh price fields such as
-     * {@link EnyoDiagnosticsActionReason.electricityPricePerKwh}.
-     *
-     * Negative values are legal: wholesale prices go negative, and "only
-     * import when I am paid to" is a real preference.
-     *
-     * Only read while {@link priceLimitMode} is
-     * {@link EnyoPriceLimitModeEnum.CtPerKwh}.
-     */
-    priceLimitCtPerKwh?: number;
-    /**
-     * Relative ceiling: import only during the cheapest share of the day, in
-     * percent — `25` is the cheapest quarter. Integer, 1 to 100.
-     *
-     * Only read while {@link priceLimitMode} is
-     * {@link EnyoPriceLimitModeEnum.CheapestShare}.
-     */
-    priceLimitSharePercent?: number;
-    /**
-     * Energy delivered at full power straight after plugging in, in kWh,
-     * before any optimisation starts. `0` or omitted means off.
-     *
-     * Counted from the state of charge at plug-in, and it runs **before every
-     * mode** — including {@link EnyoChargeModeEnum.PriceLimit} ("Nur Sonne").
-     * The point is that the driver may have to leave unexpectedly, and the sun
-     * is not a guarantee.
-     */
-    immediateReserveKwh?: number;
-
-    /**
-     * When the car has to be ready, as a 24-hour wall-clock `HH:mm` in
-     * {@link departureTimezone} — e.g. `"07:30"`. The same time every day.
-     *
-     * Omitted means the car has no deadline at all: it charges PV surplus and
-     * is never obliged to finish "in time".
-     *
-     * Wall-clock rather than an absolute instant, matching
-     * {@link EnyoDefaultChargeMode.completeAtTime}: the requirement is "ready
-     * by half seven", which an instant cannot express — it would expire the
-     * first time it passed and need re-setting every evening.
-     *
-     * The state of charge to reach by then is
-     * {@link defaultChargeLimitPercent}.
-     */
-    departureTimeHHmm?: string;
-    /**
-     * IANA timezone {@link departureTimeHHmm} is expressed in, e.g.
-     * `"Europe/Berlin"`. Set it whenever the time is set — without it the
-     * wall-clock value cannot be resolved across a DST boundary, which is
-     * exactly the night a mis-planned charge gets noticed.
-     */
-    departureTimezone?: string;
 }
 
 /**

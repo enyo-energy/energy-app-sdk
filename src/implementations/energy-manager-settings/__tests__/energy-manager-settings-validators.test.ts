@@ -9,7 +9,6 @@ import {
     type EnergyManagerSettingValues,
     type EnergyManagerSettingsState,
 } from '../../../types/enyo-energy-manager-settings.js';
-import {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from '../../../types/enyo-data-bus-value.js';
 import {
     assertValidEnergyManagerSettingsState,
     EnergyManagerSettingsValidationError,
@@ -41,9 +40,7 @@ describe('validateEnergyManagerSettingsState — supported list', () => {
                 heatingRodControl: true,
                 heatingRodMode: EnergyManagerHeatingRodModeEnum.PvSurplusOnly,
                 chargerControl: true,
-                defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
-                costOptimizedTargetTime: '07:30',
-                costOptimizedTimezone: 'Europe/Berlin',
+                gridOptimizedEvCharging: true,
             }),
         );
 
@@ -102,13 +99,11 @@ describe('validateEnergyManagerSettingsState — value formats', () => {
                 batteryChargingMode: 'turbo' as EnergyManagerBatteryChargingModeEnum,
                 heatingRodControl: true,
                 heatingRodMode: 'blast' as EnergyManagerHeatingRodModeEnum,
-                chargerControl: true,
-                defaultChargeMode: 'whenever' as EnyoChargeModeEnum,
             }),
         );
 
         expect(ok).toBe(false);
-        expect(errors.filter((e) => e.includes('is not an')).length).toBe(3);
+        expect(errors.filter((e) => e.includes('is not an')).length).toBe(2);
     });
 
     it('accepts `false` as a deliberate choice, distinct from absent', () => {
@@ -118,99 +113,6 @@ describe('validateEnergyManagerSettingsState — value formats', () => {
 
         expect(ok).toBe(true);
         expect(warnings).toEqual([]);
-    });
-});
-
-describe('validateEnergyManagerSettingsState — price limit (ct/kWh)', () => {
-    const priceState = (priceLimitCtPerKwh: number) =>
-        state({
-            chargerControl: true,
-            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
-            priceLimitMode: EnyoPriceLimitModeEnum.CtPerKwh,
-            priceLimitCtPerKwh,
-        });
-
-    it('accepts a normal ct/kWh limit', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(priceState(7));
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
-    });
-
-    it('accepts a negative limit — negative wholesale prices are real', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(priceState(-5));
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
-    });
-
-    it('rejects a non-finite number', () => {
-        const {ok, errors} = validateEnergyManagerSettingsState(priceState(Number.NaN));
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('finite number'))).toBe(true);
-    });
-
-    it('warns on a value outside the plausible band, catching a EUR/kWh mix-up', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(priceState(700));
-        expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('cents per kWh, not EUR per kWh'))).toBe(true);
-    });
-});
-
-describe('validateEnergyManagerSettingsState — price limit (share of day)', () => {
-    const shareState = (priceLimitSharePercent: number) =>
-        validateEnergyManagerSettingsState(state({
-            chargerControl: true,
-            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
-            priceLimitMode: EnyoPriceLimitModeEnum.CheapestShare,
-            priceLimitSharePercent,
-        }));
-
-    it('accepts the common cheapest-quarter setting', () => {
-        const {ok, warnings} = shareState(25);
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
-    });
-
-    it('rejects a fractional share — a share of the day is a whole percentage', () => {
-        const {ok, errors} = shareState(25.5);
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('integer'))).toBe(true);
-    });
-
-    it('rejects 0, which selects no hours at all rather than capping a price', () => {
-        const {ok, errors} = shareState(0);
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('priceLimitSharePercent'))).toBe(true);
-    });
-
-    it('rejects a share above 100', () => {
-        expect(shareState(101).ok).toBe(false);
-    });
-
-    it('warns at 100, which is indistinguishable from having no ceiling', () => {
-        const {ok, warnings} = shareState(100);
-        expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('no ceiling at all'))).toBe(true);
-    });
-
-    it('rejects a mode that is not an EnyoPriceLimitModeEnum member', () => {
-        const {ok, errors} = validateEnergyManagerSettingsState(state({
-            chargerControl: true,
-            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
-            priceLimitMode: 'cheapest' as EnyoPriceLimitModeEnum,
-        }));
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('EnyoPriceLimitModeEnum'))).toBe(true);
-    });
-
-    it('warns when the ceiling stored is not the one the mode reads', () => {
-        const {warnings} = validateEnergyManagerSettingsState(state({
-            chargerControl: true,
-            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
-            priceLimitMode: EnyoPriceLimitModeEnum.CheapestShare,
-            priceLimitCtPerKwh: 7,
-        }));
-        expect(warnings.some((w) => w.includes(EnergyManagerSettingEnum.PriceLimitCtPerKwh)))
-            .toBe(true);
     });
 });
 
@@ -345,49 +247,6 @@ describe('validateEnergyManagerSettingsState — SoC floor', () => {
     });
 });
 
-describe('validateEnergyManagerSettingsState — cost-optimized target', () => {
-    const targetState = (values: Partial<EnergyManagerSettingValues>) =>
-        state({
-            chargerControl: true,
-            defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
-            ...values,
-        });
-
-    it('accepts a wall-clock time with an IANA timezone', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(
-            targetState({costOptimizedTargetTime: '07:30', costOptimizedTimezone: 'Europe/Berlin'}),
-        );
-        expect(ok).toBe(true);
-        expect(warnings).toEqual([]);
-    });
-
-    it('rejects a malformed time', () => {
-        for (const bad of ['7:30', '25:00', '07:60', 'morning']) {
-            const {ok, errors} = validateEnergyManagerSettingsState(
-                targetState({costOptimizedTargetTime: bad, costOptimizedTimezone: 'Europe/Berlin'}),
-            );
-            expect(ok, bad).toBe(false);
-            expect(errors.some((e) => e.includes('24-hour HH:mm'))).toBe(true);
-        }
-    });
-
-    it('rejects a timezone the runtime cannot resolve', () => {
-        const {ok, errors} = validateEnergyManagerSettingsState(
-            targetState({costOptimizedTargetTime: '07:30', costOptimizedTimezone: 'Europe/Berln'}),
-        );
-        expect(ok).toBe(false);
-        expect(errors.some((e) => e.includes('not an IANA timezone'))).toBe(true);
-    });
-
-    it('warns when a time is set without a timezone', () => {
-        const {ok, warnings} = validateEnergyManagerSettingsState(
-            targetState({costOptimizedTargetTime: '07:30'}),
-        );
-        expect(ok).toBe(true);
-        expect(warnings.some((w) => w.includes('DST boundary'))).toBe(true);
-    });
-});
-
 describe('validateEnergyManagerSettingsState — gate tree', () => {
     it('warns when a dependent value is stored while its gate is off', () => {
         const {ok, warnings} = validateEnergyManagerSettingsState(
@@ -401,16 +260,15 @@ describe('validateEnergyManagerSettingsState — gate tree', () => {
         expect(warnings.some((w) => w.includes('it currently cannot'))).toBe(true);
     });
 
-    it('warns when a price limit is stored under a non-price-limit charge mode', () => {
+    it('warns when a grid-optimised charging value is stored while charger control is off', () => {
         const {warnings} = validateEnergyManagerSettingsState(
             state({
-                chargerControl: true,
-                defaultChargeMode: EnyoChargeModeEnum.Immediate,
-                priceLimitCtPerKwh: 7,
+                chargerControl: false,
+                gridOptimizedEvCharging: true,
             }),
         );
 
-        expect(warnings.some((w) => w.includes('price-limit-ct-per-kwh'))).toBe(true);
+        expect(warnings.some((w) => w.includes('grid-optimized-ev-charging'))).toBe(true);
     });
 
     it('warns when an active gate is supported but its dependant is not', () => {
@@ -439,9 +297,12 @@ describe('setting metadata tables', () => {
         }
     });
 
-    it('carries the cost-optimized target as one setting over two fields', () => {
-        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.CostOptimizedTarget])
-            .toEqual(['costOptimizedTargetTime', 'costOptimizedTimezone']);
+    it('no longer carries charge-mode settings — they live on the wallbox and vehicle', () => {
+        const values: readonly string[] = ALL_SETTINGS;
+        for (const removed of ['default-charge-mode', 'price-limit-mode', 'price-limit-ct-per-kwh',
+            'price-limit-share-percent', 'cost-optimized-target']) {
+            expect(values, removed).not.toContain(removed);
+        }
     });
 
     it('only ever gates on a setting that exists', () => {
@@ -459,7 +320,7 @@ describe('assertValidEnergyManagerSettingsState', () => {
 
     it('throws with every blocking error attached', () => {
         try {
-            assertValidEnergyManagerSettingsState(state({priceLimitCtPerKwh: Number.NaN}));
+            assertValidEnergyManagerSettingsState(state({batteryEvDischargeFixedWh: Number.NaN}));
             expect.unreachable('should have thrown');
         } catch (error) {
             expect(error).toBeInstanceOf(EnergyManagerSettingsValidationError);
@@ -492,10 +353,6 @@ describe('getEnergyManagerSettingDependency', () => {
         expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.HeatingRodMode)).toEqual({
             requires: EnergyManagerSettingEnum.HeatingRodControl,
             equals: true,
-        });
-        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.PriceLimitCtPerKwh)).toEqual({
-            requires: EnergyManagerSettingEnum.PriceLimitMode,
-            equals: EnyoPriceLimitModeEnum.CtPerKwh,
         });
         expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryEvDischargeFixedWh)).toEqual({
             requires: EnergyManagerSettingEnum.BatteryEvDischargeMode,
@@ -542,9 +399,7 @@ describe('isEnergyManagerSettingActive', () => {
 
     it('treats an unset gate as not holding', () => {
         expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.HeatingRodMode, {})).toBe(false);
-        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.PriceLimitCtPerKwh, {
-            chargerControl: true,
-        })).toBe(false);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.GridOptimizedEvCharging, {})).toBe(false);
     });
 
     it('agrees with the validator about which values can take effect', () => {

@@ -1,4 +1,4 @@
-import {EnyoChargeModeEnum} from "./enyo-data-bus-value.js";
+import type {EnyoChargePreferences} from "./enyo-charge-preferences.js";
 
 export enum EnyoChargerApplianceStatusEnum {
     Available = 'Available',
@@ -117,7 +117,17 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
  */
 export type EnyoChargerAppliancePhase = 1 | 3;
 
-export interface EnyoChargerApplianceMetadata {
+/**
+ * Metadata of a charger (wallbox) appliance.
+ *
+ * Extends {@link EnyoChargePreferences}: the wallbox's default charge mode,
+ * charge limit, price ceiling, immediate reserve and departure time are stored
+ * here and nowhere else — neither the energy manager settings nor a separate
+ * charge API carries a copy. They are the fallback for a car that is not
+ * recognised or has no preference of its own; a value on the vehicle or the
+ * session takes precedence.
+ */
+export interface EnyoChargerApplianceMetadata extends EnyoChargePreferences {
     availableFeatures: EnyoChargerApplianceAvailableFeaturesEnum[];
     status: EnyoChargerApplianceStatusEnum;
     /**
@@ -267,12 +277,6 @@ export interface EnyoChargerApplianceMetadata {
      * consumers should fall back to their configured default behaviour.
      */
     controlAllowed?: boolean;
-    /**
-     * Default charge mode to apply for charging sessions on this charger when
-     * no explicit mode is selected by the user. References the shared
-     * {@link EnyoChargeModeEnum} (e.g. immediate, cost-optimized, price-limit).
-     */
-    defaultChargeMode?: EnyoChargeModeEnum;
     /**
      * Whether home/site batteries should be blocked from discharging while this
      * charger is actively charging. When `true`, the EMS should prevent battery

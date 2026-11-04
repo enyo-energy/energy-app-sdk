@@ -84,7 +84,7 @@ export interface EnergyAppEnergyManager {
      * before the cockpit asks.
      *
      * Declare the gates and their dependants together: `ChargerControl` without
-     * `DefaultChargeMode` is a half-built control surface, and
+     * `GridOptimizedEvCharging` is a half-built control surface, and
      * `validateEnergyManagerSettingsState()` warns about it. See
      * {@link ENERGY_MANAGER_SETTING_DEPENDENCIES} for which settings gate which.
      *
@@ -98,8 +98,7 @@ export interface EnergyAppEnergyManager {
      *     EnergyManagerSettingEnum.BatteryChargingMode,
      *     EnergyManagerSettingEnum.BatteryChargeFromGrid,
      *     EnergyManagerSettingEnum.ChargerControl,
-     *     EnergyManagerSettingEnum.DefaultChargeMode,
-     *     EnergyManagerSettingEnum.PriceLimitCtPerKwh,
+     *     EnergyManagerSettingEnum.GridOptimizedEvCharging,
      *     // no heat pump / heating rod: this energy manager does not steer them
      * ]);
      * ```
@@ -162,7 +161,7 @@ export interface EnergyAppEnergyManager {
      *     {
      *         batteryControl: true,
      *         batteryChargingMode: EnergyManagerBatteryChargingModeEnum.Paced,
-     *         defaultChargeMode: EnyoChargeModeEnum.CostOptimized,
+     *         chargerControl: true,
      *     },
      *     {onlyIfUnset: true},
      * );
@@ -190,8 +189,8 @@ export interface EnergyAppEnergyManager {
      * ```typescript
      * const em = energyApp.useEnergyManager();
      * const id = em.listenForEnergyManagerSettingsChange(async ({changed, state}) => {
-     *     if (changed.includes(EnergyManagerSettingEnum.DefaultChargeMode)) {
-     *         await applyChargeMode(state.values.defaultChargeMode);
+     *     if (changed.includes(EnergyManagerSettingEnum.ChargerControl)) {
+     *         await applyChargerControl(state.values.chargerControl);
      *     }
      * });
      *

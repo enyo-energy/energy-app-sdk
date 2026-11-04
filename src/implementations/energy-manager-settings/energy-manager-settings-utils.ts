@@ -29,8 +29,9 @@ import type {
  * on nothing.
  *
  * The gate's required *value* comes back with it, because the gate alone is not
- * actionable: knowing `PriceLimitCtPerKwh` depends on `DefaultChargeMode` does
- * not tell you it needs that mode to be `price-limit` specifically.
+ * actionable: knowing `BatteryEvDischargeFixedWh` depends on
+ * `BatteryEvDischargeMode` does not tell you it needs that mode to be
+ * `fixed-wh` specifically.
  *
  * Only the **direct** gate is returned, one level up. Use
  * {@link isEnergyManagerSettingActive} to resolve a whole chain.

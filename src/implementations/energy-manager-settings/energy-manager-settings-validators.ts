@@ -4,12 +4,11 @@
  *
  * Two classes of problem live here, and only the second is obvious:
  *
- * 1. **Malformed values.** A `HH:mm` that is not a time, a timezone that is not
- *    an IANA zone, a price that is not a finite number. These fail at planning
- *    time, in the dark, on the night the charge was supposed to happen.
+ * 1. **Malformed values.** A percentage outside 0…100, a budget that is not a
+ *    finite number, an enum field holding something that is not a member.
+ *    These fail at planning time, in the dark, long after they were saved.
  * 2. **Values that can never take effect.** A heating-rod mode stored while rod
- *    control is off, a ct/kWh ceiling while the price limit is expressed as a
- *    share of the day. Nothing rejects these — they simply do nothing, which
+ *    control is off, a Wh budget while the battery-to-EV mode is a SoC floor. Nothing rejects these — they simply do nothing, which
  *    reads to a user as "the app ignored me".
  *
  * The second class is why {@link ENERGY_MANAGER_SETTING_DEPENDENCIES} exists as
@@ -32,7 +31,6 @@ import type {
     EnergyManagerSettingValues,
     EnergyManagerSettingsState,
 } from '../../types/enyo-energy-manager-settings.js';
-import {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from '../../types/enyo-data-bus-value.js';
 
 /**
  * Thrown by {@link assertValidEnergyManagerSettingsState} when a state fails
@@ -66,20 +64,6 @@ export interface EnergyManagerSettingsValidationResult {
 /** Every {@link EnergyManagerSettingEnum} value. */
 const SETTINGS: ReadonlySet<string> = new Set(Object.values(EnergyManagerSettingEnum));
 
-/** 24-hour `HH:mm`, the format {@link EnergyManagerSettingValues.costOptimizedTargetTime} uses. */
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-/**
- * Plausible band for a price limit in ct/kWh.
- *
- * Wide on purpose, and negative at the bottom: wholesale prices go negative, and
- * "charge only when I am paid to" is a real preference. The band exists to catch
- * a EUR/kWh value entered into a ct/kWh field (`0.07` where `7` was meant) and
- * the reverse (`700`), not to express an opinion about tariffs.
- */
-const PRICE_LIMIT_MIN_CT = -100;
-const PRICE_LIMIT_MAX_CT = 200;
-
 /**
  * Below this, a {@link EnergyManagerSettingValues.batteryEvDischargeFixedWh}
  * budget is almost certainly kWh entered into a Wh field.
@@ -112,40 +96,6 @@ const BATTERY_CHARGING_MODES: ReadonlySet<string> = new Set(
 const HEATING_ROD_MODES: ReadonlySet<string> = new Set(
     Object.values(EnergyManagerHeatingRodModeEnum),
 );
-const CHARGE_MODES: ReadonlySet<string> = new Set(Object.values(EnyoChargeModeEnum));
-const PRICE_LIMIT_MODES: ReadonlySet<string> = new Set(Object.values(EnyoPriceLimitModeEnum));
-
-/**
- * The band a relative price ceiling must lie in, in percent of the day.
- *
- * Matches the automation validators' `AUTOMATION_MIN/MAX_CHEAPEST_SHARE_PERCENT`
- * on purpose: "the cheapest 25 % of the day" means the same thing whether it
- * drives a charging session or an automation, and a user who learns one band
- * should not meet a different one elsewhere.
- *
- * `0` is excluded because it selects no hours at all — that is "never import",
- * which is {@link EnyoChargeModeEnum.PriceLimit}, not a ceiling.
- */
-const PRICE_LIMIT_SHARE_MIN_PERCENT = 1;
-const PRICE_LIMIT_SHARE_MAX_PERCENT = 100;
-
-/**
- * True when `timezone` is an IANA zone this runtime recognises.
- *
- * Uses `Intl` rather than a pattern: `"Europe/Berlin"` and `"Europe/Berln"` are
- * indistinguishable by shape, and only the first one resolves a wall-clock time.
- *
- * @param timezone - The candidate IANA timezone identifier.
- * @returns True when the runtime accepts it.
- */
-function isValidTimezone(timezone: string): boolean {
-    try {
-        new Intl.DateTimeFormat('en-US', {timeZone: timezone});
-        return true;
-    } catch {
-        return false;
-    }
-}
 
 /**
  * Reads the effective value a dependency is gated on.
@@ -172,13 +122,6 @@ function gateValue(
  *   duplicates (**error**).
  * - Each stored value has the right type, and each enum-valued setting holds an
  *   enum member (**error**).
- * - `costOptimizedTargetTime` is `HH:mm`, and `costOptimizedTimezone` is an IANA
- *   zone the runtime resolves (**error**).
- * - `priceLimitCtPerKwh` is a finite number (**error**), and lies in a plausible
- *   ct/kWh band (**warning** — catches a EUR/kWh value in a ct/kWh field).
- * - `priceLimitMode` holds an enum member (**error**).
- * - `priceLimitSharePercent` is an integer in 1…100 (**error**), and not `100`
- *   (**warning** — the whole day counts as cheap, so it is no ceiling at all).
  * - `batteryEvDischargeMode` holds an enum member (**error**).
  * - `batteryEvDischargeFixedWh` is a finite non-negative number (**error**), and
  *   is neither `0` nor a negligible positive figure (**warning** — the first
@@ -209,8 +152,6 @@ function gateValue(
  *   effect; see {@link ENERGY_MANAGER_SETTING_DEPENDENCIES}).
  * - A supported gate whose dependants are unsupported (**warning** — a
  *   half-built control surface).
- * - `costOptimizedTargetTime` set without a timezone (**warning** — the
- *   wall-clock value is ambiguous across a DST boundary).
  *
  * @param state - The settings state to validate.
  * @returns The {@link EnergyManagerSettingsValidationResult}.
@@ -267,54 +208,6 @@ export function validateEnergyManagerSettingsState(
             `\`heatingRodMode\` "${values.heatingRodMode}" is not an EnergyManagerHeatingRodModeEnum member.`,
         );
     }
-    if (values.defaultChargeMode !== undefined && !CHARGE_MODES.has(values.defaultChargeMode)) {
-        errors.push(
-            `\`defaultChargeMode\` "${values.defaultChargeMode}" is not an EnyoChargeModeEnum member.`,
-        );
-    }
-
-    if (values.priceLimitCtPerKwh !== undefined) {
-        if (typeof values.priceLimitCtPerKwh !== 'number'
-            || !Number.isFinite(values.priceLimitCtPerKwh)) {
-            errors.push('`priceLimitCtPerKwh` must be a finite number when set.');
-        } else if (values.priceLimitCtPerKwh < PRICE_LIMIT_MIN_CT
-            || values.priceLimitCtPerKwh > PRICE_LIMIT_MAX_CT) {
-            warnings.push(
-                `\`priceLimitCtPerKwh\` is ${values.priceLimitCtPerKwh}, outside the plausible ` +
-                    `${PRICE_LIMIT_MIN_CT}…${PRICE_LIMIT_MAX_CT} ct/kWh band — this field is in ` +
-                    'cents per kWh, not EUR per kWh.',
-            );
-        }
-    }
-
-    if (values.priceLimitMode !== undefined && !PRICE_LIMIT_MODES.has(values.priceLimitMode)) {
-        errors.push(
-            `\`priceLimitMode\` "${values.priceLimitMode}" is not an EnyoPriceLimitModeEnum member.`,
-        );
-    }
-
-    if (values.priceLimitSharePercent !== undefined) {
-        const share = values.priceLimitSharePercent;
-        if (typeof share !== 'number' || !Number.isFinite(share)) {
-            errors.push('`priceLimitSharePercent` must be a finite number when set.');
-        } else if (!Number.isInteger(share)) {
-            errors.push(
-                `\`priceLimitSharePercent\` is ${share}; a share of the day is a whole ` +
-                    'percentage and must be an integer.',
-            );
-        } else if (share < PRICE_LIMIT_SHARE_MIN_PERCENT || share > PRICE_LIMIT_SHARE_MAX_PERCENT) {
-            errors.push(
-                `\`priceLimitSharePercent\` is ${share}; it is a percentage of the day and must ` +
-                    `lie between ${PRICE_LIMIT_SHARE_MIN_PERCENT} and ${PRICE_LIMIT_SHARE_MAX_PERCENT}.`,
-            );
-        } else if (share === PRICE_LIMIT_SHARE_MAX_PERCENT) {
-            warnings.push(
-                '`priceLimitSharePercent` is 100, which treats the whole day as cheap and so ' +
-                    'imposes no ceiling at all. Leave `priceLimitMode` unset to say that outright.',
-            );
-        }
-    }
-
     if (values.batteryEvDischargeMode !== undefined
         && !EV_DISCHARGE_MODES.has(values.batteryEvDischargeMode)) {
         errors.push(
@@ -436,29 +329,6 @@ export function validateEnergyManagerSettingsState(
                         'into a range the PV priority then refills.',
                 );
             }
-        }
-    }
-
-    if (values.costOptimizedTargetTime !== undefined) {
-        if (typeof values.costOptimizedTargetTime !== 'string'
-            || !TIME_RE.test(values.costOptimizedTargetTime)) {
-            errors.push(
-                `\`costOptimizedTargetTime\` "${values.costOptimizedTargetTime}" is not a 24-hour HH:mm time.`,
-            );
-        }
-        if (values.costOptimizedTimezone === undefined) {
-            warnings.push(
-                '`costOptimizedTargetTime` is set without `costOptimizedTimezone` — the wall-clock ' +
-                    'value cannot be resolved unambiguously across a DST boundary.',
-            );
-        }
-    }
-    if (values.costOptimizedTimezone !== undefined) {
-        if (typeof values.costOptimizedTimezone !== 'string'
-            || !isValidTimezone(values.costOptimizedTimezone)) {
-            errors.push(
-                `\`costOptimizedTimezone\` "${values.costOptimizedTimezone}" is not an IANA timezone.`,
-            );
         }
     }
 

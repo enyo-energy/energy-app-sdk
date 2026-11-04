@@ -26,8 +26,8 @@ export enum EnyoChargeVehicleAssignmentEnum {
  *
  * A session's ceiling is resolved from the most specific place that has one,
  * and the history needs to say which one won — "why did my car wait?" has a
- * different fix depending on whether the limit sits on the session, the car, the
- * wallbox or the energy manager.
+ * different fix depending on whether the limit sits on the session, the car or
+ * the wallbox. There is no house-wide energy manager ceiling.
  */
 export enum EnyoChargePriceLimitSourceEnum {
     /**
@@ -38,14 +38,11 @@ export enum EnyoChargePriceLimitSourceEnum {
     Session = 'session',
     /** The ceiling configured on the vehicle (`EnyoVehicle.priceLimitMode` and its values). */
     Vehicle = 'vehicle',
-    /** The ceiling configured on the wallbox (charger appliance) handling the session. */
-    Wallbox = 'wallbox',
     /**
-     * The ceiling set by the energy manager — its house-wide setting
-     * (`EnergyManagerSettingEnum.PriceLimitMode` and its values) or one the
-     * energy manager chose itself.
+     * The ceiling configured on the wallbox (charger appliance) handling the
+     * session (`EnyoChargerApplianceMetadata.priceLimitMode` and its values).
      */
-    EnergyManager = 'energy-manager',
+    Wallbox = 'wallbox',
 }
 
 /**
@@ -55,8 +52,8 @@ export enum EnyoChargePriceLimitSourceEnum {
  *
  * The deadline is resolved from the most specific place that has one, and the
  * history needs to say which one won — "why was my car only ready at 9?" has a
- * different fix depending on whether the time sits on the session, the car, the
- * wallbox or the energy manager.
+ * different fix depending on whether the time sits on the session, the car or
+ * the wallbox. There is no house-wide energy manager deadline.
  */
 export enum EnyoChargeCompleteAtSourceEnum {
     /**
@@ -69,15 +66,9 @@ export enum EnyoChargeCompleteAtSourceEnum {
     Vehicle = 'vehicle',
     /**
      * The deadline configured on the wallbox (charger appliance) handling the
-     * session — its default charge mode's {@link EnyoDefaultChargeMode.completeAtTime}.
+     * session (`EnyoChargerApplianceMetadata.departureTimeHHmm`).
      */
     Wallbox = 'wallbox',
-    /**
-     * The deadline set by the energy manager — its house-wide setting
-     * (`EnergyManagerSettingEnum.CostOptimizedTarget`) or one the energy
-     * manager chose itself.
-     */
-    EnergyManager = 'energy-manager',
 }
 
 /**
@@ -202,7 +193,7 @@ export interface EnyoCharge {
     completeAtIsoTimestamp?: string;
     /**
      * Where the deadline in {@link completeAtIsoTimestamp} came from — the
-     * session itself, the vehicle, the wallbox or the energy manager. See
+     * session itself, the vehicle or the wallbox. See
      * {@link EnyoChargeCompleteAtSourceEnum}.
      *
      * Only meaningful under {@link EnyoChargeModeEnum.CostOptimized}. Omitted
@@ -255,7 +246,7 @@ export interface EnyoCharge {
     priceLimitSharePercent?: number;
     /**
      * Where the ceiling described by {@link priceLimitMode} came from — the
-     * session itself, the vehicle, the wallbox or the energy manager. See
+     * session itself, the vehicle or the wallbox. See
      * {@link EnyoChargePriceLimitSourceEnum}.
      *
      * Omitted when there was no ceiling, and on sessions recorded before the
@@ -320,28 +311,6 @@ export interface EnyoChargeScheduleEntry {
     absoluteStartIso: string;
     /** Current limit in Ampere for this schedule period */
     limitAmpere: number;
-}
-
-/**
- * Default charging preference applied to charging sessions when no
- * per-session mode is explicitly provided.
- */
-export interface EnyoDefaultChargeMode {
-    /** The default charging mode (e.g. immediate, cost-optimized, price-limit) */
-    chargeMode: EnyoChargeModeEnum;
-    /**
-     * Optional target completion time as a wall-clock time in the
-     * accompanying {@link EnyoDefaultChargeMode.timezone} (e.g. `"07:30"`).
-     * When set, optimized modes plan the session to finish by this time.
-     */
-    completeAtTime?: string;
-    /**
-     * IANA timezone the {@link EnyoDefaultChargeMode.completeAtTime} is
-     * expressed in (e.g. `"Europe/Berlin"`). Should be provided whenever
-     * `completeAtTime` is set so the wall-clock time can be resolved
-     * unambiguously.
-     */
-    timezone?: string;
 }
 
 export interface EnyoChargeFilter {

@@ -26,14 +26,15 @@
  * (`../implementations/energy-manager-settings/energy-manager-settings-validators.ts`).
  */
 
-import type {EnyoChargeModeEnum, EnyoPriceLimitModeEnum} from './enyo-data-bus-value.js';
-
 /**
  * The general settings an energy manager can honour.
  *
- * One member per user-facing control. {@link CostOptimizedTarget} covers both
- * halves of the target time (the wall-clock value and its timezone) — they are
- * one setting to the user and are supported, reported and changed together.
+ * One member per user-facing control.
+ *
+ * Charge-mode preferences — the default {@link EnyoChargeModeEnum}, the price
+ * ceiling and the cost-optimised deadline — are deliberately **not** general
+ * settings: they live on the wallbox ({@link EnyoChargerApplianceMetadata}) and
+ * on the vehicle (`EnyoVehicle`), the places a session resolves them from.
  */
 export enum EnergyManagerSettingEnum {
     // ── Battery ────────────────────────────────────────────────────────────
@@ -92,59 +93,6 @@ export enum EnergyManagerSettingEnum {
      * energy in low-load hours (by EPEX spot) to relieve the grid.
      */
     GridOptimizedEvCharging = 'grid-optimized-ev-charging',
-    /**
-     * The charge mode applied when a session starts without an explicit one
-     * ({@link EnyoChargeModeEnum}).
-     *
-     * Being retired in favour of the per-wallbox
-     * {@link ApplianceGeneralSettings.defaultChargeMode} and the per-vehicle
-     * `EnyoVehicle.defaultChargeMode`. Keep honouring it until the migration
-     * has run.
-     */
-    DefaultChargeMode = 'default-charge-mode',
-    /**
-     * How the house-wide price ceiling is expressed — see
-     * {@link EnyoPriceLimitModeEnum}. Gates the two ceiling values; absent
-     * means no ceiling at all.
-     *
-     * Being retired along with the values it gates: the ceiling is now per
-     * vehicle (`EnyoVehicle.priceLimitMode`) or per session
-     * ({@link EnyoDataBusStartChargeV1.data.priceLimitMode}). Keep honouring it
-     * until the migration has run.
-     */
-    PriceLimitMode = 'price-limit-mode',
-    /**
-     * The house-wide **absolute** price ceiling in ct/kWh. Only under
-     * {@link EnyoPriceLimitModeEnum.CtPerKwh}.
-     *
-     * Being retired: the ceiling is now per vehicle
-     * (`EnyoVehicle.priceLimitCtPerKwh`) or per session
-     * ({@link EnyoDataBusStartChargeV1.data.priceLimitCtPerKwh}), and it
-     * belongs to {@link EnyoChargeModeEnum.CostOptimized} — the only mode that
-     * imports. Keep honouring it until the migration has run.
-     */
-    PriceLimitCtPerKwh = 'price-limit-ct-per-kwh',
-    /**
-     * The house-wide **relative** price ceiling — the cheapest share of the
-     * day to import in, in percent. Only under
-     * {@link EnyoPriceLimitModeEnum.CheapestShare}.
-     *
-     * Being retired on the same terms as {@link PriceLimitCtPerKwh}: the
-     * going-forward home of a relative ceiling is
-     * `EnyoVehicle.priceLimitSharePercent` and the per-session field on
-     * {@link EnyoDataBusStartChargeV1}. Keep honouring it until the migration
-     * has run.
-     */
-    PriceLimitSharePercent = 'price-limit-share-percent',
-    /**
-     * The daily deadline {@link EnyoChargeModeEnum.CostOptimized} plans
-     * against (time + timezone).
-     *
-     * Being retired in favour of the per-vehicle
-     * `EnyoVehicle.departureTimeHHmm`, which follows the car between
-     * wallboxes. Keep honouring it until the migration has run.
-     */
-    CostOptimizedTarget = 'cost-optimized-target',
 }
 
 /**
@@ -475,8 +423,8 @@ export interface EnergyManagerSettingValues {
      * busiest. **Off by default** — absent or `false` means off.
      *
      * Applies only to sessions in {@link EnyoChargeModeEnum.CostOptimized},
-     * whatever made them cost-optimised (this house-wide default, the vehicle
-     * or the session), and only while the active consumption tariff is
+     * whatever made them cost-optimised (the wallbox, the vehicle or the
+     * session), and only while the active consumption tariff is
      * **not** dynamic — {@link EnyoTariffPricingTypeEnum.Static} or
      * {@link EnyoTariffPricingTypeEnum.TimeVariable}. It adds no charge mode
      * and changes no other mode.
@@ -504,88 +452,6 @@ export interface EnergyManagerSettingValues {
      * Only meaningful while {@link chargerControl} is `true`.
      */
     gridOptimizedEvCharging?: boolean;
-    /**
-     * The mode applied to a charging session started without an explicit one.
-     * Only meaningful while {@link chargerControl} is `true`.
-     */
-    defaultChargeMode?: EnyoChargeModeEnum;
-    /**
-     * How the house-wide price ceiling is expressed, or `undefined` for no
-     * ceiling at all — see {@link EnyoPriceLimitModeEnum}. Decides which of
-     * {@link priceLimitCtPerKwh} and {@link priceLimitSharePercent} is read;
-     * the other is ignored.
-     *
-     * Only meaningful while {@link defaultChargeMode} is
-     * {@link EnyoChargeModeEnum.CostOptimized}, the only mode that imports.
-     */
-    priceLimitMode?: EnyoPriceLimitModeEnum;
-    /**
-     * House-wide **absolute** price ceiling in **cents per kWh** — `7` means
-     * 7 ct/kWh, matching what the user types and what the settings UI
-     * displays.
-     *
-     * Note this differs from the SDK's machine-readable price fields such as
-     * {@link EnyoDiagnosticsActionReason.electricityPricePerKwh}, which are in
-     * EUR/kWh. Divide by 100 when comparing the two — a unit mix-up here is off
-     * by 100× and entirely plausible-looking on both sides.
-     *
-     * Negative values are legal and meaningful: wholesale prices go negative,
-     * and "only charge when I am paid to" is a real preference.
-     *
-     * Only read while {@link priceLimitMode} is
-     * {@link EnyoPriceLimitModeEnum.CtPerKwh}.
-     *
-     * Note this value used to be gated on {@link defaultChargeMode} being
-     * {@link EnyoChargeModeEnum.PriceLimit}, the **legacy** reading of the two
-     * modes. Under the current semantics the ceiling belongs to
-     * {@link EnyoChargeModeEnum.CostOptimized} and
-     * {@link EnyoChargeModeEnum.PriceLimit} means strict PV-only with no
-     * ceiling at all; the replacement ceiling lives on the vehicle
-     * (`EnyoVehicle.priceLimitCtPerKwh`) and on the session
-     * ({@link EnyoDataBusStartChargeV1.data.priceLimitCtPerKwh}).
-     */
-    priceLimitCtPerKwh?: number;
-    /**
-     * House-wide **relative** price ceiling: import only during the cheapest
-     * share of the day, in percent — `25` is the cheapest quarter. Integer,
-     * 1 to 100.
-     *
-     * Rank the price intervals known for the day and treat the cheapest
-     * `n` percent as importable, the same rule
-     * {@link EnyoAutomationCheapestShareOfDayTrigger} applies. "The day" is
-     * the prices *known* at evaluation time, so the resulting threshold moves
-     * when tomorrow's prices publish — re-evaluate rather than resolving it
-     * once.
-     *
-     * `100` is accepted but means the whole day counts as cheap, which is
-     * indistinguishable from having no ceiling; leave {@link priceLimitMode}
-     * unset to say that outright.
-     *
-     * Only read while {@link priceLimitMode} is
-     * {@link EnyoPriceLimitModeEnum.CheapestShare}.
-     */
-    priceLimitSharePercent?: number;
-    /**
-     * The daily deadline a {@link EnyoChargeModeEnum.CostOptimized} plan works
-     * back from, as a wall-clock time in {@link costOptimizedTimezone} —
-     * `"07:30"`, 24-hour `HH:mm`.
-     *
-     * Wall-clock rather than an absolute instant, matching
-     * {@link EnyoDefaultChargeMode.completeAtTime}: the requirement is "ready by
-     * half seven every morning", which an instant cannot express — it would
-     * expire the first time it passed and need re-setting every evening.
-     *
-     * Only meaningful while {@link defaultChargeMode} is
-     * {@link EnyoChargeModeEnum.CostOptimized}.
-     */
-    costOptimizedTargetTime?: string;
-    /**
-     * IANA timezone {@link costOptimizedTargetTime} is expressed in, e.g.
-     * `"Europe/Berlin"`. Set it whenever the time is set — without it the
-     * wall-clock value cannot be resolved unambiguously across a DST boundary,
-     * which is exactly the night a mis-planned charge is noticed.
-     */
-    costOptimizedTimezone?: string;
 }
 
 /**
@@ -612,8 +478,8 @@ export interface EnergyManagerSettingsState {
  * Carries the **complete** new state rather than a single field, because these
  * settings are saved as a screen: a per-setting event would fire several times
  * for one user action, and each listener would observe intermediate states that
- * never really existed — charger control switched off while a default charge
- * mode was still set, for instance. {@link changed} preserves the "what moved"
+ * never really existed — charger control switched off while grid-optimised
+ * EV charging was still on, for instance. {@link changed} preserves the "what moved"
  * information without that hazard.
  */
 export interface EnergyManagerSettingsChangeEvent {
@@ -642,23 +508,17 @@ export interface EnergyManagerSettingDependency {
     /** The setting that gates this one. */
     requires: EnergyManagerSettingEnum;
     /**
-     * The value {@link requires} must hold. `true` for the boolean gates, an
-     * {@link EnyoChargeModeEnum} member for the charge-mode-specific ones, an
-     * {@link EnergyManagerBatteryEvDischargeModeEnum} member for the two settings
-     * that parameterise the battery-to-vehicle strategy, and an
-     * {@link EnyoPriceLimitModeEnum} member for the two that spell out the
-     * price ceiling.
+     * The value {@link requires} must hold. `true` for the boolean gates, and
+     * an {@link EnergyManagerBatteryEvDischargeModeEnum} member for the two
+     * settings that parameterise the battery-to-vehicle strategy.
      */
-    equals: boolean
-        | EnyoChargeModeEnum
-        | EnergyManagerBatteryEvDischargeModeEnum
-        | EnyoPriceLimitModeEnum;
+    equals: boolean | EnergyManagerBatteryEvDischargeModeEnum;
 }
 
 /**
  * Which settings are gated by which, as data.
  *
- * Sixteen of the twenty settings only mean anything while another one holds a specific
+ * Eleven of the fifteen settings only mean anything while another one holds a specific
  * value. Encoding that here rather than in prose gives the cockpit a single
  * source of truth for greying out dependent controls, and lets
  * `validateEnergyManagerSettingsState()` flag values that can never take effect.
@@ -718,34 +578,14 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
         requires: EnergyManagerSettingEnum.ChargerControl,
         equals: true,
     },
-    [EnergyManagerSettingEnum.DefaultChargeMode]: {
-        requires: EnergyManagerSettingEnum.ChargerControl,
-        equals: true,
-    },
-    [EnergyManagerSettingEnum.PriceLimitMode]: {
-        requires: EnergyManagerSettingEnum.DefaultChargeMode,
-        equals: 'cost-optimized' as EnyoChargeModeEnum,
-    },
-    [EnergyManagerSettingEnum.PriceLimitCtPerKwh]: {
-        requires: EnergyManagerSettingEnum.PriceLimitMode,
-        equals: 'ct-per-kwh' as EnyoPriceLimitModeEnum,
-    },
-    [EnergyManagerSettingEnum.PriceLimitSharePercent]: {
-        requires: EnergyManagerSettingEnum.PriceLimitMode,
-        equals: 'cheapest-share' as EnyoPriceLimitModeEnum,
-    },
-    [EnergyManagerSettingEnum.CostOptimizedTarget]: {
-        requires: EnergyManagerSettingEnum.DefaultChargeMode,
-        equals: 'cost-optimized' as EnyoChargeModeEnum,
-    },
 } as const;
 
 /**
  * The {@link EnergyManagerSettingValues} field(s) each setting is carried by.
  *
- * {@link EnergyManagerSettingEnum.CostOptimizedTarget} maps to two fields — the
- * wall-clock time and its timezone — because they are one setting to the user
- * and travel together.
+ * Every setting currently maps to exactly one field; the value is an array so a
+ * setting that is one control to the user but several values (a time and its
+ * timezone, say) can be carried without changing the shape.
  */
 export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
     Record<EnergyManagerSettingEnum, ReadonlyArray<keyof EnergyManagerSettingValues>>
@@ -769,12 +609,4 @@ export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
     ],
     [EnergyManagerSettingEnum.ChargerControl]: ['chargerControl'],
     [EnergyManagerSettingEnum.GridOptimizedEvCharging]: ['gridOptimizedEvCharging'],
-    [EnergyManagerSettingEnum.DefaultChargeMode]: ['defaultChargeMode'],
-    [EnergyManagerSettingEnum.PriceLimitMode]: ['priceLimitMode'],
-    [EnergyManagerSettingEnum.PriceLimitCtPerKwh]: ['priceLimitCtPerKwh'],
-    [EnergyManagerSettingEnum.PriceLimitSharePercent]: ['priceLimitSharePercent'],
-    [EnergyManagerSettingEnum.CostOptimizedTarget]: [
-        'costOptimizedTargetTime',
-        'costOptimizedTimezone',
-    ],
 } as const;
