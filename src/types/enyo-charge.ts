@@ -22,6 +22,27 @@ export enum EnyoChargeVehicleAssignmentEnum {
 }
 
 /**
+ * Where the price ceiling that governed a charging session was configured.
+ *
+ * A session's ceiling is resolved from the most specific place that has one,
+ * and the history needs to say which one won — "why did my car wait?" has a
+ * different fix depending on whether the limit sits on the car, the wallbox or
+ * the energy manager.
+ */
+export enum EnyoChargePriceLimitSourceEnum {
+    /** The ceiling configured on the vehicle (`EnyoVehicle.priceLimitMode` and its values). */
+    Vehicle = 'vehicle',
+    /** The ceiling configured on the wallbox (charger appliance) handling the session. */
+    Wallbox = 'wallbox',
+    /**
+     * The ceiling set by the energy manager — its house-wide setting
+     * (`EnergyManagerSettingEnum.PriceLimitMode` and its values) or one the
+     * energy manager chose itself.
+     */
+    EnergyManager = 'energy-manager',
+}
+
+/**
  * Status of a charging session
  */
 export enum EnyoChargeStatus {
@@ -180,11 +201,37 @@ export interface EnyoCharge {
      * session was allowed to import in, in percent. Only meaningful while
      * {@link priceLimitMode} is {@link EnyoPriceLimitModeEnum.CheapestShare}.
      *
-     * Note this records the *setting*, not the price threshold it resolved to:
-     * that threshold moved as prices published, so it is not a property of the
-     * session.
+     * Note this records the *setting*, not the price threshold it resolved to;
+     * that threshold is {@link effectivePriceLimitCtPerKwh}.
      */
     priceLimitSharePercent?: number;
+    /**
+     * Where the ceiling described by {@link priceLimitMode} came from — the
+     * vehicle, the wallbox or the energy manager. See
+     * {@link EnyoChargePriceLimitSourceEnum}.
+     *
+     * Omitted when there was no ceiling, and on sessions recorded before the
+     * source was tracked.
+     */
+    priceLimitSource?: EnyoChargePriceLimitSourceEnum;
+    /**
+     * The price ceiling actually applied, in **cents per kWh** (`25` is
+     * 25 ct/kWh) — the absolute threshold above which the session did not
+     * import, whichever way the ceiling was expressed.
+     *
+     * Under {@link EnyoPriceLimitModeEnum.CtPerKwh} it equals
+     * {@link priceLimitCtPerKwh}. Under
+     * {@link EnyoPriceLimitModeEnum.CheapestShare} it is the threshold the
+     * share resolved to against the known prices; that threshold moves as
+     * later prices publish, so on a running session this is the latest
+     * resolution and may change with each update.
+     *
+     * Cents, like the other ceiling fields — divide by 100 before comparing it
+     * with EUR/kWh price fields such as
+     * {@link EnyoDiagnosticsActionReason.electricityPricePerKwh}. Negative
+     * values are legal. Omitted when there was no ceiling.
+     */
+    effectivePriceLimitCtPerKwh?: number;
     /**
      * How this session found its vehicle — see
      * {@link EnyoChargeVehicleAssignmentEnum}. Absent on sessions recorded
