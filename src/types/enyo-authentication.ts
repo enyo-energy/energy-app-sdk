@@ -196,7 +196,25 @@ export interface EnyoAuthentication {
      * host keeps its default behaviour and may skip the step.
      */
     authenticationRequired?: boolean;
+    /**
+     * How long the host waits, in milliseconds, for the package to answer the
+     * submitted credentials, i.e. for the listener registered with
+     * `listenForAuthenticationResponse` to resolve its {@link EnyoAuthenticateState}.
+     *
+     * Raise it for vendors whose login round-trip is slow (cloud logins, devices
+     * that have to be woken up first). When omitted, the host uses
+     * {@link ENYO_AUTHENTICATION_DEFAULT_TIMEOUT_MS} (10 seconds). Values above
+     * {@link ENYO_AUTHENTICATION_MAX_TIMEOUT_MS} (2 minutes) are not allowed and
+     * are capped by the host.
+     */
+    timeoutMs?: number;
 }
+
+/** Default value of {@link EnyoAuthentication.timeoutMs} when it is omitted: 10 seconds. */
+export const ENYO_AUTHENTICATION_DEFAULT_TIMEOUT_MS = 10 * 1000;
+
+/** Largest allowed value of {@link EnyoAuthentication.timeoutMs}: 2 minutes. */
+export const ENYO_AUTHENTICATION_MAX_TIMEOUT_MS = 2 * 60 * 1000;
 
 export interface EnyoApiKeyAuthenticationResponse {
     apiKey: string;
