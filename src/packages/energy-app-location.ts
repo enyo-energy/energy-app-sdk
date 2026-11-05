@@ -1,4 +1,4 @@
-import {EnyoLocation, EnyoZipCodeLocation} from "../types/enyo-location.js";
+import {EnyoCountryEnum, EnyoLocation, EnyoZipCodeLocation} from "../types/enyo-location.js";
 
 /**
  * Interface for managing location information in energy apps.
@@ -42,4 +42,21 @@ export interface EnergyAppLocation {
      * ```
      */
     getLocationWithCoordinates(): Promise<EnyoLocation | null>;
+
+    /**
+     * Gets the country the site is located in.
+     * Always set, and requires no permission.
+     *
+     * @returns Promise that resolves to the country of the site
+     *
+     * @example
+     * ```typescript
+     * const location = energyApp.useLocation();
+     * const country = await location.getCountry();
+     * if (country === EnyoCountryEnum.DE) {
+     *     console.log('Site is in Germany');
+     * }
+     * ```
+     */
+    getCountry(): Promise<EnyoCountryEnum>;
 }

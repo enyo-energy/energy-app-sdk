@@ -186,7 +186,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Read serial Modbus RTU | [`useModbusRtu()`](#usemodbusrtu-energyappmodbusrtu) |
 | List known WiFi SSIDs in range | [`useWifi()`](#usewifi-energyappwifi) |
 | Query historical timeseries (PV, battery, meter, …) | [`useTimeseries()`](#usetimeseries-energyapptimeseries) |
-| Read site location (zip or coordinates) | [`useLocation()`](#uselocation-energyapplocation) |
+| Read site location (country, zip or coordinates) | [`useLocation()`](#uselocation-energyapplocation) |
 | Read grid connection point (fuse, phases, max power, charger limit) | [`useGridConnectionPoint()`](#usegridconnectionpoint-energyappgridconnectionpoint) |
 | Receive webhooks from third-party services (one URL per app, parsed JSON body) | [`useWebhook()`](#usewebhook-energyappwebhook) |
 | Sell one-time, monthly or yearly plans and check which ones the device has | [`useSubscriptions()`](#usesubscriptions-energyappsubscriptions) / [Subscription Plans](#subscription-plans) |
@@ -1852,14 +1852,15 @@ Requires the `Wifi` permission.
 
 #### `useLocation(): EnergyAppLocation`
 
-Two-tier location API. Zip-code resolution and full coordinates are gated by separate permissions so apps can opt into the minimum precision they need.
+Read the site's location. The country (`EnyoCountryEnum`) is always set and needs no permission; zip code and full coordinates are gated by separate permissions so apps can opt into the minimum precision they need.
 
 ```typescript
 const location = energyApp.useLocation();
 
-const zip = await location.getZipCodeLocation();          // requires LocationZipCode
-const full = await location.getLocation();                 // requires LocationCoordinates
-if (full) console.log(`lat=${full.latitude} lon=${full.longitude}`);
+const country = await location.getCountry();                   // no permission, never null
+const zip = await location.getLocationByZipCode();             // requires LocationZipCode
+const full = await location.getLocationWithCoordinates();      // requires LocationZipCode + LocationCoordinates
+if (full) console.log(`lat=${full.coordinates.latitude} lon=${full.coordinates.longitude}`);
 ```
 
 #### `useRoom(): EnergyAppRoom`
