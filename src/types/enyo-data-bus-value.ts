@@ -520,6 +520,24 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
      */
     BatteryTransferPrevented = 'battery-transfer-prevented',
+    /**
+     * The car charges at full power because the vehicle's immediate reserve
+     * (`immediateReserveKwh`, see {@link EnyoChargeModeEnum}) is not yet
+     * delivered. The reserve runs ahead of every charge mode, so this reason
+     * replaces the mode's own reason until the reserve is in.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.immediateReserve} with the
+     * reserve size and what has gone in so far, so the text can say how much
+     * is left: "Charging at full power: immediate reserve 10 kWh, 6 kWh to
+     * go." / "Lädt sofort mit voller Leistung: Sofortreserve 10 kWh, noch
+     * 6 kWh."
+     *
+     * Told apart from {@link UserRequest}: the driver did not press anything
+     * for this session, the standing reserve setting applies. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.UserRequest} — it is the
+     * owner's own setting.
+     */
+    ImmediateReserve = 'immediate-reserve',
 }
 
 /**
@@ -875,6 +893,11 @@ export interface EnyoDataBusCommandReasonContext {
      * {@link EnyoDataBusCommandReasonTypeEnum.InstallationLimit}.
      */
     installationLimit?: EnyoDataBusCommandReasonInstallationLimitContext;
+    /**
+     * The vehicle's immediate reserve and how much of it has been delivered.
+     * Set on {@link EnyoDataBusCommandReasonTypeEnum.ImmediateReserve}.
+     */
+    immediateReserve?: EnyoDataBusCommandReasonImmediateReserveContext;
 }
 
 /**
@@ -1041,6 +1064,35 @@ export interface EnyoDataBusCommandReasonGridLoadContext {
 export interface EnyoDataBusCommandReasonBatteryDischargeBlockContext {
     /** The home consumption, in W, above which the battery may not discharge. */
     thresholdW: number;
+}
+
+/**
+ * The vehicle's immediate reserve and where the session stands against it —
+ * the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.ImmediateReserve}.
+ *
+ * Both values are in **Wh**, although the reserve is configured in kWh
+ * (`immediateReserveKwh`). The energy still to go is
+ * `reserveWh - deliveredWh`.
+ *
+ * @example
+ * ```typescript
+ * // Reserve of 10 kWh, 4 kWh delivered since plug-in — 6 kWh to go:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.ImmediateReserve,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.UserRequest,
+ *     context: {immediateReserve: {reserveWh: 10000, deliveredWh: 4000}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonImmediateReserveContext {
+    /** Size of the immediate reserve, in Wh. */
+    reserveWh: number;
+    /**
+     * Energy delivered towards the reserve so far, in Wh — counted from the
+     * state of charge at plug-in.
+     */
+    deliveredWh: number;
 }
 
 /**
