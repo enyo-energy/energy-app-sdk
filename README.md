@@ -450,7 +450,7 @@ const listenerId = energyApp.onNetworkStatusChanged((online) => {
 
 #### `onShutdown(callback: () => void | Promise<void>)`
 
-Register cleanup logic for graceful shutdown. The callback may be sync or async; it runs on Node `beforeExit` **and** `exit`.
+Register cleanup logic for graceful shutdown. The callback may be sync or async. The runtime owns the shutdown lifecycle and invokes the callback when the app is stopped (since 1.59.0; earlier SDK versions hooked Node's `beforeExit` and `exit` directly).
 
 ```typescript
 energyApp.onShutdown(async () => {

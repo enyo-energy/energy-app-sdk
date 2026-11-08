@@ -125,13 +125,13 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         this.energyAppSdk.register(callback);
     }
 
+    /**
+     * Registers cleanup logic that runs when the energy app shuts down.
+     * The runtime owns the shutdown lifecycle and decides when the callback runs.
+     * @param callback - Sync or async cleanup logic, e.g. closing connections or flushing buffers
+     */
     public onShutdown(callback: () => void | Promise<void>) {
-        process.on('beforeExit', async (code) => {
-            await callback();
-        });
-        process.on('exit', async (code) => {
-            await callback();
-        });
+        this.energyAppSdk.onShutdown(callback);
     }
 
     /**
