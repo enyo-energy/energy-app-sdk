@@ -6,6 +6,7 @@ import {
     EnyoOnboardingV2ChoiceLayout,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2EebusPairOutcome,
+    EnyoOnboardingV2ZigbeePairOutcome,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2OcppConnectOutcome,
@@ -938,6 +939,120 @@ describe('eebus-device-select blocks', () => {
         guide.startStepId = 's0';
         const result = validateOnboardingGuideV2(guide);
         expect(result.warnings.some((w) => w.includes('requiresNetworkScan'))).toBe(false);
+    });
+});
+
+describe('zigbee-pairing blocks', () => {
+    /**
+     * A scan-free guide whose single step pairs a Zigbee device, wiring
+     * `values` as its outcomes and merging `extra` into the block.
+     */
+    function zigbeeGuide(
+        values: string[],
+        extra: Record<string, unknown> = {},
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Zwischenstecker koppeln', 'Pair the smart plug'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            requiresNetworkScan: false,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'pair',
+                    title: t('Koppeln', 'Pair'),
+                    blocks: [
+                        onboardingV2Block.zigbeePairing('z1', {
+                            headline: t('Zigbee-Gerät koppeln', 'Pair the Zigbee device'),
+                            outcomes: values.map((value, i) => ({
+                                id: `h${i}`,
+                                value,
+                                label: t(value, value),
+                            })),
+                            ...extra,
+                        }),
+                    ],
+                    transitions: values.map((_, i) =>
+                        onOutcomeV2('z1', `h${i}`, i === 0 ? onboardingV2Target.success() : onboardingV2Target.support()),
+                    ),
+                },
+            ],
+        });
+    }
+
+    const ALL = [
+        EnyoOnboardingV2ZigbeePairOutcome.Paired,
+        EnyoOnboardingV2ZigbeePairOutcome.NotFound,
+        EnyoOnboardingV2ZigbeePairOutcome.Failure,
+    ];
+
+    it('accepts all three outcomes wired, without a network scan', () => {
+        const result = validateOnboardingGuideV2(
+            zigbeeGuide(ALL, {durationSeconds: 120, maxDevices: 3, manufacturerNames: ['ACME'], modelIds: ['PLUG-1']}),
+        );
+        expect(result.errors).toEqual([]);
+        expect(result.warnings).toEqual([]);
+        expect(result.ok).toBe(true);
+    });
+
+    it('rejects an outcome value outside the enum', () => {
+        const result = validateOnboardingGuideV2(
+            zigbeeGuide([EnyoOnboardingV2ZigbeePairOutcome.Paired, 'timeout']),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('EnyoOnboardingV2ZigbeePairOutcome'))).toBe(true);
+    });
+
+    it('rejects a duplicated outcome value', () => {
+        const result = validateOnboardingGuideV2(
+            zigbeeGuide([EnyoOnboardingV2ZigbeePairOutcome.Paired, EnyoOnboardingV2ZigbeePairOutcome.Paired]),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('warns when the paired or not-found branch is missing', () => {
+        const result = validateOnboardingGuideV2(
+            zigbeeGuide([EnyoOnboardingV2ZigbeePairOutcome.Failure]),
+        );
+        expect(result.warnings.some((w) => w.includes('"paired" outcome'))).toBe(true);
+        expect(result.warnings.some((w) => w.includes('"not-found" outcome'))).toBe(true);
+    });
+
+    it.each([0, 255, 1.5])('rejects durationSeconds %s', (durationSeconds) => {
+        const {ok, errors} = validateOnboardingGuideV2(zigbeeGuide(ALL, {durationSeconds}));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('durationSeconds'))).toBe(true);
+    });
+
+    it.each([0, 51])('rejects maxDevices %s', (maxDevices) => {
+        const {ok, errors} = validateOnboardingGuideV2(zigbeeGuide(ALL, {maxDevices}));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('maxDevices'))).toBe(true);
+    });
+
+    it('rejects empty manufacturerNames and modelIds filters', () => {
+        const {ok, errors} = validateOnboardingGuideV2(zigbeeGuide(ALL, {manufacturerNames: [], modelIds: []}));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('empty `manufacturerNames` filter'))).toBe(true);
+        expect(errors.some((e) => e.includes('empty `modelIds` filter'))).toBe(true);
+    });
+
+    it('rejects sharing the step with another decision block', () => {
+        const guide = zigbeeGuide(ALL);
+        guide.steps[0]!.blocks.push(
+            onboardingV2Block.choice('c1', [{id: 'x', label: t('X', 'X')}]),
+        );
+        guide.steps[0]!.transitions.push(onOptionV2('c1', 'x', onboardingV2Target.support()));
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('other decision block'))).toBe(true);
+    });
+
+    it('requires a transition per outcome', () => {
+        const guide = zigbeeGuide(ALL);
+        guide.steps[0]!.transitions.pop();
+        expect(validateOnboardingGuideV2(guide).ok).toBe(false);
     });
 });
 

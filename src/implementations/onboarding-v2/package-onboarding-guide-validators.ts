@@ -74,6 +74,7 @@ const FORBIDDEN_ACTIONS: ReadonlySet<string> = new Set([
 const FORBIDDEN_BLOCKS: ReadonlyMap<string, string> = new Map([
     [EnyoOnboardingV2BlockType.DeviceSelect, 'it picks from devices the host discovered'],
     [EnyoOnboardingV2BlockType.EebusDeviceSelect, 'it picks from devices the host discovered'],
+    [EnyoOnboardingV2BlockType.ZigbeePairing, 'it opens the host\'s Zigbee network and picks from the devices that joined'],
     [EnyoOnboardingV2BlockType.Dynamic, 'its value is resolved by the app at runtime and does not exist when the PDF is rendered'],
 ]);
 

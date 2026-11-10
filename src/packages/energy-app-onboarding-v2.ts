@@ -13,6 +13,7 @@ import type {
 import type {EnyoOnboardingV2ValidationHandler} from '../types/enyo-onboarding-v2-validation.js';
 import type {EnyoOnboardingV2DeviceSelectHandler} from '../types/enyo-onboarding-v2-device-select.js';
 import type {EnyoOnboardingV2EebusDeviceSelectHandler} from '../types/enyo-onboarding-v2-eebus-device-select.js';
+import type {EnyoOnboardingV2ZigbeePairingHandler} from '../types/enyo-onboarding-v2-zigbee-pairing.js';
 
 /**
  * Which run of a named guide an app means.
@@ -558,4 +559,38 @@ export interface EnergyAppOnboardingV2 {
      * @returns Promise that resolves once the handler is removed
      */
     deregisterEebusDeviceSelectHandler(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls once an installer has paired and
+     * confirmed Zigbee devices in an {@link EnyoOnboardingV2ZigbeePairingBlock},
+     * so the app can turn them into appliances and hand back the ids.
+     *
+     * Separate from the other picker handlers because it is handed different
+     * things: joined Zigbee devices with an IEEE address, endpoints and
+     * clusters. The pairing itself is the host's — the network was opened, the
+     * devices joined and were interviewed before this is called. The host
+     * awaits the answer and binds the run to the returned appliances.
+     *
+     * Optional. Without a handler the block still works — the devices join and
+     * belong to the app, the run takes its `paired` branch — but no appliance is
+     * created. The confirmed devices are also delivered to
+     * `EnergyAppZigbee.listenForDeviceJoined`, so an app that already creates
+     * appliances there must not create them twice.
+     *
+     * One handler serves every Zigbee pairing block across all of this app's
+     * guides. Registering again replaces the previous one.
+     *
+     * @param handler - Called with the paired devices; answers with appliance ids
+     * @returns Promise that resolves once the handler is registered
+     */
+    registerZigbeePairingHandler(handler: EnyoOnboardingV2ZigbeePairingHandler): Promise<void>;
+
+    /**
+     * Removes the registered Zigbee pairing handler. Pairings then create no
+     * appliances, as if no handler had ever been registered. Devices that were
+     * already paired stay in the network.
+     *
+     * @returns Promise that resolves once the handler is removed
+     */
+    deregisterZigbeePairingHandler(): Promise<void>;
 }

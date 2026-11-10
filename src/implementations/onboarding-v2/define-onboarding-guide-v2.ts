@@ -33,6 +33,7 @@ import type {
     EnyoOnboardingV2ChoiceOption,
     EnyoOnboardingV2DeviceSelectBlock,
     EnyoOnboardingV2EebusDeviceSelectBlock,
+    EnyoOnboardingV2ZigbeePairingBlock,
     EnyoOnboardingV2DynamicKind,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2HintVariant,
@@ -439,6 +440,55 @@ export const onboardingV2Block = {
     ): EnyoOnboardingV2Block => ({
         id,
         type: EnyoOnboardingV2BlockType.EebusDeviceSelect,
+        ...options,
+    }),
+    /**
+     * A Zigbee pairing screen: the host opens its Zigbee network when the step
+     * is entered, lists matching devices live as they join, and closes the
+     * network when the step is left.
+     *
+     * No network scan is needed — Zigbee devices are not on the LAN — so the
+     * guide may set {@link EnyoOnboardingV2Guide.requiresNetworkScan} to
+     * `false`. Tell the installer how to put the device into pairing mode
+     * (usually a factory reset) on the preceding step.
+     *
+     * Filter it with `manufacturerNames` / `modelIds` so a neighbour's device
+     * that happens to join is not offered. Raise `maxDevices` to pair several
+     * devices on one screen.
+     *
+     * Outcome `value`s must be {@link EnyoOnboardingV2ZigbeePairOutcome} members;
+     * route `not-found` to a step explaining the reset and `failure` to
+     * troubleshooting. The app needs the `ZigbeePairing` permission.
+     *
+     * Register an {@link EnyoOnboardingV2ZigbeePairingHandler}
+     * ({@link EnergyAppOnboardingV2.registerZigbeePairingHandler}) to turn the
+     * paired devices into appliances.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param options - Screen wording, pairing window, filters, skip behaviour,
+     *   and the `paired` / `not-found` / `failure` routing handles.
+     * @returns The Zigbee pairing block.
+     *
+     * @example
+     * ```ts
+     * onboardingV2Block.zigbeePairing('pair', {
+     *     headline: t('Zwischenstecker koppeln', 'Pair the smart plug'),
+     *     durationSeconds: 120,
+     *     manufacturerNames: ['ACME'],
+     *     outcomes: [
+     *         {id: 'ok',    value: EnyoOnboardingV2ZigbeePairOutcome.Paired,   label: t('Gekoppelt', 'Paired')},
+     *         {id: 'none',  value: EnyoOnboardingV2ZigbeePairOutcome.NotFound, label: t('Nichts gefunden', 'Nothing found')},
+     *         {id: 'error', value: EnyoOnboardingV2ZigbeePairOutcome.Failure,  label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
+     *     ],
+     * });
+     * ```
+     */
+    zigbeePairing: (
+        id: string,
+        options: Omit<EnyoOnboardingV2ZigbeePairingBlock, 'id' | 'type'>,
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.ZigbeePairing,
         ...options,
     }),
     /**

@@ -34,6 +34,7 @@ import {EnergyAppModbusServer} from "./packages/energy-app-modbus-server.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
+import {EnergyAppZigbee} from "./packages/energy-app-zigbee.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppCalibration} from "./packages/energy-app-calibration.js";
@@ -386,6 +387,43 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useBluetooth(): EnergyAppBluetooth {
         return this.energyAppSdk.useBluetooth();
+    }
+
+    /**
+     * Gets the Zigbee API for pairing Zigbee devices into the host's network,
+     * managing the devices this app owns, and exchanging ZCL data with them
+     * (attribute reads/writes, reports, cluster commands).
+     *
+     * Check {@link isZigbeeSupported} first — not every box has a Zigbee radio.
+     * @returns The Zigbee API instance
+     * @throws {EnergyAppPermissionNotGrantedError} If the `Zigbee` permission
+     *         is not granted.
+     */
+    public useZigbee(): EnergyAppZigbee {
+        return this.energyAppSdk.useZigbee();
+    }
+
+    /**
+     * Whether this box has a usable Zigbee radio (coordinator), so
+     * {@link useZigbee} and Zigbee onboarding blocks can work.
+     *
+     * Not permission-gated, so an app can decide which guides and features to
+     * offer before it uses any Zigbee API.
+     * @returns `true` when Zigbee is available on this box
+     */
+    public isZigbeeSupported(): Promise<boolean> {
+        return this.energyAppSdk.isZigbeeSupported();
+    }
+
+    /**
+     * Whether this box supports Matter, i.e. a Matter controller is available.
+     *
+     * Not permission-gated, so an app can decide which guides and features to
+     * offer up front.
+     * @returns `true` when Matter is available on this box
+     */
+    public isMatterSupported(): Promise<boolean> {
+        return this.energyAppSdk.isMatterSupported();
     }
 
     /**

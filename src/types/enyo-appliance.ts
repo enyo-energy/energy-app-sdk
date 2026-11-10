@@ -186,6 +186,33 @@ export interface EnyoApplianceEebusMetadata {
     userNodeIdentification?: string;
 }
 
+/**
+ * Zigbee connection metadata for the appliance.
+ *
+ * Identifies the Zigbee device (and endpoint) the appliance is backed by. This
+ * is the authoritative side of the device ↔ appliance link — the
+ * {@link EnyoZigbeeDevice.applianceId} kept by the host is a convenience.
+ * General properties such as vendor, model or firmware belong in the top-level
+ * {@link EnyoApplianceMetadata} and should not be duplicated here.
+ */
+export interface EnyoApplianceZigbeeMetadata {
+    /**
+     * IEEE (EUI-64) address of the Zigbee device, lowercase hex with `0x`
+     * prefix — the key every {@link EnergyAppZigbee} method takes.
+     */
+    ieeeAddress: string;
+    /**
+     * Endpoint the appliance maps to, when the device exposes several and each
+     * becomes its own appliance (e.g. the two sockets of a double smart plug).
+     * Omit when the appliance represents the whole device.
+     */
+    endpoint?: number;
+    /** Manufacturer name from the device's Basic cluster, verbatim. */
+    manufacturerName?: string;
+    /** Model identifier from the device's Basic cluster, verbatim. */
+    modelId?: string;
+}
+
 export enum EnyoApplianceConnectionType {
     Connector = 'Connector',
     Cloud = 'Cloud'
@@ -206,6 +233,8 @@ export interface EnyoApplianceMetadata {
     modbus?: EnyoApplianceModbusMetadata;
     /** Optional EEBUS connection metadata (SKI, SPINE entity type, vendor code, …) */
     eebus?: EnyoApplianceEebusMetadata;
+    /** Optional Zigbee connection metadata (IEEE address, endpoint, …) */
+    zigbee?: EnyoApplianceZigbeeMetadata;
     /** Optional MQTT configuration */
     mqtt?: EnyoApplianceMqttConfig;
     connectionType: EnyoApplianceConnectionType;

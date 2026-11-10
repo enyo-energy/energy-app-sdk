@@ -182,6 +182,8 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Talk to an EEBUS / SHIP / SPINE device | [`useEebus()`](#useeebus-energyappeebus) |
 | Speak MQTT (SDK broker or external) | [`useMqtt()`](#usemqtt-energyappmqtt) |
 | Scan or talk to Bluetooth LE peripherals | [`useBluetooth()`](#usebluetooth-energyappbluetooth) |
+| Pair Zigbee devices and exchange ZCL data with them | [`useZigbee()`](#usezigbee-energyappzigbee) |
+| Check whether the box supports Zigbee / Matter | [`isZigbeeSupported()` / `isMatterSupported()`](#iszigbeesupported-promiseboolean--ismattersupported-promiseboolean) |
 | Send/receive UDP datagrams | [`useUdp()`](#useudp-energyappudp) |
 | Read serial Modbus RTU | [`useModbusRtu()`](#usemodbusrtu-energyappmodbusrtu) |
 | List known WiFi SSIDs in range | [`useWifi()`](#usewifi-energyappwifi) |
@@ -502,6 +504,16 @@ const response = await fetch('https://api.weather.com/forecast', {
     method: 'GET',
     headers: { 'Authorization': 'Bearer token' }
 });
+```
+
+#### `isZigbeeSupported(): Promise<boolean>` / `isMatterSupported(): Promise<boolean>`
+
+Whether this box has a usable Zigbee radio, or a Matter controller. Not permission-gated, so an app can decide up front which guides and features to offer:
+
+```typescript
+if (await energyApp.isZigbeeSupported()) {
+    // offer the Zigbee pairing guide, start useZigbee() listeners, …
+}
 ```
 
 #### `getSdkVersion(): string`
@@ -1805,6 +1817,48 @@ await ble.withDevice(devices[0].address, async (session) => {
 
 Notifications can be consumed three ways from the session: `notifications(svc, ch).onValue(cb)` (push), `.next(timeoutMs)` (pull-once), or `.values()` (async iterator). Requires the `Bluetooth` permission.
 
+#### `useZigbee(): EnergyAppZigbee`
+
+Pair Zigbee devices into the host's network, manage the devices this app owns, and exchange ZCL data with them so you can translate it to data bus values. Check `isZigbeeSupported()` first.
+
+```typescript
+const zigbee = energyApp.useZigbee();
+
+// Pairing (needs the extra ZigbeePairing permission)
+await zigbee.startPairing({ durationSeconds: 120 });
+zigbee.listenForDeviceJoined(async (device) => {
+    const applianceId = await createAppliance(device); // set metadata.zigbee = { ieeeAddress, endpoint }
+    await zigbee.updateDevice(device.ieeeAddress, { applianceId });
+    await zigbee.configureReporting(device.ieeeAddress, {
+        endpoint: 1,
+        cluster: EnyoZigbeeClusterIdEnum.ElectricalMeasurement,
+        attributes: [{ attributeId: 0x050B, dataType: EnyoZigbeeDataTypeEnum.Int16,
+                       minIntervalSeconds: 5, maxIntervalSeconds: 60, reportableChange: 5 }],
+    });
+});
+
+// Incoming data → data bus
+zigbee.listenForMessages((message) => {
+    if (message.type === EnyoZigbeeMessageTypeEnum.AttributeReport) publishToDataBus(message);
+}, { clusters: [EnyoZigbeeClusterIdEnum.ElectricalMeasurement] });
+
+// Outgoing: read, write, command
+const [power] = await zigbee.readAttributes(ieee, { endpoint: 1, cluster: 0x0B04, attributes: [0x050B] });
+await zigbee.sendCommand(ieee, { endpoint: 1, cluster: EnyoZigbeeClusterIdEnum.OnOff, commandId: 0x01 });
+
+// Device management
+await zigbee.getDevices();
+await zigbee.removeDevice(ieee, { force: true });
+```
+
+- **Devices:** `getDevices()`, `getDevice(ieee)`, `updateDevice(ieee, { name, applianceId })` (`null` clears), `removeDevice(ieee, { force })`, `listenForDeviceJoined`, `listenForDeviceLeft`.
+- **Data:** `readAttributes`, `writeAttributes`, `sendCommand` (raw ZCL payload), `configureReporting` (the host binds the cluster for you), `listenForMessages` (attribute reports and device-sent commands, optionally filtered by device / cluster / type).
+- **Pairing:** `startPairing`, `stopPairing`, `getPairingStatus`. In installer flows prefer the onboarding `zigbee-pairing` block, which opens and closes the network around its own screen.
+- **Ownership:** a device belongs to the app whose onboarding run or `startPairing()` brought it in; every method only sees the app's own devices.
+- **Appliances:** link the appliance via `metadata.zigbee` (`EnyoApplianceZigbeeMetadata`: `ieeeAddress`, optional `endpoint`, `manufacturerName`, `modelId`). Log writes/commands with `EnyoCommandProtocolEnum.Zigbee`.
+
+Requires the `Zigbee` permission; `startPairing` / `stopPairing` and the onboarding pairing block additionally require `ZigbeePairing`.
+
 #### `useUdp(): EnergyAppUdp`
 
 Bind UDP sockets and exchange datagrams. Lazily instantiates a single server instance and reuses it on subsequent calls; the permission gate runs on every accessor call so revocations surface consistently.
@@ -2709,7 +2763,7 @@ await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request)
 
 Every such block must declare a `failed` outcome — it absorbs a rejection, a timeout, a missing handler, and an outcome value matching no branch (guide and handler are linked only by strings). Secrets are never logged, never prefilled, and not kept in run state. See [ONBOARDING.md](./ONBOARDING.md#app-defined-setups-additional-setup).
 
-Guides pick the device on a screen of their own. `device-select` lists the network devices the run found; `eebus-device-select` lists the discovered EEBUS peers, filtered by the SHIP device type they announce (`EnyoEebusDeviceTypeEnum`). Both carry their own `headline`/`description`, and both **skip the screen entirely** when exactly one candidate matches the filter — the handler still runs and the run is still bound, with `autoSelected: true` on the request. Register one handler per kind; a network device and an EEBUS peer are different things and neither handler is a fallback for the other:
+Guides pick the device on a screen of their own. `device-select` lists the network devices the run found; `eebus-device-select` lists the discovered EEBUS peers, filtered by the SHIP device type they announce (`EnyoEebusDeviceTypeEnum`); `zigbee-pairing` opens the Zigbee network and lists devices as they join (handler: `registerZigbeePairingHandler`, see [ONBOARDING.md](./ONBOARDING.md#pairing-zigbee-devices-zigbee-pairing)). Both carry their own `headline`/`description`, and both **skip the screen entirely** when exactly one candidate matches the filter — the handler still runs and the run is still bound, with `autoSelected: true` on the request. Register one handler per kind; a network device and an EEBUS peer are different things and neither handler is a fallback for the other:
 
 ```typescript
 const onboarding = energyApp.useOnboardingV2();
@@ -3549,8 +3603,8 @@ Paper cannot scan the network or ask the app anything, so the guide must describ
 **manual setup**:
 
 - `startVariant: EnyoOnboardingV2StartVariant.ManualSetup` and `requiresNetworkScan: false`
-- no `network-scan` / `device-test` actions, no `device-select` / `eebus-device-select`
-  blocks, no `dynamic` blocks, no `start-variant` targets
+- no `network-scan` / `device-test` actions, no `device-select` / `eebus-device-select` /
+  `zigbee-pairing` blocks, no `dynamic` blocks, no `start-variant` targets
 - no `applianceId`, `vendorId` or `modelIds`
 - plain JSON only, and every image block `file` declared in `files`
 

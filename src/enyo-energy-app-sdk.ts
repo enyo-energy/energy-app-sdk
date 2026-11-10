@@ -32,6 +32,7 @@ import {EnergyAppModbusServer} from "./packages/energy-app-modbus-server.js";
 import {EnergyAppEebus} from "./packages/energy-app-eebus.js";
 import {EnergyAppMqtt} from "./packages/energy-app-mqtt.js";
 import {EnergyAppBluetooth} from "./packages/energy-app-bluetooth.js";
+import {EnergyAppZigbee} from "./packages/energy-app-zigbee.js";
 import {EnergyAppDiagnostics} from "./packages/energy-app-diagnostics.js";
 import {EnergyAppLearningPhase} from "./packages/energy-app-learning-phase.js";
 import {EnergyAppCalibration} from "./packages/energy-app-calibration.js";
@@ -164,6 +165,12 @@ export interface EnyoEnergyAppSdk {
     useMqtt: () => EnergyAppMqtt;
     /** Get the Bluetooth Low Energy API for scanning and GATT communication with peripherals */
     useBluetooth: () => EnergyAppBluetooth;
+    /** Get the Zigbee API for pairing Zigbee devices, managing them and exchanging ZCL data with them */
+    useZigbee: () => EnergyAppZigbee;
+    /** Whether this box has a usable Zigbee radio (coordinator). Not permission-gated */
+    isZigbeeSupported: () => Promise<boolean>;
+    /** Whether this box supports Matter (a Matter controller is available). Not permission-gated */
+    isMatterSupported: () => Promise<boolean>;
     /** Get the Diagnostics API for submitting energy manager diagnostics data */
     useDiagnostics: () => EnergyAppDiagnostics;
     /** Get the Learning Phase API for registering and tracking learning phases */

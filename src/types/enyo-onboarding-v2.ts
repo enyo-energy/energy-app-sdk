@@ -216,6 +216,31 @@ export enum EnyoOnboardingV2EebusPairOutcome {
 }
 
 /**
+ * The possible results of an {@link EnyoOnboardingV2ZigbeePairingBlock}.
+ *
+ * Three, like EEBUS pairing, because the two failures need different guidance:
+ * nothing joined at all is a "reset the device and put it in pairing mode"
+ * conversation, a device that joined but could not be interviewed is a "bring it
+ * closer and try again" one.
+ */
+export enum EnyoOnboardingV2ZigbeePairOutcome {
+    /** At least one matching device joined and was interviewed; the installer confirmed it. */
+    Paired = 'paired',
+    /**
+     * The pairing window closed without a matching device joining — the device
+     * was not reset into pairing mode, is out of range, or the installer found
+     * none of the joined devices to be theirs.
+     */
+    NotFound = 'not-found',
+    /**
+     * A matching device joined but its interview failed, or the host could not
+     * open the network at all (no Zigbee radio, missing `ZigbeePairing`
+     * permission).
+     */
+    Failure = 'failure',
+}
+
+/**
  * The possible results of an {@link EnyoOnboardingV2ActionKind.OcppConnect}
  * block. Deliberately binary: either the charger reached our CSMS or it did not.
  */
@@ -300,6 +325,7 @@ export enum EnyoOnboardingV2BlockType {
     Select = 'select',
     DeviceSelect = 'device-select',
     EebusDeviceSelect = 'eebus-device-select',
+    ZigbeePairing = 'zigbee-pairing',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -537,9 +563,10 @@ export interface EnyoOnboardingV2ActionBlock extends EnyoOnboardingV2BlockBase {
 }
 
 /**
- * Fields shared by the two picker blocks
+ * Fields shared by the picker blocks
  * ({@link EnyoOnboardingV2DeviceSelectBlock},
- * {@link EnyoOnboardingV2EebusDeviceSelectBlock}).
+ * {@link EnyoOnboardingV2EebusDeviceSelectBlock},
+ * {@link EnyoOnboardingV2ZigbeePairingBlock}).
  *
  * Both answer the same question — "which of these is it?" — and both own the
  * screen they sit on rather than hiding behind a trigger button, which is why
@@ -744,6 +771,77 @@ export interface EnyoOnboardingV2EebusDeviceSelectBlock extends EnyoOnboardingV2
      * everything out and is a validation error.
      */
     vendors?: string[];
+}
+
+/**
+ * A pairing screen: the host opens its Zigbee network, lists devices as they
+ * join, and the installer confirms which are theirs.
+ *
+ * Zigbee is a fourth way a device reaches us, and unlike the other pickers there
+ * is nothing to discover beforehand: a Zigbee device is not on the LAN and does
+ * not announce itself until the network is opened *and* the device is put into
+ * pairing mode (usually a factory reset — holding a button, power-cycling a
+ * bulb several times). So this block **opens the network when the step is
+ * entered**, shows a countdown and a live list of matching devices as they join
+ * and finish their interview, and **closes the network when the step is left**.
+ * It needs no network scan; it works with
+ * {@link EnyoOnboardingV2Guide.requiresNetworkScan} set to `false`.
+ *
+ * Putting the device into pairing mode is the installer's job, and how is
+ * device-specific — say it in a text/hint/image block on the preceding step.
+ *
+ * Devices confirmed on this screen belong to the app running the guide.
+ * Register an {@link EnyoOnboardingV2ZigbeePairingHandler} to turn them into
+ * appliances, exactly as for the other pickers. The app needs the
+ * `ZigbeePairing` permission; without it, or on a box without a Zigbee radio
+ * (check `EnergyApp.isZigbeeSupported()` before offering the guide), the block
+ * takes its `failure` branch.
+ *
+ * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch} means here: with
+ * {@link maxDevices} reached by matching devices, the host confirms them without
+ * waiting for the installer.
+ *
+ * Outcome `value`s MUST be {@link EnyoOnboardingV2ZigbeePairOutcome} members.
+ * Route `not-found` to a step explaining how to reset the device and `failure`
+ * to troubleshooting; a retry must lead into a *second* pairing step, since a
+ * back-edge onto the same step reads as a loop and ends the run.
+ *
+ * **Give it a step of its own**, like every picker.
+ */
+export interface EnyoOnboardingV2ZigbeePairingBlock extends EnyoOnboardingV2PickerBlockBase {
+    type: EnyoOnboardingV2BlockType.ZigbeePairing;
+    /**
+     * How long the network stays open, in seconds (1–254). Defaults to 180.
+     * When it runs out with nothing confirmed, the block takes its `not-found`
+     * branch; the installer may also leave earlier.
+     */
+    durationSeconds?: number;
+    /**
+     * How many devices may be confirmed on this screen (1–50). Defaults to 1.
+     *
+     * Raise it for a guide that pairs a set of sensors in one go; every
+     * confirmed device is handed to the handler in one request.
+     */
+    maxDevices?: number;
+    /**
+     * Offer only devices whose Basic-cluster manufacturer name is one of these;
+     * everything else that joins is not shown and not assigned to the app.
+     *
+     * Matched against {@link EnyoZigbeeDevice.manufacturerName}
+     * **case-insensitively and ignoring surrounding whitespace**, otherwise
+     * exactly — list every spelling a vendor ships. A device reporting no
+     * manufacturer name survives an omitted filter and is excluded by any
+     * filter present, so a guide can never pair something it did not ask for.
+     * Omit the property to offer every device; an **empty array** filters
+     * everything out and is a validation error.
+     */
+    manufacturerNames?: string[];
+    /**
+     * Offer only devices whose Basic-cluster model identifier is one of these.
+     * Same matching rules as {@link manufacturerNames}; both filters are
+     * **conjunctive** — a device must satisfy every filter present.
+     */
+    modelIds?: string[];
 }
 
 /**
@@ -1172,7 +1270,8 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2CredentialsBlock
     | EnyoOnboardingV2SelectBlock
     | EnyoOnboardingV2DeviceSelectBlock
-    | EnyoOnboardingV2EebusDeviceSelectBlock;
+    | EnyoOnboardingV2EebusDeviceSelectBlock
+    | EnyoOnboardingV2ZigbeePairingBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -1189,7 +1288,8 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2AuthBlock
     | EnyoOnboardingV2AdditionalSetupBlock
     | EnyoOnboardingV2DeviceSelectBlock
-    | EnyoOnboardingV2EebusDeviceSelectBlock;
+    | EnyoOnboardingV2EebusDeviceSelectBlock
+    | EnyoOnboardingV2ZigbeePairingBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets

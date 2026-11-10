@@ -50,6 +50,14 @@ export enum EnergyAppPermissionTypeEnum {
     EebusControl = 'EebusControl',
     Mqtt = 'Mqtt',
     Bluetooth = 'Bluetooth',
+    /** Manage this app's Zigbee devices and exchange ZCL data with them. */
+    Zigbee = 'Zigbee',
+    /**
+     * Open the Zigbee network for new devices (permit join), from the app or an
+     * onboarding pairing block. Separate from `Zigbee` because an open network
+     * lets any device in range join the customer's home.
+     */
+    ZigbeePairing = 'ZigbeePairing',
     Wifi = 'Wifi',
     ChildProcess = 'ChildProcess',
     Udp = 'Udp',

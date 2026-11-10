@@ -22,6 +22,8 @@ export enum EnyoCommandProtocolEnum {
     Bluetooth = 'bluetooth',
     /** UDP datagram */
     Udp = 'udp',
+    /** Zigbee ZCL attribute write or cluster command */
+    Zigbee = 'zigbee',
     /** Anything else — describe it in {@link EnyoCommandLogEntry.operation} */
     Other = 'other',
 }

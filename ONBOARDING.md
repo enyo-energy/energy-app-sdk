@@ -1120,6 +1120,7 @@ no dynamic blocks registers nothing.
 | `action` (OCPP) | `onboardingV2Block.ocppConnect` | wait for an OCPP charger to dial into enyo's CSMS; branches `connected` \| `timeout` |
 | `device-select` | `onboardingV2Block.deviceSelect` | its own screen: pick the network device being onboarded; skips itself when one device matches; branches `selected` \| `not-found` |
 | `eebus-device-select` | `onboardingV2Block.eebusDeviceSelect` | its own screen: pick a discovered EEBUS peer and trust its SKI, filtered by device type and/or vendor; skips itself when one peer matches; branches `paired` \| `not-found` \| `failure` |
+| `zigbee-pairing` | `onboardingV2Block.zigbeePairing` | its own screen: open the Zigbee network, list matching devices live as they join, confirm them; filtered by manufacturer and/or model; no network scan needed; branches `paired` \| `not-found` \| `failure` |
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
@@ -1584,6 +1585,75 @@ Two authoring rules follow from how the list is produced:
 Retries are separate steps: a back-edge from `not-found` onto the same step reads
 as a loop and ends the run, so wire it to a "prüfen und erneut suchen" step that
 leads into a *second* picker step, exactly as `ocpp-connect` does.
+
+### Pairing Zigbee devices (`zigbee-pairing`)
+
+A Zigbee device is not on the LAN and announces nothing until two things happen
+at once: the host opens its Zigbee network, and the device is put into pairing
+mode (usually a factory reset — holding a button, power-cycling a bulb a few
+times). So this block **opens the network when the step is entered**, shows a
+countdown and a live list of matching devices as they join and finish their
+interview, and **closes the network when the step is left**.
+
+```typescript
+onboardingV2Block.zigbeePairing('pair', {
+  headline: t('Zwischenstecker koppeln', 'Pair the smart plug'),
+  description: t(
+    'Halten Sie die Taste am Stecker 5 Sekunden gedrückt, bis die LED blinkt.',
+    'Hold the button on the plug for 5 seconds until the LED flashes.',
+  ),
+  durationSeconds: 120,          // 1–254, default 180
+  maxDevices: 1,                 // 1–50, default 1
+  manufacturerNames: ['ACME'],
+  modelIds: ['PLUG-1'],
+  outcomes: [
+    {id: 'ok',    value: EnyoOnboardingV2ZigbeePairOutcome.Paired,   label: t('Gerät gekoppelt', 'Device paired')},
+    {id: 'none',  value: EnyoOnboardingV2ZigbeePairOutcome.NotFound, label: t('Kein Gerät gefunden', 'No device found')},
+    {id: 'error', value: EnyoOnboardingV2ZigbeePairOutcome.Failure,  label: t('Kopplung fehlgeschlagen', 'Pairing failed')},
+  ],
+})
+```
+
+**No scan needed.** Set `requiresNetworkScan: false` on a Zigbee-only guide —
+the block brings its own discovery, and the validator does not warn about it.
+
+**Filter it.** An open network lets *any* device in range join, so
+`manufacturerNames` / `modelIds` (the Basic-cluster values, matched
+case-insensitively but otherwise exactly) keep a neighbour's motion sensor out of
+your smart-plug flow. Non-matching devices are not shown and not assigned to the
+app. Filters are conjunctive; an empty array is a validation **error**.
+
+**Skipping.** With `autoSelectSingleMatch` left on, the host confirms on the
+installer's behalf as soon as `maxDevices` matching devices have joined.
+
+**Outcomes.** `paired` — at least one device joined and was confirmed;
+`not-found` — the window closed with nothing confirmed (route to a step
+explaining the reset); `failure` — a device joined but its interview failed, or
+the host could not open the network (no Zigbee radio, missing `ZigbeePairing`
+permission). Missing `paired` or `not-found` branches are warned about.
+
+**Requirements.** The app needs the `ZigbeePairing` permission (and `Zigbee` to
+do anything with the devices afterwards). Not every box has a Zigbee radio —
+only offer the guide when `energyApp.isZigbeeSupported()` resolves `true`.
+
+Turning the devices into appliances is the app's job, through a separate handler:
+
+```typescript
+await energyApp.useOnboardingV2().registerZigbeePairingHandler(async (request) => ({
+  requestId: request.requestId,
+  applianceIds: await adoptZigbeeDevices(request.devices, request.applianceId),
+}));
+```
+
+The confirmed devices belong to the app and are also delivered to
+`useZigbee().listenForDeviceJoined` — create appliances in one place only.
+Throwing, or answering with `[]`, leaves the devices joined and the run on
+`paired` but unbound. Store `metadata.zigbee = {ieeeAddress, endpoint}` on each
+appliance you create, and link back with `useZigbee().updateDevice(ieeeAddress,
+{applianceId})`.
+
+As with the other pickers, give the block a step of its own, and lead a retry
+into a *second* pairing step rather than back onto the same one.
 
 ### Skipping the host's network scan (`requiresNetworkScan`)
 

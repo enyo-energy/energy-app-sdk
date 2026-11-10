@@ -23,6 +23,13 @@ export enum EnyoInverterApplianceAvailableFeaturesEnum {
      * `EnyoDataBusGridStatusUpdateV1`).
      */
     GridOutageDetection = 'GridOutageDetection',
+    /**
+     * The inverter is a battery-only inverter (e.g. an AC-coupled battery
+     * inverter): only a battery is connected and no PV modules. The energy
+     * manager must not expect or forecast any PV production from this
+     * inverter.
+     */
+    BatteryOnlyInverter = 'BatteryOnlyInverter',
 }
 
 export interface EnyoInverterDcString {

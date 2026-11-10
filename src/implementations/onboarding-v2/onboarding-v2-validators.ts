@@ -18,6 +18,7 @@ import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2EebusPairOutcome,
+    EnyoOnboardingV2ZigbeePairOutcome,
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2SetupFieldType,
@@ -34,6 +35,7 @@ import type {
     EnyoOnboardingV2Block,
     EnyoOnboardingV2DeviceSelectBlock,
     EnyoOnboardingV2EebusDeviceSelectBlock,
+    EnyoOnboardingV2ZigbeePairingBlock,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2Step,
     EnyoOnboardingV2Transition,
@@ -526,14 +528,15 @@ const INPUT_VALUE_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoOnboard
 
 /**
  * Outcome values the host treats as "the check succeeded" — mirrors the
- * runtime's own positive-outcome set, `paired` included, so an EEBUS
- * pairing result is not read as a failure.
+ * runtime's own positive-outcome set, `paired` included, so an EEBUS or
+ * Zigbee pairing result is not read as a failure.
  */
 const POSITIVE_INPUT_OUTCOMES: ReadonlySet<string> = new Set([
     'reachable',
     'success',
     'found',
     EnyoOnboardingV2EebusPairOutcome.Paired,
+    EnyoOnboardingV2ZigbeePairOutcome.Paired,
 ]);
 
 /**
@@ -790,6 +793,97 @@ function validateEebusPairOutcomes(
     }
 }
 
+/** Every {@link EnyoOnboardingV2ZigbeePairOutcome} value. */
+const ZIGBEE_PAIR_OUTCOMES: ReadonlySet<string> = new Set(
+    Object.values(EnyoOnboardingV2ZigbeePairOutcome),
+);
+
+/** Upper bound of {@link EnyoOnboardingV2ZigbeePairingBlock.durationSeconds} — the Zigbee permit-join maximum. */
+const ZIGBEE_MAX_PAIRING_SECONDS = 254;
+
+/** Upper bound of {@link EnyoOnboardingV2ZigbeePairingBlock.maxDevices}. */
+const ZIGBEE_MAX_DEVICES = 50;
+
+/**
+ * Validates an {@link EnyoOnboardingV2ZigbeePairingBlock} beyond the shared
+ * picker rules: its outcomes, its pairing window, its device count, and its
+ * filters.
+ *
+ * Outcome `value`s are closed over {@link EnyoOnboardingV2ZigbeePairOutcome}.
+ * A missing `paired` branch is a warning (an author may be staging the guide);
+ * a missing `not-found` branch is a warning too, since a device that never
+ * joins is the common case and would strand the installer. Out-of-range
+ * numbers and empty filters are errors — they can never behave as written.
+ *
+ * @param block - The Zigbee pairing block being checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateZigbeePairingBlock(
+    block: EnyoOnboardingV2ZigbeePairingBlock,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const label = `zigbee-pairing block "${block.id}"`;
+    const values = new Set<string>();
+    for (const outcome of block.outcomes ?? []) {
+        if (!ZIGBEE_PAIR_OUTCOMES.has(outcome.value)) {
+            errors.push(
+                `${at}: ${label} has outcome value "${outcome.value}", which is not an EnyoOnboardingV2ZigbeePairOutcome member.`,
+            );
+        } else if (values.has(outcome.value)) {
+            errors.push(`${at}: ${label} wires outcome value "${outcome.value}" more than once.`);
+        }
+        values.add(outcome.value);
+    }
+
+    if (!values.has(EnyoOnboardingV2ZigbeePairOutcome.Paired)) {
+        warnings.push(
+            `${at}: ${label} has no "${EnyoOnboardingV2ZigbeePairOutcome.Paired}" outcome — ` +
+                'a successful pairing would have nowhere to go.',
+        );
+    }
+    if (!values.has(EnyoOnboardingV2ZigbeePairOutcome.NotFound)) {
+        warnings.push(
+            `${at}: ${label} has no "${EnyoOnboardingV2ZigbeePairOutcome.NotFound}" outcome — ` +
+                'an installer whose device never joins would be stranded.',
+        );
+    }
+
+    const {durationSeconds, maxDevices} = block;
+    if (
+        durationSeconds !== undefined &&
+        (!Number.isInteger(durationSeconds) || durationSeconds < 1 || durationSeconds > ZIGBEE_MAX_PAIRING_SECONDS)
+    ) {
+        errors.push(
+            `${at}: ${label} has durationSeconds ${durationSeconds} — it must be a whole number from 1 to ${ZIGBEE_MAX_PAIRING_SECONDS}.`,
+        );
+    }
+    if (
+        maxDevices !== undefined &&
+        (!Number.isInteger(maxDevices) || maxDevices < 1 || maxDevices > ZIGBEE_MAX_DEVICES)
+    ) {
+        errors.push(
+            `${at}: ${label} has maxDevices ${maxDevices} — it must be a whole number from 1 to ${ZIGBEE_MAX_DEVICES}.`,
+        );
+    }
+
+    if (block.manufacturerNames && block.manufacturerNames.length === 0) {
+        errors.push(
+            `${at}: ${label} has an empty \`manufacturerNames\` filter, which matches no device — ` +
+                'omit the property to offer devices of every manufacturer.',
+        );
+    }
+    if (block.modelIds && block.modelIds.length === 0) {
+        errors.push(
+            `${at}: ${label} has an empty \`modelIds\` filter, which matches no device — ` +
+                'omit the property to offer devices of every model.',
+        );
+    }
+}
+
 /** The redirect-URL patterns an auth block's `redirectUrlFilter` may name. */
 const REDIRECT_URL_PATTERNS: ReadonlySet<string> = new Set<string>(
     Object.values(EnyoOauthRedirectUrlPatternEnum),
@@ -807,22 +901,28 @@ const DECISION_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
     EnyoOnboardingV2BlockType.AdditionalSetup,
     EnyoOnboardingV2BlockType.DeviceSelect,
     EnyoOnboardingV2BlockType.EebusDeviceSelect,
+    EnyoOnboardingV2BlockType.ZigbeePairing,
 ]);
 
-/** The two picker block types, as a type guard over the block union. */
+/** The picker block types, as a type guard over the block union. */
 function isPickerBlock(
     block: EnyoOnboardingV2Block,
-): block is EnyoOnboardingV2DeviceSelectBlock | EnyoOnboardingV2EebusDeviceSelectBlock {
+): block is
+    | EnyoOnboardingV2DeviceSelectBlock
+    | EnyoOnboardingV2EebusDeviceSelectBlock
+    | EnyoOnboardingV2ZigbeePairingBlock {
     return (
         block.type === EnyoOnboardingV2BlockType.DeviceSelect ||
-        block.type === EnyoOnboardingV2BlockType.EebusDeviceSelect
+        block.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
+        block.type === EnyoOnboardingV2BlockType.ZigbeePairing
     );
 }
 
 /**
  * Validates the picker blocks of a step —
- * {@link EnyoOnboardingV2DeviceSelectBlock} and
- * {@link EnyoOnboardingV2EebusDeviceSelectBlock}.
+ * {@link EnyoOnboardingV2DeviceSelectBlock},
+ * {@link EnyoOnboardingV2EebusDeviceSelectBlock} and
+ * {@link EnyoOnboardingV2ZigbeePairingBlock}.
  *
  * Three things are checked beyond the per-kind outcome rules:
  *
@@ -881,6 +981,8 @@ function validatePickerBlocks(
                         'omit the property to offer every device the run found.',
                 );
             }
+        } else if (block.type === EnyoOnboardingV2BlockType.ZigbeePairing) {
+            validateZigbeePairingBlock(block, at, errors, warnings);
         } else {
             validateEebusPairOutcomes(block, at, errors, warnings);
             if (block.deviceTypes && block.deviceTypes.length === 0) {
@@ -984,6 +1086,7 @@ function validateAuthBlocks(
                 b.type === EnyoOnboardingV2BlockType.Action ||
                 b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
+                b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
                 b.type === EnyoOnboardingV2BlockType.Input,
         );
         if (others.length) {
@@ -1157,6 +1260,7 @@ function validateAdditionalSetupBlocks(
                 b.type === EnyoOnboardingV2BlockType.Action ||
                 b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
+                b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
                 b.type === EnyoOnboardingV2BlockType.Input ||
                 b.type === EnyoOnboardingV2BlockType.Auth,
         );
@@ -1403,7 +1507,8 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             b.type === EnyoOnboardingV2BlockType.Action ||
             b.type === EnyoOnboardingV2BlockType.Input ||
             b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
-            b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect
+            b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
+            b.type === EnyoOnboardingV2BlockType.ZigbeePairing
         ) {
             for (const o of b.outcomes ?? []) keys.add(`outcome:${b.id}:${o.id}`);
         } else if (b.type === EnyoOnboardingV2BlockType.Auth && b.outcome?.id) {
