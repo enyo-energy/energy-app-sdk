@@ -33,7 +33,10 @@ export type IntegrationCommandHandler<T extends EnyoDataBusMessage = EnyoDataBus
  * Responsibilities:
  *  - Subscribe to the data bus message types each subclass declares via
  *    {@link registerCommandHandler}.
- *  - Dispatch each incoming message to its registered async handler.
+ *  - Dispatch each incoming message to its registered async handler — except a
+ *    command addressed to an appliance that is not this app's (see
+ *    {@link extractApplianceId}), which is dropped without running anything
+ *    and without an acknowledgment.
  *  - Automatically build and send the matching `CommandAcknowledgeV1` from the
  *    handler's return value (`Accepted` / `Rejected` / `NotSupported`).
  *  - Provide one shared abstract handler for the broadcast
@@ -373,17 +376,50 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
     }
 
     /**
-     * Returns the applianceId associated with an inbound command. Most
-     * commands carry it at the top level (`message.applianceId`); a few
-     * (`PauseChargingV1`, `ResumeChargingV1`) carry it inside `data`.
-     * Subclasses can override if they introduce other message shapes.
+     * Returns the applianceId of this app that an inbound command is for — or
+     * `undefined` when the command is not for one of this app's appliances.
+     *
+     * The default returns the appliance the command is addressed to: most
+     * commands carry it at the top level (`message.applianceId`), a few
+     * (`PauseChargingV1`, `ResumeChargingV1`) inside `data`.
+     *
+     * Override it to tell the base class which appliances are yours. An app
+     * with the `AllAppliances` permission receives every appliance-addressed
+     * command on the hub — also those for other packages' appliances — so it
+     * should return `undefined` for an appliance it does not manage:
+     *
+     * ```typescript
+     * protected override extractApplianceId(message: EnyoDataBusMessage): string | undefined {
+     *     const applianceId = super.extractApplianceId(message);
+     *     return applianceId !== undefined && this.ownsAppliance(applianceId) ? applianceId : undefined;
+     * }
+     * ```
+     *
+     * What the base class does with the result (see {@link dispatch}):
+     *  - An id: the command is dispatched to its handler and acknowledged on
+     *    behalf of that id.
+     *  - `undefined` for a command that is addressed to an appliance (a
+     *    foreign command): it is dropped before anything runs — no handler, no
+     *    validation or metadata read of a subclass such as
+     *    `HeatpumpIntegrationEnergyApp`, and no `CommandAcknowledgeV1`.
+     *    Answering it (even `NotSupported`) would reach the energy manager as
+     *    the owner's answer; for `VacationStartedV1` a `NotSupported` is final
+     *    and cancels that appliance's vacation. Since SDK 1.62.0 — before, the
+     *    handler ran and only the acknowledgment was skipped, so apps had to
+     *    wrap {@link registerCommandHandler} themselves; such wrappers keep
+     *    working but are no longer needed.
+     *  - `undefined` for a command without any appliance id: the handler runs
+     *    as before, and no acknowledgment is sent (there is nobody to send it
+     *    on behalf of).
+     *
+     * `GridOperatorPowerLimitationV1` (§14a EnWG) is not affected: it is
+     * fanned out over {@link resolveManagedApplianceIds} instead.
+     *
+     * @param message - The inbound command.
+     * @returns The own appliance the command is for, or `undefined`.
      */
     protected extractApplianceId(message: EnyoDataBusMessage): string | undefined {
-        if (message.applianceId) {
-            return message.applianceId;
-        }
-        const data = message.data as { applianceId?: string } | undefined;
-        return data?.applianceId;
+        return addressedApplianceId(message);
     }
 
     /**
@@ -407,6 +443,24 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
         );
     }
 
+    /**
+     * Routes one inbound data bus message to its registered handler and sends
+     * the acknowledgment.
+     *
+     *  - `GridOperatorPowerLimitationV1` (§14a EnWG) is fanned out per managed
+     *    appliance ({@link dispatchGridOperatorPowerLimitation}).
+     *  - A command addressed to an appliance for which
+     *    {@link extractApplianceId} returns `undefined` is foreign: it is
+     *    dropped before the handler — the registered handler is what a
+     *    subclass's pre-dispatch validation and metadata reads run in, and what
+     *    an app's own {@link registerCommandHandler} wrapper wraps, so none of
+     *    them runs — and no acknowledgment is sent.
+     *  - Any other command runs its handler (a thrown error becomes
+     *    `Rejected`); the answer is acknowledged on behalf of the id from
+     *    {@link extractApplianceId}, or not at all when there is none.
+     *
+     * @param message - The inbound data bus message.
+     */
     private async dispatch(message: EnyoDataBusMessage): Promise<void> {
         if (message.message === EnyoDataBusMessageEnum.GridOperatorPowerLimitationV1) {
             await this.dispatchGridOperatorPowerLimitation(message as EnyoDataBusGridOperatorPowerLimitationV1);
@@ -419,6 +473,13 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
         }
 
         const applianceId = this.extractApplianceId(message);
+        if (!applianceId && addressedApplianceId(message) !== undefined) {
+            // Addressed to an appliance this app does not own (it receives it
+            // through `AllAppliances` or the hub's fallback routing). Its owner
+            // answers it; any answer from here would be taken as the owner's.
+            return;
+        }
+
         let response: IntegrationCommandResponse;
         try {
             response = await handler(message);
@@ -471,4 +532,23 @@ export abstract class IntegrationEnergyApp extends EnergyApp {
             this.sendAcknowledge(message, response.applianceId, response);
         }
     }
+}
+
+/**
+ * The appliance an inbound command is addressed to, read from the message
+ * itself: the top-level `applianceId`, else `data.applianceId` (as in
+ * `PauseChargingV1` / `ResumeChargingV1`). Unlike
+ * {@link IntegrationEnergyApp.extractApplianceId} it cannot be overridden, so
+ * the base class can tell a foreign command (addressed, but not to one of the
+ * app's appliances) from one without any appliance id.
+ *
+ * @param message - The inbound command.
+ * @returns The addressed appliance id, or `undefined` when the message names none.
+ */
+function addressedApplianceId(message: EnyoDataBusMessage): string | undefined {
+    if (message.applianceId) {
+        return message.applianceId;
+    }
+    const data = message.data as { applianceId?: string } | undefined;
+    return data?.applianceId || undefined;
 }

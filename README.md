@@ -3915,6 +3915,7 @@ Device Integrations are the high-level building blocks for apps that **drive a r
 - **Subscribes** to the relevant `*CommandV1` data-bus messages for the appliance type.
 - **Dispatches** each command to the async handler you register.
 - **Auto-acknowledges** every command via a `CommandAcknowledgeV1` response containing your `Accepted` / `Rejected` / `NotSupported` answer.
+- **Ignores commands for other packages' appliances** — neither handled nor acknowledged once `extractApplianceId` says they are not yours (see [IntegrationEnergyApp](#integrationenergyapp-base-class)).
 - **Handles broadcast `GridOperatorPowerLimitationV1`** (§14a EnWG) and routes it once per managed appliance.
 - **Manages lifecycle** — auto-starts on construction and auto-stops on shutdown by default.
 - **Exposes typed `publish*` helpers** so your handler implementations can broadcast status updates back to the system without hand-building messages.
@@ -3975,6 +3976,20 @@ class MyHeatpumpApp extends HeatpumpIntegrationEnergyApp {
 - `protected abstract registerHandlers(): void` — call `registerCommandHandler(messageType, handler)` for each command you want to receive.
 - `protected abstract handleGridOperatorPowerLimitation(message, applianceId)` — handle the §14a EnWG broadcast per managed appliance.
 - `protected abstract get managedApplianceType(): EnyoApplianceTypeEnum` — used to resolve appliance IDs when no explicit list is given.
+- `protected extractApplianceId(message): string | undefined` — the own appliance a command is for. The default returns the addressed appliance (`message.applianceId`, else `data.applianceId`). Override it to return `undefined` for appliances your app does not manage — see below.
+
+**Commands for other packages' appliances**
+
+An app with the `AllAppliances` permission receives every appliance-addressed command on the hub, also those meant for another package's appliance (and the hub falls back to all packages when it cannot resolve an owner). Override `extractApplianceId` to say which appliances are yours:
+
+```typescript
+protected override extractApplianceId(message: EnyoDataBusMessage): string | undefined {
+    const applianceId = super.extractApplianceId(message);
+    return applianceId !== undefined && this.ownsAppliance(applianceId) ? applianceId : undefined;
+}
+```
+
+Since 1.62.0, a command that names an appliance for which `extractApplianceId` returns `undefined` is dropped before anything runs: no handler, none of the validation or metadata reads an integration does in front of it (e.g. `VacationStartedV1` against the heat pump's metadata), and no `CommandAcknowledgeV1`. Its owner answers it — an answer from your app, even `NotSupported`, would be taken as the owner's (for a vacation, `NotSupported` is final and cancels that heat pump's vacation). Commands without any appliance id still run their handler, without an acknowledgment, and `GridOperatorPowerLimitationV1` (§14a) keeps being fanned out over your managed appliances. Earlier SDK versions ran the handler and only skipped the acknowledgment; a `registerCommandHandler` override that filters foreign commands still works, but is no longer needed.
 
 ### HeatpumpIntegrationEnergyApp
 

@@ -180,6 +180,12 @@ export function combineHeatpumpControlAnswers(answers: EnyoCommandAcknowledgeAns
  * `Rejected`, or `NotSupported` to acknowledge the command. The base class
  * sends the matching `CommandAcknowledgeV1` automatically.
  *
+ * Every command except the §14a broadcast is addressed to one heat pump. A
+ * command for a heat pump that is not this app's (see
+ * {@link IntegrationEnergyApp.extractApplianceId}) never reaches a `handle*`
+ * method or the validation and metadata reads in front of it, and is not
+ * acknowledged.
+ *
  * @example
  * ```ts
  * class MyHeatpump extends HeatpumpIntegrationEnergyApp {
@@ -1083,7 +1089,13 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         return this.handleHeatpumpHeatingCurveOffset(message);
     }
 
-    /** Validates a `VacationStartedV1` against the metadata, then calls {@link handleVacationStarted}. */
+    /**
+     * Validates a `VacationStartedV1` against the metadata, then calls {@link handleVacationStarted}.
+     * Only reached for the app's own heat pumps: the base class drops a vacation addressed to a
+     * foreign appliance before this runs (see {@link IntegrationEnergyApp.extractApplianceId}), so
+     * no foreign metadata is read and no `NotSupported` from the validator cancels another
+     * package's vacation.
+     */
     private async dispatchVacationStarted(
         message: EnyoDataBusVacationStartedV1
     ): Promise<IntegrationCommandResponse> {
