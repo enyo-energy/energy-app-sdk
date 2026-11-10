@@ -48,14 +48,14 @@ describe('curveJudgedRoomIds', () => {
 });
 
 describe('curveOptimizationRooms', () => {
-    it("resolves the circuit's judged rooms and drops the ones that are gone", () => {
+    it("resolves every room of the circuit, whatever its thermostat, and drops the ones that are gone", () => {
         const rooms = [
             room('living', {warmth: Warmth.Warm}),
             room('bed', {warmth: Warmth.Cool}),
             room('office', {thermostat: Thermostat.SelfRegulating}),
         ];
         expect(curveOptimizationRooms({enabled: true, roomIds: ['living', 'bed', 'office', 'gone']}, rooms).map((r) => r.id))
-            .toEqual(['living', 'office']);
+            .toEqual(['living', 'bed', 'office']);
     });
 
     it('has no rooms without settings or room ids', () => {

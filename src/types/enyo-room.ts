@@ -5,6 +5,8 @@ import {HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C} from "./enyo-heatpump-appl
  * circuit, as the customer answered in the enyo app. One flow temperature heats
  * a whole circuit, so this decides which rooms keep their thermostat fully open
  * and lead the heating curve, and which are held back by theirs.
+ *
+ * @deprecated Since ENY-1473 the app no longer asks for it and the curve optimisation does not use it.
  */
 export enum EnyoRoomWarmthEnum {
     /** Cooler than the rest of the circuit, e.g. a bedroom. */
@@ -20,6 +22,8 @@ export enum EnyoRoomWarmthEnum {
  * dial the customer sets once ({@link Steps5}, {@link Steps6},
  * {@link CelsiusDial}), an electronic one that holds its own setpoint
  * ({@link SelfRegulating}), or none.
+ *
+ * @deprecated Since ENY-1473 the app no longer asks for it and the curve optimisation does not use it.
  */
 export enum EnyoRoomThermostatEnum {
     /** Electronic thermostat that holds its own setpoint. */
@@ -55,9 +59,17 @@ export interface EnyoRoom {
      * then.
      */
     targetTemperatureC?: number;
-    /** Warmer or cooler than the rest of its heating circuit. Absent: {@link EnyoRoomWarmthEnum.Normal}. */
+    /**
+     * Warmer or cooler than the rest of its heating circuit. Absent: {@link EnyoRoomWarmthEnum.Normal}.
+     *
+     * @deprecated Since ENY-1473 the app no longer asks for it; only rooms set up before still carry it.
+     */
     warmth?: EnyoRoomWarmthEnum;
-    /** The thermostat in the room. Absent: a dial with steps 1–5 ({@link EnyoRoomThermostatEnum.Steps5}). */
+    /**
+     * The thermostat in the room. Absent: a dial with steps 1–5 ({@link EnyoRoomThermostatEnum.Steps5}).
+     *
+     * @deprecated Since ENY-1473 the app no longer asks for it; only rooms set up before still carry it.
+     */
     thermostat?: EnyoRoomThermostatEnum;
 }
 

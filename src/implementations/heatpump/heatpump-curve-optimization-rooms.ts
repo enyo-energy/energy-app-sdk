@@ -1,14 +1,20 @@
 /**
  * Which rooms of a heating circuit the room-temperature based heating curve
- * optimisation is judged by. Shared by the energy manager, which lowers the
- * curve, and the host's app, which tells the customer how to set each room's
- * thermostat — both must agree on it.
+ * optimisation is judged by: every room the customer named for the circuit.
+ *
+ * The thermostat-based helpers below date from when the app asked for each
+ * room's thermostat and warmth. The energy manager now probes the curve lower
+ * until a room falls short, whatever its thermostat, so it no longer uses them.
  */
 
 import type {EnyoHeatpumpHeatingCurveOptimizationSettings} from '../../types/enyo-heatpump-appliance.js';
 import {type EnyoRoom, EnyoRoomThermostatEnum, EnyoRoomWarmthEnum} from '../../types/enyo-room.js';
 
-/** What the curve rules need to know about a room. */
+/**
+ * What the curve rules needed to know about a room.
+ *
+ * @deprecated Since ENY-1473 every room of a circuit is judged; thermostat and warmth no longer matter.
+ */
 export interface CurveRoomTraits {
     /** Absent: {@link EnyoRoomWarmthEnum.Normal}. */
     warmth?: EnyoRoomWarmthEnum;
@@ -34,6 +40,7 @@ const MANUAL_THERMOSTATS: ReadonlySet<EnyoRoomThermostatEnum> = new Set([
  *
  * @param traits - The room's warmth, if known.
  * @returns The rank.
+ * @deprecated Since ENY-1473 every room of a circuit is judged; warmth no longer matters.
  */
 export function curveWarmthRank(traits: CurveRoomTraits | undefined): number {
     return WARMTH_RANK[traits?.warmth ?? EnyoRoomWarmthEnum.Normal];
@@ -45,6 +52,7 @@ export function curveWarmthRank(traits: CurveRoomTraits | undefined): number {
  *
  * @param thermostat - The room's thermostat.
  * @returns `true` for a manual thermostat.
+ * @deprecated Since ENY-1473 every room of a circuit is judged; the thermostat no longer matters.
  */
 export function isManualRoomThermostat(thermostat: EnyoRoomThermostatEnum | undefined): boolean {
     return thermostat === undefined || MANUAL_THERMOSTATS.has(thermostat);
@@ -56,6 +64,7 @@ export function isManualRoomThermostat(thermostat: EnyoRoomThermostatEnum | unde
  * @param roomIds - The rooms of the circuit.
  * @param traitsOf - A room's warmth and thermostat.
  * @returns The highest rank, or `undefined` when no room has a manual thermostat.
+ * @deprecated Since ENY-1473 every room of a circuit is judged; warmth and thermostat no longer matter.
  */
 export function curveTopManualRank(
     roomIds: readonly string[],
@@ -79,6 +88,7 @@ export function curveTopManualRank(
  * @param roomIds - The rooms of the circuit.
  * @param traitsOf - A room's warmth and thermostat.
  * @returns The judged room IDs, in the order given.
+ * @deprecated Since ENY-1473 every room of a circuit is judged; use {@link curveOptimizationRooms}.
  */
 export function curveJudgedRoomIds(
     roomIds: readonly string[],
@@ -92,7 +102,8 @@ export function curveJudgedRoomIds(
 }
 
 /**
- * The rooms a heating circuit's curve optimisation is judged by, resolved
+ * The rooms a heating circuit's curve optimisation is judged by — every room
+ * the customer named for the circuit, whatever its thermostat — resolved
  * against the rooms of the home ({@link EnergyAppRoom.getRooms} or
  * {@link EnergyAppRoom.getRoomsById}). A room that no longer exists is
  * dropped. Whether a judged room can be measured is up to
@@ -106,10 +117,8 @@ export function curveOptimizationRooms(
     settings: EnyoHeatpumpHeatingCurveOptimizationSettings | undefined,
     rooms: readonly EnyoRoom[],
 ): EnyoRoom[] {
-    const live = (settings?.roomIds ?? []).flatMap((roomId) => {
+    return (settings?.roomIds ?? []).flatMap((roomId) => {
         const room = rooms.find((candidate) => candidate.id === roomId);
         return room ? [room] : [];
     });
-    const judged = curveJudgedRoomIds(live.map((room) => room.id), (roomId) => live.find((room) => room.id === roomId));
-    return live.filter((room) => judged.includes(room.id));
 }
