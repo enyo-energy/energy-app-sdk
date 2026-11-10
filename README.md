@@ -1865,7 +1865,7 @@ if (full) console.log(`lat=${full.coordinates.latitude} lon=${full.coordinates.l
 
 #### `useRoom(): EnergyAppRoom`
 
-Read the rooms of the home, as the customer set them up in the enyo app: name, the appliances in each, the temperature the customer wants there (`targetTemperatureC`, optional — use `HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C` = 21 °C until set) and, only on rooms set up before ENY-1473, the deprecated `warmth` (`EnyoRoomWarmthEnum`) and `thermostat` (`EnyoRoomThermostatEnum`), which the heating curve optimisation no longer uses. Read-only.
+Read the rooms of the home, as the customer set them up in the enyo app: name, the appliances in each, the temperature the customer wants there (`targetTemperatureC`, optional — use `HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C` = 21 °C until set). Read-only.
 
 ```typescript
 const rooms = energyApp.useRoom();
