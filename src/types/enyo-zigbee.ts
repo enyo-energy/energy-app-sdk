@@ -71,11 +71,27 @@ export interface EnyoZigbeeEndpoint {
 }
 
 /**
+ * How good the radio link of a Zigbee device is, judged by the host from the
+ * received signal strength of its last frame.
+ */
+export enum EnyoZigbeeSignalQualityEnum {
+    /** -60 dBm or stronger. */
+    Excellent = 'excellent',
+    /** -60 to -75 dBm. */
+    Good = 'good',
+    /** -75 to -85 dBm: works, but a frame gets lost now and then. */
+    Fair = 'fair',
+    /** Weaker than -85 dBm: expect lost reports; move the device closer to the enyo Box or add a router. */
+    Poor = 'poor',
+}
+
+/**
  * A device joined to the host's Zigbee network.
  *
  * A snapshot, not a live handle: read it again with
  * {@link EnergyAppZigbee.getDevice} for current values such as
- * {@link lastSeenIso} and {@link linkQuality}.
+ * {@link lastSeenIso}, {@link linkQuality}, {@link rssi} and
+ * {@link signalQuality}.
  */
 export interface EnyoZigbeeDevice {
     /**
@@ -112,6 +128,10 @@ export interface EnyoZigbeeDevice {
     lastSeenIso?: string;
     /** Link quality indicator of the last received frame (0–255). */
     linkQuality?: number;
+    /** Received signal strength of the last received frame in dBm (last hop). */
+    rssi?: number;
+    /** The host's verdict on the link, from {@link rssi}. */
+    signalQuality?: EnyoZigbeeSignalQualityEnum;
     /**
      * The appliance this device is linked to, if any.
      *
@@ -393,6 +413,13 @@ export interface EnyoZigbeeMessageBase {
     receivedAtIso: string;
     /** Link quality indicator of the frame (0–255). */
     linkQuality?: number;
+    /**
+     * Received signal strength of the frame in dBm. Last hop: for a device
+     * behind a router this is the router's link to the enyo Box, not the device's own.
+     */
+    rssi?: number;
+    /** The host's verdict on the link, from {@link rssi}. Absent when no RSSI is known. */
+    signalQuality?: EnyoZigbeeSignalQualityEnum;
 }
 
 /** A ZCL attribute report — the usual way a device delivers measurements. */

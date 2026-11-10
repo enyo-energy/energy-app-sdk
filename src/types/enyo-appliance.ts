@@ -327,6 +327,57 @@ export interface EnyoApplianceBatteryState {
     measuredAtIso?: string;
 }
 
+/**
+ * Coarse rating of an appliance's radio link, as reported in
+ * {@link EnyoApplianceSignalState.quality}.
+ *
+ * - `excellent` — strong, stable link with headroom to spare.
+ * - `good` — reliable link; no action needed.
+ * - `fair` — usable, but dropouts are likely if conditions worsen.
+ * - `poor` — unreliable link; readings and commands may be lost.
+ */
+export type EnyoApplianceSignalQuality = 'excellent' | 'good' | 'fair' | 'poor';
+
+/**
+ * The quality of an appliance's **wireless** link — Wi-Fi, Zigbee, Bluetooth
+ * or any other radio connection between the device and the host or its
+ * gateway.
+ *
+ * A wireless appliance that drops readings or misses commands looks much like
+ * one that is faulty; this tells a weak link apart before someone replaces a
+ * working device. Absent on wired appliances.
+ */
+export interface EnyoApplianceSignalState {
+    /**
+     * Received signal strength in dBm (typically negative, e.g. `-67`), when
+     * the radio reports it — Wi-Fi and Bluetooth do, Zigbee often does too.
+     */
+    rssiDbm?: number;
+    /**
+     * Protocol-specific link quality indicator, verbatim as the radio reports
+     * it — for Zigbee the LQI of the last received frame (0–255).
+     *
+     * Its scale differs between protocols and even vendors, so do not compare
+     * it across appliances; use {@link quality} for that.
+     */
+    linkQuality?: number;
+    /**
+     * Coarse rating of the link — the load-bearing field. It is what the UI
+     * shows and what a consumer compares across appliances, since
+     * {@link rssiDbm} and {@link linkQuality} mean different things per
+     * protocol. Derive it in the owning app, which knows the protocol's
+     * thresholds, rather than leaving a consumer to guess them.
+     */
+    quality: EnyoApplianceSignalQuality;
+    /**
+     * When the reading was taken, ISO 8601.
+     *
+     * A signal reading ages quickly and wireless devices may go quiet, so a
+     * value without a timestamp says nothing about the link today.
+     */
+    measuredAtIso: string;
+}
+
 export enum EnyoApplianceTopologyFeatureEnum {
     /** If the meter is the real Primary Meter collecting feed in and consumption in Wh */
     PrimaryMeter = 'PrimaryMeter',
@@ -382,6 +433,14 @@ export interface EnyoAppliance {
      * storage battery's contents; for those see {@link EnyoBatteryState}.
      */
     batteryState?: EnyoApplianceBatteryState;
+    /**
+     * Quality of the appliance's wireless link (signal strength, link quality
+     * and a coarse rating).
+     *
+     * Absent on wired appliances, and on wireless ones that have not reported
+     * yet.
+     */
+    signalState?: EnyoApplianceSignalState;
     /**
      * Automation action types this appliance can be the target of. Set by the
      * owning app when it {@link save}s the appliance — e.g. a Shelly SmartPlug

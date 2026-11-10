@@ -2,6 +2,7 @@ import {
     EnyoAppliance,
     EnyoApplianceBatteryState,
     EnyoApplianceErrorCode,
+    EnyoApplianceSignalState,
     EnyoApplianceStateEnum,
     EnyoApplianceStatusEnum,
     EnyoApplianceTypeEnum
@@ -2425,6 +2426,14 @@ export interface EnyoDataBusApplianceStateUpdateV1 extends EnyoDataBusMessage {
          * would otherwise fill the bus with a number that moves once a month.
          */
         batteryState?: EnyoApplianceBatteryState;
+        /**
+         * New state of the appliance's wireless link.
+         *
+         * Publish it when {@link EnyoApplianceSignalState.quality} changes —
+         * not on every reading. Signal strength jitters by a few dB all the
+         * time and would otherwise fill the bus with noise.
+         */
+        signalState?: EnyoApplianceSignalState;
     };
 }
 

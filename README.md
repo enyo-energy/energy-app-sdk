@@ -3097,6 +3097,28 @@ Publish changes on `ApplianceStateUpdateV1` (`data.batteryState`) when the level
 - **Declare the feature even before the first reading.** It is how a maintenance view knows to watch for a flat battery, and it keeps a device whose reporting is intermittent from appearing and disappearing from that list.
 - **Always set `measuredAtIso`.** These devices report rarely, so a level without an age says nothing about whether the device is still alive — which is the question a low battery is usually asked alongside.
 
+### Wireless signal quality
+
+An appliance connected over a radio link — Wi-Fi, Zigbee, Bluetooth — reports the link's quality as `EnyoAppliance.signalState`:
+
+```typescript
+await appliances.save({
+    // …
+    signalState: {
+        rssiDbm: -71,
+        linkQuality: 148,
+        quality: 'fair',
+        measuredAtIso: new Date().toISOString(),
+    },
+});
+```
+
+Publish changes on `ApplianceStateUpdateV1` (`data.signalState`) when `quality` changes — not on every reading, since signal strength jitters by a few dB all the time.
+
+- **`quality` is the load-bearing field.** `rssiDbm` and `linkQuality` mean different things per protocol (Zigbee LQI is 0–255, Wi-Fi RSSI is in dBm), so they cannot be compared across appliances. Derive `quality` in your app, which knows the protocol's thresholds.
+- **Report raw values verbatim.** Leave `rssiDbm` or `linkQuality` out when the radio doesn't report them rather than converting one into the other.
+- **Omit `signalState` on wired appliances.**
+
 ## Network Devices & Access Recovery
 
 Packages that talk to local hardware over TCP (Modbus, SunSpec, EEBUS over SHIP, REST) must deal with two failure modes the `useNetworkDevices()` API exposes only at a low level:
