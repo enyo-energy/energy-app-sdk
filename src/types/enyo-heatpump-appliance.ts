@@ -572,9 +572,11 @@ export interface EnyoHeatpumpRoomTemperatureSensorReference {
  * How far the energy manager lowers a heating curve at most, in Kelvin of flow
  * temperature — the same for every circuit, the customer does not choose it.
  * A device whose {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurveOffsetRangeK}
- * allows less caps it further.
+ * allows less caps it further. It starts with a first drop — larger for
+ * radiators than for a floor, which answers slowly ({@link EnyoHeatpumpApplianceHeatingCircuit.type})
+ * — and tunes from there.
  */
-export const HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K = 3;
+export const HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K = 5;
 
 /**
  * The target temperature of a room whose customer has not set one, in °C
@@ -628,12 +630,11 @@ export interface EnyoHeatpumpHeatingCurveOptimizationSettings {
     /**
      * IDs of the rooms ({@link EnyoRoom.id}) this circuit heats — chosen by the
      * customer, whether or not a room has a temperature sensor. Read the rooms
-     * with {@link EnergyAppRoom.getRoomsById}; {@link curveOptimizationRooms}
-     * picks the ones the curve is judged by, and
-     * {@link EnergyAppRoomTemperatures} gives their measured temperatures. The
-     * room furthest below its target decides how low the curve may go; rooms
-     * without a sensor are left out, and without any room that has one the
-     * optimisation cannot run. The
+     * with {@link EnergyAppRoom.getRoomsById} (or {@link curveOptimizationRooms}),
+     * and {@link EnergyAppRoomTemperatures} gives their measured temperatures.
+     * Every room counts, whatever its thermostat: the room furthest below its
+     * target decides how low the curve may go; rooms without a sensor are left
+     * out, and without any room that has one the optimisation cannot run. The
      * curve is lowered by at most {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}.
      */
     roomIds?: string[];
