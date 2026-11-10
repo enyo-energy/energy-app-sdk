@@ -572,17 +572,11 @@ export interface EnyoHeatpumpRoomTemperatureSensorReference {
  * How far the energy manager lowers a heating curve at most, in Kelvin of flow
  * temperature — the same for every circuit, the customer does not choose it.
  * A device whose {@link EnyoHeatpumpApplianceHeatingCircuit.heatingCurveOffsetRangeK}
- * allows less caps it further. It starts with a large drop of
- * {@link HEATPUMP_CURVE_OPTIMIZATION_INITIAL_DROP_K} and tunes from there.
+ * allows less caps it further. It starts with a first drop — larger for
+ * radiators than for a floor, which answers slowly ({@link EnyoHeatpumpApplianceHeatingCircuit.type})
+ * — and tunes from there.
  */
 export const HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K = 5;
-
-/**
- * How far the energy manager lowers a heating curve at once when the customer
- * switches the optimisation on, in Kelvin of flow temperature: thermostats that
- * throttle a curve set far too high open up, and small steps tune it from there.
- */
-export const HEATPUMP_CURVE_OPTIMIZATION_INITIAL_DROP_K = 3;
 
 /**
  * The target temperature of a room whose customer has not set one, in °C
