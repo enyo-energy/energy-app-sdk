@@ -198,6 +198,8 @@ export enum EnyoHeatpumpApplianceConnectionTypeEnum {
  * without the other.
  */
 export enum EnyoHeatpumpSgReadyFunctionEnum {
+    /** Heats the heating buffer tank ({@link EnyoHeatpumpApplianceMetadata.bufferTanks}). */
+    BufferTank = 'buffer-tank',
     /** Heats domestic hot water with the electric heating rod of the DHW tank. */
     DhwHeatingRod = 'dhw-heating-rod',
     /** Heats domestic hot water with the heatpump's compressor. */
@@ -254,6 +256,8 @@ export interface EnyoHeatpumpApplianceSgReadyRelay {
     /**
      * The zone the relay acts on: the {@link EnyoHeatpumpApplianceHeatingCircuit.index}
      * for {@link EnyoHeatpumpSgReadyFunctionEnum.Heating}, the
+     * {@link EnyoHeatpumpApplianceBufferTank.index} for
+     * {@link EnyoHeatpumpSgReadyFunctionEnum.BufferTank}, the
      * {@link EnyoHeatpumpApplianceDomesticHotWater.index} for the DHW
      * functions. Omit for the first (or only) zone.
      */
@@ -968,8 +972,8 @@ export interface EnyoHeatpumpApplianceMetadata {
     connectionType?: EnyoHeatpumpApplianceConnectionTypeEnum;
     /**
      * The SG Ready relays of the installation, 0 to n, each with the function
-     * it acts on (space heating, DHW by heatpump, DHW by heating rod). Omit or
-     * leave empty when no SG Ready input is wired.
+     * it acts on (space heating, buffer tank, DHW by heatpump, DHW by heating
+     * rod). Omit or leave empty when no SG Ready input is wired.
      *
      * Independent of {@link connectionType}: an installation read through an
      * API can still have SG Ready relays wired for control. Validate with
