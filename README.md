@@ -4225,10 +4225,10 @@ await applianceManager.updateHeatpumpDomesticHotWater(applianceId, 0, { timeProg
 Validate before publishing with `validateHeatpumpHeatingCurve`, `validateHeatpumpTimeProgram` or `validateHeatpumpAdvancedMetadata` (or their `assertValid*` counterparts). Each returns `{ ok, errors, warnings }`.
 
 **SG Ready relays.** You can declare 0–n SG Ready inputs in `metadata.heatpump.sgReadyRelays`. Each one has a
-`function` that says what it acts on: `heating` (a heating circuit), `dhw-heatpump` (DHW heated by the compressor)
-or `dhw-heating-rod` (DHW heated by the heating rod). `zoneIndex` names the heating circuit or DHW zone; omit it for
-the first one. If only some of the four states (`blocked`, `normal`, `recommended`, `forced`) are wired, list them
-in `supportedStates`. `activeState` reports the current state. This works independently of `connectionType`.
+`function` that says what it acts on: `heating` (a heating circuit), `buffer-tank` (a heating buffer tank),
+`dhw-heatpump` (DHW heated by the compressor) or `dhw-heating-rod` (DHW heated by the heating rod). `zoneIndex` names
+the heating circuit, buffer tank or DHW zone; omit it for the first one. If only some of the four states (`blocked`,
+`normal`, `recommended`, `forced`) are wired, list them in `supportedStates`. `activeState` reports the current state. This works independently of `connectionType`.
 
 ```typescript
 sgReadyRelays: [

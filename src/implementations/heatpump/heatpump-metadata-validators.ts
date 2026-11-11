@@ -165,10 +165,11 @@ function checkHeatingCurveOffset(
  * `supportedStates`, an unknown `activeState` or one outside
  * `supportedStates`.
  *
- * Warnings: a `zoneIndex` naming no declared heating circuit / DHW zone, two
- * relays with the same function on the same zone, `supportedStates` without
- * `Normal` or with duplicates, a `dhw-heating-rod` relay while the
- * installation does not list a heating rod in `additionalDevices`.
+ * Warnings: a `zoneIndex` naming no declared heating circuit / buffer tank /
+ * DHW zone, two relays with the same function on the same zone,
+ * `supportedStates` without `Normal` or with duplicates, a `dhw-heating-rod`
+ * relay while the installation does not list a heating rod in
+ * `additionalDevices`.
  *
  * @param relays - The declared SG Ready relays.
  * @param metadata - The heatpump metadata, for zones and additional devices.
@@ -177,7 +178,7 @@ function checkHeatingCurveOffset(
  */
 function checkSgReadyRelays(
     relays: EnyoHeatpumpApplianceSgReadyRelay[],
-    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'heatingCircuits' | 'domesticHotWater' | 'additionalDevices'>,
+    metadata: Pick<EnyoHeatpumpApplianceMetadata, 'heatingCircuits' | 'bufferTanks' | 'domesticHotWater' | 'additionalDevices'>,
     errors: string[],
     warnings: string[],
 ): void {
@@ -195,9 +196,10 @@ function checkSgReadyRelays(
             continue;
         }
 
-        const isHeating = relay.function === EnyoHeatpumpSgReadyFunctionEnum.Heating;
-        const zones = isHeating ? metadata.heatingCircuits : metadata.domesticHotWater;
-        const zoneField = isHeating ? 'heatingCircuits' : 'domesticHotWater';
+        const zoneField = relay.function === EnyoHeatpumpSgReadyFunctionEnum.Heating ? 'heatingCircuits'
+            : relay.function === EnyoHeatpumpSgReadyFunctionEnum.BufferTank ? 'bufferTanks'
+            : 'domesticHotWater';
+        const zones = metadata[zoneField];
         const zoneIndex = relay.zoneIndex ?? zones?.[0]?.index ?? 0;
         if (relay.zoneIndex !== undefined && zones?.length && !zones.some(zone => zone.index === relay.zoneIndex)) {
             warnings.push(`${prefix}: zoneIndex ${relay.zoneIndex} is not an index of ${zoneField}`);
@@ -525,7 +527,7 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  */
 export function validateHeatpumpAdvancedMetadata(
     metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>
-        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'additionalDevices' | 'vacationLoweredRangeC'>>,
+        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'bufferTanks' | 'additionalDevices' | 'vacationLoweredRangeC'>>,
 ): HeatpumpMetadataValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];

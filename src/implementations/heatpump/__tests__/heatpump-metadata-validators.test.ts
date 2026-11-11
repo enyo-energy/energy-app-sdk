@@ -234,11 +234,12 @@ describe('validateHeatpumpAdvancedMetadata', () => {
 });
 
 describe('validateHeatpumpAdvancedMetadata sgReadyRelays', () => {
-    const {Heating, DhwHeatpump, DhwHeatingRod} = EnyoHeatpumpSgReadyFunctionEnum;
+    const {BufferTank, Heating, DhwHeatpump, DhwHeatingRod} = EnyoHeatpumpSgReadyFunctionEnum;
     const {Blocked, Normal, Recommended, Forced} = EnyoHeatpumpSgReadyStateEnum;
     const base = {
         availableFeatures: [],
         heatingCircuits: [{index: 0}],
+        bufferTanks: [{index: 0, targetTemperatureC: 45}],
         domesticHotWater: [{index: 0, targetTemperatureC: 50}],
         additionalDevices: [EnyoHeatpumpApplianceAdditionalDeviceEnum.HeatingRod],
     };
@@ -252,8 +253,26 @@ describe('validateHeatpumpAdvancedMetadata sgReadyRelays', () => {
                 {index: 0, function: Heating, zoneIndex: 0, name: 'K1/K2', activeState: Normal},
                 {index: 1, function: DhwHeatpump},
                 {index: 2, function: DhwHeatingRod, supportedStates: [Normal, Forced], activeState: Forced},
+                {index: 3, function: BufferTank, zoneIndex: 0, supportedStates: [Normal, Recommended]},
             ],
         })).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it('checks the zone of a buffer-tank relay against bufferTanks', () => {
+        const result = validateHeatpumpAdvancedMetadata({
+            ...base,
+            bufferTanks: [{index: 0}, {index: 1}],
+            sgReadyRelays: [
+                {index: 0, function: BufferTank, zoneIndex: 1},
+                {index: 1, function: BufferTank, zoneIndex: 2},
+                {index: 2, function: BufferTank, zoneIndex: 1},
+            ],
+        });
+        expect(result.ok).toBe(true);
+        expect(result.warnings).toEqual([
+            'sgReadyRelays[index=1]: zoneIndex 2 is not an index of bufferTanks',
+            'sgReadyRelays[index=2]: another relay already has function buffer-tank on zone 1',
+        ]);
     });
 
     it('rejects duplicate indexes, unknown functions and invalid states', () => {
