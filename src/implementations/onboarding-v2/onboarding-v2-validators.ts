@@ -44,6 +44,7 @@ import type {
 import {EnyoDeviceTestOutcomeEnum} from '../../types/enyo-device-test.js';
 import {EnyoOauthRedirectUrlPatternEnum} from '../../types/enyo-authentication.js';
 import {ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME} from '../../types/enyo-onboarding-v2-additional-setup.js';
+import {EnyoSubscriptionModeEnum} from '../../types/enyo-subscription.js';
 import type {EnergyAppPackagePublicFile} from '../../energy-app-package-definition.js';
 import {isImagePublicFile} from '../files/public-file-validators.js';
 import {resolvePublicFile} from '../files/define-public-file.js';
@@ -1107,16 +1108,22 @@ const SUBSCRIPTION_OFFER_OUTCOMES: ReadonlySet<string> = new Set(
     Object.values(EnyoOnboardingV2SubscriptionOfferOutcome),
 );
 
+/** Every {@link EnyoSubscriptionModeEnum} value. */
+const SUBSCRIPTION_MODES: ReadonlySet<string> = new Set(Object.values(EnyoSubscriptionModeEnum));
+
 /**
  * Validates the subscription offer blocks of a step.
  *
- * Both outcomes are required, not advised: without `subscribed` a purchase has
- * nowhere to go, and without `declined` the free customer is stuck on an offer
- * of an optional plan. Like an auth block, the step holds no other decision —
- * the server gates `subscribed`, and a block beside it would be a way round it.
- * Whether {@link EnyoOnboardingV2SubscriptionOfferBlock.planKey} names a
- * declared plan cannot be checked here: a guide is registered at runtime, apart
- * from the package definition. Use the plan's own key constant.
+ * `subscribed` is always required — without it a purchase has nowhere to go.
+ * `declined` follows the mode: a `required` offer must not have it (there is
+ * no way on without a plan), any other offer must, because a package that
+ * declares `optional` gets the free option from the host. Like an auth block,
+ * the step holds no other decision — the server gates `subscribed`, and a
+ * block beside it would be a way round it.
+ *
+ * Whether the {@link EnyoOnboardingV2SubscriptionOfferBlock.planKeys} name
+ * declared plans cannot be checked here: a guide is registered at runtime,
+ * apart from the package definition. Use the plans' own key constants.
  *
  * @param step - The step whose blocks are checked.
  * @param at - Human-readable location prefix for messages.
@@ -1135,9 +1142,24 @@ function validateSubscriptionOfferBlocks(
 
     for (const block of offerBlocks) {
         const label = `subscription-offer block "${block.id}"`;
-        if (typeof block.planKey !== 'string' || block.planKey.trim() === '') {
-            errors.push(`${at}: ${label} has no planKey.`);
+        if (block.planKeys !== undefined) {
+            if (!Array.isArray(block.planKeys) || block.planKeys.length === 0) {
+                errors.push(`${at}: ${label} has an empty \`planKeys\` list — omit it to offer every plan.`);
+            } else {
+                if (block.planKeys.some((key) => typeof key !== 'string' || key.trim() === '')) {
+                    errors.push(`${at}: ${label} has an empty plan key.`);
+                }
+                if (new Set(block.planKeys).size !== block.planKeys.length) {
+                    errors.push(`${at}: ${label} lists a plan key more than once.`);
+                }
+            }
         }
+        if (block.mode !== undefined && !SUBSCRIPTION_MODES.has(block.mode)) {
+            errors.push(
+                `${at}: ${label} has mode "${block.mode}". Allowed values: ${[...SUBSCRIPTION_MODES].join(', ')}.`,
+            );
+        }
+
         const values = new Set<string>();
         for (const outcome of block.outcomes ?? []) {
             if (!SUBSCRIPTION_OFFER_OUTCOMES.has(outcome.value)) {
@@ -1150,12 +1172,24 @@ function validateSubscriptionOfferBlocks(
             values.add(outcome.value);
             if (!outcome.label?.length) warnings.push(`${at}: ${label} outcome "${outcome.id}" has no label.`);
         }
-        for (const required of SUBSCRIPTION_OFFER_OUTCOMES) {
-            if (!values.has(required)) {
-                errors.push(
-                    `${at}: ${label} has no "${required}" outcome — every offer needs a way on for both answers.`,
-                );
-            }
+        if (!values.has(EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed)) {
+            errors.push(
+                `${at}: ${label} has no "${EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed}" outcome — a purchase would have nowhere to go.`,
+            );
+        }
+        const required = block.mode === EnyoSubscriptionModeEnum.Required;
+        const declined = values.has(EnyoOnboardingV2SubscriptionOfferOutcome.Declined);
+        if (required && declined) {
+            errors.push(
+                `${at}: ${label} is required but has a "${EnyoOnboardingV2SubscriptionOfferOutcome.Declined}" outcome — ` +
+                    'a required plan has no way on without it.',
+            );
+        }
+        if (!required && !declined) {
+            errors.push(
+                `${at}: ${label} has no "${EnyoOnboardingV2SubscriptionOfferOutcome.Declined}" outcome — ` +
+                    'an optional offer needs a way on without a plan (set mode: required if there is none).',
+            );
         }
     }
 

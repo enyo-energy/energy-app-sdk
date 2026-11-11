@@ -25,6 +25,7 @@ import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
 import type {EnyoEebusDeviceTypeEnum} from './enyo-eebus.js';
 import type {EnyoNetworkDeviceDetectedAtEnum} from './enyo-network-device.js';
 import type {EnyoOauthRedirectUrlFilter} from './enyo-authentication.js';
+import type {EnyoSubscriptionMode} from './enyo-subscription.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -1074,62 +1075,71 @@ export interface EnyoOnboardingV2AuthBlock extends EnyoOnboardingV2BlockBase {
 /**
  * The possible results of an {@link EnyoOnboardingV2SubscriptionOfferBlock}.
  *
- * A block MUST wire both: the customer who books goes on to whatever the plan
- * needs (a vendor login, say), the one who does not goes on with the free setup.
+ * `subscribed` is always wired. `declined` is wired exactly when the offer is
+ * optional: a required plan has no way on without it.
  */
 export enum EnyoOnboardingV2SubscriptionOfferOutcome {
     /**
-     * The device has a valid subscription of the block's plan — bought on this
-     * step or already before it. Fired by the host only, never by the client.
+     * The device has a valid subscription of one of the offered plans — bought
+     * on this step or already before it. Fired by the host only, never by the
+     * client.
      */
     Subscribed = 'subscribed',
-    /** The customer went on without the plan. */
+    /** The customer went on with the free base. Only on an optional offer. */
     Declined = 'declined',
 }
 
 /**
- * Offers one of the app's subscription plans in the middle of a guide and
- * branches on whether it was bought.
+ * Shows the package's subscription offer inside a guide step and branches on
+ * whether a plan was bought.
  *
- * The host shows enyo's offer screen for {@link planKey} — the same screen the
- * package declares with `subscriptionOfferScreen`, prices and checkout
- * included — and brings the customer back into the run afterwards. The app
- * authors only what the step says around it (text, bullets, hints) and where
- * each outcome leads.
+ * The host renders the offer the package declares — `subscriptionOfferScreen`
+ * (hero, comparison, hints), the plan cards with their prices from
+ * `subscriptionPlans`, and the free tier from `subscriptionFreeTier` — right in
+ * the step, below the step's own blocks, and runs the checkout from there. The
+ * guide only says which plans to show and where each outcome leads; prices and
+ * features are never written into the guide.
  *
- * **The server decides whether it was bought**, like it decides an
- * {@link EnyoOnboardingV2AuthBlock}: the {@link EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed}
- * handle only fires once enyo holds a valid subscription of the plan for this
- * device, so a client cannot pretend a purchase. A device that already has
- * the plan takes that handle straight away. The customer may always decline.
+ * **Required or optional.** {@link mode} decides whether the customer may go on
+ * without a plan. Left out, the package's `subscriptionMode` decides. A package
+ * that declares `required` cannot be made optional here — the host offers the
+ * free base only where the release declares it — but an optional package may
+ * require a plan on one particular path.
  *
- * Use it where the plan makes sense in the flow rather than in front of it: a
- * `per-unit` plan billed per appliance can only be bought once the appliance
- * exists, so offer it after the step that creates it (a pairing step), not as
- * the first step.
+ * **The server decides whether it was bought**, as it decides an
+ * {@link EnyoOnboardingV2AuthBlock}: the
+ * {@link EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed} handle only fires
+ * once enyo holds a valid subscription of one of the offered plans for this
+ * device, so a client cannot pretend a purchase. A device that already has one
+ * takes that handle straight away. A customer who will not buy a required plan
+ * leaves the guide; the run stays open and resumes on this step.
+ *
+ * Offer a `per-unit` plan billed per appliance only after the step that
+ * creates the appliance (a pairing step) — before, there is nothing to bill.
  *
  * @example
  * ```ts
- * onboardingV2Block.subscriptionOffer('offer-cloud', 'vaillant-cloud', [
+ * onboardingV2Block.subscriptionOffer('offer-cloud', [
  *     {id: 'booked', value: EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed, label: t('Gebucht', 'Booked')},
  *     {id: 'skipped', value: EnyoOnboardingV2SubscriptionOfferOutcome.Declined, label: t('Ohne Abo', 'Without plan')},
- * ]);
+ * ], {planKeys: ['vaillant-cloud'], mode: EnyoSubscriptionModeEnum.Optional});
  * ```
  */
 export interface EnyoOnboardingV2SubscriptionOfferBlock extends EnyoOnboardingV2BlockBase {
     type: EnyoOnboardingV2BlockType.SubscriptionOffer;
     /**
-     * Key of the plan to offer. Must match a `planKey` declared in the package
-     * definition's `subscriptionPlans`.
+     * The plans to offer, by `planKey` from the package definition's
+     * `subscriptionPlans`. Omit to offer all of them; an empty list is invalid.
      */
-    planKey: string;
-    /** Translated text of the button that opens the offer (de/en). Defaults to the host's „Angebot ansehen". */
-    label?: EnyoOnboardingTranslatedContent[];
-    /** Translated text of the button that goes on without the plan (de/en). Defaults to the host's „Ohne Abo fortfahren". */
-    declineLabel?: EnyoOnboardingTranslatedContent[];
+    planKeys?: string[];
     /**
-     * Exactly one outcome per {@link EnyoOnboardingV2SubscriptionOfferOutcome}
-     * value, each with its own transition.
+     * Whether the customer may go on without a plan. Omit to follow the
+     * package's `subscriptionMode`.
+     */
+    mode?: EnyoSubscriptionMode;
+    /**
+     * `subscribed` always; `declined` only when the offer is optional — the
+     * validator rejects it on a `required` block and asks for it otherwise.
      */
     outcomes: EnyoOnboardingV2ActionOutcome[];
 }

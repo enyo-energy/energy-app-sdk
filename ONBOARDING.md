@@ -1121,7 +1121,7 @@ no dynamic blocks registers nothing.
 | `device-select` | `onboardingV2Block.deviceSelect` | its own screen: pick the network device being onboarded; skips itself when one device matches; branches `selected` \| `not-found` |
 | `eebus-device-select` | `onboardingV2Block.eebusDeviceSelect` | its own screen: pick a discovered EEBUS peer and trust its SKI, filtered by device type and/or vendor; skips itself when one peer matches; branches `paired` \| `not-found` \| `failure` |
 | `zigbee-pairing` | `onboardingV2Block.zigbeePairing` | its own screen: open the Zigbee network, list matching devices live as they join, confirm them; filtered by manufacturer and/or model; no network scan needed; branches `paired` \| `not-found` \| `failure` |
-| `subscription-offer` | `onboardingV2Block.subscriptionOffer` | offer one of the app's subscription plans mid-guide: the host shows enyo's offer screen and checkout and brings the customer back; branches `subscribed` (server-decided) \| `declined` |
+| `subscription-offer` | `onboardingV2Block.subscriptionOffer` | shows the package's own subscription offer (offer screen, plan cards, free tier) in the step and runs the checkout there; `mode` required \| optional (default: the package's `subscriptionMode`); branches `subscribed` (server-decided) \| `declined` (optional offers only) |
 | `link` | `onboardingV2Block.link` | a fixed `http(s)` URL to open or copy (passive — no routing handle) |
 | `input` | `onboardingV2Block.input` | the installer types a value, the host checks it and branches |
 | `auth` | `onboardingV2Block.auth` | sign into the energy app's account system; one server-decided success handle |
@@ -1589,28 +1589,33 @@ leads into a *second* picker step, exactly as `ocpp-connect` does.
 
 ### Offering a subscription plan (`subscription-offer`)
 
-An app with `subscriptionMode: 'optional'` can offer a plan where it makes sense
-in the setup — after pairing, say — instead of in front of it:
+An app that sells plans can offer them where they make sense in the setup —
+after pairing, say — instead of in front of it:
 
 ```typescript
-onboardingV2Block.subscriptionOffer('offer-cloud', VAILLANT_CLOUD_PLAN_KEY, [
+onboardingV2Block.subscriptionOffer('offer-cloud', [
     {id: 'booked',  value: EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed, label: t('Gebucht', 'Booked')},
     {id: 'skipped', value: EnyoOnboardingV2SubscriptionOfferOutcome.Declined,   label: t('Ohne Abo weiter', 'Continue without')},
-], {
-    label: t('Vaillant Cloud ansehen', 'View Vaillant Cloud'),
-    declineLabel: t('Nein danke, weiter', 'No thanks, continue'),
-});
+], {planKeys: [VAILLANT_CLOUD_PLAN_KEY], mode: EnyoSubscriptionModeEnum.Optional});
 ```
 
-The step's other blocks say what the plan is for; the host adds a button that
-opens enyo's offer screen for `planKey` (prices, comparison, checkout) and one
-that goes on without it. After checkout the customer lands back on the step.
+The host shows the offer the package declares — `subscriptionOfferScreen`,
+the plan cards with prices from `subscriptionPlans` and the free tier — right
+in the step, below the step's own blocks, and runs the checkout from there.
+Prices and features are never written into the guide. `planKeys` narrows the
+plans shown; left out, all of them are offered.
+
+**Required or optional.** `mode` decides whether the customer may go on
+without a plan; left out, the package's `subscriptionMode` decides. A package
+that declares `required` cannot be loosened by a guide. On a required offer
+there is no `declined` branch: a customer who does not buy leaves the guide,
+and the run resumes on this step.
 
 **Outcomes.** `subscribed` fires only once enyo holds a valid subscription of
-the plan for the device — the server decides, like on an `auth` step, and a
-device that already has the plan takes it straight away. `declined` is the
-customer's choice and always open. Both must be wired, and the offer owns its
-step: no other decision block beside it.
+one of the offered plans for the device — the server decides, like on an
+`auth` step, and a device that already has one takes it straight away.
+`declined` exists exactly on optional offers. The offer owns its step: no
+other decision block beside it.
 
 **Per-unit plans.** A plan billed per appliance can only be bought once the
 appliance exists — put the offer after the step that creates it.

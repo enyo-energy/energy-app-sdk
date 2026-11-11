@@ -12,6 +12,7 @@
 
 import type {EnyoOnboardingTranslatedContent} from '../../types/enyo-onboarding.js';
 import type {EnyoOauthRedirectUrlFilter} from '../../types/enyo-authentication.js';
+import type {EnyoSubscriptionMode} from '../../types/enyo-subscription.js';
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2BlockType,
@@ -531,34 +532,28 @@ export const onboardingV2Block = {
         redirectUrlFilter: opts?.redirectUrlFilter,
     }),
     /**
-     * A subscription offer block: enyo's offer screen for one of the app's
-     * plans, with a branch for "bought" and one for "went on without".
+     * A subscription offer block: the package's own offer — offer screen, plan
+     * cards, free tier — shown in the step, with a branch for "bought" and,
+     * on an optional offer, one for "went on without".
      *
-     * Two outcomes, one per {@link EnyoOnboardingV2SubscriptionOfferOutcome}
-     * value — route each with {@link onOutcomeV2}. The server decides
-     * `subscribed`; the customer may always decline.
+     * Route each outcome with {@link onOutcomeV2}. The server decides
+     * `subscribed`; `declined` exists only when the offer is optional.
      *
      * @param id - Stable block id, unique within the guide.
-     * @param planKey - A `planKey` declared in the package's `subscriptionPlans`.
-     * @param outcomes - One `subscribed` and one `declined` outcome.
-     * @param opts - Optional translated `label` (opens the offer) and
-     *   `declineLabel` (goes on without the plan); the host has defaults for both.
+     * @param outcomes - `subscribed`, plus `declined` unless `mode` is `required`.
+     * @param opts - `planKeys` to offer (default: every plan of the package) and
+     *   `mode` (default: the package's `subscriptionMode`).
      */
     subscriptionOffer: (
         id: string,
-        planKey: string,
         outcomes: EnyoOnboardingV2ActionOutcome[],
-        opts?: {
-            label?: EnyoOnboardingTranslatedContent[];
-            declineLabel?: EnyoOnboardingTranslatedContent[];
-        },
+        opts?: {planKeys?: string[]; mode?: EnyoSubscriptionMode},
     ): EnyoOnboardingV2Block => ({
         id,
         type: EnyoOnboardingV2BlockType.SubscriptionOffer,
-        planKey,
         outcomes,
-        label: opts?.label,
-        declineLabel: opts?.declineLabel,
+        planKeys: opts?.planKeys,
+        mode: opts?.mode,
     }),
     /**
      * A link block: a fixed URL the installer opens or copies.
