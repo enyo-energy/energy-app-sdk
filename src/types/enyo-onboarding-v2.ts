@@ -25,6 +25,7 @@ import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
 import type {EnyoEebusDeviceTypeEnum} from './enyo-eebus.js';
 import type {EnyoNetworkDeviceDetectedAtEnum} from './enyo-network-device.js';
 import type {EnyoOauthRedirectUrlFilter} from './enyo-authentication.js';
+import type {EnyoSubscriptionMode} from './enyo-subscription.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -326,6 +327,7 @@ export enum EnyoOnboardingV2BlockType {
     DeviceSelect = 'device-select',
     EebusDeviceSelect = 'eebus-device-select',
     ZigbeePairing = 'zigbee-pairing',
+    SubscriptionOffer = 'subscription-offer',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -1071,6 +1073,78 @@ export interface EnyoOnboardingV2AuthBlock extends EnyoOnboardingV2BlockBase {
 }
 
 /**
+ * The possible results of an {@link EnyoOnboardingV2SubscriptionOfferBlock}.
+ *
+ * `subscribed` is always wired. `declined` is wired exactly when the offer is
+ * optional: a required plan has no way on without it.
+ */
+export enum EnyoOnboardingV2SubscriptionOfferOutcome {
+    /**
+     * The device has a valid subscription of one of the offered plans — bought
+     * on this step or already before it. Fired by the host only, never by the
+     * client.
+     */
+    Subscribed = 'subscribed',
+    /** The customer went on with the free base. Only on an optional offer. */
+    Declined = 'declined',
+}
+
+/**
+ * Shows the package's subscription offer inside a guide step and branches on
+ * whether a plan was bought.
+ *
+ * The host renders the offer the package declares — `subscriptionOfferScreen`
+ * (hero, comparison, hints), the plan cards with their prices from
+ * `subscriptionPlans`, and the free tier from `subscriptionFreeTier` — right in
+ * the step, below the step's own blocks, and runs the checkout from there. The
+ * guide only says which plans to show and where each outcome leads; prices and
+ * features are never written into the guide.
+ *
+ * **Required or optional.** {@link mode} decides whether the customer may go on
+ * without a plan. Left out, the package's `subscriptionMode` decides. A package
+ * that declares `required` cannot be made optional here — the host offers the
+ * free base only where the release declares it — but an optional package may
+ * require a plan on one particular path.
+ *
+ * **The server decides whether it was bought**, as it decides an
+ * {@link EnyoOnboardingV2AuthBlock}: the
+ * {@link EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed} handle only fires
+ * once enyo holds a valid subscription of one of the offered plans for this
+ * device, so a client cannot pretend a purchase. A device that already has one
+ * takes that handle straight away. A customer who will not buy a required plan
+ * leaves the guide; the run stays open and resumes on this step.
+ *
+ * Offer a `per-unit` plan billed per appliance only after the step that
+ * creates the appliance (a pairing step) — before, there is nothing to bill.
+ *
+ * @example
+ * ```ts
+ * onboardingV2Block.subscriptionOffer('offer-cloud', [
+ *     {id: 'booked', value: EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed, label: t('Gebucht', 'Booked')},
+ *     {id: 'skipped', value: EnyoOnboardingV2SubscriptionOfferOutcome.Declined, label: t('Ohne Abo', 'Without plan')},
+ * ], {planKeys: ['vaillant-cloud'], mode: EnyoSubscriptionModeEnum.Optional});
+ * ```
+ */
+export interface EnyoOnboardingV2SubscriptionOfferBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.SubscriptionOffer;
+    /**
+     * The plans to offer, by `planKey` from the package definition's
+     * `subscriptionPlans`. Omit to offer all of them; an empty list is invalid.
+     */
+    planKeys?: string[];
+    /**
+     * Whether the customer may go on without a plan. Omit to follow the
+     * package's `subscriptionMode`.
+     */
+    mode?: EnyoSubscriptionMode;
+    /**
+     * `subscribed` always; `declined` only when the offer is optional — the
+     * validator rejects it on a `required` block and asks for it otherwise.
+     */
+    outcomes: EnyoOnboardingV2ActionOutcome[];
+}
+
+/**
  * What an {@link EnyoOnboardingV2SetupField} collects. Drives the keyboard, the
  * masking, and — for {@link Password} and {@link Token} — whether the value is
  * treated as a secret.
@@ -1271,7 +1345,8 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2SelectBlock
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
-    | EnyoOnboardingV2ZigbeePairingBlock;
+    | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2SubscriptionOfferBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -1289,7 +1364,8 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2AdditionalSetupBlock
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
-    | EnyoOnboardingV2ZigbeePairingBlock;
+    | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2SubscriptionOfferBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets

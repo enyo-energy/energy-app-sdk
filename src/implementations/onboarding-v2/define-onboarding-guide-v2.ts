@@ -12,6 +12,7 @@
 
 import type {EnyoOnboardingTranslatedContent} from '../../types/enyo-onboarding.js';
 import type {EnyoOauthRedirectUrlFilter} from '../../types/enyo-authentication.js';
+import type {EnyoSubscriptionMode} from '../../types/enyo-subscription.js';
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2BlockType,
@@ -529,6 +530,30 @@ export const onboardingV2Block = {
         help: opts?.help,
         requiresWebAuthentication: opts?.requiresWebAuthentication,
         redirectUrlFilter: opts?.redirectUrlFilter,
+    }),
+    /**
+     * A subscription offer block: the package's own offer — offer screen, plan
+     * cards, free tier — shown in the step, with a branch for "bought" and,
+     * on an optional offer, one for "went on without".
+     *
+     * Route each outcome with {@link onOutcomeV2}. The server decides
+     * `subscribed`; `declined` exists only when the offer is optional.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param outcomes - `subscribed`, plus `declined` unless `mode` is `required`.
+     * @param opts - `planKeys` to offer (default: every plan of the package) and
+     *   `mode` (default: the package's `subscriptionMode`).
+     */
+    subscriptionOffer: (
+        id: string,
+        outcomes: EnyoOnboardingV2ActionOutcome[],
+        opts?: {planKeys?: string[]; mode?: EnyoSubscriptionMode},
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.SubscriptionOffer,
+        outcomes,
+        planKeys: opts?.planKeys,
+        mode: opts?.mode,
     }),
     /**
      * A link block: a fixed URL the installer opens or copies.

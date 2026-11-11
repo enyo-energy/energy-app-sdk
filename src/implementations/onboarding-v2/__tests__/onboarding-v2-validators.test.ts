@@ -7,6 +7,7 @@ import {
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2ZigbeePairOutcome,
+    EnyoOnboardingV2SubscriptionOfferOutcome,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2OcppConnectOutcome,
@@ -23,6 +24,7 @@ import type {EnergyAppPackagePublicFile} from '../../../energy-app-package-defin
 import {definePublicFile} from '../../files/define-public-file.js';
 import {EnyoDeviceTestOutcomeEnum} from '../../../types/enyo-device-test.js';
 import {EnyoOauthRedirectUrlPatternEnum} from '../../../types/enyo-authentication.js';
+import {EnyoSubscriptionModeEnum} from '../../../types/enyo-subscription.js';
 import {EnyoEebusDeviceTypeEnum} from '../../../types/enyo-eebus.js';
 import {EnyoNetworkDeviceDetectedAtEnum} from '../../../types/enyo-network-device.js';
 import {
@@ -939,6 +941,106 @@ describe('eebus-device-select blocks', () => {
         guide.startStepId = 's0';
         const result = validateOnboardingGuideV2(guide);
         expect(result.warnings.some((w) => w.includes('requiresNetworkScan'))).toBe(false);
+    });
+});
+
+describe('subscription-offer blocks', () => {
+    /**
+     * A scan-free guide whose single step offers plans, wiring `values` as its
+     * outcomes; `opts` go to the block, `extraBlocks` onto the same step.
+     */
+    function offerGuide(
+        values: string[],
+        opts: {planKeys?: string[]; mode?: EnyoSubscriptionModeEnum} = {},
+        extraBlocks: EnyoOnboardingV2Block[] = [],
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Cloud buchen', 'Book the cloud'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            requiresNetworkScan: false,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'offer',
+                    title: t('Angebot', 'Offer'),
+                    blocks: [
+                        onboardingV2Block.text('intro', t('Mehr Funktionen', 'More features')),
+                        onboardingV2Block.subscriptionOffer(
+                            'o1',
+                            values.map((value, i) => ({id: `h${i}`, value, label: t(value, value)})),
+                            opts,
+                        ),
+                        ...extraBlocks,
+                    ],
+                    transitions: [
+                        ...values.map((_, i) => onOutcomeV2('o1', `h${i}`, onboardingV2Target.success())),
+                        ...extraBlocks.flatMap((b) =>
+                            b.type === EnyoOnboardingV2BlockType.Choice
+                                ? b.options.map((o) => onOptionV2(b.id, o.id, onboardingV2Target.success()))
+                                : [],
+                        ),
+                    ],
+                },
+            ],
+        });
+    }
+
+    const SUBSCRIBED = EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed;
+    const DECLINED = EnyoOnboardingV2SubscriptionOfferOutcome.Declined;
+
+    it('accepts an optional offer of every plan with both outcomes wired', () => {
+        const result = validateOnboardingGuideV2(offerGuide([SUBSCRIBED, DECLINED]));
+        expect(result.errors).toEqual([]);
+        expect(result.warnings).toEqual([]);
+    });
+
+    it('accepts a required offer of named plans with only the subscribed outcome', () => {
+        const result = validateOnboardingGuideV2(
+            offerGuide([SUBSCRIBED], {planKeys: ['cloud'], mode: EnyoSubscriptionModeEnum.Required}),
+        );
+        expect(result.errors).toEqual([]);
+    });
+
+    it('asks for the declined branch unless the offer is required', () => {
+        const result = validateOnboardingGuideV2(offerGuide([SUBSCRIBED]));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('set mode: required'))).toBe(true);
+    });
+
+    it('rejects a declined branch on a required offer', () => {
+        const result = validateOnboardingGuideV2(
+            offerGuide([SUBSCRIBED, DECLINED], {mode: EnyoSubscriptionModeEnum.Required}),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('has no way on without it'))).toBe(true);
+    });
+
+    it('requires the subscribed branch', () => {
+        const result = validateOnboardingGuideV2(offerGuide([DECLINED]));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('no "subscribed" outcome'))).toBe(true);
+    });
+
+    it('rejects an outcome value outside the enum and a duplicated one', () => {
+        const unknown = validateOnboardingGuideV2(offerGuide([SUBSCRIBED, DECLINED, 'maybe']));
+        expect(unknown.errors.some((e) => e.includes('EnyoOnboardingV2SubscriptionOfferOutcome'))).toBe(true);
+        const twice = validateOnboardingGuideV2(offerGuide([SUBSCRIBED, DECLINED, DECLINED]));
+        expect(twice.errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('rejects an empty or duplicated plan list', () => {
+        const empty = validateOnboardingGuideV2(offerGuide([SUBSCRIBED, DECLINED], {planKeys: []}));
+        expect(empty.errors.some((e) => e.includes('empty `planKeys`'))).toBe(true);
+        const twice = validateOnboardingGuideV2(offerGuide([SUBSCRIBED, DECLINED], {planKeys: ['a', 'a']}));
+        expect(twice.errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('rejects a second decision block on the offer step', () => {
+        const choice = onboardingV2Block.choice('c1', [{id: 'a', label: t('A', 'A')}]);
+        const result = validateOnboardingGuideV2(offerGuide([SUBSCRIBED, DECLINED], {}, [choice]));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('the offer owns its step'))).toBe(true);
     });
 });
 
