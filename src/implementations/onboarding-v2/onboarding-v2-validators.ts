@@ -19,6 +19,7 @@ import {
     EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2ZigbeePairOutcome,
+    EnyoOnboardingV2SubscriptionOfferOutcome,
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2SetupFieldType,
@@ -143,6 +144,7 @@ export function validateOnboardingGuideV2(
         validateImageBlocks(step, at, errors, warnings, context);
         validateInputBlocks(step, at, errors, warnings);
         validateAuthBlocks(step, at, errors, warnings);
+        validateSubscriptionOfferBlocks(step, at, errors, warnings);
         validateAdditionalSetupBlocks(step, at, errors, warnings);
     }
 
@@ -902,6 +904,7 @@ const DECISION_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
     EnyoOnboardingV2BlockType.DeviceSelect,
     EnyoOnboardingV2BlockType.EebusDeviceSelect,
     EnyoOnboardingV2BlockType.ZigbeePairing,
+    EnyoOnboardingV2BlockType.SubscriptionOffer,
 ]);
 
 /** The picker block types, as a type guard over the block union. */
@@ -1098,6 +1101,79 @@ function validateAuthBlocks(
     }
 }
 
+
+/** Every {@link EnyoOnboardingV2SubscriptionOfferOutcome} value. */
+const SUBSCRIPTION_OFFER_OUTCOMES: ReadonlySet<string> = new Set(
+    Object.values(EnyoOnboardingV2SubscriptionOfferOutcome),
+);
+
+/**
+ * Validates the subscription offer blocks of a step.
+ *
+ * Both outcomes are required, not advised: without `subscribed` a purchase has
+ * nowhere to go, and without `declined` the free customer is stuck on an offer
+ * of an optional plan. Like an auth block, the step holds no other decision —
+ * the server gates `subscribed`, and a block beside it would be a way round it.
+ * Whether {@link EnyoOnboardingV2SubscriptionOfferBlock.planKey} names a
+ * declared plan cannot be checked here: a guide is registered at runtime, apart
+ * from the package definition. Use the plan's own key constant.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateSubscriptionOfferBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const offerBlocks = (step.blocks ?? []).filter(
+        (b) => b.type === EnyoOnboardingV2BlockType.SubscriptionOffer,
+    );
+
+    for (const block of offerBlocks) {
+        const label = `subscription-offer block "${block.id}"`;
+        if (typeof block.planKey !== 'string' || block.planKey.trim() === '') {
+            errors.push(`${at}: ${label} has no planKey.`);
+        }
+        const values = new Set<string>();
+        for (const outcome of block.outcomes ?? []) {
+            if (!SUBSCRIPTION_OFFER_OUTCOMES.has(outcome.value)) {
+                errors.push(
+                    `${at}: ${label} has outcome value "${outcome.value}", which is not an EnyoOnboardingV2SubscriptionOfferOutcome member.`,
+                );
+            } else if (values.has(outcome.value)) {
+                errors.push(`${at}: ${label} wires outcome value "${outcome.value}" more than once.`);
+            }
+            values.add(outcome.value);
+            if (!outcome.label?.length) warnings.push(`${at}: ${label} outcome "${outcome.id}" has no label.`);
+        }
+        for (const required of SUBSCRIPTION_OFFER_OUTCOMES) {
+            if (!values.has(required)) {
+                errors.push(
+                    `${at}: ${label} has no "${required}" outcome — every offer needs a way on for both answers.`,
+                );
+            }
+        }
+    }
+
+    if (offerBlocks.length > 1) {
+        errors.push(`${at}: more than one subscription-offer block; a step can offer one plan.`);
+    }
+    if (offerBlocks.length === 1) {
+        const others = (step.blocks ?? []).filter(
+            (b) => b.type !== EnyoOnboardingV2BlockType.SubscriptionOffer && DECISION_BLOCK_TYPES.has(b.type),
+        );
+        if (others.length) {
+            errors.push(
+                `${at}: subscription-offer block "${offerBlocks[0]!.id}" shares the step with ${others.length} other decision block(s) — ` +
+                    'the offer owns its step; put the next decision on the step it leads to.',
+            );
+        }
+    }
+}
 
 /** Slug used for `setupKey` and field `name`s. */
 const SETUP_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -1508,7 +1584,8 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             b.type === EnyoOnboardingV2BlockType.Input ||
             b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
             b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
-            b.type === EnyoOnboardingV2BlockType.ZigbeePairing
+            b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
+            b.type === EnyoOnboardingV2BlockType.SubscriptionOffer
         ) {
             for (const o of b.outcomes ?? []) keys.add(`outcome:${b.id}:${o.id}`);
         } else if (b.type === EnyoOnboardingV2BlockType.Auth && b.outcome?.id) {

@@ -7,6 +7,7 @@ import {
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2ZigbeePairOutcome,
+    EnyoOnboardingV2SubscriptionOfferOutcome,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2DeviceSelectOutcome,
     EnyoOnboardingV2OcppConnectOutcome,
@@ -939,6 +940,94 @@ describe('eebus-device-select blocks', () => {
         guide.startStepId = 's0';
         const result = validateOnboardingGuideV2(guide);
         expect(result.warnings.some((w) => w.includes('requiresNetworkScan'))).toBe(false);
+    });
+});
+
+describe('subscription-offer blocks', () => {
+    /**
+     * A scan-free guide whose single step offers the `cloud` plan, wiring
+     * `values` as its outcomes; `extraBlocks` are added to the same step.
+     */
+    function offerGuide(
+        values: string[],
+        planKey = 'cloud',
+        extraBlocks: EnyoOnboardingV2Block[] = [],
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Cloud buchen', 'Book the cloud'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            requiresNetworkScan: false,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'offer',
+                    title: t('Angebot', 'Offer'),
+                    blocks: [
+                        onboardingV2Block.text('intro', t('Mehr Funktionen', 'More features')),
+                        onboardingV2Block.subscriptionOffer(
+                            'o1',
+                            planKey,
+                            values.map((value, i) => ({id: `h${i}`, value, label: t(value, value)})),
+                        ),
+                        ...extraBlocks,
+                    ],
+                    transitions: [
+                        ...values.map((_, i) => onOutcomeV2('o1', `h${i}`, onboardingV2Target.success())),
+                        ...extraBlocks.flatMap((b) =>
+                            b.type === EnyoOnboardingV2BlockType.Choice
+                                ? b.options.map((o) => onOptionV2(b.id, o.id, onboardingV2Target.success()))
+                                : [],
+                        ),
+                    ],
+                },
+            ],
+        });
+    }
+
+    const BOTH = [
+        EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed,
+        EnyoOnboardingV2SubscriptionOfferOutcome.Declined,
+    ];
+
+    it('accepts both outcomes wired', () => {
+        const result = validateOnboardingGuideV2(offerGuide(BOTH));
+        expect(result.errors).toEqual([]);
+        expect(result.warnings).toEqual([]);
+        expect(result.ok).toBe(true);
+    });
+
+    it('requires the declined branch', () => {
+        const result = validateOnboardingGuideV2(
+            offerGuide([EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed]),
+        );
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('no "declined" outcome'))).toBe(true);
+    });
+
+    it('rejects an outcome value outside the enum', () => {
+        const result = validateOnboardingGuideV2(offerGuide([...BOTH, 'maybe']));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('EnyoOnboardingV2SubscriptionOfferOutcome'))).toBe(true);
+    });
+
+    it('rejects a duplicated outcome value', () => {
+        const result = validateOnboardingGuideV2(offerGuide([...BOTH, EnyoOnboardingV2SubscriptionOfferOutcome.Declined]));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('rejects a missing planKey', () => {
+        const result = validateOnboardingGuideV2(offerGuide(BOTH, ' '));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('no planKey'))).toBe(true);
+    });
+
+    it('rejects a second decision block on the offer step', () => {
+        const choice = onboardingV2Block.choice('c1', [{id: 'a', label: t('A', 'A')}]);
+        const result = validateOnboardingGuideV2(offerGuide(BOTH, 'cloud', [choice]));
+        expect(result.ok).toBe(false);
+        expect(result.errors.some((e) => e.includes('the offer owns its step'))).toBe(true);
     });
 });
 

@@ -326,6 +326,7 @@ export enum EnyoOnboardingV2BlockType {
     DeviceSelect = 'device-select',
     EebusDeviceSelect = 'eebus-device-select',
     ZigbeePairing = 'zigbee-pairing',
+    SubscriptionOffer = 'subscription-offer',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -1071,6 +1072,69 @@ export interface EnyoOnboardingV2AuthBlock extends EnyoOnboardingV2BlockBase {
 }
 
 /**
+ * The possible results of an {@link EnyoOnboardingV2SubscriptionOfferBlock}.
+ *
+ * A block MUST wire both: the customer who books goes on to whatever the plan
+ * needs (a vendor login, say), the one who does not goes on with the free setup.
+ */
+export enum EnyoOnboardingV2SubscriptionOfferOutcome {
+    /**
+     * The device has a valid subscription of the block's plan — bought on this
+     * step or already before it. Fired by the host only, never by the client.
+     */
+    Subscribed = 'subscribed',
+    /** The customer went on without the plan. */
+    Declined = 'declined',
+}
+
+/**
+ * Offers one of the app's subscription plans in the middle of a guide and
+ * branches on whether it was bought.
+ *
+ * The host shows enyo's offer screen for {@link planKey} — the same screen the
+ * package declares with `subscriptionOfferScreen`, prices and checkout
+ * included — and brings the customer back into the run afterwards. The app
+ * authors only what the step says around it (text, bullets, hints) and where
+ * each outcome leads.
+ *
+ * **The server decides whether it was bought**, like it decides an
+ * {@link EnyoOnboardingV2AuthBlock}: the {@link EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed}
+ * handle only fires once enyo holds a valid subscription of the plan for this
+ * device, so a client cannot pretend a purchase. A device that already has
+ * the plan takes that handle straight away. The customer may always decline.
+ *
+ * Use it where the plan makes sense in the flow rather than in front of it: a
+ * `per-unit` plan billed per appliance can only be bought once the appliance
+ * exists, so offer it after the step that creates it (a pairing step), not as
+ * the first step.
+ *
+ * @example
+ * ```ts
+ * onboardingV2Block.subscriptionOffer('offer-cloud', 'vaillant-cloud', [
+ *     {id: 'booked', value: EnyoOnboardingV2SubscriptionOfferOutcome.Subscribed, label: t('Gebucht', 'Booked')},
+ *     {id: 'skipped', value: EnyoOnboardingV2SubscriptionOfferOutcome.Declined, label: t('Ohne Abo', 'Without plan')},
+ * ]);
+ * ```
+ */
+export interface EnyoOnboardingV2SubscriptionOfferBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.SubscriptionOffer;
+    /**
+     * Key of the plan to offer. Must match a `planKey` declared in the package
+     * definition's `subscriptionPlans`.
+     */
+    planKey: string;
+    /** Translated text of the button that opens the offer (de/en). Defaults to the host's „Angebot ansehen". */
+    label?: EnyoOnboardingTranslatedContent[];
+    /** Translated text of the button that goes on without the plan (de/en). Defaults to the host's „Ohne Abo fortfahren". */
+    declineLabel?: EnyoOnboardingTranslatedContent[];
+    /**
+     * Exactly one outcome per {@link EnyoOnboardingV2SubscriptionOfferOutcome}
+     * value, each with its own transition.
+     */
+    outcomes: EnyoOnboardingV2ActionOutcome[];
+}
+
+/**
  * What an {@link EnyoOnboardingV2SetupField} collects. Drives the keyboard, the
  * masking, and — for {@link Password} and {@link Token} — whether the value is
  * treated as a secret.
@@ -1271,7 +1335,8 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2SelectBlock
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
-    | EnyoOnboardingV2ZigbeePairingBlock;
+    | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2SubscriptionOfferBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -1289,7 +1354,8 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2AdditionalSetupBlock
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
-    | EnyoOnboardingV2ZigbeePairingBlock;
+    | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2SubscriptionOfferBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets

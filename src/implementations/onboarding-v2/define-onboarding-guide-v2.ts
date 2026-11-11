@@ -531,6 +531,36 @@ export const onboardingV2Block = {
         redirectUrlFilter: opts?.redirectUrlFilter,
     }),
     /**
+     * A subscription offer block: enyo's offer screen for one of the app's
+     * plans, with a branch for "bought" and one for "went on without".
+     *
+     * Two outcomes, one per {@link EnyoOnboardingV2SubscriptionOfferOutcome}
+     * value — route each with {@link onOutcomeV2}. The server decides
+     * `subscribed`; the customer may always decline.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param planKey - A `planKey` declared in the package's `subscriptionPlans`.
+     * @param outcomes - One `subscribed` and one `declined` outcome.
+     * @param opts - Optional translated `label` (opens the offer) and
+     *   `declineLabel` (goes on without the plan); the host has defaults for both.
+     */
+    subscriptionOffer: (
+        id: string,
+        planKey: string,
+        outcomes: EnyoOnboardingV2ActionOutcome[],
+        opts?: {
+            label?: EnyoOnboardingTranslatedContent[];
+            declineLabel?: EnyoOnboardingTranslatedContent[];
+        },
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.SubscriptionOffer,
+        planKey,
+        outcomes,
+        label: opts?.label,
+        declineLabel: opts?.declineLabel,
+    }),
+    /**
      * A link block: a fixed URL the installer opens or copies.
      *
      * Passive content — it produces no routing handle, so a step whose only
