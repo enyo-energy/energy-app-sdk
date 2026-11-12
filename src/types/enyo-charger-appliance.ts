@@ -107,7 +107,25 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
      * {@link EnyoChargerApplianceMetadata.ampereStep}) and phase switching
      * ({@link EnyoChargerApplianceMetadata.availablePhases}).
      */
-    DcCharger = 'DcCharger'
+    DcCharger = 'DcCharger',
+    /**
+     * The charger is not a device of its own but a vehicle: a wallbox enyo
+     * cannot talk to supplies the power, and charging is switched on and off
+     * in the car itself through its manufacturer's cloud (e.g. Smartcar).
+     *
+     * Such a charger can only be **switched**, never throttled: while on, the
+     * car draws its own full power. It reports this as
+     * {@link EnyoChargerApplianceMetadata.minChargingPowerKw} equal to
+     * {@link EnyoChargerApplianceMetadata.maxChargingPowerKw}, so any non-zero
+     * setpoint means full power. It may only be switched rarely, see
+     * {@link EnyoChargerApplianceMetadata.virtualWallbox}, and it has no meter:
+     * power and energy are what the vehicle reports, with a delay.
+     *
+     * Declared together with {@link SmartChargingSchedule}: schedules are
+     * emulated as on/off, and the energy manager steers only chargers that
+     * accept one. Built with `VirtualWallboxIntegrationEnergyApp`.
+     */
+    VirtualWallbox = 'VirtualWallbox'
 }
 
 /**
@@ -284,4 +302,36 @@ export interface EnyoChargerApplianceMetadata extends EnyoChargePreferences {
      * grid rather than from stored battery energy.
      */
     blockBatteriesOnCharging?: boolean;
+    /**
+     * Switching limits of a virtual wallbox. Present exactly when
+     * {@link availableFeatures} contains
+     * {@link EnyoChargerApplianceAvailableFeaturesEnum.VirtualWallbox}.
+     */
+    virtualWallbox?: EnyoChargerApplianceVirtualWallboxMetadata;
+}
+
+/**
+ * How often a virtual wallbox
+ * ({@link EnyoChargerApplianceAvailableFeaturesEnum.VirtualWallbox}) may be
+ * switched. Every switch is a command to the vehicle through its
+ * manufacturer's cloud: it can wake the car, costs per call and is throttled
+ * by the manufacturer, so a plan for this charger should consist of few,
+ * long charging blocks.
+ *
+ * The integration enforces the limits itself: a switch the energy manager asks
+ * for earlier is applied once the interval has passed, one beyond the daily
+ * cap once a switch has left the 24-hour window, and a start beyond the
+ * plug-in budget not before the car is plugged in again. A switch off is held
+ * back only by the interval.
+ */
+export interface EnyoChargerApplianceVirtualWallboxMetadata {
+    /** Shortest time, in minutes, between two switches (on → off or off → on). */
+    minSwitchIntervalMinutes: number;
+    /**
+     * Most charging blocks (starts) from one plug-in to the unplug. A further
+     * start waits for the next plug-in; switching off is never held back.
+     */
+    maxBlocksPerPlugIn: number;
+    /** Most switches in any 24-hour window, a cap on starts for a car plugged in and out often. */
+    maxSwitchesPerDay: number;
 }
