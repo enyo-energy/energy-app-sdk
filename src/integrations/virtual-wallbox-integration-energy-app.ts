@@ -38,6 +38,8 @@ import {
 export const VIRTUAL_WALLBOX_DEFAULT_MIN_SWITCH_INTERVAL_MINUTES = 60;
 /** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.maxBlocksPerPlugIn}. */
 export const VIRTUAL_WALLBOX_DEFAULT_MAX_BLOCKS_PER_PLUG_IN = 1;
+/** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.meterHeartbeatSeconds}: below the energy manager's 90 s. */
+export const VIRTUAL_WALLBOX_DEFAULT_METER_HEARTBEAT_SECONDS = 60;
 /** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.maxSwitchesPerDay}: two blocks. */
 export const VIRTUAL_WALLBOX_DEFAULT_MAX_SWITCHES_PER_DAY = 4;
 
@@ -87,6 +89,16 @@ export interface VirtualWallboxIntegrationEnergyAppOptions extends IntegrationEn
      * @default 4
      */
     maxSwitchesPerDay?: number;
+    /**
+     * How often, in seconds, the last meter value of an open session is
+     * published again when the vehicle reports nothing new. Vehicle clouds
+     * report on change only, while the energy manager takes a charger's draw
+     * as stale after 90 seconds and the host a charge without readings as
+     * dead. Local only — it costs no call to the vehicle.
+     *
+     * @default 60
+     */
+    meterHeartbeatSeconds?: number;
 }
 
 /**
@@ -228,6 +240,8 @@ interface VirtualWallboxState {
     startsSincePlugIn: number;
     /** Applies a held-back wish once switching is allowed again. */
     retryTimer?: ReturnType<typeof setTimeout>;
+    /** Publishes the last meter value again while a session is open. */
+    meterHeartbeat?: ReturnType<typeof setInterval>;
     /** Future entries of the last charging schedule. */
     scheduleTimers: ReturnType<typeof setTimeout>[];
     /** Serialises switches and vehicle updates of this wallbox. */
@@ -323,6 +337,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     private readonly minSwitchIntervalMs: number;
     private readonly maxBlocksPerPlugIn: number;
     private readonly maxSwitchesPerDay: number;
+    private readonly meterHeartbeatMs: number;
     private readonly applianceManager?: ApplianceManager;
     private readonly wallboxes = new Map<string, VirtualWallboxState>();
     private switchHistory?: Promise<void>;
@@ -335,6 +350,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         this.minSwitchIntervalMs = (options.minSwitchIntervalMinutes ?? VIRTUAL_WALLBOX_DEFAULT_MIN_SWITCH_INTERVAL_MINUTES) * 60_000;
         this.maxBlocksPerPlugIn = options.maxBlocksPerPlugIn ?? VIRTUAL_WALLBOX_DEFAULT_MAX_BLOCKS_PER_PLUG_IN;
         this.maxSwitchesPerDay = options.maxSwitchesPerDay ?? VIRTUAL_WALLBOX_DEFAULT_MAX_SWITCHES_PER_DAY;
+        this.meterHeartbeatMs = (options.meterHeartbeatSeconds ?? VIRTUAL_WALLBOX_DEFAULT_METER_HEARTBEAT_SECONDS) * 1000;
         this.applianceManager = options.applianceManager;
     }
 
@@ -378,6 +394,8 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         for (const wallbox of this.wallboxes.values()) {
             this.clearRetry(wallbox);
             this.clearSchedule(wallbox);
+            clearInterval(wallbox.meterHeartbeat);
+            wallbox.meterHeartbeat = undefined;
         }
         super.stop();
     }
@@ -695,8 +713,27 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             });
         }
         this.syncRegistryStatus(applianceId, wallbox, status, suspendedReason);
+        this.keepMeterFresh(applianceId, wallbox);
 
         if (!state.pluggedIn) this.forgetCharge(wallbox);
+    }
+
+    /**
+     * Runs the meter heartbeat while a session is open: the last meter value
+     * again every {@link VirtualWallboxIntegrationEnergyAppOptions.meterHeartbeatSeconds},
+     * so a car that reports only on change does not read as gone.
+     */
+    private keepMeterFresh(applianceId: string, wallbox: VirtualWallboxState): void {
+        if (wallbox.session && !wallbox.meterHeartbeat) {
+            wallbox.meterHeartbeat = setInterval(() => void this.enqueue(wallbox, async () => {
+                if (wallbox.session && wallbox.vehicle) {
+                    this.publishMeter(applianceId, wallbox, wallbox.vehicle, EnyoChargingMeterValueContext.SamplePeriodic);
+                }
+            }), this.meterHeartbeatMs);
+        } else if (!wallbox.session && wallbox.meterHeartbeat) {
+            clearInterval(wallbox.meterHeartbeat);
+            wallbox.meterHeartbeat = undefined;
+        }
     }
 
     /**

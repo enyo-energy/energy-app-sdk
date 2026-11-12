@@ -137,7 +137,7 @@ function setUp(options: Partial<VirtualWallboxIntegrationEnergyAppOptions> = {},
 }
 
 beforeEach(() => {
-    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'Date']});
+    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date']});
     vi.setSystemTime(new Date('2026-11-12T10:00:00Z'));
     setUp();
 });
@@ -564,6 +564,20 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         await charging({chargingPowerW: 3_000, sessionEnergyWh: 6_000});
         await charging({chargingPowerW: 3_000, sessionEnergyWh: 500});
         expect(meters().map((m) => m.data.energyDeliveredWh)).toEqual([0, 1_000, 1_500]);
+    });
+
+    it('publishes the last meter value again every minute while the car reports nothing new', async () => {
+        await charging({chargingPowerW: 11_000, sessionEnergyWh: 1_000});
+        expect(meters()).toHaveLength(1);
+
+        await vi.advanceTimersByTimeAsync(3 * MINUTE);
+        expect(meters()).toHaveLength(4);
+        expect(meters().at(-1)?.data).toMatchObject({chargingPowerW: 11_000, context: 'Sample.Periodic'});
+
+        await unplugged();
+        const count = meters().length;
+        await vi.advanceTimersByTimeAsync(3 * MINUTE);
+        expect(meters()).toHaveLength(count);
     });
 
     it('publishes no meter value while the car charges without telling its power', async () => {

@@ -4306,6 +4306,9 @@ any wallbox. The class turns those plans into what the car can do:
   at most `maxSwitchesPerDay` (default 4) in 24 h. Both budgets hold back starts only, never
   a switch off. A wish held back is applied as soon as it may be — beyond the plug-in budget
   not before the next plug-in; explicit starts and stops go out at once. The switch history is kept in `useStorage()`, so a restart refills nothing.
+- **Meter values stay fresh:** while a session is open, the last meter value is published again
+  every `meterHeartbeatSeconds` (default 60) — vehicle clouds report on change only, and the energy
+  manager takes a charger's draw as stale after 90 s. Local only, no call to the vehicle.
 - **A stop stays stopped:** after `StopChargeV1`, power, schedule and resume commands are
   rejected until a new start or an unplug.
 - **Not supported:** reset, reboot, log upload and — by default — a §14a grid-operator
