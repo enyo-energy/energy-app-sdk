@@ -4,7 +4,7 @@
 #
 # Fires on every push to `main`, but only dispatches when that push changed the
 # `version` in package.json: a push without a release has nothing to hand over.
-# The npm publish is still a manual step; the portal waits up to 30 minutes for
+# The npm publish runs in `publish.yml` on the same push; the portal waits up to 30 minutes for
 # the version to appear on the registry.
 #
 # Needs the secret DEVELOPER_PORTAL_DISPATCH_TOKEN: a fine-grained token with
