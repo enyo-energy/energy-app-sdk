@@ -133,6 +133,7 @@ export * from './integrations/integration-types.js';
 export * from './integrations/integration-energy-app.js';
 export * from './integrations/heatpump-integration-energy-app.js';
 export * from './integrations/wallbox-integration-energy-app.js';
+export * from './integrations/virtual-wallbox-integration-energy-app.js';
 export * from './integrations/air-conditioning-integration-energy-app.js';
 export * from './integrations/storage-integration-energy-app.js';
 export * from './integrations/inverter-integration-energy-app.js';

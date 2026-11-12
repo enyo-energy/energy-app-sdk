@@ -47,6 +47,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [IntegrationEnergyApp (Base Class)](#integrationenergyapp-base-class)
   - [HeatpumpIntegrationEnergyApp](#heatpumpintegrationenergyapp)
   - [WallboxIntegrationEnergyApp](#wallboxintegrationenergyapp)
+  - [VirtualWallboxIntegrationEnergyApp](#virtualwallboxintegrationenergyapp)
   - [StorageIntegrationEnergyApp](#storageintegrationenergyapp)
   - [InverterIntegrationEnergyApp](#inverterintegrationenergyapp)
   - [AirConditioningIntegrationEnergyApp](#airconditioningintegrationenergyapp)
@@ -166,6 +167,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Talk to a Modbus device through configuration only | [`EnergyAppModbusInverter` / `Battery` / `Meter`](#advanced-modbus-integration) |
 | Build a **device integration** for a heatpump | [`HeatpumpIntegrationEnergyApp`](#heatpumpintegrationenergyapp) |
 | Build a **device integration** for an EV wallbox | [`WallboxIntegrationEnergyApp`](#wallboxintegrationenergyapp) |
+| Let the energy manager control a **car on a wallbox enyo cannot talk to** (start/stop in the car) | [`VirtualWallboxIntegrationEnergyApp`](#virtualwallboxintegrationenergyapp) |
 | Build a **device integration** for a battery / storage system | [`StorageIntegrationEnergyApp`](#storageintegrationenergyapp) |
 | Build a **device integration** for a PV inverter | [`InverterIntegrationEnergyApp`](#inverterintegrationenergyapp) |
 | Build a **device integration** for an air-conditioning unit | [`AirConditioningIntegrationEnergyApp`](#airconditioningintegrationenergyapp) |
@@ -4279,6 +4281,60 @@ class MyWallbox extends WallboxIntegrationEnergyApp {
     }
     // ... other handlers
 }
+```
+
+### VirtualWallboxIntegrationEnergyApp
+
+A **virtual wallbox**: for a car on a wallbox enyo cannot talk to, charging is switched on
+and off in the car itself through its manufacturer's cloud (e.g. Smartcar charge start/stop).
+To the energy manager it is an ordinary charger appliance, so it plans for the car like for
+any wallbox. The class turns those plans into what the car can do:
+
+- **Implement only** `switchVehicleCharging(applianceId, on)` — start or stop charging in the
+  car, returning `{accepted, reason?}`. It is called only when on/off actually changes, never
+  twice at once for the same car.
+- **Feed the car's state** with `updateVehicleState(applianceId, {pluggedIn, charging,
+  chargingPowerW?, sessionEnergyWh?, socPercent?, vehicleId?})` on every report. The class
+  derives the OCPP status, opens and closes sessions (`ChargingStartedV1` / `ChargingStoppedV1`,
+  initiator `App` after a `StartChargeV1`, else `Charger` with the wallbox's default mode),
+  publishes meter values from the energy the car reports and, given an `ApplianceManager`,
+  keeps the registry's `charger.status` in step.
+- **Commands become on/off:** start, resume and any non-zero power or schedule entry switch
+  on; stop, pause and zero switch off. Schedules are emulated with timers.
+- **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
+  at most `maxBlocksPerPlugIn` (default 1) charging blocks from plug-in to unplug and
+  at most `maxSwitchesPerDay` (default 4) in 24 h. Both budgets hold back starts only, never
+  a switch off. A wish held back is applied as soon as it may be — beyond the plug-in budget
+  not before the next plug-in; explicit starts and stops go out at once. The switch history is kept in `useStorage()`, so a restart refills nothing.
+- **Meter values stay fresh:** while a session is open, the last meter value is published again
+  every `meterHeartbeatSeconds` (default 60) — vehicle clouds report on change only, and the energy
+  manager takes a charger's draw as stale after 90 s. Local only, no call to the vehicle.
+- **A stop stays stopped:** after `StopChargeV1`, power, schedule and resume commands are
+  rejected until a new start or an unplug.
+- **Not supported:** reset, reboot, log upload and — by default — a §14a grid-operator
+  limitation (override `handleGridOperatorPowerLimitation` to act on it).
+
+Create the appliance with `virtualWallboxChargerMetadata({chargingPowerKw})`: it declares the
+`VirtualWallbox` and `SmartChargingSchedule` features (schedules are emulated as on/off; the energy manager only steers chargers that accept one), sets `minChargingPowerKw` = `maxChargingPowerKw` (so a plan is either
+off or full power) and states the switching limits in `charger.virtualWallbox`.
+
+The virtual meter and the open session live in memory; after a restart the meter starts at 0
+and a charge in progress is announced anew.
+
+```typescript
+class SmartcarWallbox extends VirtualWallboxIntegrationEnergyApp {
+    constructor(applianceManager: ApplianceManager) {
+        super({ source: EnyoSourceEnum.Device, applianceManager });
+    }
+
+    protected async switchVehicleCharging(applianceId: string, on: boolean) {
+        const result = on ? await api.startCharge(carOf(applianceId)) : await api.stopCharge(carOf(applianceId));
+        return { accepted: result.status === 'SUCCESS', reason: result.error?.detail };
+    }
+}
+
+// whenever the car reports:
+await wallbox.updateVehicleState(applianceId, { pluggedIn, charging, chargingPowerW, sessionEnergyWh });
 ```
 
 ### StorageIntegrationEnergyApp
