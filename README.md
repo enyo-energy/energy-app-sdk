@@ -5451,6 +5451,33 @@ dataBus.listenForMessages([EnyoDataBusMessageEnum.RequestBatteryChargeNowV1], (m
 });
 ```
 
+## Batteries That Only Grid-Charge at Full Power
+
+Some batteries have exactly one control: charge from the grid at full power until full. One example is the safety charge of a SENEC.Home V3. They have no power setpoint, no holding and no discharge lock. Such a battery is still worth controlling with a dynamic tariff, because it can be filled from the grid in cheap hours.
+
+**Battery integration:**
+
+- Declare `EnyoBatteryFeature.GridChargeFullPowerOnly` and `maxChargingPowerW`. Do **not** declare `GridCharging`, `ManualCharge`, `ManualDischarge`, `GridDischarging` or the limitation features. An energy manager that doesn't know the new feature then leaves the battery alone, instead of sending small charge setpoints that the battery would turn into a full-power grid charge.
+- Also declare `EnyoBatteryFeature.GridChargeFullPowerStoppable`, but only if `Auto` really ends a running charge on the device.
+- Answer `SetStorageControlV2` / `SetStorageScheduleV1` with `validateFullPowerGridChargeControl` / `validateFullPowerGridChargeSchedule`. They accept `Auto`, `Idle` and `Charge` at `maxChargingPowerW` or more. Everything else gets `NotSupported`: a charge below full power, `Charge 0`, `Hold` and `Discharge`.
+
+```typescript
+protected async handleSetStorageControl(message: EnyoDataBusSetStorageControlV2): Promise<IntegrationCommandResponse> {
+    const result = validateFullPowerGridChargeControl(message, this.batteryMetadata);
+    if (result.action === FullPowerGridChargeActionEnum.StartGridCharge) {
+        await this.device.startSafetyCharge();
+    } else if (result.action === FullPowerGridChargeActionEnum.Release && isFullPowerGridChargeStoppable(this.batteryMetadata)) {
+        await this.device.stopSafetyCharge();
+    }
+    return {answer: result.answer, rejectionReason: result.rejectionReason};
+}
+```
+
+**Energy manager:**
+
+- Use the battery only for whole grid charges in cheap hours. Send `Charge` at `maxChargingPowerW` to start one and `Auto` to release the battery. Never send PV surplus charges, `Hold`, `Discharge` or `Charge 0`.
+- Without `GridChargeFullPowerStoppable` (check with `isFullPowerGridChargeStoppable`), a started charge runs until the battery is full, even after `Auto`. Plan it as a charge to 100 % SoC at full power, regardless of `maxSoC`.
+
 ## Dynamic Grid Fees & Tariff Bonuses
 
 An electricity price is rarely one number. It is the energy price, plus the grid operator's network

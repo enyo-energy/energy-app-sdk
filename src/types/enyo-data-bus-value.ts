@@ -3902,6 +3902,10 @@ export interface EnyoStorageScheduleEntry {
  * `seconds = 0` so the appliance has an authoritative setpoint
  * immediately.
  *
+ * A battery declaring {@link EnyoBatteryFeature.GridChargeFullPowerOnly} only
+ * takes `Auto`, and schedules made of `Idle` entries and `Charge` entries at
+ * its `maxChargingPowerW` or more; see that feature for the contract.
+ *
  * The receiving integration should answer with an
  * {@link EnyoDataBusCommandAcknowledgeV1} message that references this
  * message's `id` to indicate whether the schedule was accepted, rejected,
@@ -3977,6 +3981,10 @@ export enum EnyoStorageControlDirectionEnum {
  * When `mode` is {@link EnyoStorageControlModeEnum.Controlled} the appliance
  * must apply the prescribed {@link data.control} direction and power until a
  * new command arrives.
+ *
+ * A battery declaring {@link EnyoBatteryFeature.GridChargeFullPowerOnly} only
+ * takes `Auto` and `Charge` at its `maxChargingPowerW` or more; see that
+ * feature for the contract.
  *
  * The receiving integration should answer with an
  * {@link EnyoDataBusCommandAcknowledgeV1} message referencing this message's

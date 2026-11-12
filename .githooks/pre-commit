@@ -1,0 +1,23 @@
+#!/bin/sh
+# Refuses a commit whose staged package.json `version` differs from the staged `SDK_VERSION` in
+# src/version.ts — the published SDK would report the wrong version at runtime.
+# Installed by `npm install` (the `prepare` script sets `core.hooksPath` to .githooks).
+# Bypass in an emergency with `git commit --no-verify`.
+
+# Compare what is staged, not the working tree: that is what ends up in the commit.
+package_json=$(git show :package.json 2>/dev/null) || exit 0
+version_ts=$(git show :src/version.ts 2>/dev/null) || exit 0
+
+package_version=$(printf '%s' "$package_json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
+sdk_version=$(printf '%s\n' "$version_ts" | sed -n "s/^export const SDK_VERSION = '\([^']*\)';.*/\1/p")
+
+if [ -z "$sdk_version" ]; then
+    echo "pre-commit: no SDK_VERSION found in src/version.ts." >&2
+    exit 1
+fi
+
+if [ "$package_version" != "$sdk_version" ]; then
+    echo "pre-commit: package.json version ($package_version) does not match SDK_VERSION in src/version.ts ($sdk_version)." >&2
+    echo "Fix with: npm run extract-version && git add src/version.ts" >&2
+    exit 1
+fi
