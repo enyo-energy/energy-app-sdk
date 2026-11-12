@@ -29,6 +29,11 @@ export interface EnergyAppAuthentication {
      * Adds a listener for authentication responses.
      * The listener will be called when the user completes the authentication process.
      *
+     * When the submitted credentials do not work, resolve with
+     * {@link EnyoAuthenticationStateEnum.AuthenticationFailed} and a
+     * {@link EnyoAuthenticateState.failureReason}, so the host can show the user on the running
+     * request why the sign-in failed.
+     *
      * @param listener - Callback function that receives the authentication response and should return the authentication state
      * @returns The listener ID for removing the listener later
      */

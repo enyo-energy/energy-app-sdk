@@ -208,6 +208,16 @@ export interface EnyoAuthentication {
      * are capped by the host.
      */
     timeoutMs?: number;
+    /**
+     * Optional reason why the previous sign-in failed, shown to the user on this pending request.
+     *
+     * Set it when the package asks the user to authenticate again after a failure, for example
+     * when a session that used to work was rejected by the vendor, so the sign-in screen can
+     * explain why it is shown instead of looking like a first-time login. Use the same value
+     * that was reported via {@link EnyoAuthenticateState.failureReason}. Omit it for a first
+     * sign-in.
+     */
+    failureReason?: EnyoAuthenticationFailureReason;
 }
 
 /** Default value of {@link EnyoAuthentication.timeoutMs} when it is omitted: 10 seconds. */
@@ -254,9 +264,46 @@ export enum EnyoAuthenticationStateEnum {
     Unauthenticated = 'Unauthenticated'
 }
 
+/**
+ * Why an authentication attempt failed, reported in {@link EnyoAuthenticateState.failureReason}.
+ *
+ * - `invalidCredentials`: the vendor rejected the submitted credentials (wrong username,
+ *   password, API key, or a denied/expired OAuth grant). The user should correct their input.
+ * - `technicalError`: the credentials could not be checked, e.g. the vendor cloud or device was
+ *   unreachable, timed out, or answered unexpectedly. The user may retry later with the same input.
+ * - `sessionExpired`: a sign-in that used to work is no longer accepted, e.g. the token was
+ *   revoked, a token refresh failed, or the password was changed elsewhere. The user has to sign
+ *   in again. Typically set on a new request via {@link EnyoAuthentication.failureReason}.
+ * - `tooManyAttempts`: the vendor temporarily blocks sign-ins after repeated attempts or rate
+ *   limits them. The user should wait before trying again, as retrying right away can extend the block.
+ * - `accountActionRequired`: the credentials are valid, but the vendor requires an action in its
+ *   own portal first, e.g. accepting new terms, verifying an email address, enabling API access,
+ *   or completing a multi-factor login the package cannot perform. The user should do this at the
+ *   vendor, then try again.
+ * - `insufficientPermissions`: the sign-in succeeded, but the account is not allowed to access the
+ *   required system or appliance, e.g. a wrong account type, not the system owner, or missing OAuth
+ *   scopes. The user should use another account or ask the owner for access.
+ *
+ * More values may be added in future versions. Hosts must treat an unknown value like an omitted
+ * one and show a generic error.
+ */
+export type EnyoAuthenticationFailureReason =
+    | 'invalidCredentials'
+    | 'technicalError'
+    | 'sessionExpired'
+    | 'tooManyAttempts'
+    | 'accountActionRequired'
+    | 'insufficientPermissions';
+
 export interface EnyoAuthenticateState {
     state: EnyoAuthenticationStateEnum;
     authenticatedByRequestId?: string;
     /** The name of the account or user */
     name?: string;
+    /**
+     * Optional reason why authentication failed. Only meaningful when `state` is
+     * {@link EnyoAuthenticationStateEnum.AuthenticationFailed}; omit it for other states.
+     * Lets the host tell the user whether to fix their input or simply retry later.
+     */
+    failureReason?: EnyoAuthenticationFailureReason;
 }
