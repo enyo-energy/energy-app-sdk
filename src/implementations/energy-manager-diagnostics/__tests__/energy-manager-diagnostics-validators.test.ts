@@ -2,6 +2,8 @@ import {describe, expect, it} from 'vitest';
 import {EnyoApplianceTypeEnum} from '../../../types/enyo-appliance.js';
 import {EnyoDataBusMessageEnum} from '../../../types/enyo-data-bus-value.js';
 import {
+    EnyoEnergyManagerApplianceSteering,
+    EnyoEnergyManagerApplianceSteeringStateEnum,
     EnyoEnergyManagerCycleDiagnostics,
     EnyoEnergyManagerCycleOutcomeEnum,
     EnyoEnergyManagerCyclePhaseEnum,
@@ -288,5 +290,102 @@ describe('validateEnergyManagerCycleDiagnostics', () => {
         } catch (err) {
             expect(err).toBeInstanceOf(EnergyManagerDiagnosticsValidationError);
         }
+    });
+});
+
+describe('validateEnergyManagerCycleDiagnostics — applianceSteering', () => {
+    function steering(
+        overrides: Partial<EnyoEnergyManagerApplianceSteering> = {},
+    ): EnyoEnergyManagerApplianceSteering {
+        return {
+            applianceId: 'heatpump-1',
+            applianceType: EnyoApplianceTypeEnum.Heatpump,
+            state: EnyoEnergyManagerApplianceSteeringStateEnum.Blocked,
+            reasonCode: 'no-controllable-feature',
+            reason: 'Heatpump declares no feature the energy manager can control.',
+            sinceIso: '2026-05-23T08:00:00.000Z',
+            ...overrides,
+        };
+    }
+
+    it('accepts a cycle without applianceSteering', () => {
+        expect(() => validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: undefined}))).not.toThrow();
+    });
+
+    it('accepts one entry per appliance in every state', () => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(
+                baseCycle({
+                    applianceSteering: [
+                        steering(),
+                        steering({
+                            applianceId: 'heatpump-2',
+                            state: EnyoEnergyManagerApplianceSteeringStateEnum.Idle,
+                            reasonCode: undefined,
+                            reason: undefined,
+                        }),
+                        steering({
+                            applianceId: 'battery-1',
+                            applianceType: EnyoApplianceTypeEnum.Storage,
+                            state: EnyoEnergyManagerApplianceSteeringStateEnum.Active,
+                            reasonCode: undefined,
+                            sinceIso: '2026-06-10T12:00:00.842Z',
+                        }),
+                        steering({
+                            applianceId: 'charger-1',
+                            applianceType: EnyoApplianceTypeEnum.Charger,
+                            state: EnyoEnergyManagerApplianceSteeringStateEnum.SwitchedOff,
+                            reasonCode: 'control-disabled-by-user',
+                        }),
+                    ],
+                }),
+            ),
+        ).not.toThrow();
+    });
+
+    it('rejects a duplicated applianceId', () => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering(), steering()]})),
+        ).toThrow(/applianceSteering\[1\]\.applianceId='heatpump-1' is duplicated/);
+    });
+
+    it('requires a reasonCode for blocked', () => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering({reasonCode: undefined})]})),
+        ).toThrow(/reasonCode is required/);
+    });
+
+    it.each(['', 'No Controllable Feature', 'no_controllable_feature'])('rejects reasonCode %j', (reasonCode) => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering({reasonCode})]})),
+        ).toThrow(/reasonCode must be a non-empty kebab-case string/);
+    });
+
+    it('rejects an empty reason', () => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering({reason: ''})]})),
+        ).toThrow(/reason must be a non-empty string/);
+    });
+
+    it('rejects an unknown state and an empty applianceId', () => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(
+                baseCycle({applianceSteering: [steering({state: 'paused' as EnyoEnergyManagerApplianceSteeringStateEnum})]}),
+            ),
+        ).toThrow(/state is invalid/);
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering({applianceId: ''})]})),
+        ).toThrow(/applianceId must be a non-empty string/);
+    });
+
+    it('rejects an invalid sinceIso or one after cycleCompletedAtIso', () => {
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering({sinceIso: 'yesterday'})]})),
+        ).toThrow(/sinceIso is not a valid ISO 8601 timestamp/);
+        expect(() =>
+            validateEnergyManagerCycleDiagnostics(
+                baseCycle({applianceSteering: [steering({sinceIso: '2026-06-10T12:00:01.000Z'})]}),
+            ),
+        ).toThrow(/must not be after cycleCompletedAtIso/);
     });
 });

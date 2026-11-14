@@ -2,6 +2,8 @@ import {EnyoApplianceTypeEnum} from '../../types/enyo-appliance.js';
 import {EnyoDataBusMessageEnum} from '../../types/enyo-data-bus-value.js';
 import {
     EnyoEnergyManagerApplianceCount,
+    EnyoEnergyManagerApplianceSteering,
+    EnyoEnergyManagerApplianceSteeringStateEnum,
     EnyoEnergyManagerCommandAcknowledgement,
     EnyoEnergyManagerCommandCount,
     EnyoEnergyManagerCycleDiagnostics,
@@ -43,6 +45,8 @@ const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  *  - The sum of `phaseDurations[].durationMs` ≤ `totalDurationMs`.
  *  - Every count / duration field is a non-negative finite number; counts are integers.
  *  - `issues[].code` is non-empty kebab-case (e.g. `'forecast-fetch-failed'`).
+ *  - `applianceSteering`, when given: each `applianceId` appears at most once, `reasonCode` is
+ *    kebab-case and required for `blocked`, and `sinceIso` is not after `cycleCompletedAtIso`.
  */
 export function validateEnergyManagerCycleDiagnostics(
     cycle: EnyoEnergyManagerCycleDiagnostics,
@@ -129,6 +133,21 @@ export function validateEnergyManagerCycleDiagnostics(
         validateApplianceCount(cycle.appliancesManaged[i]!, `appliancesManaged[${i}]`);
     }
 
+    if (cycle.applianceSteering !== undefined) {
+        validateArray(cycle.applianceSteering, 'applianceSteering');
+        const applianceIdsSeen = new Set<string>();
+        for (let i = 0; i < cycle.applianceSteering.length; i++) {
+            const entry = cycle.applianceSteering[i]!;
+            validateApplianceSteering(entry, `applianceSteering[${i}]`, endMs);
+            if (applianceIdsSeen.has(entry.applianceId)) {
+                throw new EnergyManagerDiagnosticsValidationError(
+                    `applianceSteering[${i}].applianceId='${entry.applianceId}' is duplicated; each appliance may appear at most once.`,
+                );
+            }
+            applianceIdsSeen.add(entry.applianceId);
+        }
+    }
+
     validateNonNegativeFiniteInteger(
         cycle.plannedHorizonMinutes,
         'plannedHorizonMinutes',
@@ -208,6 +227,64 @@ function validateApplianceCount(
         `${fieldName}.applianceType`,
     );
     validateNonNegativeFiniteInteger(entry.count, `${fieldName}.count`);
+}
+
+/**
+ * Validates one {@link EnyoEnergyManagerApplianceSteering} entry.
+ *
+ * @param entry - The entry to validate.
+ * @param fieldName - Path of the entry in the payload, used in error messages.
+ * @param cycleCompletedAtMs - The cycle's `cycleCompletedAtIso` in epoch milliseconds; `sinceIso` must not be later.
+ */
+function validateApplianceSteering(
+    entry: EnyoEnergyManagerApplianceSteering,
+    fieldName: string,
+    cycleCompletedAtMs: number,
+): void {
+    if (!entry || typeof entry !== 'object') {
+        throw new EnergyManagerDiagnosticsValidationError(
+            `${fieldName} must be an object.`,
+        );
+    }
+    if (typeof entry.applianceId !== 'string' || entry.applianceId.length === 0) {
+        throw new EnergyManagerDiagnosticsValidationError(
+            `${fieldName}.applianceId must be a non-empty string.`,
+        );
+    }
+    validateEnumValue(
+        entry.applianceType,
+        EnyoApplianceTypeEnum,
+        `${fieldName}.applianceType`,
+    );
+    validateEnumValue(
+        entry.state,
+        EnyoEnergyManagerApplianceSteeringStateEnum,
+        `${fieldName}.state`,
+    );
+    if (entry.reasonCode !== undefined) {
+        if (typeof entry.reasonCode !== 'string' || !KEBAB_CASE_RE.test(entry.reasonCode)) {
+            throw new EnergyManagerDiagnosticsValidationError(
+                `${fieldName}.reasonCode must be a non-empty kebab-case string (e.g. 'no-controllable-feature'); got ${JSON.stringify(entry.reasonCode)}.`,
+            );
+        }
+    } else if (entry.state === EnyoEnergyManagerApplianceSteeringStateEnum.Blocked) {
+        throw new EnergyManagerDiagnosticsValidationError(
+            `${fieldName}.reasonCode is required when state='${entry.state}'.`,
+        );
+    }
+    if (entry.reason !== undefined) {
+        if (typeof entry.reason !== 'string' || entry.reason.length === 0) {
+            throw new EnergyManagerDiagnosticsValidationError(
+                `${fieldName}.reason must be a non-empty string when provided.`,
+            );
+        }
+    }
+    const sinceMs = parseIsoOrThrow(entry.sinceIso, `${fieldName}.sinceIso`);
+    if (sinceMs > cycleCompletedAtMs) {
+        throw new EnergyManagerDiagnosticsValidationError(
+            `${fieldName}.sinceIso (${entry.sinceIso}) must not be after cycleCompletedAtIso.`,
+        );
+    }
 }
 
 function validateIssue(entry: EnyoEnergyManagerIssue, fieldName: string): void {

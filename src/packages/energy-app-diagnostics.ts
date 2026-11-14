@@ -60,6 +60,13 @@ export interface EnergyAppDiagnostics {
      *     appliancesManaged: [
      *         {applianceType: EnyoApplianceTypeEnum.Storage, count: 1},
      *     ],
+     *     applianceSteering: [
+     *         {applianceId: 'battery-1', applianceType: EnyoApplianceTypeEnum.Storage,
+     *          state: EnyoEnergyManagerApplianceSteeringStateEnum.Active, sinceIso: '2026-11-14T06:00:00.000Z'},
+     *         {applianceId: 'heatpump-1', applianceType: EnyoApplianceTypeEnum.Heatpump,
+     *          state: EnyoEnergyManagerApplianceSteeringStateEnum.Blocked, reasonCode: 'no-controllable-feature',
+     *          sinceIso: '2026-10-23T08:00:00.000Z'},
+     *     ],
      *     plannedHorizonMinutes: 360,
      *     issues: [],
      * });

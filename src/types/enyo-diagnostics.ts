@@ -697,14 +697,72 @@ export interface EnyoEnergyManagerCommandAcknowledgement {
 }
 
 /**
- * Headcount of appliances the energy manager is currently planning for,
- * broken down by appliance type.
+ * Number of appliances of one type with an open request in a cycle.
+ *
+ * @deprecated Report each appliance in
+ * {@link EnyoEnergyManagerCycleDiagnostics.applianceSteering} instead.
  */
 export interface EnyoEnergyManagerApplianceCount {
     /** Which appliance type this count is for. */
     applianceType: EnyoApplianceTypeEnum;
-    /** How many appliances of this type are under management. Non-negative integer. */
+    /** How many appliances of this type had an open request this cycle. Non-negative integer. */
     count: number;
+}
+
+/**
+ * Whether the energy manager steers an appliance, as reported in
+ * {@link EnyoEnergyManagerApplianceSteering.state}.
+ */
+export enum EnyoEnergyManagerApplianceSteeringStateEnum {
+    /** The energy manager is steering the appliance: it has an open request or command this cycle. */
+    Active = 'active',
+    /** The appliance can be steered, but the energy manager has nothing for it to do this cycle. */
+    Idle = 'idle',
+    /**
+     * The energy manager cannot steer the appliance, e.g. the integration does not allow
+     * control, the appliance declares no feature the energy manager can control, or the grid
+     * operator blocks it via SG Ready. `reasonCode` says why.
+     */
+    Blocked = 'blocked',
+    /** The user switched off energy-manager control for this appliance or its category. */
+    SwitchedOff = 'switched-off',
+}
+
+/**
+ * Steering state of one appliance in an energy-manager cycle: whether the energy manager
+ * steers it, why not, and since when.
+ *
+ * Reported per appliance, not per category, so a site with two appliances of one type
+ * shows each of them. Together with {@link sinceIso} it answers questions like "which
+ * heatpumps have been blocked for more than 7 days, and why" with a single read, without
+ * counting cycles or parsing messages.
+ */
+export interface EnyoEnergyManagerApplianceSteering {
+    /** ID of the appliance. Each appliance appears at most once per cycle. */
+    applianceId: string;
+    /** Type of the appliance. */
+    applianceType: EnyoApplianceTypeEnum;
+    /** Whether the energy manager steers the appliance this cycle. */
+    state: EnyoEnergyManagerApplianceSteeringStateEnum;
+    /**
+     * Short, stable kebab-case code for why the appliance is in this state, for grouping in
+     * fleet queries and dashboards. Required when {@link state} is
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.Blocked}; optional otherwise.
+     *
+     * Use the same code for the same cause across all appliance types, e.g.
+     * `'control-not-allowed'`, `'no-controllable-feature'`, `'sg-ready-blocked'`,
+     * `'appliance-offline'` or `'control-disabled-by-user'`.
+     */
+    reasonCode?: string;
+    /** Optional human-readable detail, e.g. the decision's own explanation. */
+    reason?: string;
+    /**
+     * ISO 8601 timestamp when the appliance entered this {@link state} (with this
+     * {@link reasonCode}). Carry it over unchanged from cycle to cycle while state and reason
+     * code stay the same, and reset it when either changes. Must not be after the cycle's
+     * `cycleCompletedAtIso`.
+     */
+    sinceIso: string;
 }
 
 /**
@@ -771,8 +829,24 @@ export interface EnyoEnergyManagerCycleDiagnostics {
      */
     commandAcknowledgements: EnyoEnergyManagerCommandAcknowledgement[];
 
-    /** How many appliances of each type are currently under EM control. */
+    /**
+     * Per appliance type, how many appliances had an open request this cycle.
+     *
+     * @deprecated Use {@link applianceSteering}, which reports every appliance with its state,
+     * reason and since when. Still required so existing consumers keep working.
+     */
     appliancesManaged: EnyoEnergyManagerApplianceCount[];
+    /**
+     * Steering state of every appliance the energy manager knows, one entry per appliance:
+     * whether it is steered (`active`), could be steered but has nothing to do (`idle`),
+     * cannot be steered (`blocked`), or was switched off by the user (`switched-off`).
+     *
+     * Optional so older publishers stay valid. A publisher that throttles or deduplicates
+     * diagnostics must treat a change of any entry's `state` or `reasonCode` as a change and
+     * publish it, so a newly blocked appliance shows up without waiting for the next
+     * periodic publish.
+     */
+    applianceSteering?: EnyoEnergyManagerApplianceSteering[];
     /**
      * Length of the planning horizon the cycle actually produced a plan
      * for, in minutes. `0` is allowed (e.g. when `outcome` is `Skipped`
