@@ -1,6 +1,10 @@
 import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 import {getSdkVersion} from "./version.js";
-import {EnergyAppModelFeatureEnum} from "./energy-app-model-feature.enum.js";
+import {
+    EnergyAppModelFeatureEnum,
+    EnergyAppModelLimitationEnum,
+    EnergyAppModelRequirementEnum
+} from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
 import type {EnyoOnboardingTranslatedContent} from "./types/enyo-onboarding.js";
@@ -539,6 +543,27 @@ export interface EnergyAppPackageCompatibilityModel {
      * feature information.
      */
     features: EnergyAppModelFeatureEnum[];
+    /**
+     * Optional things that must be in place before the package works with this
+     * model — an installer switching on external control, an extra gateway, the
+     * vendor's meter or cloud account.
+     *
+     * Lets the enyo Store, onboarding flows and offers tell a customer up front
+     * what they need, instead of only "compatible". Omit when nothing beyond the
+     * device itself is needed. A minimum firmware goes into
+     * {@link minimumFirmwareVersion} instead.
+     */
+    requirements?: EnergyAppModelRequirementEnum[];
+    /**
+     * Optional known restrictions on how well the declared {@link features}
+     * work — a charge that cannot be paused, phase switching only between
+     * sessions, readings delayed by a vendor cloud.
+     *
+     * Declare a feature together with its limitation rather than leaving the
+     * feature out: a missing feature reads as "does not work", which is wrong
+     * for a device that works with restrictions.
+     */
+    limitations?: EnergyAppModelLimitationEnum[];
 }
 
 /**

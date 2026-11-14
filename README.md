@@ -3745,6 +3745,63 @@ Duplicate vendors, the same model name for overlapping years, `from` after `to` 
 outside 1990 to two years ahead are errors. An empty range, and a vehicle model without
 `modelYears`, are warnings.
 
+### What works, what needs setup, what is restricted
+
+enyo turns a model's declaration into what it tells the customer, so say precisely what
+works. Three lists per model:
+
+| Field | Answers | Enum |
+|---|---|---|
+| `features` | What enyo can do with the device | `EnergyAppModelFeatureEnum` |
+| `requirements` | What must be in place first | `EnergyAppModelRequirementEnum` |
+| `limitations` | What works, but not fully | `EnergyAppModelLimitationEnum` |
+
+Declare a feature together with its limitation rather than leaving it out: a missing feature
+reads as "does not work". A minimum firmware goes into `minimumFirmwareVersion`.
+
+```typescript
+import {
+    EnergyAppModelFeatureEnum as F,
+    EnergyAppModelLimitationEnum as L,
+    EnergyAppModelRequirementEnum as R
+} from '@enyo-energy/energy-app-sdk';
+
+models: [
+    // Only grid-charges at full power: no setpoint, no hold, no discharge control
+    {modelName: 'SENEC.Home V3', category: EnergyAppPackageCategory.BatteryStorage,
+     features: [F.BatteryGridChargeFullPowerOnly, F.GridPowerReadout]},
+    // Steerable wallbox that needs Modbus switched on and switches phases between sessions only
+    {modelName: 'AC22E', category: EnergyAppPackageCategory.Wallbox,
+     features: [F.ChargingStartStop, F.ChargingPowerLimitation, F.ChargingSchedule, F.ChargingPhaseSwitching],
+     requirements: [R.InstallerEnablement],
+     limitations: [L.PhaseSwitchingBetweenSessionsOnly]}
+]
+```
+
+Features that decide whether the energy manager steers a device at all:
+
+- **Wallbox:** `ChargingSchedule` — without it the wallbox is not planned, whatever else it supports.
+- **Battery:** `BatteryChargingFromGrid` plus `BatteryHold` or the limitations for price
+  steering; `BatteryGridChargeFullPowerOnly` (instead of those) for a battery that can only be
+  filled at full power, plus `BatteryGridChargeFullPowerStoppable` if that charge can be ended early.
+  When only one direction can be held, add `BatteryChargeCannotBeBlocked` or
+  `BatteryDischargeCannotBeBlocked` to `limitations`; when a charge power is executed as a forced
+  setpoint (drawing the rest from the grid) rather than a cap, add `BatteryChargeSetpointForced`.
+- **Heating rod:** `HeatingRodPowerModulation` to heat with PV surplus.
+- **Air conditioning:** `ClimateCooling`.
+- **Any device:** `GridOperatorConsumptionLimitation` / `GridOperatorProductionLimitation` —
+  grid operator limits (§14a EnWG) only reach devices that declare them.
+
+`ENERGY_APP_MODEL_FEATURE_CATEGORIES` maps every feature to the package categories it belongs
+to, and `getModelFeaturesForCategory()` lists a category's features. Use them instead of a copy
+of the grouping. `validatePackageCompatibility()` additionally reports:
+
+- **errors:** unknown values in the three lists, `BatteryGridChargeFullPowerOnly` together
+  with a setpoint, hold or discharge feature, and `BatteryGridChargeFullPowerStoppable` without it;
+- **warnings:** a value listed twice, a feature that does not fit the model's category (or the
+  package's, when the model has none), features on a model declared not compatible, and a
+  limitation that restricts none of the declared features.
+
 ## Firmware Update Registry
 
 Ship firmware images with your package and hand them to devices at runtime. You declare the files by local path in the package definition, the enyo CLI uploads them during `enyo release`, and the app reaches them through `energyApp.useFirmwareRegistry()`. The release tarball never carries the bytes.

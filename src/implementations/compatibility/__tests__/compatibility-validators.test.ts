@@ -1,9 +1,15 @@
 import {describe, expect, it} from 'vitest';
 import {
     EnergyAppPackageCategory,
+    EnergyAppPackageCompatibilityStatus,
     type EnergyAppPackageCompatibilityModel,
     type EnergyAppPackageCompatibilityVendor,
 } from '../../../energy-app-package-definition.js';
+import {
+    EnergyAppModelFeatureEnum as F,
+    EnergyAppModelLimitationEnum as L,
+    EnergyAppModelRequirementEnum as R,
+} from '../../../energy-app-model-feature.enum.js';
 import {
     assertValidPackageCompatibility,
     isYearInCompatibilityRange,
@@ -108,6 +114,100 @@ describe('validatePackageCompatibility', () => {
         expect(fromModel.warnings.some((w) => w.includes('no modelYears'))).toBe(true);
 
         expect(validate([vendor({models: [model()]})], [EnergyAppPackageCategory.Inverter]).warnings).toEqual([]);
+    });
+});
+
+describe('validatePackageCompatibility — features, requirements, limitations', () => {
+    /** Validates a single model of a single vendor. */
+    const validateModel = (over: Partial<EnergyAppPackageCompatibilityModel>, categories?: EnergyAppPackageCategory[]) =>
+        validate([vendor({models: [model({modelYears: {from: 2020}, ...over})]})], categories);
+
+    it('accepts a precise declaration', () => {
+        const result = validateModel({
+            category: EnergyAppPackageCategory.Wallbox,
+            features: [F.ChargingStartStop, F.ChargingSchedule, F.ChargingPhaseSwitching],
+            requirements: [R.InstallerEnablement],
+            limitations: [L.PhaseSwitchingBetweenSessionsOnly, L.DelayedReadings],
+        });
+        expect(result).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it.each(['features', 'requirements', 'limitations'] as const)('flags unknown values and non-arrays in %s', (field) => {
+        expect(validateModel({[field]: ['made-up']}).errors.some((e) => e.includes(`unknown ${field} value "made-up"`)))
+            .toBe(true);
+        expect(validateModel({[field]: 'x' as never}).errors.some((e) => e.includes(`${field} must be an array`)))
+            .toBe(true);
+    });
+
+    it('warns about a value listed twice', () => {
+        const result = validateModel({features: [F.SwitchOnOff, F.SwitchOnOff]});
+        expect(result.ok).toBe(true);
+        expect(result.warnings.some((w) => w.includes('features lists switch-on-off twice'))).toBe(true);
+    });
+
+    it('accepts a full-power-only battery that can be stopped', () => {
+        const result = validateModel({
+            category: EnergyAppPackageCategory.BatteryStorage,
+            features: [F.BatteryGridChargeFullPowerOnly, F.BatteryGridChargeFullPowerStoppable],
+        });
+        expect(result).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it('flags a full-power-only battery that also claims a setpoint', () => {
+        const result = validateModel({features: [F.BatteryGridChargeFullPowerOnly, F.BatteryChargingFromGrid, F.BatteryHold]});
+        expect(result.errors.some((e) => e.includes('cannot be combined with battery-charging-from-grid, battery-hold')))
+            .toBe(true);
+    });
+
+    it('flags stoppable without full-power-only', () => {
+        const result = validateModel({features: [F.BatteryGridChargeFullPowerStoppable]});
+        expect(result.errors.some((e) => e.includes('requires battery-grid-charge-full-power-only'))).toBe(true);
+    });
+
+    it('warns about a feature outside the model category, falling back to the package categories', () => {
+        const fromModel = validateModel({category: EnergyAppPackageCategory.Wallbox, features: [F.HeatpumpDhwBoost]});
+        expect(fromModel.warnings.some((w) => w.includes('heatpump-dhw-boost does not fit category wallbox'))).toBe(true);
+
+        const fromPackage = validateModel({features: [F.HeatpumpDhwBoost]}, [EnergyAppPackageCategory.Wallbox]);
+        expect(fromPackage.warnings.some((w) => w.includes('does not fit category'))).toBe(true);
+
+        // Battery features fit hybrid inverters; no categories or `other` skip the check.
+        expect(validateModel({features: [F.BatteryHold]}, [EnergyAppPackageCategory.Inverter]).warnings).toEqual([]);
+        expect(validateModel({features: [F.HeatpumpDhwBoost]}).warnings).toEqual([]);
+        expect(validateModel({features: [F.HeatpumpDhwBoost]}, [EnergyAppPackageCategory.Other]).warnings).toEqual([]);
+    });
+
+    it('warns about features on a model that is not compatible, also via the vendor', () => {
+        const own = validateModel({status: EnergyAppPackageCompatibilityStatus.NotCompatible, features: [F.SwitchOnOff]});
+        expect(own.warnings.some((w) => w.includes('declared not compatible but lists features'))).toBe(true);
+
+        const viaVendor = validate([vendor({
+            status: EnergyAppPackageCompatibilityStatus.NotCompatible,
+            models: [model({modelYears: {from: 2020}, features: [F.SwitchOnOff]})],
+        })]);
+        expect(viaVendor.warnings.some((w) => w.includes('declared not compatible'))).toBe(true);
+    });
+
+    it('accepts a battery whose discharging cannot be blocked', () => {
+        const result = validateModel({
+            category: EnergyAppPackageCategory.BatteryStorage,
+            features: [F.BatteryChargingFromGrid, F.BatteryHold],
+            limitations: [L.BatteryDischargeCannotBeBlocked, L.BatteryChargeSetpointForced],
+        });
+        expect(result).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it('warns about a hold when neither direction can be blocked', () => {
+        const result = validateModel({
+            features: [F.BatteryHold],
+            limitations: [L.BatteryChargeCannotBeBlocked, L.BatteryDischargeCannotBeBlocked],
+        });
+        expect(result.warnings.some((w) => w.includes('neither charging nor discharging can be blocked'))).toBe(true);
+    });
+
+    it('warns about a limitation that restricts none of the features', () => {
+        const result = validateModel({features: [F.ChargingStartStop], limitations: [L.PhaseSwitchingBetweenSessionsOnly]});
+        expect(result.warnings.some((w) => w.includes('restricts none of the declared features'))).toBe(true);
     });
 });
 

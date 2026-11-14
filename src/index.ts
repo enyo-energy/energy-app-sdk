@@ -122,6 +122,7 @@ export * from './implementations/onboarding-v2/onboarding-v2-dynamic-validators.
 export * from './implementations/files/define-public-file.js'
 export * from './implementations/files/public-file-validators.js'
 export * from './implementations/compatibility/compatibility-validators.js'
+export * from './implementations/compatibility/model-feature-categories.js'
 export * from './implementations/installer-mail/define-installer-mail.js'
 export * from './implementations/installer-mail/installer-mail-validators.js'
 export * from './types/enyo-retry-manager.js'
