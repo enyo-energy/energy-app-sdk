@@ -52,9 +52,14 @@ const POWER_SPLIT_TOLERANCE_W = 1;
  *    {@link EnyoDataBusCommandReasonTypeEnum.SessionComplete}. This is the load-bearing one: a
  *    publisher that reads "done" off a full bar reports a session finished while its target is
  *    merely overshot, and reports one unfinished when the meter lags.
+ *  - {@link EnyoDistributionParticipantStateEnum.NotFollowing} requires a stated
+ *    {@link EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand} or
+ *    {@link EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond}: a row marked as not
+ *    following must tell the owner which of the two happened.
  *  - The sign of `powerW` agrees with the state: `Drawing` and `DrawingOutsidePlan` are not
  *    negative, `Supplying` is not positive, and a row that is `Skipped`, `NotAsking`, `Offered`
  *    or `Complete` draws nothing — an offer that has not been taken up is not a draw.
+ *    `NotFollowing` carries whatever the appliance measurably does, of either sign.
  *  - `progress.percent` agrees with `start` / `current` / `target` within
  *    {@link PERCENT_TOLERANCE}, so a hand-built bar cannot disagree with its own numbers.
  *  - Every `reason` carries a `type`, and every participant a non-empty `name`.
@@ -267,6 +272,15 @@ function validateReason(
     if (isComplete && !saysComplete) {
         throw new EnergyDistributionValidationError(
             `${path}.state='complete' requires reason.type='${EnyoDataBusCommandReasonTypeEnum.SessionComplete}' — completion is stated by whoever owns the goal, never inferred from a full progress bar.`,
+        );
+    }
+
+    const isNotFollowing = participant.state === EnyoDistributionParticipantStateEnum.NotFollowing;
+    const saysNotFollowing = reason.type === EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand
+        || reason.type === EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond;
+    if (isNotFollowing && !saysNotFollowing) {
+        throw new EnergyDistributionValidationError(
+            `${path}.state='not-following' requires reason.type='${EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand}' or '${EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond}' — the owner must be told whether the appliance refused or stayed silent.`,
         );
     }
 }

@@ -49,6 +49,7 @@ import type {EnyoEnergyDistributionSnapshot} from "./enyo-energy-distribution.js
 import type {EnergyManagerBatteryEvDischargeModeEnum} from "./enyo-energy-manager-settings.js";
 import type {ForecastResolutionEnum} from "./enyo-forecasting.js";
 import type {EnyoInverterApplianceAvailableFeaturesEnum} from "./enyo-inverter-appliance.js";
+import type {EnyoApplianceSteeringReasonCodeEnum} from "./enyo-diagnostics.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -553,6 +554,77 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      * owner's own setting.
      */
     ImmediateReserve = 'immediate-reserve',
+    /**
+     * The energy manager cannot steer this appliance at all — the owner
+     * switched control off, the integration only monitors, the device offers
+     * nothing to steer, or the vendor's interface cannot do what is needed.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.steering} with the
+     * {@link EnyoApplianceSteeringReasonCodeEnum} and, where the vendor's
+     * interface is the cause, its `vendorName`, so the text can name who is
+     * responsible: "Can't be steered — the Daikin interface does not allow
+     * it." / "Kann nicht gesteuert werden — liegt an der Schnittstelle von
+     * Daikin."
+     *
+     * Stated whenever an appliance's
+     * {@link EnyoEnergyManagerApplianceSteering.state} is
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.Blocked} or
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.SwitchedOff}, as its
+     * {@link EnyoEnergyManagerApplianceSteering.ownerReason}. Told apart from
+     * {@link SelfManaged}: there the manager *could* steer and chose not to;
+     * here it cannot. Category {@link EnyoDataBusCommandReasonCategoryEnum.Other}.
+     */
+    ApplianceNotSteerable = 'appliance-not-steerable',
+    /**
+     * The appliance answered a command with a refusal — it was asked for a
+     * power or a temperature and said no.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.outcome} with what was asked
+     * and when, and what the appliance measurably did. The device's own error
+     * message is not owner text: put it in
+     * {@link EnyoDataBusCommandReason.technicalNote}, never in
+     * {@link EnyoDataBusCommandReason.translation}.
+     *
+     * The reason a {@link EnyoDistributionParticipantStateEnum.NotFollowing}
+     * row states when the appliance refused. Told apart from
+     * {@link ApplianceDidNotRespond} (no answer at all) and
+     * {@link AppliancePaused} (the appliance declined power it was offered,
+     * not a command). Category {@link EnyoDataBusCommandReasonCategoryEnum.Other}.
+     */
+    ApplianceRejectedCommand = 'appliance-rejected-command',
+    /**
+     * The appliance was sent a command and, after waiting, shows no sign of
+     * following it — no acknowledgement, or no measurable change in power.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.outcome} with what was asked,
+     * when, how long the manager waited ({@link
+     * EnyoDataBusCommandReasonOutcomeContext.waitedMinutes}) and what the
+     * appliance measurably did, so the text can say "Asked to heat at 13:00,
+     * still not running after 15 minutes."
+     *
+     * The reason a {@link EnyoDistributionParticipantStateEnum.NotFollowing}
+     * row states when the appliance stayed silent. Told apart from
+     * {@link ApplianceRejectedCommand} (an explicit refusal). Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.Other}.
+     */
+    ApplianceDidNotRespond = 'appliance-did-not-respond',
+    /**
+     * The energy manager put back a device setting it had changed earlier —
+     * the owner's own value applies again.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.deviceSetting} with
+     * `restored: true`, the owner's value and the value being replaced:
+     * "Hot water setpoint back to your 48 °C." / "Warmwasser wieder auf Ihre
+     * 48 °C."
+     *
+     * Only the restore has a type of its own. The command that *changed* the
+     * setting keeps its normal reason type (e.g.
+     * {@link PvSurplusAvailable}) and carries
+     * {@link EnyoDataBusCommandReasonContext.deviceSetting} alongside it.
+     * Category {@link EnyoDataBusCommandReasonCategoryEnum.UserRequest} — it is
+     * the owner's own setting.
+     */
+    OwnerSettingRestored = 'owner-setting-restored',
 }
 
 /**
@@ -605,8 +677,22 @@ export interface EnyoDataBusCommandReason {
     type: EnyoDataBusCommandReasonTypeEnum;
     /** Coarse category for grouping, iconography, and analytics */
     category?: EnyoDataBusCommandReasonCategoryEnum;
-    /** Per-language, end-user-facing explanation of this reason */
+    /**
+     * Per-language, end-user-facing explanation of this reason.
+     *
+     * Owner-facing text only: no API names, no field or enum names, no raw
+     * device error messages, and no English inside a non-English entry.
+     * Anything meant for a developer goes in {@link technicalNote}.
+     */
     translation?: EnyoPackageConfigurationTranslatedValue[];
+    /**
+     * Developer-facing caveat — an API limitation, a raw device error, the
+     * vendor's status code. **Never shown to the owner.**
+     *
+     * Keeps technical detail out of {@link translation}, so support and
+     * diagnostics still see it without it leaking into the app.
+     */
+    technicalNote?: string;
     /** Electricity price per kWh that triggered this command */
     electricityPricePerKwh?: number;
     /** Currency of the electricity price */
@@ -920,6 +1006,24 @@ export interface EnyoDataBusCommandReasonContext {
      * Set on {@link EnyoDataBusCommandReasonTypeEnum.ImmediateReserve}.
      */
     immediateReserve?: EnyoDataBusCommandReasonImmediateReserveContext;
+    /**
+     * Why the appliance cannot be steered, and whose interface is the cause.
+     * Set on {@link EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable}.
+     */
+    steering?: EnyoDataBusCommandReasonSteeringContext;
+    /**
+     * What a command asked for against what the appliance measurably did. Set
+     * on {@link EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand} and
+     * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond}.
+     */
+    outcome?: EnyoDataBusCommandReasonOutcomeContext;
+    /**
+     * A device setting the owner can also change in the vendor's app, which
+     * this command changes or restores. Set on every command that writes such
+     * a setting, next to its normal reason type, and on
+     * {@link EnyoDataBusCommandReasonTypeEnum.OwnerSettingRestored}.
+     */
+    deviceSetting?: EnyoDataBusCommandReasonDeviceSettingContext;
 }
 
 /**
@@ -1141,6 +1245,130 @@ export interface EnyoDataBusCommandReasonImmediateReserveContext {
      * state of charge at plug-in.
      */
     deliveredWh: number;
+}
+
+/**
+ * Why the energy manager cannot steer an appliance — the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable}.
+ *
+ * @example
+ * ```typescript
+ * // The Daikin interface does not expose what the energy manager needs:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.Other,
+ *     context: {steering: {code: EnyoApplianceSteeringReasonCodeEnum.InterfaceLimitation, vendorName: 'Daikin'}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonSteeringContext {
+    /** Why the appliance cannot be steered. */
+    code: EnyoApplianceSteeringReasonCodeEnum;
+    /**
+     * The vendor whose interface is the cause, as the owner knows it (e.g.
+     * `'Daikin'`). Set when the cause lies with the vendor — chiefly under
+     * {@link EnyoApplianceSteeringReasonCodeEnum.InterfaceLimitation} — so the
+     * text can say whose interface it is.
+     */
+    vendorName?: string;
+}
+
+/**
+ * What a command asked an appliance to do, against what it measurably did —
+ * the structured backing of
+ * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand} and
+ * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond}.
+ *
+ * Stated by the manager that sent the command, the only party holding both
+ * the command and the measurement. Set the requested side that matches the
+ * command — a power or a target temperature.
+ *
+ * @example
+ * ```typescript
+ * // Asked to draw 3 kW at 13:00, still at 0 W after 15 minutes:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.Other,
+ *     context: {outcome: {commandedAtIso: '2026-11-16T13:00:00+01:00', requestedPowerW: 3000, measuredPowerW: 0, waitedMinutes: 15}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonOutcomeContext {
+    /** ISO 8601 timestamp the command was sent at. */
+    commandedAtIso: string;
+    /** The power the command asked for, in W. */
+    requestedPowerW?: number;
+    /** The target temperature the command asked for, in °C. */
+    requestedTemperatureC?: number;
+    /** The power the appliance measurably draws, in W. */
+    measuredPowerW?: number;
+    /**
+     * How long the manager waited for the appliance to follow before calling
+     * it {@link EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond}, in
+     * minutes.
+     */
+    waitedMinutes?: number;
+}
+
+/**
+ * A device setting the owner can also change in the vendor's own app.
+ *
+ * Named so a reason can say which of the owner's settings the energy manager
+ * touched — the change the owner otherwise only discovers in the vendor app,
+ * and reports as a fault.
+ */
+export enum EnyoDeviceSettingEnum {
+    /** Domestic hot water setpoint, in °C. */
+    DhwSetpoint = 'dhw-setpoint',
+    /** Start time of the hygiene (legionella) program. */
+    HygieneProgramStart = 'hygiene-program-start',
+    /** Program mode of a heating circuit or DHW zone — see {@link EnyoHeatpumpProgramModeEnum}. */
+    ProgramMode = 'program-mode',
+    /** Offset of the heating curve, in K. */
+    HeatingCurveOffset = 'heating-curve-offset',
+    /** Room temperature setpoint, in °C. */
+    RoomSetpoint = 'room-setpoint',
+}
+
+/**
+ * One of the owner's device settings that a command changes or puts back —
+ * set next to the command's normal reason type, or on
+ * {@link EnyoDataBusCommandReasonTypeEnum.OwnerSettingRestored}.
+ *
+ * Values are in the setting's own unit: °C for a temperature, an ISO 8601
+ * timestamp for a time, the enum string for a mode, K for a curve offset.
+ *
+ * @example
+ * ```typescript
+ * // Legionella protection moved from 03:00 to 12:00 because sun is expected:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.PvSurplusAvailable,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.PvSurplus,
+ *     context: {
+ *         deviceSetting: {
+ *             setting: EnyoDeviceSettingEnum.HygieneProgramStart,
+ *             ownerValue: '2026-11-17T03:00:00+01:00',
+ *             appliedValue: '2026-11-17T12:00:00+01:00',
+ *             untilIso: '2026-11-17T14:00:00+01:00',
+ *         },
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonDeviceSettingContext {
+    /** Which of the owner's settings is changed or restored. */
+    setting: EnyoDeviceSettingEnum;
+    /** The owner's own value, before the energy manager touched it. */
+    ownerValue: string | number;
+    /**
+     * The value this command writes. Equal to {@link ownerValue} when
+     * {@link restored} is `true`.
+     */
+    appliedValue: string | number;
+    /** ISO 8601 timestamp until which the changed value is meant to hold. */
+    untilIso?: string;
+    /** `true` when this command puts the owner's value back. */
+    restored?: boolean;
 }
 
 /**

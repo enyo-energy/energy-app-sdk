@@ -172,6 +172,35 @@ describe('validateEnergyDistributionSnapshot', () => {
             .toThrow(EnergyDistributionValidationError);
     });
 
+    it('accepts NotFollowing with a stated refusal or silence, at any measured power', () => {
+        for (const [type, powerW] of [
+            [EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand, 0],
+            [EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond, 2100],
+        ] as const) {
+            const snapshot = build([{
+                ...chargerRow(8400, 22000),
+                state: EnyoDistributionParticipantStateEnum.NotFollowing,
+                powerW,
+                reason: {
+                    type,
+                    context: {outcome: {commandedAtIso: '2026-09-20T09:45:00.000Z', requestedPowerW: 7400, measuredPowerW: powerW, waitedMinutes: 15}},
+                },
+            }]);
+            expect(() => validateEnergyDistributionSnapshot(snapshot), type).not.toThrow();
+        }
+    });
+
+    it('rejects NotFollowing without a stated refusal or silence', () => {
+        const snapshot = build([{
+            ...chargerRow(8400, 22000),
+            state: EnyoDistributionParticipantStateEnum.NotFollowing,
+            powerW: 0,
+            reason: {type: EnyoDataBusCommandReasonTypeEnum.AppliancePaused},
+        }]);
+
+        expect(() => validateEnergyDistributionSnapshot(snapshot)).toThrow(/state='not-following' requires/);
+    });
+
     it('rejects a duplicated rank', () => {
         const snapshot = build([
             chargerRow(8400, 22000),

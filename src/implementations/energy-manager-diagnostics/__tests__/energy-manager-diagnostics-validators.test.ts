@@ -1,7 +1,12 @@
 import {describe, expect, it} from 'vitest';
 import {EnyoApplianceTypeEnum} from '../../../types/enyo-appliance.js';
-import {EnyoDataBusMessageEnum} from '../../../types/enyo-data-bus-value.js';
 import {
+    EnyoDataBusCommandReasonCategoryEnum,
+    EnyoDataBusCommandReasonTypeEnum,
+    EnyoDataBusMessageEnum,
+} from '../../../types/enyo-data-bus-value.js';
+import {
+    EnyoApplianceSteeringReasonCodeEnum,
     EnyoEnergyManagerApplianceSteering,
     EnyoEnergyManagerApplianceSteeringStateEnum,
     EnyoEnergyManagerCycleDiagnostics,
@@ -347,6 +352,44 @@ describe('validateEnergyManagerCycleDiagnostics — applianceSteering', () => {
         expect(() =>
             validateEnergyManagerCycleDiagnostics(baseCycle({applianceSteering: [steering(), steering()]})),
         ).toThrow(/applianceSteering\[1\]\.applianceId='heatpump-1' is duplicated/);
+    });
+
+    it('accepts a reasonCodeEnum with a matching owner reason', () => {
+        expect(() => validateEnergyManagerCycleDiagnostics(baseCycle({
+            applianceSteering: [steering({
+                reasonCode: EnyoApplianceSteeringReasonCodeEnum.InterfaceLimitation,
+                reasonCodeEnum: EnyoApplianceSteeringReasonCodeEnum.InterfaceLimitation,
+                ownerReason: {
+                    type: EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable,
+                    category: EnyoDataBusCommandReasonCategoryEnum.Other,
+                    context: {steering: {code: EnyoApplianceSteeringReasonCodeEnum.InterfaceLimitation, vendorName: 'Daikin'}},
+                },
+            })],
+        }))).not.toThrow();
+    });
+
+    it('rejects a reasonCodeEnum that is not a member', () => {
+        expect(() => validateEnergyManagerCycleDiagnostics(baseCycle({
+            applianceSteering: [steering({reasonCodeEnum: 'offline' as EnyoApplianceSteeringReasonCodeEnum})],
+        }))).toThrow(/reasonCodeEnum/);
+    });
+
+    it('rejects an owner reason of another type', () => {
+        expect(() => validateEnergyManagerCycleDiagnostics(baseCycle({
+            applianceSteering: [steering({ownerReason: {type: EnyoDataBusCommandReasonTypeEnum.SelfManaged}})],
+        }))).toThrow(/ownerReason\.type must be 'appliance-not-steerable'/);
+    });
+
+    it('rejects an owner reason whose steering code disagrees with reasonCodeEnum', () => {
+        expect(() => validateEnergyManagerCycleDiagnostics(baseCycle({
+            applianceSteering: [steering({
+                reasonCodeEnum: EnyoApplianceSteeringReasonCodeEnum.MonitorOnly,
+                ownerReason: {
+                    type: EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable,
+                    context: {steering: {code: EnyoApplianceSteeringReasonCodeEnum.SgReadyBlocked}},
+                },
+            })],
+        }))).toThrow(/must match reasonCodeEnum/);
     });
 
     it('requires a reasonCode for blocked', () => {

@@ -83,6 +83,22 @@ export enum EnyoDistributionParticipantStateEnum {
     Offered = 'offered',
     /** Asked for power and did not get it this slot; `reason` says who or what took it. */
     Skipped = 'skipped',
+    /**
+     * Was sent a command and is not following it — it refused, or it shows no
+     * sign of having received it. {@link EnyoEnergyDistributionParticipant.powerW}
+     * is what it measurably does, whatever the sign.
+     *
+     * STATED by the manager that sent the command: only it holds the command
+     * and the measurement side by side. The reason is
+     * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceRejectedCommand} or
+     * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceDidNotRespond}, with
+     * `context.outcome` saying what was asked and what happened.
+     *
+     * Told apart from {@link DrawingOutsidePlan}: that appliance draws on its
+     * own initiative without having been told otherwise; this one was given a
+     * specific command and did not carry it out.
+     */
+    NotFollowing = 'not-following',
     /** Did not ask at all — no car on the cable, outside its schedule, no heat wanted. */
     NotAsking = 'not-asking',
     /** The goal is reached and the run is over. */

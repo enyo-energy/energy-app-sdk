@@ -1,6 +1,10 @@
 import {EnyoApplianceTypeEnum} from '../../types/enyo-appliance.js';
-import {EnyoDataBusMessageEnum} from '../../types/enyo-data-bus-value.js';
 import {
+    EnyoDataBusCommandReasonTypeEnum,
+    EnyoDataBusMessageEnum,
+} from '../../types/enyo-data-bus-value.js';
+import {
+    EnyoApplianceSteeringReasonCodeEnum,
     EnyoEnergyManagerApplianceCount,
     EnyoEnergyManagerApplianceSteering,
     EnyoEnergyManagerApplianceSteeringStateEnum,
@@ -47,6 +51,9 @@ const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  *  - `issues[].code` is non-empty kebab-case (e.g. `'forecast-fetch-failed'`).
  *  - `applianceSteering`, when given: each `applianceId` appears at most once, `reasonCode` is
  *    kebab-case and required for `blocked`, and `sinceIso` is not after `cycleCompletedAtIso`.
+ *    `reasonCodeEnum` is an {@link EnyoApplianceSteeringReasonCodeEnum} member; `ownerReason` is
+ *    an `appliance-not-steerable` reason whose `context.steering.code`, when given, matches
+ *    `reasonCodeEnum`.
  */
 export function validateEnergyManagerCycleDiagnostics(
     cycle: EnyoEnergyManagerCycleDiagnostics,
@@ -277,6 +284,38 @@ function validateApplianceSteering(
             throw new EnergyManagerDiagnosticsValidationError(
                 `${fieldName}.reason must be a non-empty string when provided.`,
             );
+        }
+    }
+    if (entry.reasonCodeEnum !== undefined) {
+        validateEnumValue(
+            entry.reasonCodeEnum,
+            EnyoApplianceSteeringReasonCodeEnum,
+            `${fieldName}.reasonCodeEnum`,
+        );
+    }
+    if (entry.ownerReason !== undefined) {
+        if (!entry.ownerReason || typeof entry.ownerReason !== 'object') {
+            throw new EnergyManagerDiagnosticsValidationError(
+                `${fieldName}.ownerReason must be an object when provided.`,
+            );
+        }
+        if (entry.ownerReason.type !== EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable) {
+            throw new EnergyManagerDiagnosticsValidationError(
+                `${fieldName}.ownerReason.type must be '${EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable}'; got ${JSON.stringify(entry.ownerReason.type)}.`,
+            );
+        }
+        const steeringCode = entry.ownerReason.context?.steering?.code;
+        if (steeringCode !== undefined) {
+            validateEnumValue(
+                steeringCode,
+                EnyoApplianceSteeringReasonCodeEnum,
+                `${fieldName}.ownerReason.context.steering.code`,
+            );
+            if (entry.reasonCodeEnum !== undefined && steeringCode !== entry.reasonCodeEnum) {
+                throw new EnergyManagerDiagnosticsValidationError(
+                    `${fieldName}.ownerReason.context.steering.code ('${steeringCode}') must match reasonCodeEnum ('${entry.reasonCodeEnum}').`,
+                );
+            }
         }
     }
     const sinceMs = parseIsoOrThrow(entry.sinceIso, `${fieldName}.sinceIso`);

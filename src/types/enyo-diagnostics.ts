@@ -2,6 +2,7 @@ import {EnergyAppApplianceTypeEnum} from "../energy-app-appliance-type.enum.js";
 import {EnyoApplianceTypeEnum} from "./enyo-appliance.js";
 import {EnyoCurrencyEnum} from "./enyo-currency.js";
 import {EnyoChargeModeEnum, EnyoDataBusMessageEnum} from "./enyo-data-bus-value.js";
+import type {EnyoDataBusCommandReason} from "./enyo-data-bus-value.js";
 import {EnyoAirConditioningApplianceModeEnum} from "./enyo-air-conditioning-appliance.js";
 
 // ─── Price table types ────────────────────────────────────
@@ -721,11 +722,34 @@ export enum EnyoEnergyManagerApplianceSteeringStateEnum {
     /**
      * The energy manager cannot steer the appliance, e.g. the integration does not allow
      * control, the appliance declares no feature the energy manager can control, or the grid
-     * operator blocks it via SG Ready. `reasonCode` says why.
+     * operator blocks it via SG Ready. `reasonCode` and `reasonCodeEnum` say why.
      */
     Blocked = 'blocked',
     /** The user switched off energy-manager control for this appliance or its category. */
     SwitchedOff = 'switched-off',
+}
+
+/**
+ * Why the energy manager cannot steer an appliance, as a closed set — the
+ * owner-facing counterpart of the free-form
+ * {@link EnyoEnergyManagerApplianceSteering.reasonCode}.
+ *
+ * Reported in {@link EnyoEnergyManagerApplianceSteering.reasonCodeEnum} and in
+ * the context of {@link EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable}.
+ */
+export enum EnyoApplianceSteeringReasonCodeEnum {
+    /** The owner switched off energy-manager control for this appliance or its category. */
+    ControlSwitchedOffByOwner = 'control-switched-off-by-owner',
+    /** The integration only monitors the appliance — its `controlAllowed` is `false`. */
+    MonitorOnly = 'monitor-only',
+    /** The appliance declares no feature the energy manager can steer. */
+    NoControllableFeature = 'no-controllable-feature',
+    /** The appliance reports it can take 0 W right now. */
+    ApplianceStatesZeroPower = 'appliance-states-zero-power',
+    /** The grid operator blocks the appliance via the SG Ready block relay. */
+    SgReadyBlocked = 'sg-ready-blocked',
+    /** The vendor's interface cannot do what steering needs. */
+    InterfaceLimitation = 'interface-limitation',
 }
 
 /**
@@ -754,8 +778,33 @@ export interface EnyoEnergyManagerApplianceSteering {
      * `'appliance-offline'` or `'control-disabled-by-user'`.
      */
     reasonCode?: string;
-    /** Optional human-readable detail, e.g. the decision's own explanation. */
+    /**
+     * Optional human-readable detail, e.g. the decision's own explanation.
+     * English, for diagnostics only — never shown to the owner; that is
+     * {@link ownerReason}.
+     */
     reason?: string;
+    /**
+     * Why the appliance cannot be steered, from the closed
+     * {@link EnyoApplianceSteeringReasonCodeEnum} set. Set whenever
+     * {@link state} is
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.Blocked} or
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.SwitchedOff}.
+     *
+     * When set, use the same string as {@link reasonCode}, so fleet queries
+     * grouping by the free-form code keep working.
+     */
+    reasonCodeEnum?: EnyoApplianceSteeringReasonCodeEnum;
+    /**
+     * The owner-facing explanation, shaped like a command reason so the app
+     * renders it the same way. Its type is
+     * {@link EnyoDataBusCommandReasonTypeEnum.ApplianceNotSteerable}, with
+     * `context.steering` matching {@link reasonCodeEnum}. Set whenever
+     * {@link state} is
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.Blocked} or
+     * {@link EnyoEnergyManagerApplianceSteeringStateEnum.SwitchedOff}.
+     */
+    ownerReason?: EnyoDataBusCommandReason;
     /**
      * ISO 8601 timestamp when the appliance entered this {@link state} (with this
      * {@link reasonCode}). Carry it over unchanged from cycle to cycle while state and reason
