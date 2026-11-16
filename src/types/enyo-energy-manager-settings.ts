@@ -61,6 +61,11 @@ export enum EnergyManagerSettingEnum {
      * Unset or `null` means no such block.
      */
     BatteryDischargeBlockAboveHomeConsumptionW = 'battery-discharge-block-above-home-consumption-w',
+    /**
+     * The smart plugs whose consumption the battery must not cover, chosen by
+     * the user. Unset or empty means no smart plug is blocked.
+     */
+    BatteryDischargeBlockedSmartPlugs = 'battery-discharge-blocked-smart-plugs',
 
     // ── Heat pump ──────────────────────────────────────────────────────────
 
@@ -334,6 +339,40 @@ export interface EnergyManagerSettingValues {
      * Only meaningful while {@link batteryControl} is `true`.
      */
     batteryDischargeBlockAboveHomeConsumptionW?: number | null;
+    /**
+     * The smart plugs the battery must not feed, as the
+     * {@link EnyoAppliance.id}s of {@link EnyoApplianceTypeEnum.SmartPlug}
+     * appliances the user selected. `['plug-sauna']` means: while the plug
+     * `plug-sauna` draws power, that power comes from PV or the grid, never
+     * from the battery.
+     *
+     * Keeps a load the owner does not want to run on stored energy — a
+     * freezer in the garage, a pool pump, an aquarium heater — from slowly
+     * emptying the battery that was meant to carry the rest of the house.
+     *
+     * **Disabled by default.** Absent or an empty array means no smart plug is
+     * blocked; write `[]` to switch it off again. The array replaces the
+     * previous selection as a whole — it is not merged.
+     *
+     * The block applies only to the selected plugs' own draw: the energy
+     * manager caps the battery's discharge so it does not cover their
+     * measured power, and the rest of the house is served as before. A plug
+     * that is off, or reports no power, costs the battery nothing. Charging is
+     * unaffected, and so is PV surplus — a plug running on surplus is not
+     * blocked from anything.
+     *
+     * An id that does not (or no longer) belong to a smart plug on this site
+     * is ignored by the energy manager. The validator cannot see the appliance
+     * list and so cannot catch this; a cockpit should offer only the site's
+     * smart plugs, and drop an id when its appliance is removed.
+     *
+     * When the battery is held back from a plug because of this setting, the
+     * energy manager states it with
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromSmartPlug}.
+     *
+     * Only meaningful while {@link batteryControl} is `true`.
+     */
+    batteryDischargeBlockedSmartPlugApplianceIds?: string[];
 
     /**
      * Whether the energy manager may steer the heat pump.
@@ -518,7 +557,7 @@ export interface EnergyManagerSettingDependency {
 /**
  * Which settings are gated by which, as data.
  *
- * Eleven of the fifteen settings only mean anything while another one holds a specific
+ * Twelve of the sixteen settings only mean anything while another one holds a specific
  * value. Encoding that here rather than in prose gives the cockpit a single
  * source of truth for greying out dependent controls, and lets
  * `validateEnergyManagerSettingsState()` flag values that can never take effect.
@@ -562,6 +601,10 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
         requires: EnergyManagerSettingEnum.BatteryControl,
         equals: true,
     },
+    [EnergyManagerSettingEnum.BatteryDischargeBlockedSmartPlugs]: {
+        requires: EnergyManagerSettingEnum.BatteryControl,
+        equals: true,
+    },
     [EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes]: {
         requires: EnergyManagerSettingEnum.HeatpumpControl,
         equals: true,
@@ -599,6 +642,9 @@ export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
     [EnergyManagerSettingEnum.BatteryPvPriorityTargetSocPercent]: ['batteryPvPriorityTargetSocPercent'],
     [EnergyManagerSettingEnum.BatteryDischargeBlockAboveHomeConsumptionW]: [
         'batteryDischargeBlockAboveHomeConsumptionW',
+    ],
+    [EnergyManagerSettingEnum.BatteryDischargeBlockedSmartPlugs]: [
+        'batteryDischargeBlockedSmartPlugApplianceIds',
     ],
     [EnergyManagerSettingEnum.HeatpumpControl]: ['heatpumpControl'],
     [EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes]: ['heatpumpEcoModeInExpensiveTimes'],

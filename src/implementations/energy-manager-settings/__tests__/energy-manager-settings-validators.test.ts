@@ -616,6 +616,69 @@ describe('validateEnergyManagerSettingsState — battery discharge block above h
     });
 });
 
+describe('validateEnergyManagerSettingsState — battery discharge blocked for smart plugs', () => {
+    const blocked = (batteryDischargeBlockedSmartPlugApplianceIds: string[], batteryControl = true) =>
+        validateEnergyManagerSettingsState(state({batteryControl, batteryDischargeBlockedSmartPlugApplianceIds}));
+
+    it('accepts a selection of smart plug ids without warnings', () => {
+        const {ok, warnings} = blocked(['plug-garage-freezer', 'plug-pool-pump']);
+        expect(ok).toBe(true);
+        expect(warnings).toEqual([]);
+    });
+
+    it('accepts an empty selection as disabled, without warnings even while battery control is off', () => {
+        for (const control of [true, false]) {
+            const {ok, warnings} = blocked([], control);
+            expect(ok).toBe(true);
+            expect(warnings).toEqual([]);
+        }
+    });
+
+    it('does not flag an empty selection as stored for an unsupported setting', () => {
+        const {warnings} = validateEnergyManagerSettingsState(
+            state({batteryDischargeBlockedSmartPlugApplianceIds: []}, []),
+        );
+        expect(warnings).toEqual([]);
+    });
+
+    it('rejects a value that is not an array', () => {
+        const {ok, errors} = blocked('plug-1' as unknown as string[]);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('must be an array'))).toBe(true);
+    });
+
+    it('rejects empty or non-string ids', () => {
+        for (const id of ['', '  ', 42 as unknown as string]) {
+            const {ok, errors} = blocked([id]);
+            expect(ok, String(id)).toBe(false);
+            expect(errors.some((e) => e.includes('non-empty appliance id strings')), String(id)).toBe(true);
+        }
+    });
+
+    it('warns on a duplicate id', () => {
+        const {ok, warnings} = blocked(['plug-1', 'plug-1']);
+        expect(ok).toBe(true);
+        expect(warnings.some((w) => w.includes('"plug-1" more than once'))).toBe(true);
+    });
+
+    it('warns when set while battery control is off', () => {
+        const {warnings} = blocked(['plug-1'], false);
+        expect(warnings.some((w) => w.includes('battery-discharge-blocked-smart-plugs'))).toBe(true);
+    });
+
+    it('is gated directly on battery control', () => {
+        expect(getEnergyManagerSettingDependency(EnergyManagerSettingEnum.BatteryDischargeBlockedSmartPlugs))
+            .toEqual({requires: EnergyManagerSettingEnum.BatteryControl, equals: true});
+        expect(ENERGY_MANAGER_SETTING_VALUE_KEYS[EnergyManagerSettingEnum.BatteryDischargeBlockedSmartPlugs])
+            .toEqual(['batteryDischargeBlockedSmartPlugApplianceIds']);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryDischargeBlockedSmartPlugs, {
+            batteryControl: true,
+        })).toBe(true);
+        expect(isEnergyManagerSettingActive(EnergyManagerSettingEnum.BatteryDischargeBlockedSmartPlugs, {}))
+            .toBe(false);
+    });
+});
+
 describe('validateEnergyManagerSettingsState — grid-optimised EV charging', () => {
     it('accepts true and false under charger control without warnings', () => {
         for (const value of [true, false]) {

@@ -430,6 +430,20 @@ export enum EnyoDataBusCommandReasonTypeEnum {
      */
     BatteryReservedFromHeatingRod = 'battery-reserved-from-heating-rod',
     /**
+     * The house battery is held back from one or more smart plugs the owner
+     * selected in `batteryDischargeBlockedSmartPlugApplianceIds` — their draw
+     * is covered by PV or the grid, not by the battery.
+     *
+     * Set {@link EnyoDataBusCommandReasonContext.batteryToSmartPlug} with the
+     * blocked plugs that are drawing power right now, and
+     * {@link EnyoDataBusCommandReason.powerW} to their combined draw — the
+     * power the battery is not covering. Told apart from
+     * {@link HomeConsumptionHigh}: the battery is not paused for the whole
+     * house, only kept from feeding these plugs. Category
+     * {@link EnyoDataBusCommandReasonCategoryEnum.BatteryState}.
+     */
+    BatteryReservedFromSmartPlug = 'battery-reserved-from-smart-plug',
+    /**
      * A cost-optimised charging session was placed in — or is waiting for — a
      * low-load hour on the grid, because the owner switched on
      * `gridOptimizedEvCharging`. Covers both the "charging now" and the
@@ -870,6 +884,13 @@ export interface EnyoDataBusCommandReasonContext {
      */
     batteryDischargeBlock?: EnyoDataBusCommandReasonBatteryDischargeBlockContext;
     /**
+     * The smart plugs the owner blocked from battery discharge
+     * (`batteryDischargeBlockedSmartPlugApplianceIds`) that the battery is
+     * being held back from. Set on
+     * {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromSmartPlug}.
+     */
+    batteryToSmartPlug?: EnyoDataBusCommandReasonBatteryToSmartPlugContext;
+    /**
      * Which direction the battery was steered in, and the power that was
      * moving from one house battery into another before the energy manager
      * stepped in. Set on
@@ -1065,6 +1086,32 @@ export interface EnyoDataBusCommandReasonGridLoadContext {
 export interface EnyoDataBusCommandReasonBatteryDischargeBlockContext {
     /** The home consumption, in W, above which the battery may not discharge. */
     thresholdW: number;
+}
+
+/**
+ * The smart plugs the battery is held back from because the owner selected
+ * them in `batteryDischargeBlockedSmartPlugApplianceIds` — the structured
+ * backing of {@link EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromSmartPlug}.
+ * Their combined draw, the power the battery is not covering, travels in
+ * {@link EnyoDataBusCommandReason.powerW}.
+ *
+ * @example
+ * ```typescript
+ * // The garage freezer plug draws 120 W — the battery does not cover it:
+ * const reason: EnyoDataBusCommandReason = {
+ *     type: EnyoDataBusCommandReasonTypeEnum.BatteryReservedFromSmartPlug,
+ *     category: EnyoDataBusCommandReasonCategoryEnum.BatteryState,
+ *     powerW: 120,
+ *     context: {batteryToSmartPlug: {applianceIds: ['plug-garage-freezer']}},
+ * };
+ * ```
+ */
+export interface EnyoDataBusCommandReasonBatteryToSmartPlugContext {
+    /**
+     * The {@link EnyoAppliance.id}s of the blocked smart plugs drawing power
+     * right now — a subset of the owner's selection, never empty.
+     */
+    applianceIds: string[];
 }
 
 /**

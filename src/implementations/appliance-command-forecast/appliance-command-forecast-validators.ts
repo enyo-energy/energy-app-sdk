@@ -275,6 +275,7 @@ export function validateBatterySchedule(
                 `relativeSchedule[${i}].powerW must be 0 when direction is '${BatteryCommandForecastDirectionEnum.Idle}'; got ${entry.powerW}.`,
             );
         }
+        validateBatteryGridPowerW(entry, `relativeSchedule[${i}]`);
     }
     validateFirstEntryStartsAtZero(entries[0]!.seconds, 'relativeSchedule');
     validateSecondsMatchResolution(entries.map((e) => e.seconds), stepSeconds, 'relativeSchedule');
@@ -580,6 +581,29 @@ function validateSecondsField(seconds: number, fieldName: string): void {
     if (!Number.isFinite(seconds) || seconds < 0) {
         throw new ApplianceCommandForecastValidationError(
             `${fieldName}=${seconds} must be a finite non-negative number.`,
+        );
+    }
+}
+
+/**
+ * Validates {@link BatteryCommandForecastScheduleEntry.gridPowerW}: when
+ * present it must sit on a `Charge` entry and lie within `0…powerW`. A grid
+ * share larger than the charge, or on a slot that charges nothing, would
+ * tell a consumer about an import the schedule does not make.
+ */
+function validateBatteryGridPowerW(entry: BatteryCommandForecastScheduleEntry, fieldName: string): void {
+    if (entry.gridPowerW === undefined) {
+        return;
+    }
+    validatePowerW(entry.gridPowerW, `${fieldName}.gridPowerW`);
+    if (entry.direction !== BatteryCommandForecastDirectionEnum.Charge) {
+        throw new ApplianceCommandForecastValidationError(
+            `${fieldName}.gridPowerW is only allowed when direction is '${BatteryCommandForecastDirectionEnum.Charge}'; got '${entry.direction}'.`,
+        );
+    }
+    if (entry.gridPowerW > entry.powerW) {
+        throw new ApplianceCommandForecastValidationError(
+            `${fieldName}.gridPowerW=${entry.gridPowerW} must not exceed powerW=${entry.powerW}.`,
         );
     }
 }

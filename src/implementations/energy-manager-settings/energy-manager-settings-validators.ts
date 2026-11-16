@@ -113,6 +113,19 @@ function gateValue(
 }
 
 /**
+ * Whether a stored value counts as set. `null` and an empty array are the
+ * "disabled" spellings of the nullable and list-valued settings, so they count
+ * as unset.
+ *
+ * @param value - A value from {@link EnergyManagerSettingValues}.
+ * @returns `true` when the value carries a setting.
+ */
+function isHeld(value: unknown): boolean {
+    if (value === undefined || value === null) return false;
+    return !(Array.isArray(value) && value.length === 0);
+}
+
+/**
  * Validates an energy manager settings state: the declared support list, the
  * value formats, and the gate tree between them.
  *
@@ -142,7 +155,11 @@ function gateValue(
  *   a finite non-negative number (**error**), and not below 100 W (**warning**
  *   — catches a kW value in a W field; the battery would be blocked almost
  *   always).
- * - `null` counts as unset for the "stored" checks below.
+ * - `batteryDischargeBlockedSmartPlugApplianceIds` is an array of non-empty
+ *   strings (**error**), without duplicates (**warning**). Whether each id
+ *   belongs to a smart plug on the site is not checked — the state carries no
+ *   appliance list.
+ * - `null` and an empty array count as unset for the "stored" checks below.
  * - A parameter belonging to a mode other than the selected one is flagged by
  *   the gate check below, since {@link ENERGY_MANAGER_SETTING_DEPENDENCIES}
  *   gates each on its own mode.
@@ -298,6 +315,29 @@ export function validateEnergyManagerSettingsState(
         }
     }
 
+    if (values.batteryDischargeBlockedSmartPlugApplianceIds !== undefined) {
+        const ids: unknown = values.batteryDischargeBlockedSmartPlugApplianceIds;
+        if (!Array.isArray(ids)) {
+            errors.push('`batteryDischargeBlockedSmartPlugApplianceIds` must be an array of appliance ids when set.');
+        } else {
+            const seen = new Set<string>();
+            for (const id of ids) {
+                if (typeof id !== 'string' || id.trim() === '') {
+                    errors.push(
+                        '`batteryDischargeBlockedSmartPlugApplianceIds` must contain only non-empty ' +
+                            `appliance id strings, got ${JSON.stringify(id)}.`,
+                    );
+                } else if (seen.has(id)) {
+                    warnings.push(
+                        `\`batteryDischargeBlockedSmartPlugApplianceIds\` lists "${id}" more than once.`,
+                    );
+                } else {
+                    seen.add(id);
+                }
+            }
+        }
+    }
+
     if (values.heatingRodBatteryDischargeSocLimitPercent !== undefined
         && values.heatingRodBatteryDischargeSocLimitPercent !== null) {
         const floor = values.heatingRodBatteryDischargeSocLimitPercent;
@@ -335,7 +375,7 @@ export function validateEnergyManagerSettingsState(
     // ── stored but unsupported ─────────────────────────────────────────────
     for (const setting of Object.values(EnergyManagerSettingEnum)) {
         const keys = ENERGY_MANAGER_SETTING_VALUE_KEYS[setting];
-        const held = keys.filter((key) => values[key] !== undefined && values[key] !== null);
+        const held = keys.filter((key) => isHeld(values[key]));
         if (held.length && !supported.has(setting)) {
             warnings.push(
                 `"${setting}" holds a value (${held.join(', ')}) but is not in \`supported\` — ` +
@@ -350,7 +390,7 @@ export function validateEnergyManagerSettingsState(
         const key = setting as EnergyManagerSettingEnum;
 
         const held = ENERGY_MANAGER_SETTING_VALUE_KEYS[key]
-            .some((k) => values[k] !== undefined && values[k] !== null);
+            .some((k) => isHeld(values[k]));
         if (held && gateValue(values, dependency.requires) !== dependency.equals) {
             warnings.push(
                 `"${key}" holds a value, but it only takes effect while "${dependency.requires}" ` +

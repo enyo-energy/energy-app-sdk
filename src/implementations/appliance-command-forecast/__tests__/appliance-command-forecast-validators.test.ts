@@ -244,6 +244,76 @@ describe('validateBatterySchedule', () => {
             ),
         ).toThrow(/idle/);
     });
+
+    it('accepts a charge entry with a grid share up to its powerW', () => {
+        expect(() =>
+            validateBatterySchedule(
+                [
+                    batteryEntry({
+                        seconds: 0,
+                        direction: BatteryCommandForecastDirectionEnum.Charge,
+                        powerW: 2400,
+                        gridPowerW: 2400,
+                    }),
+                    batteryEntry({
+                        seconds: 900,
+                        direction: BatteryCommandForecastDirectionEnum.Charge,
+                        powerW: 2400,
+                        gridPowerW: 600,
+                    }),
+                ],
+                ApplianceForecastResolutionEnum.FifteenMinutes,
+            ),
+        ).not.toThrow();
+    });
+
+    it('rejects a grid share above the charge powerW', () => {
+        expect(() =>
+            validateBatterySchedule(
+                [
+                    batteryEntry({
+                        seconds: 0,
+                        direction: BatteryCommandForecastDirectionEnum.Charge,
+                        powerW: 1000,
+                        gridPowerW: 1500,
+                    }),
+                ],
+                ApplianceForecastResolutionEnum.OneMinute,
+            ),
+        ).toThrow(/gridPowerW/);
+    });
+
+    it('rejects a grid share on a non-charge entry', () => {
+        expect(() =>
+            validateBatterySchedule(
+                [
+                    batteryEntry({
+                        seconds: 0,
+                        direction: BatteryCommandForecastDirectionEnum.Discharge,
+                        powerW: 0,
+                        gridPowerW: 0,
+                    }),
+                ],
+                ApplianceForecastResolutionEnum.OneMinute,
+            ),
+        ).toThrow(/gridPowerW/);
+    });
+
+    it('rejects a negative grid share', () => {
+        expect(() =>
+            validateBatterySchedule(
+                [
+                    batteryEntry({
+                        seconds: 0,
+                        direction: BatteryCommandForecastDirectionEnum.Charge,
+                        powerW: 1000,
+                        gridPowerW: -1,
+                    }),
+                ],
+                ApplianceForecastResolutionEnum.OneMinute,
+            ),
+        ).toThrow(/gridPowerW/);
+    });
 });
 
 describe('validateHeatpumpSchedule', () => {

@@ -274,6 +274,17 @@ export interface BatteryCommandForecastScheduleEntry {
      * setpoint at all (its `powerW` must be `0`).
      */
     powerW: number;
+    /**
+     * Of {@link powerW}, how much the publisher plans to import from the
+     * grid (W); the rest comes from PV. Only on a
+     * {@link BatteryCommandForecastDirectionEnum.Charge} entry, never above
+     * `powerW`.
+     *
+     * Stated by the planner that decided the buy, so a consumer can show a
+     * grid charge without guessing it from a PV forecast. Absent means the
+     * publisher states no source — not that the charge is solar.
+     */
+    gridPowerW?: number;
 }
 
 /**
