@@ -248,8 +248,9 @@ interface VirtualWallboxState {
     /** Whether the vehicle should charge — the energy manager's wish, or off after a stop; `undefined` until said. */
     wantsOn?: boolean;
     /**
-     * The energy manager's own latest wish, also while a stop holds it back —
-     * a start under a smart mode applies it again.
+     * The energy manager's own latest wish for the current charge — also one
+     * that arrives while a stop holds it back. A start under a smart mode
+     * applies it again; a stop and the end of the charge forget it.
      */
     energyManagerWish?: boolean;
     /** The last switch the vehicle accepted; `undefined` while unknown. */
@@ -327,13 +328,15 @@ type SwitchOutcome =
  *    `Immediate`. Under a smart mode it opens the session at once — as a
  *    real wallbox opens its transaction — paused by the EVSE, gives the
  *    owner's new charge a charging block of its own and leaves the moment to
- *    the energy manager, whose latest wish and schedule survive a stop. A
- *    smart start before the first report of the vehicle opens the session
- *    with that report. A later start that changes the mode or deadline of an
- *    open session is announced with `ChangeChargeModeV1` and saved to the
- *    charge record — the energy manager re-plans only on that; `Immediate`
- *    also switches on at once. A start for a vehicle known to be unplugged
- *    is rejected. A subclass implements only {@link switchVehicleCharging}.
+ *    the energy manager's plan for it. A stop ends the charge: a later smart
+ *    start waits for the plan the energy manager makes for the new session.
+ *    A smart start before the first report of the vehicle opens the session
+ *    with that report. A later start that changes the mode, deadline or
+ *    price ceiling of an open session is announced with `ChangeChargeModeV1`
+ *    and saved to the charge record — the energy manager re-plans only on
+ *    that; `Immediate` also switches on at once. A start for a vehicle known
+ *    to be unplugged is rejected. A subclass implements only
+ *    {@link switchVehicleCharging}.
  *  - **No needless stop.** A plugged-in car that does not charge counts as
  *    off until switched. If it then starts by itself within
  *    {@link VirtualWallboxIntegrationEnergyAppOptions.plugInHandshakeMinutes}
@@ -459,16 +462,19 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
      * manager's schedule or power decides when the vehicle charges: switching
      * on here would spend the plug-in's charging block now, at whatever price,
      * and hold back the window the energy manager planned. Only a wish the
-     * energy manager sent for the current charge is applied again — one a stop
-     * held back, or its running schedule; a charge that ended took its wish
-     * along. A vehicle known to be unplugged is rejected under every mode.
+     * energy manager sent for the current charge is applied again: a stop and
+     * the end of a charge forget it, so a new charge waits for its own plan —
+     * one the energy manager sends while stopped counts. A vehicle known to be
+     * unplugged is rejected under every mode.
      *
      * For a session already open it is a change of its settings — the app
      * sends one for every change of the charge mode. A changed mode, deadline
-     * or price ceiling is announced with `ChangeChargeModeV1`; a start without
-     * a deadline keeps the one in force, as an absent field on `StartChargeV1`
-     * means "not mentioned". `Immediate` switches on at once here too, any
-     * other mode leaves on/off to the energy manager.
+     * or price ceiling is announced with `ChangeChargeModeV1`. A start without
+     * a deadline keeps the one in force, as an absent deadline on
+     * `StartChargeV1` means "not mentioned"; a start without a price ceiling
+     * means the owner's house-wide setting, as the energy manager reads that
+     * start itself. `Immediate` switches on at once here too, any other mode
+     * leaves on/off to the energy manager.
      */
     protected async handleStartCharge(message: EnyoDataBusStartChargeV1): Promise<IntegrationCommandResponse> {
         const wallbox = this.wallbox(message.applianceId);
@@ -519,11 +525,11 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     }
 
     /**
-     * Tells the energy manager and the charge record that the session's mode
-     * or deadline changed — both, as a real wallbox app does: the energy
-     * manager re-plans only on `ChangeChargeModeV1`, the app and the history
-     * read the record. The command's price ceiling goes along; a mode change
-     * without one means "no ceiling".
+     * Tells the energy manager and the charge record that the session's mode,
+     * deadline or price ceiling changed — both, as a real wallbox app does:
+     * the energy manager re-plans only on `ChangeChargeModeV1`, the app and
+     * the history read the record. The command's price ceiling goes along, as
+     * the start stated it.
      */
     private async announceModeChange(applianceId: string, session: VirtualSession, start: EnyoDataBusStartChargeV1): Promise<void> {
         const {priceLimitMode, priceLimitCtPerKwh, priceLimitSharePercent} = start.data;
@@ -582,14 +588,18 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
 
     /**
      * An explicit stop: switches off at once and holds until the next start
-     * or an unplug. The session ends when the vehicle has stopped charging.
+     * or an unplug. It ends the charge: the session closes when the vehicle
+     * has stopped charging, and the energy manager's wish and schedule for it
+     * are forgotten — a later smart start waits for the plan for its new
+     * session. A plan the energy manager sends while stopped is kept for it.
      */
     protected async handleStopCharge(message: EnyoDataBusStopChargeV1): Promise<IntegrationCommandResponse> {
         const wallbox = this.wallbox(message.applianceId);
         wallbox.stopped = true;
         wallbox.wantsOn = false;
         wallbox.pendingStart = undefined;
-        // The schedule keeps running: it records the energy manager's wish for the next start.
+        wallbox.energyManagerWish = undefined;
+        this.clearSchedule(wallbox);
         const answer = this.answer(await this.requestSwitch(message.applianceId, wallbox, true), true);
         // A car that is not charging ends its session now, not with its next report — which
         // may be long in coming when no command was needed.
@@ -1029,10 +1039,11 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             stopReason,
         });
         wallbox.session = undefined;
-        // The energy manager's wish and plan belonged to this charge: a later start of a new
-        // one must wait for the plan it makes for that, not switch on with the old "on".
+        // The energy manager's wish belonged to this charge: a later start of a new one must
+        // wait for the plan it makes for that, not switch on with the old "on". Its schedule
+        // keeps running: a session that closed on one gap in the car's reports, and opens again
+        // when the car charges on, still gets the planned "off" at the end of the window.
         wallbox.energyManagerWish = undefined;
-        this.clearSchedule(wallbox);
     }
 
     /**
@@ -1115,7 +1126,10 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
 
 /**
  * The price ceiling a start states, as one comparable value. Absent fields
- * mean no ceiling: `ChangeChargeModeV1` restates the whole charging intent.
+ * mean the owner's house-wide setting — so the energy manager reads them on
+ * the `StartChargeV1` itself, and on `ChangeChargeModeV1`, which restates the
+ * whole charging intent. Announcing the start's fields unchanged keeps both
+ * readings the same.
  */
 function priceCeilingOf(start: EnyoDataBusStartChargeV1): string {
     const {priceLimitMode, priceLimitCtPerKwh, priceLimitSharePercent} = start.data;

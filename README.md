@@ -4368,16 +4368,18 @@ any wallbox. The class turns those plans into what the car can do:
   session with that report. A later start that changes the mode, the deadline or the price ceiling
   of an open session is announced with `ChangeChargeModeV1` and saved to the session's own charge
   record: the energy manager re-plans only on that message (`onChargeModeChanged`, ceiling
-  included); `Immediate` also switches on at once, whatever the switching limits. The energy
-  manager's latest wish and schedule for the current charge are kept through a stop (its commands
-  are still rejected while stopped), and a smart start applies them again within the switching
-  limits; a charge that ends takes them along, so a new charge waits for its own plan. A start for
-  a vehicle known to be unplugged is rejected under every mode. A plugged-in car that does not
-  charge and was never switched counts as off: a zero costs no stop command. If it then starts by
-  itself within `plugInHandshakeMinutes` (default 10) of that idle report — a vehicle cloud's
-  handshake — while the energy manager wants it off, that "off" is sent once, within the limits. A
-  charge that starts later (the owner's, in the car) is kept as on until the energy manager's next
-  command. An `Immediate` start clears the schedule from before it.
+  included); `Immediate` also switches on at once, whatever the switching limits. A stop ends the
+  charge: the energy manager's wish and schedule for it are forgotten (its commands are still
+  rejected while stopped; a plan it sends then is kept), and a later smart start waits for the
+  plan for its new session. A charge that ends otherwise takes the last wish along, so a new
+  charge does not switch on with an old "on"; its schedule keeps running, so a session that closed
+  on one gap in the car's reports still gets the planned "off". A start for a vehicle known to be
+  unplugged is rejected under every mode. A plugged-in car that does not charge and was never
+  switched counts as off: a zero costs no stop command. If it then starts by itself within
+  `plugInHandshakeMinutes` (default 10) of that idle report — a vehicle cloud's handshake — while
+  the energy manager wants it off, that "off" is sent once, within the limits. A charge that
+  starts later (the owner's, in the car) is kept as on until the energy manager's next command. An
+  `Immediate` start clears the schedule from before it.
 - **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
   at most `maxBlocksPerPlugIn` (default 1) charging blocks from plug-in to unplug and
   at most `maxSwitchesPerDay` (default 4) in 24 h. Both budgets hold back starts only, never

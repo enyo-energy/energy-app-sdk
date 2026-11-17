@@ -536,7 +536,7 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             }]);
         });
 
-        it('announces a change of the price ceiling alone, and its removal', async () => {
+        it('announces a change of the price ceiling alone, and a start without one (the house-wide setting)', async () => {
             await plugged();
             await startWith({chargeMode: EnyoChargeModeEnum.CostOptimized, priceLimitMode: EnyoPriceLimitModeEnum.CtPerKwh, priceLimitCtPerKwh: 25});
             expect(modeChanges()).toEqual([]);
@@ -789,17 +789,34 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             expect(wallbox.switches).toEqual([true]);
         });
 
-        it('lifts a stop and applies the energy manager\'s last wish again, within the limits', async () => {
+        it('ends the charge at a stop: a smart start after it waits for the energy manager\'s new plan', async () => {
             setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 4, maxBlocksPerPlugIn: 100});
             await plugged();
-            await power(11_000);
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await cheapWindowPlan();
             await stop();
-            expect(wallbox.switches).toEqual([true, false]);
-
             expect(await start(EnyoChargeModeEnum.CostOptimized)).toMatchObject({answer: Accepted});
+            // Neither the old "off now" nor the old window: the plan was the stopped charge's.
+            await vi.advanceTimersByTimeAsync(5 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([]);
+
+            await power(11_000);
+            expect(wallbox.switches).toEqual([true]);
+        });
+
+        it('still switches off at the end of the window when one gap in the car\'s reports closed the session', async () => {
+            await plugged();
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await cheapWindowPlan();
+            await vi.advanceTimersByTimeAsync(3 * 60 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            // One report says "not charging": the session closes; then the car charges on.
+            await plugged();
+            await vi.advanceTimersByTimeAsync(5 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
             expect(wallbox.switches).toEqual([true, false]);
-            await vi.advanceTimersByTimeAsync(15 * MINUTE);
-            expect(wallbox.switches).toEqual([true, false, true]);
         });
 
         it('keeps a plan that arrives while stopped for the next start', async () => {
