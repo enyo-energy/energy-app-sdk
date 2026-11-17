@@ -7,6 +7,8 @@ import {
     EnyoChargingMeterValueContext,
     EnyoChargingStopReason,
     EnyoCommandAcknowledgeAnswerEnum,
+    EnyoDataBusChangeChargeModeV1,
+    EnyoDataBusMessageEnum,
     EnyoDataBusChangeChargingPowerV1,
     EnyoDataBusClearChargingProfilesV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
@@ -40,6 +42,8 @@ export const VIRTUAL_WALLBOX_DEFAULT_MIN_SWITCH_INTERVAL_MINUTES = 60;
 export const VIRTUAL_WALLBOX_DEFAULT_MAX_BLOCKS_PER_PLUG_IN = 1;
 /** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.meterHeartbeatSeconds}: below the energy manager's 90 s. */
 export const VIRTUAL_WALLBOX_DEFAULT_METER_HEARTBEAT_SECONDS = 60;
+/** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.plugInHandshakeMinutes}: two polls of a slow vehicle cloud. */
+export const VIRTUAL_WALLBOX_DEFAULT_PLUG_IN_HANDSHAKE_MINUTES = 10;
 /** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.maxSwitchesPerDay}: two blocks. */
 export const VIRTUAL_WALLBOX_DEFAULT_MAX_SWITCHES_PER_DAY = 4;
 
@@ -99,6 +103,17 @@ export interface VirtualWallboxIntegrationEnergyAppOptions extends IntegrationEn
      * @default 60
      */
     meterHeartbeatSeconds?: number;
+    /**
+     * How long after a plug-in reported idle a car that starts charging by
+     * itself still counts as the plug-in's own start — a vehicle cloud's
+     * handshake reports "plugged in, not charging" first, and the start only
+     * with its next report. Such a start gets the energy manager's "off" once.
+     * A charge that starts later is the owner's (or the car's timer) and is
+     * kept as on. Set it to the vehicle cloud's reporting interval and some.
+     *
+     * @default 10
+     */
+    plugInHandshakeMinutes?: number;
 }
 
 /**
@@ -215,6 +230,8 @@ export function virtualWallboxChargerMetadata(options: VirtualWallboxChargerMeta
 interface VirtualSession {
     transactionId: string;
     chargeMode: EnyoChargeModeEnum;
+    /** The deadline the energy manager plans the session to, as last announced. */
+    completeChargeAtIso?: string;
     /** From the `StartChargeV1` that opened or changed it. */
     targetSocPercent?: number;
     /** The virtual meter when the session opened. */
@@ -226,10 +243,20 @@ interface VirtualWallboxState {
     vehicle?: VirtualWallboxVehicleState;
     /** An explicit stop holds until an explicit start or an unplug. */
     stopped: boolean;
-    /** Whether the energy manager wants the vehicle to charge; `undefined` until it said so. */
+    /** Whether the vehicle should charge — the energy manager's wish, or off after a stop; `undefined` until said. */
     wantsOn?: boolean;
+    /**
+     * The energy manager's own latest wish, also while a stop holds it back —
+     * a start under a smart mode applies it again.
+     */
+    energyManagerWish?: boolean;
     /** The last switch the vehicle accepted; `undefined` while unknown. */
     switchedOn?: boolean;
+    /**
+     * When {@link switchedOn} is `false` only because the car was reported
+     * plugged in and idle — no switch of ours: the report, ms since epoch.
+     */
+    idleSinceReportAt?: number;
     /** When the last switch on was accepted, ms since epoch. */
     switchedOnAt?: number;
     /** Whether the charge the host still holds open was looked up after the start of this run. */
@@ -248,7 +275,12 @@ interface VirtualWallboxState {
     queue: Promise<unknown>;
     session?: VirtualSession;
     /** Staged by `StartChargeV1` for the session the next charge opens. */
-    pendingStart?: {chargeMode: EnyoChargeModeEnum; vehicleId?: string; targetSocPercent?: number};
+    pendingStart?: {
+        chargeMode: EnyoChargeModeEnum;
+        vehicleId?: string;
+        targetSocPercent?: number;
+        completeChargeAtIso?: string;
+    };
     /** Energy of all sessions so far, Wh — the wallbox has no meter of its own. */
     meterWh: number;
     /** The vehicle's last {@link VirtualWallboxVehicleState.sessionEnergyWh}. */
@@ -285,11 +317,25 @@ type SwitchOutcome =
  * the car like for any wallbox. This class turns that into what the car can
  * do:
  *
- *  - **Commands become on/off.** `StartChargeV1`, `ResumeChargingV1` and any
- *    non-zero power (`SetChargingScheduleV1`, `SetChargerAvailablePowerV2`,
+ *  - **Commands become on/off.** `ResumeChargingV1` and any non-zero power
+ *    (`SetChargingScheduleV1`, `SetChargerAvailablePowerV2`,
  *    `ChangeChargingPowerV1`) switch on; `StopChargeV1`, `PauseChargingV1`
- *    and a zero power switch off. A subclass implements only
- *    {@link switchVehicleCharging}.
+ *    and a zero power switch off. `StartChargeV1` switches on only under
+ *    `Immediate`. Under a smart mode it opens the session at once — as a
+ *    real wallbox opens its transaction — paused by the EVSE, gives the
+ *    owner's new charge a charging block of its own and leaves the moment to
+ *    the energy manager, whose latest wish and schedule survive a stop. A
+ *    smart start before the first report of the vehicle opens the session
+ *    with that report. A later start that changes the mode or deadline of an
+ *    open session is announced with `ChangeChargeModeV1` and saved to the
+ *    charge record — the energy manager re-plans only on that; `Immediate`
+ *    also switches on at once. A start for a vehicle known to be unplugged
+ *    is rejected. A subclass implements only {@link switchVehicleCharging}.
+ *  - **No needless stop.** A plugged-in car that does not charge counts as
+ *    off until switched. If it then starts by itself within
+ *    {@link VirtualWallboxIntegrationEnergyAppOptions.plugInHandshakeMinutes}
+ *    of the plug-in — a vehicle cloud's handshake — the energy manager's
+ *    "off" is sent once; a charge the owner starts later is kept as on.
  *  - **Switching stays rare.** Only a change of on/off is sent. Between two
  *    switches the energy manager causes lie at least
  *    {@link VirtualWallboxIntegrationEnergyAppOptions.minSwitchIntervalMinutes};
@@ -338,6 +384,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     private readonly maxBlocksPerPlugIn: number;
     private readonly maxSwitchesPerDay: number;
     private readonly meterHeartbeatMs: number;
+    private readonly plugInHandshakeMs: number;
     private readonly applianceManager?: ApplianceManager;
     private readonly wallboxes = new Map<string, VirtualWallboxState>();
     private switchHistory?: Promise<void>;
@@ -351,6 +398,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         this.maxBlocksPerPlugIn = options.maxBlocksPerPlugIn ?? VIRTUAL_WALLBOX_DEFAULT_MAX_BLOCKS_PER_PLUG_IN;
         this.maxSwitchesPerDay = options.maxSwitchesPerDay ?? VIRTUAL_WALLBOX_DEFAULT_MAX_SWITCHES_PER_DAY;
         this.meterHeartbeatMs = (options.meterHeartbeatSeconds ?? VIRTUAL_WALLBOX_DEFAULT_METER_HEARTBEAT_SECONDS) * 1000;
+        this.plugInHandshakeMs = (options.plugInHandshakeMinutes ?? VIRTUAL_WALLBOX_DEFAULT_PLUG_IN_HANDSHAKE_MINUTES) * 60_000;
         this.applianceManager = options.applianceManager;
     }
 
@@ -401,9 +449,18 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     }
 
     /**
-     * An explicit start: lifts a stop and switches on at once. The session is
-     * announced when the vehicle actually charges, with this command's charge
-     * mode.
+     * A start: lifts a stop. The session is announced when the vehicle
+     * actually charges, with this command's charge mode and target.
+     *
+     * Only {@link EnyoChargeModeEnum.Immediate} switches on — at once, as an
+     * explicit command. Under a smart mode (cost-optimised, PV only) the start
+     * sets the charge up and the energy manager's schedule or power that
+     * follows decides when the vehicle charges: switching on here would spend
+     * the plug-in's charging block now, at whatever price, and hold back the
+     * window the energy manager planned. The energy manager's latest wish —
+     * also one a stop held back, and the schedule it sent — is applied again,
+     * within the switching limits. A vehicle known to be unplugged is
+     * rejected under every mode.
      *
      * For a session already open it is only a change of its settings — the
      * app sends one for every change of the charge mode — so the switch it
@@ -411,19 +468,106 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
      */
     protected async handleStartCharge(message: EnyoDataBusStartChargeV1): Promise<IntegrationCommandResponse> {
         const wallbox = this.wallbox(message.applianceId);
+        const immediate = message.data.chargeMode === EnyoChargeModeEnum.Immediate;
+        if (wallbox.vehicle && !wallbox.vehicle.pluggedIn) {
+            return {answer: Rejected, rejectionReason: 'The vehicle is not plugged in'};
+        }
         wallbox.stopped = false;
-        wallbox.wantsOn = true;
+        wallbox.wantsOn = immediate ? true : wallbox.energyManagerWish;
+        // "Sofort laden" overrides the plan: an entry left from before must not switch it off.
+        if (immediate) this.clearSchedule(wallbox);
         if (wallbox.session) {
-            wallbox.session.chargeMode = message.data.chargeMode;
-            if (message.data.targetSocPercent !== undefined) wallbox.session.targetSocPercent = message.data.targetSocPercent;
-            return this.answer(await this.requestSwitch(message.applianceId, wallbox, false), false);
+            const session = wallbox.session;
+            const deadline = message.data.completeChargeAtIso;
+            const changed = session.chargeMode !== message.data.chargeMode
+                || (deadline !== undefined && deadline !== session.completeChargeAtIso);
+            session.chargeMode = message.data.chargeMode;
+            if (deadline !== undefined) session.completeChargeAtIso = deadline;
+            if (message.data.targetSocPercent !== undefined) session.targetSocPercent = message.data.targetSocPercent;
+            // The energy manager plans with the mode and deadline of `ChargingStartedV1` and
+            // re-plans only on `ChangeChargeModeV1`: a change the owner makes while the session
+            // waits for its window would otherwise never reach it.
+            if (changed) await this.announceModeChange(message.applianceId, session, message);
+            // "Sofort laden" switches on at once here too — after a smart start the session is
+            // already open, paused, and the owner expects the car to charge now.
+            return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
         }
         wallbox.pendingStart = {
             chargeMode: message.data.chargeMode,
             vehicleId: message.data.vehicleId,
             targetSocPercent: message.data.targetSocPercent,
+            ...(message.data.completeChargeAtIso ? {completeChargeAtIso: message.data.completeChargeAtIso} : {}),
         };
-        return this.answer(await this.requestSwitch(message.applianceId, wallbox, true), true);
+        if (!immediate) {
+            // A new charge of the owner's gets its own charging block, whatever this
+            // plug-in already used: the energy manager's window still decides when.
+            this.resetPlugInBlocks(wallbox);
+            const vehicle = wallbox.vehicle;
+            if (vehicle?.pluggedIn && !vehicle.charging && wallbox.switchedOn !== true) {
+                await this.enqueue(wallbox, () => this.openPausedSession(message.applianceId, wallbox));
+            }
+        }
+        return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
+    }
+
+    /**
+     * Tells the energy manager and the charge record that the session's mode
+     * or deadline changed — both, as a real wallbox app does: the energy
+     * manager re-plans only on `ChangeChargeModeV1`, the app and the history
+     * read the record. The command's price ceiling goes along; a mode change
+     * without one means "no ceiling".
+     */
+    private async announceModeChange(applianceId: string, session: VirtualSession, start: EnyoDataBusStartChargeV1): Promise<void> {
+        const {priceLimitMode, priceLimitCtPerKwh, priceLimitSharePercent} = start.data;
+        const msg: EnyoDataBusChangeChargeModeV1 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.ChangeChargeModeV1,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            data: {
+                chargeMode: session.chargeMode,
+                ...(session.completeChargeAtIso ? {completeChargeAtIso: session.completeChargeAtIso} : {}),
+                ...(priceLimitMode !== undefined ? {priceLimitMode} : {}),
+                ...(priceLimitCtPerKwh !== undefined ? {priceLimitCtPerKwh} : {}),
+                ...(priceLimitSharePercent !== undefined ? {priceLimitSharePercent} : {}),
+            },
+        };
+        this.useDataBus().sendMessage([msg]);
+        try {
+            const charge = await this.useCharge().findActiveCharge(applianceId);
+            if (!charge) return;
+            const {id, ...record} = charge;
+            await this.useCharge().save({
+                ...record,
+                chargeMode: session.chargeMode,
+                ...(session.completeChargeAtIso ? {completeAtIsoTimestamp: session.completeChargeAtIso} : {}),
+            }, id);
+        } catch (error) {
+            console.warn(`Virtual wallbox ${applianceId}: could not save the changed charge mode: ${String(error)}`);
+        }
+    }
+
+    /**
+     * Opens the charge at a smart start, as a real wallbox opens its
+     * transaction at once: the energy manager plans a charger's charge from
+     * the session (`ChargingStartedV1` with mode, vehicle and deadline), and a
+     * charger without one has nothing for it to plan. Paused by the EVSE until
+     * the energy manager's window switches the vehicle on.
+     */
+    private async openPausedSession(applianceId: string, wallbox: VirtualWallboxState): Promise<void> {
+        // Checked again in the queue: a report that ran first may have unplugged the car.
+        const vehicle = wallbox.vehicle;
+        if (wallbox.session || !vehicle?.pluggedIn || vehicle.charging || wallbox.switchedOn === true) return;
+        await this.applyVehicleState(applianceId, wallbox, vehicle);
+    }
+
+    /** Gives the plug-in its charging blocks back. */
+    private resetPlugInBlocks(wallbox: VirtualWallboxState): void {
+        if (wallbox.startsSincePlugIn === 0) return;
+        wallbox.startsSincePlugIn = 0;
+        this.saveSwitchHistory();
     }
 
     /**
@@ -435,7 +579,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         wallbox.stopped = true;
         wallbox.wantsOn = false;
         wallbox.pendingStart = undefined;
-        this.clearSchedule(wallbox);
+        // The schedule keeps running: it records the energy manager's wish for the next start.
         const answer = this.answer(await this.requestSwitch(message.applianceId, wallbox, true), true);
         // A car that is not charging ends its session now, not with its next report — which
         // may be long in coming when no command was needed.
@@ -447,7 +591,10 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     /** A pause: switches off, keeping the session; held back by the switching limits. */
     protected async handlePauseCharging(message: EnyoDataBusPauseChargingV1): Promise<IntegrationCommandResponse> {
         const wallbox = this.wallbox(message.data.applianceId);
-        if (wallbox.stopped) return {answer: Accepted};
+        if (wallbox.stopped) {
+            wallbox.energyManagerWish = false;
+            return {answer: Accepted};
+        }
         return this.setWish(message.data.applianceId, wallbox, false);
     }
 
@@ -473,17 +620,20 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     protected async handleSetChargingSchedule(message: EnyoDataBusSetChargingScheduleV1): Promise<IntegrationCommandResponse> {
         const applianceId = message.applianceId;
         const wallbox = this.wallbox(applianceId);
-        if (wallbox.stopped) return this.stoppedAnswer();
+        // Kept while stopped too — rejected all the same — so a later start knows the plan.
         this.clearSchedule(wallbox);
         const entries = [...message.data.relativeSchedule].sort((a, b) => a.seconds - b.seconds);
         const due = entries.filter((entry) => entry.seconds <= 0).pop();
         for (const entry of entries.filter((candidate) => candidate.seconds > 0)) {
             wallbox.scheduleTimers.push(setTimeout(() => {
+                wallbox.energyManagerWish = entry.chargingPowerLimitW > 0;
                 if (wallbox.stopped) return;
-                wallbox.wantsOn = entry.chargingPowerLimitW > 0;
+                wallbox.wantsOn = wallbox.energyManagerWish;
                 void this.requestSwitch(applianceId, wallbox, false);
             }, entry.seconds * 1000));
         }
+        if (due) wallbox.energyManagerWish = due.chargingPowerLimitW > 0;
+        if (wallbox.stopped) return this.stoppedAnswer();
         if (!due) return {answer: Accepted};
         return this.setWish(applianceId, wallbox, due.chargingPowerLimitW > 0);
     }
@@ -549,6 +699,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
 
     /** Records the energy manager's wish and applies it within the switching limits. */
     private async setWish(applianceId: string, wallbox: VirtualWallboxState, on: boolean): Promise<IntegrationCommandResponse> {
+        wallbox.energyManagerWish = on;
         if (wallbox.stopped) return this.stoppedAnswer();
         wallbox.wantsOn = on;
         return this.answer(await this.requestSwitch(applianceId, wallbox, false), false);
@@ -595,6 +746,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             return {kind: 'refused', reason};
         }
         wallbox.switchedOn = target;
+        wallbox.idleSinceReportAt = undefined;
         if (target) wallbox.switchedOnAt = now;
         wallbox.switches.push(now);
         if (target) wallbox.startsSincePlugIn++;
@@ -685,9 +837,24 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             await this.adoptOpenCharge(applianceId, wallbox);
         }
         wallbox.vehicle = state;
+        const idleSinceReportAt = wallbox.idleSinceReportAt;
         // A charging car is switched on — whether enyo did it, the owner did, or it was
         // already charging when this integration started. Saves a needless start.
-        if (state.charging) wallbox.switchedOn = true;
+        if (state.charging) {
+            wallbox.switchedOn = true;
+            wallbox.idleSinceReportAt = undefined;
+        } else if (state.pluggedIn && wallbox.switchedOn === undefined && !wallbox.session) {
+            // A plugged-in car that does not charge, was never switched and has no charge
+            // open is off: a "0 W" then costs no stop command.
+            wallbox.switchedOn = false;
+            wallbox.idleSinceReportAt = Date.now();
+        }
+        // A smart start waits for its window in an open session — also one that came
+        // before the first report of the car, right after a restart.
+        const smartStart = wallbox.pendingStart && wallbox.pendingStart.chargeMode !== EnyoChargeModeEnum.Immediate;
+        if (!wallbox.session && smartStart && state.pluggedIn && !state.charging && wallbox.switchedOn === false) {
+            await this.openSession(applianceId, wallbox, state);
+        }
         this.countEnergy(wallbox, state);
 
         const {status, suspendedReason} = this.statusOf(wallbox, state);
@@ -714,6 +881,15 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         }
         this.syncRegistryStatus(applianceId, wallbox, status, suspendedReason);
         this.keepMeterFresh(applianceId, wallbox);
+
+        // The car reported idle at the plug-in, took the energy manager's "off" as needing
+        // no stop, and then started by itself within the plug-in's handshake: that "off"
+        // goes out once, within the switching limits. A charge that starts later — the
+        // owner's, in the car — is kept as on, and nothing repeats it.
+        if (state.charging && idleSinceReportAt !== undefined && Date.now() - idleSinceReportAt < this.plugInHandshakeMs
+            && wallbox.wantsOn === false && !wallbox.stopped) {
+            void this.requestSwitch(applianceId, wallbox, false);
+        }
 
         if (!state.pluggedIn) this.forgetCharge(wallbox);
     }
@@ -783,6 +959,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             wallbox.session = {
                 transactionId: charge.transactionId,
                 chargeMode: charge.chargeMode ?? EnyoChargeModeEnum.Immediate,
+                ...(charge.completeAtIsoTimestamp ? {completeChargeAtIso: charge.completeAtIsoTimestamp} : {}),
                 startMeterWh,
             };
             console.log(`Virtual wallbox ${applianceId}: took over the open charge ${charge.transactionId}`);
@@ -812,12 +989,14 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             chargeMode,
             startMeterWh: wallbox.meterWh,
             ...(pending?.targetSocPercent !== undefined ? {targetSocPercent: pending.targetSocPercent} : {}),
+            ...(pending?.completeChargeAtIso ? {completeChargeAtIso: pending.completeChargeAtIso} : {}),
         };
         this.publishChargingStarted(applianceId, {
             connectorId: CONNECTOR_ID,
             transactionId: wallbox.session.transactionId,
             initiator: pending ? EnyoChargeInitiatorEnum.App : EnyoChargeInitiatorEnum.Charger,
             chargeMode,
+            ...(pending?.completeChargeAtIso ? {completeChargeAtIso: pending.completeChargeAtIso} : {}),
             meterValueWh: wallbox.meterWh,
             ...(vehicleId ? {vehicleId} : {}),
         });
@@ -907,15 +1086,14 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     private forgetCharge(wallbox: VirtualWallboxState): void {
         wallbox.stopped = false;
         wallbox.wantsOn = undefined;
+        wallbox.energyManagerWish = undefined;
         wallbox.switchedOn = undefined;
+        wallbox.idleSinceReportAt = undefined;
         wallbox.pendingStart = undefined;
         wallbox.lastVehicleEnergyWh = undefined;
         this.clearRetry(wallbox);
         this.clearSchedule(wallbox);
         // The next plug-in gets a charging block of its own.
-        if (wallbox.startsSincePlugIn > 0) {
-            wallbox.startsSincePlugIn = 0;
-            this.saveSwitchHistory();
-        }
+        this.resetPlugInBlocks(wallbox);
     }
 }
