@@ -385,6 +385,35 @@ describe('commands become on/off', () => {
         expect(wallbox.switches).toEqual([]);
     });
 
+    it('stops a car that reported idle at the plug-in and then starts by itself against the plan', async () => {
+        await plugged();
+        await schedule([{seconds: 0, chargingPowerLimitW: 0}, {seconds: 3 * 3600, chargingPowerLimitW: 11_000}]);
+        expect(wallbox.switches).toEqual([]);
+
+        await charging();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(wallbox.switches).toEqual([false]);
+        await plugged();
+
+        await vi.advanceTimersByTimeAsync(3 * 60 * MINUTE);
+        expect(wallbox.switches).toEqual([false, true]);
+    });
+
+    it('sends no second stop for a car that still reports charging right after a pause', async () => {
+        await plugged();
+        await power(11_000);
+        await charging();
+        await vi.advanceTimersByTimeAsync(15 * MINUTE);
+        await power(0);
+        expect(wallbox.switches).toEqual([true, false]);
+
+        await charging();
+        await vi.advanceTimersByTimeAsync(0);
+        await plugged();
+        await vi.advanceTimersByTimeAsync(60 * MINUTE);
+        expect(wallbox.switches).toEqual([true, false]);
+    });
+
     it('answers what a vehicle cannot do with NotSupported', async () => {
         expect(await deliver(command(EnyoDataBusMessageEnum.ResetChargerV1, {}))).toMatchObject({answer: NotSupported});
         expect(await deliver(command(EnyoDataBusMessageEnum.RebootChargerV1, {}))).toMatchObject({answer: NotSupported});
@@ -600,14 +629,35 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         });
 
         it('lifts a stop and applies the energy manager\'s last wish again, within the limits', async () => {
+            setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 4, maxBlocksPerPlugIn: 100});
             await plugged();
             await power(11_000);
             await stop();
             expect(wallbox.switches).toEqual([true, false]);
 
-            await start(EnyoChargeModeEnum.CostOptimized);
-            expect(await power(0)).toMatchObject({answer: Accepted});
+            expect(await start(EnyoChargeModeEnum.CostOptimized)).toMatchObject({answer: Accepted});
             expect(wallbox.switches).toEqual([true, false]);
+            await vi.advanceTimersByTimeAsync(15 * MINUTE);
+            expect(wallbox.switches).toEqual([true, false, true]);
+        });
+
+        it('keeps a plan that arrives while stopped for the next start', async () => {
+            await plugged();
+            await stop();
+            expect(await cheapWindowPlan()).toMatchObject({answer: Rejected});
+            await start(EnyoChargeModeEnum.CostOptimized);
+            // An idle car needs no stop command.
+            expect(wallbox.switches).toEqual([]);
+
+            await vi.advanceTimersByTimeAsync(3 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([true]);
+        });
+
+        it('rejects a start for a car that is not plugged in, under every mode', async () => {
+            await unplugged();
+            expect(await start(EnyoChargeModeEnum.CostOptimized)).toMatchObject({answer: Rejected});
+            expect(await start(EnyoChargeModeEnum.Immediate)).toMatchObject({answer: Rejected});
+            expect(wallbox.switches).toEqual([]);
         });
     });
 

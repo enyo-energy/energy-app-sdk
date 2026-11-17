@@ -4361,9 +4361,14 @@ any wallbox. The class turns those plans into what the car can do:
 - **Commands become on/off:** resume and any non-zero power or schedule entry switch on; stop,
   pause and zero switch off. Schedules are emulated with timers. A start switches on only under
   `Immediate`; under a smart mode (`CostOptimized`, `PriceLimit`) it sets the charge up — mode,
-  vehicle, target — and leaves the moment to the energy manager's schedule or power, so the
-  plug-in's block goes to the window it planned. A plugged-in car that does not charge and was
-  never switched counts as off: a zero costs no stop command.
+  vehicle, target — and leaves the moment to the energy manager, so the plug-in's block goes to
+  the window it planned. The energy manager's latest wish and schedule are kept through a stop
+  (its commands are still rejected while stopped), and a smart start applies them again within
+  the switching limits. A start for a vehicle known to be unplugged is rejected under every mode.
+  A plugged-in car that does not charge and was never switched counts as off: a zero costs no
+  stop command. A car that then starts charging by itself while the energy manager wants it off
+  is switched off again, within the limits — not within 3 minutes of a switch of ours, while the
+  car may still report its state from before it.
 - **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
   at most `maxBlocksPerPlugIn` (default 1) charging blocks from plug-in to unplug and
   at most `maxSwitchesPerDay` (default 4) in 24 h. Both budgets hold back starts only, never
