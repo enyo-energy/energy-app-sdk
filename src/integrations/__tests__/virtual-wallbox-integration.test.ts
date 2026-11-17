@@ -575,14 +575,62 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         expect(stopped()).toHaveLength(1);
     });
 
-    it('takes a start for a running session as a change of mode, within the switching limits', async () => {
+    it('takes a smart start for a running session as a change of mode, leaving on/off to the energy manager', async () => {
+        await plugged();
+        await charging();
+        await power(0);
+        expect(await start(EnyoChargeModeEnum.CostOptimized)).toMatchObject({answer: Accepted});
+        await vi.advanceTimersByTimeAsync(60 * MINUTE);
+        expect(wallbox.switches).toEqual([false]);
+    });
+
+    it('switches on at once for "Sofort laden" in a running session, as the owner expects', async () => {
         await plugged();
         await charging();
         await power(0);
         expect(await start(EnyoChargeModeEnum.Immediate)).toMatchObject({answer: Accepted});
-        expect(wallbox.switches).toEqual([false]);
-        await vi.advanceTimersByTimeAsync(15 * MINUTE);
         expect(wallbox.switches).toEqual([false, true]);
+    });
+
+    it('switches on at once for "Sofort laden" right after a smart start, with production limits', async () => {
+        sdk = installSdk();
+        wallbox.stop();
+        wallbox = new TestWallbox();
+        wallbox.start();
+        await plugged();
+        await start(EnyoChargeModeEnum.Immediate);
+        await charging();
+        await vi.advanceTimersByTimeAsync(20 * MINUTE);
+        await stop();
+        await plugged();
+        await vi.advanceTimersByTimeAsync(5 * MINUTE);
+        await start(EnyoChargeModeEnum.CostOptimized);
+        await vi.advanceTimersByTimeAsync(MINUTE);
+        expect(await start(EnyoChargeModeEnum.Immediate)).toMatchObject({answer: Accepted});
+        expect(wallbox.switches).toEqual([true, false, true]);
+    });
+
+    it('opens no session for a smart start when an unplug report ran first in the queue', async () => {
+        let release: () => void = () => undefined;
+        await plugged();
+        wallbox.result = () => new Promise((resolve) => { release = () => resolve({accepted: true}); });
+        const dispatch = (message: EnyoDataBusMessage) => sdk.listeners
+            .filter((listener) => listener.types.includes(message.message))
+            .forEach((listener) => listener.cb(message));
+
+        // A switch to the vehicle cloud is on its way; an unplug and a smart start queue behind it.
+        dispatch(command(EnyoDataBusMessageEnum.SetChargerAvailablePowerV2, {powerW: 11_000}));
+        await vi.advanceTimersByTimeAsync(0);
+        const unplugging = unplugged();
+        dispatch(command(EnyoDataBusMessageEnum.StartChargeV1, {
+            idTag: 'enyo', requestId: 'r', chargeMode: EnyoChargeModeEnum.CostOptimized,
+        }));
+        release();
+        await unplugging;
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(started()).toHaveLength(0);
+        expect(statuses().at(-1)).toBe(Available);
     });
 
     it('hands the target of the start command to the switch, and keeps it for the session', async () => {

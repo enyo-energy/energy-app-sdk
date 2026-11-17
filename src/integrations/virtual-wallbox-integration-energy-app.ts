@@ -471,7 +471,9 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         if (wallbox.session) {
             wallbox.session.chargeMode = message.data.chargeMode;
             if (message.data.targetSocPercent !== undefined) wallbox.session.targetSocPercent = message.data.targetSocPercent;
-            return this.answer(await this.requestSwitch(message.applianceId, wallbox, false), false);
+            // "Sofort laden" switches on at once here too — after a smart start the session is
+            // already open, paused, and the owner expects the car to charge now.
+            return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
         }
         wallbox.pendingStart = {
             chargeMode: message.data.chargeMode,
@@ -485,7 +487,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             this.resetPlugInBlocks(wallbox);
             const vehicle = wallbox.vehicle;
             if (vehicle?.pluggedIn && !vehicle.charging && wallbox.switchedOn !== true) {
-                await this.enqueue(wallbox, () => this.openPausedSession(message.applianceId, wallbox, vehicle));
+                await this.enqueue(wallbox, () => this.openPausedSession(message.applianceId, wallbox));
             }
         }
         return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
@@ -498,8 +500,10 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
      * charger without one has nothing for it to plan. Paused by the EVSE until
      * the energy manager's window switches the vehicle on.
      */
-    private async openPausedSession(applianceId: string, wallbox: VirtualWallboxState, vehicle: VirtualWallboxVehicleState): Promise<void> {
-        if (wallbox.session) return;
+    private async openPausedSession(applianceId: string, wallbox: VirtualWallboxState): Promise<void> {
+        // Checked again in the queue: a report that ran first may have unplugged the car.
+        const vehicle = wallbox.vehicle;
+        if (wallbox.session || !vehicle?.pluggedIn || vehicle.charging || wallbox.switchedOn === true) return;
         wallbox.switchedOn = false;
         await this.openSession(applianceId, wallbox, vehicle);
         await this.applyVehicleState(applianceId, wallbox, vehicle);
