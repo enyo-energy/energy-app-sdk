@@ -929,6 +929,53 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             expect(wallbox.switches).toEqual([true]);
         });
 
+        it('keeps the whole plan of a charge whose session closed on one gap in the car\'s reports', async () => {
+            setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 10, maxBlocksPerPlugIn: 100});
+            await plugged();
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await schedule([
+                {seconds: 0, chargingPowerLimitW: 0},
+                {seconds: 3600, chargingPowerLimitW: 11_000},
+                {seconds: 2 * 3600, chargingPowerLimitW: 0},
+                {seconds: 4 * 3600, chargingPowerLimitW: 11_000},
+                {seconds: 5 * 3600, chargingPowerLimitW: 0},
+            ]);
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(30 * MINUTE);
+            await plugged();
+            await vi.advanceTimersByTimeAsync(5 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(26 * MINUTE);
+            await plugged();
+            await vi.advanceTimersByTimeAsync(2 * 60 * MINUTE + 10 * MINUTE);
+            // The second window still gets its start.
+            expect(wallbox.switches).toEqual([true, false, true]);
+        });
+
+        it('lets no "off" of an ended charge\'s plan switch off a new charge the owner started', async () => {
+            setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 10, maxBlocksPerPlugIn: 1});
+            await plugged();
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await schedule([
+                {seconds: 0, chargingPowerLimitW: 0},
+                {seconds: 3600, chargingPowerLimitW: 11_000},
+                {seconds: 5 * 3600, chargingPowerLimitW: 0},
+            ]);
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(30 * MINUTE);
+            // At its limit the car stops: the charge ends.
+            await plugged();
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            // The owner starts "Nur Sonne"; the energy manager switches it on by power.
+            await start(EnyoChargeModeEnum.PriceLimit);
+            await power(11_000);
+            await charging();
+            await vi.advanceTimersByTimeAsync(4 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([true, true]);
+        });
+
         it('does not revive an "on" left at the end of an ended charge\'s plan', async () => {
             setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 10, maxBlocksPerPlugIn: 1});
             await plugged();

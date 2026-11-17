@@ -60,6 +60,13 @@ const STATUS_SYNC_HEARTBEAT_MS = 5 * 60 * 1000;
  * take a while to start, and a report taken before the switch can arrive after it.
  */
 const START_GRACE_MS = 3 * 60 * 1000;
+/**
+ * A session that opens again this soon after it closed, because the car
+ * charges on, is the same charge — one report in between said "not
+ * charging" — and its plan is its own again. Later, a charge that starts is
+ * a new one, the owner's in the car.
+ */
+const REPORT_GAP_MS = 15 * 60 * 1000;
 /** `useStorage()` key of the switches per wallbox — the budgets outlast a restart. */
 export const VIRTUAL_WALLBOX_SWITCH_HISTORY_KEY = 'virtual-wallbox-switch-history';
 
@@ -279,6 +286,8 @@ interface VirtualWallboxState {
      * apply, its "on" entries no longer — a new charge waits for its own plan.
      */
     scheduleOutlivedCharge?: boolean;
+    /** When the last session closed, ms since epoch — see {@link REPORT_GAP_MS}. */
+    sessionClosedAt?: number;
     /** Serialises switches and vehicle updates of this wallbox. */
     queue: Promise<unknown>;
     session?: VirtualSession;
@@ -518,8 +527,11 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         };
         if (!immediate) {
             // A new charge of the owner's gets its own charging block, whatever this
-            // plug-in already used: the energy manager's window still decides when.
+            // plug-in already used: the energy manager's window still decides when. The
+            // plan of an ended charge goes, its "off" entries too: they would switch the new
+            // charge off. A plan sent while stopped is the new charge's and stays.
             this.resetPlugInBlocks(wallbox);
+            if (wallbox.scheduleOutlivedCharge) this.clearSchedule(wallbox);
             const vehicle = wallbox.vehicle;
             if (vehicle?.pluggedIn && !vehicle.charging && wallbox.switchedOn !== true) {
                 await this.enqueue(wallbox, () => this.openPausedSession(message.applianceId, wallbox));
@@ -895,6 +907,11 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             this.closeSession(applianceId, wallbox, state);
         }
         if (!wallbox.session && status === EnyoChargerApplianceStatusEnum.Charging) {
+            // The car charges on right after one report said it did not: the same charge,
+            // whose plan — its next window included — is its own again.
+            if (wallbox.sessionClosedAt !== undefined && Date.now() - wallbox.sessionClosedAt < REPORT_GAP_MS) {
+                wallbox.scheduleOutlivedCharge = false;
+            }
             await this.openSession(applianceId, wallbox, state);
         } else if (wallbox.session) {
             this.publishMeter(applianceId, wallbox, state, EnyoChargingMeterValueContext.SamplePeriodic);
@@ -1054,6 +1071,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         // at the end of the window, while an "on" of the ended charge revives nothing.
         wallbox.energyManagerWish = undefined;
         if (wallbox.scheduleTimers.length > 0) wallbox.scheduleOutlivedCharge = true;
+        wallbox.sessionClosedAt = Date.now();
     }
 
     /**

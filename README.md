@@ -4374,11 +4374,13 @@ any wallbox. The class turns those plans into what the car can do:
   plan for its new session. A charge that ends otherwise takes the last wish along, so a new
   charge does not switch on with an old "on"; its schedule keeps running for its "off" entries
   only, so a session that closed on one gap in the car's reports still gets the planned "off",
-  while an "on" of the ended charge revives nothing. A start for a vehicle known to be unplugged
-  is rejected under every mode. A plugged-in car that does not charge and was never switched
-  counts as off: a zero costs no stop command. If it then starts by itself within
-  `plugInHandshakeMinutes` (default 10) of that idle report — a vehicle cloud's handshake — while
-  the energy manager wants it off, that "off" is sent once, within the limits. A charge that
+  while an "on" of the ended charge revives nothing. A session that opens again within 15 minutes
+  because the car charges on is the same charge, and its whole plan applies again; a new smart
+  start of the owner drops an ended charge's plan, its "off" entries too. A start for a vehicle
+  known to be unplugged is rejected under every mode. A plugged-in car that does not charge and
+  was never switched counts as off: a zero costs no stop command. If it then starts by itself
+  within `plugInHandshakeMinutes` (default 10) of that idle report — a vehicle cloud's handshake —
+  while the energy manager wants it off, that "off" is sent once, within the limits. A charge that
   starts later (the owner's, in the car) is kept as on until the energy manager's next command. An
   `Immediate` start clears the schedule from before it.
 - **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
