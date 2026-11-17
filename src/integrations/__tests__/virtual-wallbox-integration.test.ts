@@ -109,7 +109,8 @@ function command(message: EnyoDataBusMessageEnum, data: object, applianceId: str
     } as EnyoDataBusMessage;
 }
 
-const start = (chargeMode = EnyoChargeModeEnum.CostOptimized, vehicleId?: string, targetSocPercent?: number) =>
+/** A start from the enyo app; "Sofort laden" unless a test says otherwise, the one mode that switches on itself. */
+const start = (chargeMode = EnyoChargeModeEnum.Immediate, vehicleId?: string, targetSocPercent?: number) =>
     deliver(command(EnyoDataBusMessageEnum.StartChargeV1, {idTag: 'enyo', requestId: 'r', chargeMode, vehicleId, targetSocPercent}));
 const stop = () => deliver(command(EnyoDataBusMessageEnum.StopChargeV1, {}));
 const power = (powerW: number) => deliver(command(EnyoDataBusMessageEnum.SetChargerAvailablePowerV2, {powerW}));
@@ -360,9 +361,10 @@ describe('commands become on/off', () => {
     });
 
     it('emulates a charging schedule; a new one replaces the old', async () => {
-        await plugged();
+        await charging();
         await schedule([{seconds: 0, chargingPowerLimitW: 0}, {seconds: 3600, chargingPowerLimitW: 11_000}]);
         expect(wallbox.switches).toEqual([false]);
+        await plugged();
 
         await vi.advanceTimersByTimeAsync(3600 * 1000);
         expect(wallbox.switches).toEqual([false, true]);
@@ -374,6 +376,13 @@ describe('commands become on/off', () => {
         expect(wallbox.switches).toEqual([false, true]);
         await vi.advanceTimersByTimeAsync(5400 * 1000);
         expect(wallbox.switches).toEqual([false, true, false]);
+    });
+
+    it('sends no stop to a car that is plugged in but not charging', async () => {
+        await plugged();
+        expect(await power(0)).toMatchObject({answer: Accepted});
+        expect(await schedule([{seconds: 0, chargingPowerLimitW: 0}])).toMatchObject({answer: Accepted});
+        expect(wallbox.switches).toEqual([]);
     });
 
     it('answers what a vehicle cannot do with NotSupported', async () => {
@@ -529,6 +538,7 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         setUp({maxSwitchesPerDay: 10});
         await plugged();
         await start(EnyoChargeModeEnum.CostOptimized, undefined, 90);
+        await power(11_000);
         await charging();
         await vi.advanceTimersByTimeAsync(15 * MINUTE);
         await power(0);
@@ -544,6 +554,63 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         expect(wallbox.contexts.at(-1)).toEqual({});
     });
 
+    describe('a start under a smart charge mode', () => {
+        /** The energy manager's cost-optimised plan: off now, the cheap window from 3 h to 5 h. */
+        const cheapWindowPlan = () => schedule([
+            {seconds: 0, chargingPowerLimitW: 0},
+            {seconds: 3 * 60 * MINUTE / 1000, chargingPowerLimitW: 11_000},
+            {seconds: 5 * 60 * MINUTE / 1000, chargingPowerLimitW: 0},
+        ]);
+
+        beforeEach(() => setUp({minSwitchIntervalMinutes: 60, maxSwitchesPerDay: 2, maxBlocksPerPlugIn: 1}));
+
+        it('leaves a car that is not charging off and charges it in the energy manager\'s window', async () => {
+            await plugged();
+            expect(await start(EnyoChargeModeEnum.CostOptimized, 'v-1', 80)).toMatchObject({answer: Accepted});
+            expect(await cheapWindowPlan()).toMatchObject({answer: Accepted});
+            expect(wallbox.switches).toEqual([]);
+
+            await vi.advanceTimersByTimeAsync(3 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([true]);
+            expect(wallbox.contexts).toEqual([{targetSocPercent: 80}]);
+            await charging();
+            expect(started()[0].data).toMatchObject({chargeMode: EnyoChargeModeEnum.CostOptimized, vehicleId: 'v-1'});
+
+            await vi.advanceTimersByTimeAsync(2 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([true, false]);
+        });
+
+        it('switches a car that charges by itself off until the window, then on', async () => {
+            await charging();
+            expect(await start(EnyoChargeModeEnum.CostOptimized)).toMatchObject({answer: Accepted});
+            await cheapWindowPlan();
+            expect(wallbox.switches).toEqual([false]);
+            await plugged();
+
+            await vi.advanceTimersByTimeAsync(3 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([false, true]);
+        });
+
+        it('takes PV only the same way', async () => {
+            await plugged();
+            await start(EnyoChargeModeEnum.PriceLimit);
+            expect(wallbox.switches).toEqual([]);
+            await power(11_000);
+            expect(wallbox.switches).toEqual([true]);
+        });
+
+        it('lifts a stop and applies the energy manager\'s last wish again, within the limits', async () => {
+            await plugged();
+            await power(11_000);
+            await stop();
+            expect(wallbox.switches).toEqual([true, false]);
+
+            await start(EnyoChargeModeEnum.CostOptimized);
+            expect(await power(0)).toMatchObject({answer: Accepted});
+            expect(wallbox.switches).toEqual([true, false]);
+        });
+    });
+
     it('sends no start for a car that is already charging', async () => {
         await charging();
         expect(await power(11_000)).toMatchObject({answer: Accepted});
@@ -551,8 +618,9 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
     });
 
     it('takes a charge the owner starts after enyo switched off as on', async () => {
-        await plugged();
+        await charging();
         await power(0);
+        await plugged();
         await charging();
         await vi.advanceTimersByTimeAsync(15 * MINUTE);
         await power(0);

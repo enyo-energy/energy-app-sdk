@@ -401,9 +401,16 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     }
 
     /**
-     * An explicit start: lifts a stop and switches on at once. The session is
-     * announced when the vehicle actually charges, with this command's charge
-     * mode.
+     * A start: lifts a stop. The session is announced when the vehicle
+     * actually charges, with this command's charge mode and target.
+     *
+     * Only {@link EnyoChargeModeEnum.Immediate} switches on — at once, as an
+     * explicit command. Under a smart mode (cost-optimised, PV only) the start
+     * sets the charge up and the energy manager's schedule or power that
+     * follows decides when the vehicle charges: switching on here would spend
+     * the plug-in's charging block now, at whatever price, and hold back the
+     * window the energy manager planned. Only the energy manager's last wish,
+     * which a stop held back, is applied again — within the switching limits.
      *
      * For a session already open it is only a change of its settings — the
      * app sends one for every change of the charge mode — so the switch it
@@ -411,8 +418,9 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
      */
     protected async handleStartCharge(message: EnyoDataBusStartChargeV1): Promise<IntegrationCommandResponse> {
         const wallbox = this.wallbox(message.applianceId);
+        const immediate = message.data.chargeMode === EnyoChargeModeEnum.Immediate;
         wallbox.stopped = false;
-        wallbox.wantsOn = true;
+        if (immediate) wallbox.wantsOn = true;
         if (wallbox.session) {
             wallbox.session.chargeMode = message.data.chargeMode;
             if (message.data.targetSocPercent !== undefined) wallbox.session.targetSocPercent = message.data.targetSocPercent;
@@ -423,7 +431,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             vehicleId: message.data.vehicleId,
             targetSocPercent: message.data.targetSocPercent,
         };
-        return this.answer(await this.requestSwitch(message.applianceId, wallbox, true), true);
+        return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
     }
 
     /**
@@ -688,6 +696,9 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         // A charging car is switched on — whether enyo did it, the owner did, or it was
         // already charging when this integration started. Saves a needless start.
         if (state.charging) wallbox.switchedOn = true;
+        // A plugged-in car that does not charge, was never switched and has no charge
+        // open is off: a "0 W" then costs no stop command.
+        else if (state.pluggedIn && wallbox.switchedOn === undefined && !wallbox.session) wallbox.switchedOn = false;
         this.countEnergy(wallbox, state);
 
         const {status, suspendedReason} = this.statusOf(wallbox, state);

@@ -4358,8 +4358,12 @@ any wallbox. The class turns those plans into what the car can do:
   initiator `App` after a `StartChargeV1`, else `Charger` with the wallbox's default mode),
   publishes meter values from the energy the car reports and, given an `ApplianceManager`,
   keeps the registry's `charger.status` in step.
-- **Commands become on/off:** start, resume and any non-zero power or schedule entry switch
-  on; stop, pause and zero switch off. Schedules are emulated with timers.
+- **Commands become on/off:** resume and any non-zero power or schedule entry switch on; stop,
+  pause and zero switch off. Schedules are emulated with timers. A start switches on only under
+  `Immediate`; under a smart mode (`CostOptimized`, `PriceLimit`) it sets the charge up — mode,
+  vehicle, target — and leaves the moment to the energy manager's schedule or power, so the
+  plug-in's block goes to the window it planned. A plugged-in car that does not charge and was
+  never switched counts as off: a zero costs no stop command.
 - **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
   at most `maxBlocksPerPlugIn` (default 1) charging blocks from plug-in to unplug and
   at most `maxSwitchesPerDay` (default 4) in 24 h. Both budgets hold back starts only, never
