@@ -536,7 +536,7 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             }]);
         });
 
-        it('announces a change of the price ceiling alone, and a start without one (the house-wide setting)', async () => {
+        it('announces a change of the price ceiling alone, and a start without one as no ceiling', async () => {
             await plugged();
             await startWith({chargeMode: EnyoChargeModeEnum.CostOptimized, priceLimitMode: EnyoPriceLimitModeEnum.CtPerKwh, priceLimitCtPerKwh: 25});
             expect(modeChanges()).toEqual([]);
@@ -881,6 +881,72 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             expect(wallbox.switches).toEqual([true]);
             // The new charge's own plan decides.
             await power(11_000);
+            expect(wallbox.switches).toEqual([true, true]);
+        });
+
+        it('does not revive the "on" entries of an ended charge\'s plan for a new smart start', async () => {
+            setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 10, maxBlocksPerPlugIn: 1});
+            await plugged();
+            await start(EnyoChargeModeEnum.CostOptimized);
+            // Two cheap windows: 1–2 h and 4–5 h.
+            await schedule([
+                {seconds: 0, chargingPowerLimitW: 0},
+                {seconds: 3600, chargingPowerLimitW: 11_000},
+                {seconds: 2 * 3600, chargingPowerLimitW: 0},
+                {seconds: 4 * 3600, chargingPowerLimitW: 11_000},
+                {seconds: 5 * 3600, chargingPowerLimitW: 0},
+            ]);
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(30 * MINUTE);
+            // At its limit the car stops by itself: the charge ends.
+            await plugged();
+            await vi.advanceTimersByTimeAsync(2 * 60 * MINUTE + 40 * MINUTE);
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await vi.advanceTimersByTimeAsync(2 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([true]);
+        });
+
+        it('does not let an "on" of an ended charge\'s plan fire into the session of a new smart start', async () => {
+            setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 10, maxBlocksPerPlugIn: 1});
+            await plugged();
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await schedule([
+                {seconds: 0, chargingPowerLimitW: 0},
+                {seconds: 3600, chargingPowerLimitW: 11_000},
+                {seconds: 2 * 3600, chargingPowerLimitW: 0},
+                {seconds: 4 * 3600, chargingPowerLimitW: 11_000},
+                {seconds: 5 * 3600, chargingPowerLimitW: 0},
+            ]);
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(30 * MINUTE);
+            await plugged();
+            // The new charge starts before the old plan's second window.
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await vi.advanceTimersByTimeAsync(3 * 60 * MINUTE);
+            expect(wallbox.switches).toEqual([true]);
+        });
+
+        it('does not revive an "on" left at the end of an ended charge\'s plan', async () => {
+            setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 10, maxBlocksPerPlugIn: 1});
+            await plugged();
+            await start(EnyoChargeModeEnum.CostOptimized);
+            await schedule([
+                {seconds: 0, chargingPowerLimitW: 0},
+                {seconds: 3600, chargingPowerLimitW: 11_000},
+                {seconds: 3 * 3600, chargingPowerLimitW: 7_000},
+            ]);
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(30 * MINUTE);
+            await plugged();
+            await vi.advanceTimersByTimeAsync(12 * 60 * MINUTE);
+            await start(EnyoChargeModeEnum.CostOptimized);
+            expect(wallbox.switches).toEqual([true]);
+            // The new charge's own plan decides.
+            await schedule([{seconds: 0, chargingPowerLimitW: 11_000}]);
             expect(wallbox.switches).toEqual([true, true]);
         });
 

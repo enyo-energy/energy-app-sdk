@@ -274,6 +274,11 @@ interface VirtualWallboxState {
     meterHeartbeat?: ReturnType<typeof setInterval>;
     /** Future entries of the last charging schedule. */
     scheduleTimers: ReturnType<typeof setTimeout>[];
+    /**
+     * The charge the schedule was made for has ended: its "off" entries still
+     * apply, its "on" entries no longer — a new charge waits for its own plan.
+     */
+    scheduleOutlivedCharge?: boolean;
     /** Serialises switches and vehicle updates of this wallbox. */
     queue: Promise<unknown>;
     session?: VirtualSession;
@@ -472,8 +477,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
      * or price ceiling is announced with `ChangeChargeModeV1`. A start without
      * a deadline keeps the one in force, as an absent deadline on
      * `StartChargeV1` means "not mentioned"; a start without a price ceiling
-     * means the owner's house-wide setting, as the energy manager reads that
-     * start itself. `Immediate` switches on at once here too, any other mode
+     * states no ceiling for the session, as it does on `StartChargeV1` itself. `Immediate` switches on at once here too, any other mode
      * leaves on/off to the energy manager.
      */
     protected async handleStartCharge(message: EnyoDataBusStartChargeV1): Promise<IntegrationCommandResponse> {
@@ -646,7 +650,10 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         const due = entries.filter((entry) => entry.seconds <= 0).pop();
         for (const entry of entries.filter((candidate) => candidate.seconds > 0)) {
             wallbox.scheduleTimers.push(setTimeout(() => {
-                wallbox.energyManagerWish = entry.chargingPowerLimitW > 0;
+                const on = entry.chargingPowerLimitW > 0;
+                // The plan of an ended charge may still switch off, never revive its "on".
+                if (on && wallbox.scheduleOutlivedCharge) return;
+                wallbox.energyManagerWish = on;
                 if (wallbox.stopped) return;
                 wallbox.wantsOn = wallbox.energyManagerWish;
                 void this.requestSwitch(applianceId, wallbox, false);
@@ -848,6 +855,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     private clearSchedule(wallbox: VirtualWallboxState): void {
         for (const timer of wallbox.scheduleTimers) clearTimeout(timer);
         wallbox.scheduleTimers = [];
+        wallbox.scheduleOutlivedCharge = false;
     }
 
     private async applyVehicleState(applianceId: string, wallbox: VirtualWallboxState, state: VirtualWallboxVehicleState): Promise<void> {
@@ -1041,9 +1049,11 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         wallbox.session = undefined;
         // The energy manager's wish belonged to this charge: a later start of a new one must
         // wait for the plan it makes for that, not switch on with the old "on". Its schedule
-        // keeps running: a session that closed on one gap in the car's reports, and opens again
-        // when the car charges on, still gets the planned "off" at the end of the window.
+        // keeps running for its "off" entries only: a session that closed on one gap in the
+        // car's reports, and opens again when the car charges on, still gets the planned "off"
+        // at the end of the window, while an "on" of the ended charge revives nothing.
         wallbox.energyManagerWish = undefined;
+        if (wallbox.scheduleTimers.length > 0) wallbox.scheduleOutlivedCharge = true;
     }
 
     /**
@@ -1126,10 +1136,9 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
 
 /**
  * The price ceiling a start states, as one comparable value. Absent fields
- * mean the owner's house-wide setting — so the energy manager reads them on
- * the `StartChargeV1` itself, and on `ChangeChargeModeV1`, which restates the
- * whole charging intent. Announcing the start's fields unchanged keeps both
- * readings the same.
+ * mean no ceiling for the session — on `StartChargeV1` as on
+ * `ChangeChargeModeV1`, which restates the whole charging intent — so
+ * announcing the start's fields unchanged keeps both readings the same.
  */
 function priceCeilingOf(start: EnyoDataBusStartChargeV1): string {
     const {priceLimitMode, priceLimitCtPerKwh, priceLimitSharePercent} = start.data;
