@@ -123,7 +123,8 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
      *
      * Declared together with {@link SmartChargingSchedule}: schedules are
      * emulated as on/off, and the energy manager steers only chargers that
-     * accept one. Built with `VirtualWallboxIntegrationEnergyApp`.
+     * accept one. The switching logic lives in the app that controls the
+     * vehicle (e.g. the Smartcar app), not in this SDK.
      */
     VirtualWallbox = 'VirtualWallbox'
 }
@@ -318,11 +319,11 @@ export interface EnyoChargerApplianceMetadata extends EnyoChargePreferences {
  * by the manufacturer, so a plan for this charger should consist of few,
  * long charging blocks.
  *
- * The integration enforces the limits itself: a switch the energy manager asks
- * for earlier is applied once the interval has passed, one beyond the daily
- * cap once a switch has left the 24-hour window, and a start beyond the
- * plug-in budget not before the car is plugged in again. A switch off is held
- * back only by the interval.
+ * The app that controls the vehicle enforces the limits itself: a switch the
+ * energy manager asks for earlier is applied once the interval has passed, one
+ * beyond the daily cap once a switch has left the 24-hour window, and a start
+ * beyond the plug-in budget not before the car is plugged in again. A switch
+ * off is held back only by the interval.
  */
 export interface EnyoChargerApplianceVirtualWallboxMetadata {
     /** Shortest time, in minutes, between two switches (on → off or off → on). */
