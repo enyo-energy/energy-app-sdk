@@ -232,6 +232,8 @@ interface VirtualSession {
     chargeMode: EnyoChargeModeEnum;
     /** The deadline the energy manager plans the session to, as last announced. */
     completeChargeAtIso?: string;
+    /** The price ceiling as last announced — see {@link priceCeilingOf}; unknown for a charge taken over. */
+    priceCeiling?: string;
     /** From the `StartChargeV1` that opened or changed it. */
     targetSocPercent?: number;
     /** The virtual meter when the session opened. */
@@ -280,6 +282,7 @@ interface VirtualWallboxState {
         vehicleId?: string;
         targetSocPercent?: number;
         completeChargeAtIso?: string;
+        priceCeiling: string;
     };
     /** Energy of all sessions so far, Wh — the wallbox has no meter of its own. */
     meterWh: number;
@@ -449,22 +452,23 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     }
 
     /**
-     * A start: lifts a stop. The session is announced when the vehicle
-     * actually charges, with this command's charge mode and target.
+     * A start: lifts a stop. Under {@link EnyoChargeModeEnum.Immediate} the
+     * vehicle is switched on at once, as an explicit command, and the session
+     * is announced when it charges. Under a smart mode (cost-optimised, PV
+     * only) the session opens at once, paused by the EVSE, and the energy
+     * manager's schedule or power decides when the vehicle charges: switching
+     * on here would spend the plug-in's charging block now, at whatever price,
+     * and hold back the window the energy manager planned. Only a wish the
+     * energy manager sent for the current charge is applied again — one a stop
+     * held back, or its running schedule; a charge that ended took its wish
+     * along. A vehicle known to be unplugged is rejected under every mode.
      *
-     * Only {@link EnyoChargeModeEnum.Immediate} switches on — at once, as an
-     * explicit command. Under a smart mode (cost-optimised, PV only) the start
-     * sets the charge up and the energy manager's schedule or power that
-     * follows decides when the vehicle charges: switching on here would spend
-     * the plug-in's charging block now, at whatever price, and hold back the
-     * window the energy manager planned. The energy manager's latest wish —
-     * also one a stop held back, and the schedule it sent — is applied again,
-     * within the switching limits. A vehicle known to be unplugged is
-     * rejected under every mode.
-     *
-     * For a session already open it is only a change of its settings — the
-     * app sends one for every change of the charge mode — so the switch it
-     * asks for stays within the switching limits.
+     * For a session already open it is a change of its settings — the app
+     * sends one for every change of the charge mode. A changed mode, deadline
+     * or price ceiling is announced with `ChangeChargeModeV1`; a start without
+     * a deadline keeps the one in force, as an absent field on `StartChargeV1`
+     * means "not mentioned". `Immediate` switches on at once here too, any
+     * other mode leaves on/off to the energy manager.
      */
     protected async handleStartCharge(message: EnyoDataBusStartChargeV1): Promise<IntegrationCommandResponse> {
         const wallbox = this.wallbox(message.applianceId);
@@ -479,9 +483,12 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         if (wallbox.session) {
             const session = wallbox.session;
             const deadline = message.data.completeChargeAtIso;
+            const priceCeiling = priceCeilingOf(message);
             const changed = session.chargeMode !== message.data.chargeMode
-                || (deadline !== undefined && deadline !== session.completeChargeAtIso);
+                || (deadline !== undefined && deadline !== session.completeChargeAtIso)
+                || priceCeiling !== session.priceCeiling;
             session.chargeMode = message.data.chargeMode;
+            session.priceCeiling = priceCeiling;
             if (deadline !== undefined) session.completeChargeAtIso = deadline;
             if (message.data.targetSocPercent !== undefined) session.targetSocPercent = message.data.targetSocPercent;
             // The energy manager plans with the mode and deadline of `ChargingStartedV1` and
@@ -497,6 +504,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             vehicleId: message.data.vehicleId,
             targetSocPercent: message.data.targetSocPercent,
             ...(message.data.completeChargeAtIso ? {completeChargeAtIso: message.data.completeChargeAtIso} : {}),
+            priceCeiling: priceCeilingOf(message),
         };
         if (!immediate) {
             // A new charge of the owner's gets its own charging block, whatever this
@@ -536,8 +544,10 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         };
         this.useDataBus().sendMessage([msg]);
         try {
+            // Read right before the write, and only the session's own record: `save` writes the
+            // whole record, so a stale or foreign one must not be written back.
             const charge = await this.useCharge().findActiveCharge(applianceId);
-            if (!charge) return;
+            if (!charge || charge.transactionId !== session.transactionId) return;
             const {id, ...record} = charge;
             await this.useCharge().save({
                 ...record,
@@ -990,6 +1000,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             startMeterWh: wallbox.meterWh,
             ...(pending?.targetSocPercent !== undefined ? {targetSocPercent: pending.targetSocPercent} : {}),
             ...(pending?.completeChargeAtIso ? {completeChargeAtIso: pending.completeChargeAtIso} : {}),
+            ...(pending ? {priceCeiling: pending.priceCeiling} : {}),
         };
         this.publishChargingStarted(applianceId, {
             connectorId: CONNECTOR_ID,
@@ -1018,6 +1029,10 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             stopReason,
         });
         wallbox.session = undefined;
+        // The energy manager's wish and plan belonged to this charge: a later start of a new
+        // one must wait for the plan it makes for that, not switch on with the old "on".
+        wallbox.energyManagerWish = undefined;
+        this.clearSchedule(wallbox);
     }
 
     /**
@@ -1096,4 +1111,13 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         // The next plug-in gets a charging block of its own.
         this.resetPlugInBlocks(wallbox);
     }
+}
+
+/**
+ * The price ceiling a start states, as one comparable value. Absent fields
+ * mean no ceiling: `ChangeChargeModeV1` restates the whole charging intent.
+ */
+function priceCeilingOf(start: EnyoDataBusStartChargeV1): string {
+    const {priceLimitMode, priceLimitCtPerKwh, priceLimitSharePercent} = start.data;
+    return JSON.stringify([priceLimitMode ?? null, priceLimitCtPerKwh ?? null, priceLimitSharePercent ?? null]);
 }
