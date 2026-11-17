@@ -4360,15 +4360,17 @@ any wallbox. The class turns those plans into what the car can do:
   keeps the registry's `charger.status` in step.
 - **Commands become on/off:** resume and any non-zero power or schedule entry switch on; stop,
   pause and zero switch off. Schedules are emulated with timers. A start switches on only under
-  `Immediate`; under a smart mode (`CostOptimized`, `PriceLimit`) it sets the charge up — mode,
-  vehicle, target — and leaves the moment to the energy manager, so the plug-in's block goes to
-  the window it planned. The energy manager's latest wish and schedule are kept through a stop
+  `Immediate`; under a smart mode (`CostOptimized`, `PriceLimit`) it opens the session at once —
+  `ChargingStartedV1` with mode, vehicle and `completeChargeAtIso`, as a real wallbox opens its
+  transaction — reported `Suspended` (EVSE), and leaves the moment to the energy manager, so the
+  plug-in's block goes to the window it planned. Such a start is a new charge of the owner's and
+  gets a charging block of its own. The energy manager's latest wish and schedule are kept through a stop
   (its commands are still rejected while stopped), and a smart start applies them again within
   the switching limits. A start for a vehicle known to be unplugged is rejected under every mode.
   A plugged-in car that does not charge and was never switched counts as off: a zero costs no
-  stop command. If it then starts by itself within 5 minutes of that idle report — a vehicle
-  cloud's handshake — while the energy manager wants it off, that "off" is sent once, within the
-  limits. A charge that starts later (the owner's, in the car) is kept as on until the energy
+  stop command. If it then starts by itself within `plugInHandshakeMinutes` (default 10) of that
+  idle report — a vehicle cloud's handshake — while the energy manager wants it off, that "off" is
+  sent once, within the limits. A charge that starts later (the owner's, in the car) is kept as on until the energy
   manager's next command. An `Immediate` start clears the schedule from before it.
 - **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
   at most `maxBlocksPerPlugIn` (default 1) charging blocks from plug-in to unplug and

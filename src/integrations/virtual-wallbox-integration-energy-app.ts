@@ -40,6 +40,8 @@ export const VIRTUAL_WALLBOX_DEFAULT_MIN_SWITCH_INTERVAL_MINUTES = 60;
 export const VIRTUAL_WALLBOX_DEFAULT_MAX_BLOCKS_PER_PLUG_IN = 1;
 /** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.meterHeartbeatSeconds}: below the energy manager's 90 s. */
 export const VIRTUAL_WALLBOX_DEFAULT_METER_HEARTBEAT_SECONDS = 60;
+/** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.plugInHandshakeMinutes}: two polls of a slow vehicle cloud. */
+export const VIRTUAL_WALLBOX_DEFAULT_PLUG_IN_HANDSHAKE_MINUTES = 10;
 /** Default for {@link VirtualWallboxIntegrationEnergyAppOptions.maxSwitchesPerDay}: two blocks. */
 export const VIRTUAL_WALLBOX_DEFAULT_MAX_SWITCHES_PER_DAY = 4;
 
@@ -56,13 +58,6 @@ const STATUS_SYNC_HEARTBEAT_MS = 5 * 60 * 1000;
  * take a while to start, and a report taken before the switch can arrive after it.
  */
 const START_GRACE_MS = 3 * 60 * 1000;
-/**
- * How long after a plug-in reported idle a car starting by itself still
- * counts as the plug-in's own start — a vehicle cloud's handshake reports
- * "plugged in, not charging" first. Later, a charge that starts is the
- * owner's (or the car's timer) and is kept, as an owner start always was.
- */
-const PLUG_IN_HANDSHAKE_MS = 5 * 60 * 1000;
 /** `useStorage()` key of the switches per wallbox — the budgets outlast a restart. */
 export const VIRTUAL_WALLBOX_SWITCH_HISTORY_KEY = 'virtual-wallbox-switch-history';
 
@@ -106,6 +101,17 @@ export interface VirtualWallboxIntegrationEnergyAppOptions extends IntegrationEn
      * @default 60
      */
     meterHeartbeatSeconds?: number;
+    /**
+     * How long after a plug-in reported idle a car that starts charging by
+     * itself still counts as the plug-in's own start — a vehicle cloud's
+     * handshake reports "plugged in, not charging" first, and the start only
+     * with its next report. Such a start gets the energy manager's "off" once.
+     * A charge that starts later is the owner's (or the car's timer) and is
+     * kept as on. Set it to the vehicle cloud's reporting interval and some.
+     *
+     * @default 10
+     */
+    plugInHandshakeMinutes?: number;
 }
 
 /**
@@ -265,7 +271,12 @@ interface VirtualWallboxState {
     queue: Promise<unknown>;
     session?: VirtualSession;
     /** Staged by `StartChargeV1` for the session the next charge opens. */
-    pendingStart?: {chargeMode: EnyoChargeModeEnum; vehicleId?: string; targetSocPercent?: number};
+    pendingStart?: {
+        chargeMode: EnyoChargeModeEnum;
+        vehicleId?: string;
+        targetSocPercent?: number;
+        completeChargeAtIso?: string;
+    };
     /** Energy of all sessions so far, Wh — the wallbox has no meter of its own. */
     meterWh: number;
     /** The vehicle's last {@link VirtualWallboxVehicleState.sessionEnergyWh}. */
@@ -306,14 +317,17 @@ type SwitchOutcome =
  *    (`SetChargingScheduleV1`, `SetChargerAvailablePowerV2`,
  *    `ChangeChargingPowerV1`) switch on; `StopChargeV1`, `PauseChargingV1`
  *    and a zero power switch off. `StartChargeV1` switches on only under
- *    `Immediate`; under a smart mode it sets the charge up and leaves the
- *    moment to the energy manager, whose latest wish and schedule survive a
- *    stop. A start for a vehicle known to be unplugged is rejected. A
- *    subclass implements only {@link switchVehicleCharging}.
+ *    `Immediate`. Under a smart mode it opens the session at once — as a
+ *    real wallbox opens its transaction — paused by the EVSE, gives the
+ *    owner's new charge a charging block of its own and leaves the moment to
+ *    the energy manager, whose latest wish and schedule survive a stop. A
+ *    start for a vehicle known to be unplugged is rejected. A subclass
+ *    implements only {@link switchVehicleCharging}.
  *  - **No needless stop.** A plugged-in car that does not charge counts as
- *    off until switched. If it then starts by itself within a few minutes of
- *    the plug-in — a vehicle cloud's handshake — the energy manager's "off"
- *    is sent once; a charge the owner starts later is kept as on.
+ *    off until switched. If it then starts by itself within
+ *    {@link VirtualWallboxIntegrationEnergyAppOptions.plugInHandshakeMinutes}
+ *    of the plug-in — a vehicle cloud's handshake — the energy manager's
+ *    "off" is sent once; a charge the owner starts later is kept as on.
  *  - **Switching stays rare.** Only a change of on/off is sent. Between two
  *    switches the energy manager causes lie at least
  *    {@link VirtualWallboxIntegrationEnergyAppOptions.minSwitchIntervalMinutes};
@@ -362,6 +376,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     private readonly maxBlocksPerPlugIn: number;
     private readonly maxSwitchesPerDay: number;
     private readonly meterHeartbeatMs: number;
+    private readonly plugInHandshakeMs: number;
     private readonly applianceManager?: ApplianceManager;
     private readonly wallboxes = new Map<string, VirtualWallboxState>();
     private switchHistory?: Promise<void>;
@@ -375,6 +390,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         this.maxBlocksPerPlugIn = options.maxBlocksPerPlugIn ?? VIRTUAL_WALLBOX_DEFAULT_MAX_BLOCKS_PER_PLUG_IN;
         this.maxSwitchesPerDay = options.maxSwitchesPerDay ?? VIRTUAL_WALLBOX_DEFAULT_MAX_SWITCHES_PER_DAY;
         this.meterHeartbeatMs = (options.meterHeartbeatSeconds ?? VIRTUAL_WALLBOX_DEFAULT_METER_HEARTBEAT_SECONDS) * 1000;
+        this.plugInHandshakeMs = (options.plugInHandshakeMinutes ?? VIRTUAL_WALLBOX_DEFAULT_PLUG_IN_HANDSHAKE_MINUTES) * 60_000;
         this.applianceManager = options.applianceManager;
     }
 
@@ -461,8 +477,39 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             chargeMode: message.data.chargeMode,
             vehicleId: message.data.vehicleId,
             targetSocPercent: message.data.targetSocPercent,
+            ...(message.data.completeChargeAtIso ? {completeChargeAtIso: message.data.completeChargeAtIso} : {}),
         };
+        if (!immediate) {
+            // A new charge of the owner's gets its own charging block, whatever this
+            // plug-in already used: the energy manager's window still decides when.
+            this.resetPlugInBlocks(wallbox);
+            const vehicle = wallbox.vehicle;
+            if (vehicle?.pluggedIn && !vehicle.charging && wallbox.switchedOn !== true) {
+                await this.enqueue(wallbox, () => this.openPausedSession(message.applianceId, wallbox, vehicle));
+            }
+        }
         return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
+    }
+
+    /**
+     * Opens the charge at a smart start, as a real wallbox opens its
+     * transaction at once: the energy manager plans a charger's charge from
+     * the session (`ChargingStartedV1` with mode, vehicle and deadline), and a
+     * charger without one has nothing for it to plan. Paused by the EVSE until
+     * the energy manager's window switches the vehicle on.
+     */
+    private async openPausedSession(applianceId: string, wallbox: VirtualWallboxState, vehicle: VirtualWallboxVehicleState): Promise<void> {
+        if (wallbox.session) return;
+        wallbox.switchedOn = false;
+        await this.openSession(applianceId, wallbox, vehicle);
+        await this.applyVehicleState(applianceId, wallbox, vehicle);
+    }
+
+    /** Gives the plug-in its charging blocks back. */
+    private resetPlugInBlocks(wallbox: VirtualWallboxState): void {
+        if (wallbox.startsSincePlugIn === 0) return;
+        wallbox.startsSincePlugIn = 0;
+        this.saveSwitchHistory();
     }
 
     /**
@@ -775,7 +822,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         // no stop, and then started by itself within the plug-in's handshake: that "off"
         // goes out once, within the switching limits. A charge that starts later — the
         // owner's, in the car — is kept as on, and nothing repeats it.
-        if (state.charging && idleSinceReportAt !== undefined && Date.now() - idleSinceReportAt < PLUG_IN_HANDSHAKE_MS
+        if (state.charging && idleSinceReportAt !== undefined && Date.now() - idleSinceReportAt < this.plugInHandshakeMs
             && wallbox.wantsOn === false && !wallbox.stopped) {
             void this.requestSwitch(applianceId, wallbox, false);
         }
@@ -883,6 +930,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             transactionId: wallbox.session.transactionId,
             initiator: pending ? EnyoChargeInitiatorEnum.App : EnyoChargeInitiatorEnum.Charger,
             chargeMode,
+            ...(pending?.completeChargeAtIso ? {completeChargeAtIso: pending.completeChargeAtIso} : {}),
             meterValueWh: wallbox.meterWh,
             ...(vehicleId ? {vehicleId} : {}),
         });
@@ -980,9 +1028,6 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         this.clearRetry(wallbox);
         this.clearSchedule(wallbox);
         // The next plug-in gets a charging block of its own.
-        if (wallbox.startsSincePlugIn > 0) {
-            wallbox.startsSincePlugIn = 0;
-            this.saveSwitchHistory();
-        }
+        this.resetPlugInBlocks(wallbox);
     }
 }
