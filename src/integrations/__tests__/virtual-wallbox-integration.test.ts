@@ -2,6 +2,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
     EnyoChargeInitiatorEnum,
     EnyoChargeModeEnum,
+    EnyoPriceLimitModeEnum,
+    type EnyoDataBusChangeChargeModeV1,
     EnyoChargingStopReason,
     EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusChargerStatusChangedV1,
@@ -37,6 +39,8 @@ const MINUTE = 60_000;
 function installSdk(defaultChargeMode?: EnyoChargeModeEnum, stored = new Map<string, unknown>(), openCharge?: object) {
     const sent: EnyoDataBusMessage[] = [];
     const listeners: Array<{types: EnyoDataBusMessageEnum[]; cb: (m: EnyoDataBusMessage) => void}> = [];
+    /** The host's charge records: the open one, and every save. */
+    const charges: {active: object | null; saved: {charge: object; id?: string}[]} = {active: openCharge ?? null, saved: []};
     (globalThis as Record<string, unknown>).energyAppSdkInstance = {
         useDataBus: () => ({
             listenForMessages: (types: EnyoDataBusMessageEnum[], cb: (m: EnyoDataBusMessage) => void) => {
@@ -49,13 +53,16 @@ function installSdk(defaultChargeMode?: EnyoChargeModeEnum, stored = new Map<str
         useAppliances: () => ({
             getById: async (id: string) => id === CAR ? {id, charger: {defaultChargeMode}} : null,
         }),
-        useCharge: () => ({findActiveCharge: () => Promise.resolve(openCharge ?? null)}),
+        useCharge: () => ({
+            findActiveCharge: () => Promise.resolve(charges.active),
+            save: async (charge: object, id?: string) => { charges.saved.push({charge, id}); },
+        }),
         useStorage: () => ({
             load: async (key: string) => stored.get(key) ?? null,
             save: async (key: string, value: unknown) => { stored.set(key, value); },
         }),
     };
-    return {sent, listeners, stored};
+    return {sent, listeners, stored, charges};
 }
 
 /** A virtual wallbox whose vehicle answers every switch with {@link result}. */
@@ -485,6 +492,69 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         expect(statuses()).toEqual([Occupied, Suspended, Charging]);
     });
 
+    describe('a change of mode or deadline while the session waits', () => {
+        const startWith = (data: object) => deliver(command(EnyoDataBusMessageEnum.StartChargeV1, {
+            idTag: 'enyo', requestId: 'r', ...data,
+        }));
+        const modeChanges = () => ofType<EnyoDataBusChangeChargeModeV1>(EnyoDataBusMessageEnum.ChangeChargeModeV1)
+            .map((m) => m.data);
+
+        it('reaches the energy manager and the charge record', async () => {
+            await plugged();
+            await startWith({chargeMode: EnyoChargeModeEnum.CostOptimized, completeChargeAtIso: '2026-11-13T06:00:00Z'});
+            sdk.charges.active = {
+                id: 'charge-1', transactionId: started()[0].data.transactionId, applianceId: CAR,
+                chargeMode: EnyoChargeModeEnum.CostOptimized, completeAtIsoTimestamp: '2026-11-13T06:00:00Z',
+            };
+            await vi.advanceTimersByTimeAsync(30 * MINUTE);
+
+            await startWith({chargeMode: EnyoChargeModeEnum.PriceLimit, completeChargeAtIso: '2026-11-13T09:00:00Z'});
+            expect(modeChanges()).toEqual([{chargeMode: EnyoChargeModeEnum.PriceLimit, completeChargeAtIso: '2026-11-13T09:00:00Z'}]);
+            expect(sdk.charges.saved).toEqual([{
+                id: 'charge-1',
+                charge: expect.objectContaining({
+                    chargeMode: EnyoChargeModeEnum.PriceLimit, completeAtIsoTimestamp: '2026-11-13T09:00:00Z',
+                }),
+            }]);
+            expect(started()).toHaveLength(1);
+
+            // The same settings again change nothing.
+            await startWith({chargeMode: EnyoChargeModeEnum.PriceLimit});
+            expect(modeChanges()).toHaveLength(1);
+        });
+
+        it('passes the start\'s price ceiling on with it', async () => {
+            await plugged();
+            await startWith({chargeMode: EnyoChargeModeEnum.CostOptimized});
+            await startWith({
+                chargeMode: EnyoChargeModeEnum.CostOptimized, completeChargeAtIso: '2026-11-13T07:00:00Z',
+                priceLimitMode: EnyoPriceLimitModeEnum.CtPerKwh, priceLimitCtPerKwh: 25,
+            });
+            expect(modeChanges()).toEqual([{
+                chargeMode: EnyoChargeModeEnum.CostOptimized, completeChargeAtIso: '2026-11-13T07:00:00Z',
+                priceLimitMode: EnyoPriceLimitModeEnum.CtPerKwh, priceLimitCtPerKwh: 25,
+            }]);
+        });
+
+        it('tells the energy manager of "Sofort laden", so it does not switch the car off again', async () => {
+            await plugged();
+            await startWith({chargeMode: EnyoChargeModeEnum.CostOptimized});
+            await startWith({chargeMode: EnyoChargeModeEnum.Immediate});
+            expect(modeChanges()).toEqual([{chargeMode: EnyoChargeModeEnum.Immediate}]);
+            expect(wallbox.switches).toEqual([true]);
+        });
+    });
+
+    it('opens the paused session of a smart start that came before the first report of the car', async () => {
+        expect(await start(EnyoChargeModeEnum.CostOptimized, 'v-9')).toMatchObject({answer: Accepted});
+        expect(started()).toHaveLength(0);
+        await plugged();
+        expect(started()).toHaveLength(1);
+        expect(started()[0].data).toMatchObject({initiator: EnyoChargeInitiatorEnum.App, vehicleId: 'v-9'});
+        expect(statuses()).toEqual([Suspended]);
+        expect(wallbox.switches).toEqual([]);
+    });
+
     it('opens the session of an immediate start once the car charges', async () => {
         await plugged();
         await start(EnyoChargeModeEnum.Immediate, 'v-9');
@@ -727,13 +797,17 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             setUp({minSwitchIntervalMinutes: 15, maxSwitchesPerDay: 4, maxBlocksPerPlugIn: 1});
             await plugged();
             await start(EnyoChargeModeEnum.CostOptimized, 'v', 80);
+            expect(wallbox.switches).toEqual([]);
             await power(11_000);
             await charging();
             await vi.advanceTimersByTimeAsync(60 * MINUTE);
             // The car stopped at 80 % by itself; the owner wants 100 % for a trip.
             await plugged();
+            await power(0);
             await vi.advanceTimersByTimeAsync(60 * MINUTE);
             expect(await start(EnyoChargeModeEnum.CostOptimized, 'v', 100)).toMatchObject({answer: Accepted});
+            // The start leaves the moment to the energy manager; its "on" is not held back by the used block.
+            expect(wallbox.switches).toEqual([true]);
             await power(11_000);
             expect(wallbox.switches).toEqual([true, true]);
             expect(wallbox.contexts.at(-1)).toEqual({targetSocPercent: 100});
@@ -748,6 +822,7 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
             await stop();
             await plugged();
             await start(EnyoChargeModeEnum.CostOptimized);
+            expect(wallbox.switches).toEqual([true, false]);
             await power(11_000);
             await vi.advanceTimersByTimeAsync(15 * MINUTE);
             expect(wallbox.switches).toEqual([true, false, true]);
@@ -797,6 +872,7 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
     it('stops a car whose cloud reports the start of charging a few minutes late', async () => {
         await plugged();
         await power(0);
+        expect(wallbox.switches).toEqual([]);
         await vi.advanceTimersByTimeAsync(6 * MINUTE);
         await charging();
         await vi.advanceTimersByTimeAsync(0);
@@ -819,6 +895,7 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         wallbox.start();
         await plugged();
         await power(0);
+        expect(wallbox.switches).toEqual([]);
         await charging();
         await vi.advanceTimersByTimeAsync(0);
         expect(wallbox.switches).toEqual([false]);

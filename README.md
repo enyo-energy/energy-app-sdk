@@ -4364,7 +4364,11 @@ any wallbox. The class turns those plans into what the car can do:
   `ChargingStartedV1` with mode, vehicle and `completeChargeAtIso`, as a real wallbox opens its
   transaction — reported `Suspended` (EVSE), and leaves the moment to the energy manager, so the
   plug-in's block goes to the window it planned. Such a start is a new charge of the owner's and
-  gets a charging block of its own. The energy manager's latest wish and schedule are kept through a stop
+  gets a charging block of its own; one that comes before the vehicle's first report opens the
+  session with that report. A later start that changes the mode or the deadline of an open session
+  is announced with `ChangeChargeModeV1` (with the start's price ceiling) and saved to the charge
+  record, because the energy manager re-plans only on that; `Immediate` also switches on at once,
+  whatever the switching limits. The energy manager's latest wish and schedule are kept through a stop
   (its commands are still rejected while stopped), and a smart start applies them again within
   the switching limits. A start for a vehicle known to be unplugged is rejected under every mode.
   A plugged-in car that does not charge and was never switched counts as off: a zero costs no

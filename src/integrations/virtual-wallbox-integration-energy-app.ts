@@ -7,6 +7,8 @@ import {
     EnyoChargingMeterValueContext,
     EnyoChargingStopReason,
     EnyoCommandAcknowledgeAnswerEnum,
+    EnyoDataBusChangeChargeModeV1,
+    EnyoDataBusMessageEnum,
     EnyoDataBusChangeChargingPowerV1,
     EnyoDataBusClearChargingProfilesV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
@@ -228,6 +230,8 @@ export function virtualWallboxChargerMetadata(options: VirtualWallboxChargerMeta
 interface VirtualSession {
     transactionId: string;
     chargeMode: EnyoChargeModeEnum;
+    /** The deadline the energy manager plans the session to, as last announced. */
+    completeChargeAtIso?: string;
     /** From the `StartChargeV1` that opened or changed it. */
     targetSocPercent?: number;
     /** The virtual meter when the session opened. */
@@ -321,8 +325,12 @@ type SwitchOutcome =
  *    real wallbox opens its transaction — paused by the EVSE, gives the
  *    owner's new charge a charging block of its own and leaves the moment to
  *    the energy manager, whose latest wish and schedule survive a stop. A
- *    start for a vehicle known to be unplugged is rejected. A subclass
- *    implements only {@link switchVehicleCharging}.
+ *    smart start before the first report of the vehicle opens the session
+ *    with that report. A later start that changes the mode or deadline of an
+ *    open session is announced with `ChangeChargeModeV1` and saved to the
+ *    charge record — the energy manager re-plans only on that; `Immediate`
+ *    also switches on at once. A start for a vehicle known to be unplugged
+ *    is rejected. A subclass implements only {@link switchVehicleCharging}.
  *  - **No needless stop.** A plugged-in car that does not charge counts as
  *    off until switched. If it then starts by itself within
  *    {@link VirtualWallboxIntegrationEnergyAppOptions.plugInHandshakeMinutes}
@@ -469,8 +477,17 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         // "Sofort laden" overrides the plan: an entry left from before must not switch it off.
         if (immediate) this.clearSchedule(wallbox);
         if (wallbox.session) {
-            wallbox.session.chargeMode = message.data.chargeMode;
-            if (message.data.targetSocPercent !== undefined) wallbox.session.targetSocPercent = message.data.targetSocPercent;
+            const session = wallbox.session;
+            const deadline = message.data.completeChargeAtIso;
+            const changed = session.chargeMode !== message.data.chargeMode
+                || (deadline !== undefined && deadline !== session.completeChargeAtIso);
+            session.chargeMode = message.data.chargeMode;
+            if (deadline !== undefined) session.completeChargeAtIso = deadline;
+            if (message.data.targetSocPercent !== undefined) session.targetSocPercent = message.data.targetSocPercent;
+            // The energy manager plans with the mode and deadline of `ChargingStartedV1` and
+            // re-plans only on `ChangeChargeModeV1`: a change the owner makes while the session
+            // waits for its window would otherwise never reach it.
+            if (changed) await this.announceModeChange(message.applianceId, session, message);
             // "Sofort laden" switches on at once here too — after a smart start the session is
             // already open, paused, and the owner expects the car to charge now.
             return this.answer(await this.requestSwitch(message.applianceId, wallbox, immediate), immediate);
@@ -494,6 +511,45 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
     }
 
     /**
+     * Tells the energy manager and the charge record that the session's mode
+     * or deadline changed — both, as a real wallbox app does: the energy
+     * manager re-plans only on `ChangeChargeModeV1`, the app and the history
+     * read the record. The command's price ceiling goes along; a mode change
+     * without one means "no ceiling".
+     */
+    private async announceModeChange(applianceId: string, session: VirtualSession, start: EnyoDataBusStartChargeV1): Promise<void> {
+        const {priceLimitMode, priceLimitCtPerKwh, priceLimitSharePercent} = start.data;
+        const msg: EnyoDataBusChangeChargeModeV1 = {
+            id: this.generateMessageId(),
+            type: 'message',
+            message: EnyoDataBusMessageEnum.ChangeChargeModeV1,
+            source: this.source,
+            applianceId,
+            timestampIso: new Date().toISOString(),
+            data: {
+                chargeMode: session.chargeMode,
+                ...(session.completeChargeAtIso ? {completeChargeAtIso: session.completeChargeAtIso} : {}),
+                ...(priceLimitMode !== undefined ? {priceLimitMode} : {}),
+                ...(priceLimitCtPerKwh !== undefined ? {priceLimitCtPerKwh} : {}),
+                ...(priceLimitSharePercent !== undefined ? {priceLimitSharePercent} : {}),
+            },
+        };
+        this.useDataBus().sendMessage([msg]);
+        try {
+            const charge = await this.useCharge().findActiveCharge(applianceId);
+            if (!charge) return;
+            const {id, ...record} = charge;
+            await this.useCharge().save({
+                ...record,
+                chargeMode: session.chargeMode,
+                ...(session.completeChargeAtIso ? {completeAtIsoTimestamp: session.completeChargeAtIso} : {}),
+            }, id);
+        } catch (error) {
+            console.warn(`Virtual wallbox ${applianceId}: could not save the changed charge mode: ${String(error)}`);
+        }
+    }
+
+    /**
      * Opens the charge at a smart start, as a real wallbox opens its
      * transaction at once: the energy manager plans a charger's charge from
      * the session (`ChargingStartedV1` with mode, vehicle and deadline), and a
@@ -504,8 +560,6 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         // Checked again in the queue: a report that ran first may have unplugged the car.
         const vehicle = wallbox.vehicle;
         if (wallbox.session || !vehicle?.pluggedIn || vehicle.charging || wallbox.switchedOn === true) return;
-        wallbox.switchedOn = false;
-        await this.openSession(applianceId, wallbox, vehicle);
         await this.applyVehicleState(applianceId, wallbox, vehicle);
     }
 
@@ -795,6 +849,12 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             wallbox.switchedOn = false;
             wallbox.idleSinceReportAt = Date.now();
         }
+        // A smart start waits for its window in an open session — also one that came
+        // before the first report of the car, right after a restart.
+        const smartStart = wallbox.pendingStart && wallbox.pendingStart.chargeMode !== EnyoChargeModeEnum.Immediate;
+        if (!wallbox.session && smartStart && state.pluggedIn && !state.charging && wallbox.switchedOn === false) {
+            await this.openSession(applianceId, wallbox, state);
+        }
         this.countEnergy(wallbox, state);
 
         const {status, suspendedReason} = this.statusOf(wallbox, state);
@@ -899,6 +959,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             wallbox.session = {
                 transactionId: charge.transactionId,
                 chargeMode: charge.chargeMode ?? EnyoChargeModeEnum.Immediate,
+                ...(charge.completeAtIsoTimestamp ? {completeChargeAtIso: charge.completeAtIsoTimestamp} : {}),
                 startMeterWh,
             };
             console.log(`Virtual wallbox ${applianceId}: took over the open charge ${charge.transactionId}`);
@@ -928,6 +989,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             chargeMode,
             startMeterWh: wallbox.meterWh,
             ...(pending?.targetSocPercent !== undefined ? {targetSocPercent: pending.targetSocPercent} : {}),
+            ...(pending?.completeChargeAtIso ? {completeChargeAtIso: pending.completeChargeAtIso} : {}),
         };
         this.publishChargingStarted(applianceId, {
             connectorId: CONNECTOR_ID,
