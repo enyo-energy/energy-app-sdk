@@ -671,10 +671,61 @@ describe('the vehicle\'s state becomes the charger\'s', () => {
         await charging();
         await power(0);
         await plugged();
+        expect(wallbox.switches).toEqual([false]);
+
+        // The owner starts the car well after enyo's stop: kept, no stop of enyo's own.
+        await vi.advanceTimersByTimeAsync(30 * MINUTE);
         await charging();
-        await vi.advanceTimersByTimeAsync(15 * MINUTE);
+        await vi.advanceTimersByTimeAsync(60 * MINUTE);
+        expect(wallbox.switches).toEqual([false]);
+
+        // Only the energy manager's next "off" stops it again.
         await power(0);
         expect(wallbox.switches).toEqual([false, false]);
+    });
+
+    it('keeps a charge the owner starts long after an idle plug-in', async () => {
+        await plugged();
+        await power(0);
+        await vi.advanceTimersByTimeAsync(30 * MINUTE);
+        await charging();
+        await vi.advanceTimersByTimeAsync(60 * MINUTE);
+        expect(wallbox.switches).toEqual([]);
+    });
+
+    it('stops a car that keeps starting by itself at most once per plug-in, with production limits', async () => {
+        sdk = installSdk();
+        wallbox.stop();
+        wallbox = new TestWallbox();
+        wallbox.start();
+        await plugged();
+        await power(0);
+        await charging();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(wallbox.switches).toEqual([false]);
+
+        for (let cycle = 0; cycle < 6; cycle++) {
+            await plugged();
+            await vi.advanceTimersByTimeAsync(10 * MINUTE);
+            await charging();
+            await vi.advanceTimersByTimeAsync(60 * MINUTE);
+        }
+        expect(wallbox.switches).toEqual([false]);
+    });
+
+    it('lets "Sofort laden" after a stop override the plan from before it', async () => {
+        await charging();
+        await schedule([
+            {seconds: 0, chargingPowerLimitW: 0},
+            {seconds: 3600, chargingPowerLimitW: 11_000},
+            {seconds: 7200, chargingPowerLimitW: 0},
+        ]);
+        await plugged();
+        await stop();
+        await start(EnyoChargeModeEnum.Immediate);
+        await charging();
+        await vi.advanceTimersByTimeAsync(7200 * 1000);
+        expect(wallbox.switches).toEqual([false, true]);
     });
 
     it('counts a counter the vehicle restarts as new energy', async () => {

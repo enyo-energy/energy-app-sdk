@@ -56,6 +56,13 @@ const STATUS_SYNC_HEARTBEAT_MS = 5 * 60 * 1000;
  * take a while to start, and a report taken before the switch can arrive after it.
  */
 const START_GRACE_MS = 3 * 60 * 1000;
+/**
+ * How long after a plug-in reported idle a car starting by itself still
+ * counts as the plug-in's own start — a vehicle cloud's handshake reports
+ * "plugged in, not charging" first. Later, a charge that starts is the
+ * owner's (or the car's timer) and is kept, as an owner start always was.
+ */
+const PLUG_IN_HANDSHAKE_MS = 5 * 60 * 1000;
 /** `useStorage()` key of the switches per wallbox — the budgets outlast a restart. */
 export const VIRTUAL_WALLBOX_SWITCH_HISTORY_KEY = 'virtual-wallbox-switch-history';
 
@@ -235,6 +242,11 @@ interface VirtualWallboxState {
     energyManagerWish?: boolean;
     /** The last switch the vehicle accepted; `undefined` while unknown. */
     switchedOn?: boolean;
+    /**
+     * When {@link switchedOn} is `false` only because the car was reported
+     * plugged in and idle — no switch of ours: the report, ms since epoch.
+     */
+    idleSinceReportAt?: number;
     /** When the last switch on was accepted, ms since epoch. */
     switchedOnAt?: number;
     /** Whether the charge the host still holds open was looked up after the start of this run. */
@@ -290,11 +302,18 @@ type SwitchOutcome =
  * the car like for any wallbox. This class turns that into what the car can
  * do:
  *
- *  - **Commands become on/off.** `StartChargeV1`, `ResumeChargingV1` and any
- *    non-zero power (`SetChargingScheduleV1`, `SetChargerAvailablePowerV2`,
+ *  - **Commands become on/off.** `ResumeChargingV1` and any non-zero power
+ *    (`SetChargingScheduleV1`, `SetChargerAvailablePowerV2`,
  *    `ChangeChargingPowerV1`) switch on; `StopChargeV1`, `PauseChargingV1`
- *    and a zero power switch off. A subclass implements only
- *    {@link switchVehicleCharging}.
+ *    and a zero power switch off. `StartChargeV1` switches on only under
+ *    `Immediate`; under a smart mode it sets the charge up and leaves the
+ *    moment to the energy manager, whose latest wish and schedule survive a
+ *    stop. A start for a vehicle known to be unplugged is rejected. A
+ *    subclass implements only {@link switchVehicleCharging}.
+ *  - **No needless stop.** A plugged-in car that does not charge counts as
+ *    off until switched. If it then starts by itself within a few minutes of
+ *    the plug-in — a vehicle cloud's handshake — the energy manager's "off"
+ *    is sent once; a charge the owner starts later is kept as on.
  *  - **Switching stays rare.** Only a change of on/off is sent. Between two
  *    switches the energy manager causes lie at least
  *    {@link VirtualWallboxIntegrationEnergyAppOptions.minSwitchIntervalMinutes};
@@ -431,6 +450,8 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         }
         wallbox.stopped = false;
         wallbox.wantsOn = immediate ? true : wallbox.energyManagerWish;
+        // "Sofort laden" overrides the plan: an entry left from before must not switch it off.
+        if (immediate) this.clearSchedule(wallbox);
         if (wallbox.session) {
             wallbox.session.chargeMode = message.data.chargeMode;
             if (message.data.targetSocPercent !== undefined) wallbox.session.targetSocPercent = message.data.targetSocPercent;
@@ -620,6 +641,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             return {kind: 'refused', reason};
         }
         wallbox.switchedOn = target;
+        wallbox.idleSinceReportAt = undefined;
         if (target) wallbox.switchedOnAt = now;
         wallbox.switches.push(now);
         if (target) wallbox.startsSincePlugIn++;
@@ -676,12 +698,6 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         return Math.max(afterInterval, afterBudget);
     }
 
-    /** Whether an accepted switch is younger than the time a vehicle takes to report it. */
-    private switchedRecently(wallbox: VirtualWallboxState): boolean {
-        const last = wallbox.switches[wallbox.switches.length - 1];
-        return last !== undefined && Date.now() - last < START_GRACE_MS;
-    }
-
     /** The acknowledgment for a switch request. */
     private answer(outcome: SwitchOutcome, explicit: boolean): IntegrationCommandResponse {
         switch (outcome.kind) {
@@ -716,13 +732,18 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
             await this.adoptOpenCharge(applianceId, wallbox);
         }
         wallbox.vehicle = state;
-        const wasSwitchedOn = wallbox.switchedOn;
+        const idleSinceReportAt = wallbox.idleSinceReportAt;
         // A charging car is switched on — whether enyo did it, the owner did, or it was
         // already charging when this integration started. Saves a needless start.
-        if (state.charging) wallbox.switchedOn = true;
-        // A plugged-in car that does not charge, was never switched and has no charge
-        // open is off: a "0 W" then costs no stop command.
-        else if (state.pluggedIn && wallbox.switchedOn === undefined && !wallbox.session) wallbox.switchedOn = false;
+        if (state.charging) {
+            wallbox.switchedOn = true;
+            wallbox.idleSinceReportAt = undefined;
+        } else if (state.pluggedIn && wallbox.switchedOn === undefined && !wallbox.session) {
+            // A plugged-in car that does not charge, was never switched and has no charge
+            // open is off: a "0 W" then costs no stop command.
+            wallbox.switchedOn = false;
+            wallbox.idleSinceReportAt = Date.now();
+        }
         this.countEnergy(wallbox, state);
 
         const {status, suspendedReason} = this.statusOf(wallbox, state);
@@ -750,12 +771,12 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         this.syncRegistryStatus(applianceId, wallbox, status, suspendedReason);
         this.keepMeterFresh(applianceId, wallbox);
 
-        // The car started charging by itself while the energy manager wants it off — it
-        // reported idle at the plug-in, or its own timer started it: that wish goes out
-        // again, within the switching limits. Not right after a switch of ours, while the
-        // car may still report its state from before it.
-        if (state.charging && wasSwitchedOn !== true && wallbox.wantsOn === false && !wallbox.stopped
-            && !this.switchedRecently(wallbox)) {
+        // The car reported idle at the plug-in, took the energy manager's "off" as needing
+        // no stop, and then started by itself within the plug-in's handshake: that "off"
+        // goes out once, within the switching limits. A charge that starts later — the
+        // owner's, in the car — is kept as on, and nothing repeats it.
+        if (state.charging && idleSinceReportAt !== undefined && Date.now() - idleSinceReportAt < PLUG_IN_HANDSHAKE_MS
+            && wallbox.wantsOn === false && !wallbox.stopped) {
             void this.requestSwitch(applianceId, wallbox, false);
         }
 
@@ -953,6 +974,7 @@ export abstract class VirtualWallboxIntegrationEnergyApp extends WallboxIntegrat
         wallbox.wantsOn = undefined;
         wallbox.energyManagerWish = undefined;
         wallbox.switchedOn = undefined;
+        wallbox.idleSinceReportAt = undefined;
         wallbox.pendingStart = undefined;
         wallbox.lastVehicleEnergyWh = undefined;
         this.clearRetry(wallbox);

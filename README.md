@@ -4366,9 +4366,10 @@ any wallbox. The class turns those plans into what the car can do:
   (its commands are still rejected while stopped), and a smart start applies them again within
   the switching limits. A start for a vehicle known to be unplugged is rejected under every mode.
   A plugged-in car that does not charge and was never switched counts as off: a zero costs no
-  stop command. A car that then starts charging by itself while the energy manager wants it off
-  is switched off again, within the limits — not within 3 minutes of a switch of ours, while the
-  car may still report its state from before it.
+  stop command. If it then starts by itself within 5 minutes of that idle report — a vehicle
+  cloud's handshake — while the energy manager wants it off, that "off" is sent once, within the
+  limits. A charge that starts later (the owner's, in the car) is kept as on until the energy
+  manager's next command. An `Immediate` start clears the schedule from before it.
 - **Switching stays rare:** at least `minSwitchIntervalMinutes` (default 60) between switches,
   at most `maxBlocksPerPlugIn` (default 1) charging blocks from plug-in to unplug and
   at most `maxSwitchesPerDay` (default 4) in 24 h. Both budgets hold back starts only, never
