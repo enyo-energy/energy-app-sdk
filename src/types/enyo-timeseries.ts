@@ -471,7 +471,32 @@ export interface HeatpumpPowerTimeseriesEntry extends TimeseriesEntryBase {
     heatGenerationHeatingWh?: number;
     /** Thermal energy delivered for domestic hot water in Watt-hours for this bucket */
     heatGenerationDomesticHotWaterWh?: number;
+    /**
+     * Number of compressor starts in this bucket. A cycle counts in the bucket
+     * it started in. Absent when the heatpump reports neither
+     * `compressorRunning` nor its power.
+     */
+    compressorStarts?: number;
+    /**
+     * Seconds the compressor ran in this bucket. A cycle crossing a bucket
+     * boundary is shared between the buckets, so the run time of a period is
+     * the sum over its buckets.
+     */
+    compressorRunSeconds?: number;
+    /**
+     * Number of compressor cycles that started in this bucket and ran shorter
+     * than {@link HEATPUMP_SHORT_CYCLE_THRESHOLD_SECONDS}.
+     */
+    compressorShortCycles?: number;
+    /** Seconds the heatpump's integrated heating rod was on in this bucket */
+    heatingRodRunSeconds?: number;
 }
+
+/**
+ * Run time in seconds below which a compressor cycle counts as a short cycle
+ * in {@link HeatpumpPowerTimeseriesEntry.compressorShortCycles}.
+ */
+export const HEATPUMP_SHORT_CYCLE_THRESHOLD_SECONDS = 600;
 
 /**
  * Request parameters for querying heatpump power timeseries data.
@@ -497,6 +522,12 @@ export interface HeatpumpPowerTimeseriesResponse extends TimeseriesResponseBase 
     totalHeatGenerationHeatingWh?: number;
     /** Total thermal energy delivered for domestic hot water in Watt-hours across all buckets */
     totalHeatGenerationDomesticHotWaterWh?: number;
+    /** Total compressor starts across all buckets */
+    totalCompressorStarts?: number;
+    /** Total compressor run time in seconds across all buckets */
+    totalCompressorRunSeconds?: number;
+    /** Total short compressor cycles across all buckets */
+    totalCompressorShortCycles?: number;
 }
 
 /**
