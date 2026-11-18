@@ -1,4 +1,4 @@
-import {EnyoHeatpumpSgReadyFunctionEnum} from './enyo-heatpump-appliance.js';
+import {EnyoHeatpumpSgReadyFunctionEnum, EnyoHeatpumpSgReadyStateEnum} from './enyo-heatpump-appliance.js';
 
 /**
  * Capabilities a smart plug / switchable relay appliance may support. A plug
@@ -106,27 +106,47 @@ export interface EnyoSmartPlugApplianceDefaults {
 }
 
 /**
- * Declares that a smart plug's relay is wired to the SG Ready input of a heat
- * pump appliance that belongs to **another** energy app — e.g. a Shelly relay
- * inside a Daikin Altherma whose heat pump is integrated through the vendor
- * cloud. Set on {@link EnyoSmartPlugApplianceMetadata.sgReadyContactOf}.
- *
- * The relay is a single SG Ready contact: relay
- * {@link EnyoSmartPlugApplianceStateEnum.On | On} means SG Ready state
- * {@link EnyoHeatpumpSgReadyStateEnum.Recommended} (3), relay
- * {@link EnyoSmartPlugApplianceStateEnum.Off | Off} means
- * {@link EnyoHeatpumpSgReadyStateEnum.Normal} (2). The block contact is not
- * used, so {@link EnyoHeatpumpSgReadyStateEnum.Blocked} and
- * {@link EnyoHeatpumpSgReadyStateEnum.Forced} cannot be switched this way.
+ * What an external control contact connects a smart plug's relay to — the
+ * discriminator of {@link EnyoSmartPlugExternalControlContact}.
  */
-export interface EnyoSmartPlugSgReadyContact {
+export enum EnyoSmartPlugExternalControlTypeEnum {
+    /**
+     * The relay is wired to an SG Ready input of a heat pump appliance — see
+     * {@link EnyoSmartPlugHeatpumpSgReadyContact}.
+     */
+    HeatpumpSgReady = 'heatpump-sg-ready',
+}
+
+/**
+ * A smart plug relay wired as one SG Ready contact of a heat pump appliance —
+ * e.g. a Shelly relay inside a Daikin Altherma whose heat pump is integrated
+ * through the vendor cloud.
+ *
+ * The relay switches between two SG Ready states: relay
+ * {@link EnyoSmartPlugApplianceStateEnum.Off | Off} (contact open) always means
+ * {@link EnyoHeatpumpSgReadyStateEnum.Normal} (2), relay
+ * {@link EnyoSmartPlugApplianceStateEnum.On | On} means {@link onState},
+ * {@link EnyoHeatpumpSgReadyStateEnum.Recommended} (3) unless the wiring says
+ * otherwise.
+ *
+ * @example
+ * ```typescript
+ * externalControlContact: {
+ *     type: EnyoSmartPlugExternalControlTypeEnum.HeatpumpSgReady,
+ *     applianceId: daikinHeatpumpApplianceId,
+ *     function: EnyoHeatpumpSgReadyFunctionEnum.Heating,
+ * }
+ * ```
+ */
+export interface EnyoSmartPlugHeatpumpSgReadyContact {
+    type: EnyoSmartPlugExternalControlTypeEnum.HeatpumpSgReady;
     /**
      * Identifier of the heat pump appliance whose SG Ready input this relay is
      * wired to. References the `id` of an EnyoAppliance of type Heatpump,
      * usually one registered by a different energy app than the plug.
      */
-    heatpumpApplianceId: string;
-    /** What the contact raises on that heat pump (space heating, buffer tank, DHW). */
+    applianceId: string;
+    /** What the contact acts on at that heat pump (space heating, buffer tank, DHW). */
     function: EnyoHeatpumpSgReadyFunctionEnum;
     /**
      * The zone the contact acts on, with the same meaning as
@@ -136,7 +156,26 @@ export interface EnyoSmartPlugSgReadyContact {
      * for the DHW functions. Omit for the first (or only) zone.
      */
     zoneIndex?: number;
+    /**
+     * The SG Ready state the heat pump is in while the relay is On. Defaults to
+     * {@link EnyoHeatpumpSgReadyStateEnum.Recommended} (3) when omitted. Set
+     * {@link EnyoHeatpumpSgReadyStateEnum.Forced} for a contact wired to force
+     * operation (e.g. a DHW heating rod contact), or
+     * {@link EnyoHeatpumpSgReadyStateEnum.Blocked} for a relay on the block
+     * contact — switching such a relay on blocks the heat pump instead of
+     * raising it. Never {@link EnyoHeatpumpSgReadyStateEnum.Normal}, which is
+     * what relay Off means.
+     */
+    onState?: EnyoHeatpumpSgReadyStateEnum;
 }
+
+/**
+ * Declares that a smart plug's relay does not power a load of its own but is
+ * wired as a control contact of an appliance that belongs to **another**
+ * energy app. Set on {@link EnyoSmartPlugApplianceMetadata.externalControlContact};
+ * discriminated by `type`. Validate with `validateSmartPlugExternalControlContact()`.
+ */
+export type EnyoSmartPlugExternalControlContact = EnyoSmartPlugHeatpumpSgReadyContact;
 
 /**
  * Type-specific metadata for a smart plug appliance — a switchable socket or
@@ -210,24 +249,30 @@ export interface EnyoSmartPlugApplianceMetadata {
      */
     controlAllowed?: boolean;
     /**
-     * Set when this relay is wired to the SG Ready input of a heat pump
-     * appliance owned by another energy app. References that heat pump by
-     * {@link EnyoSmartPlugSgReadyContact.heatpumpApplianceId}; relay On means SG
-     * Ready state `recommended` (3), relay Off means `normal` (2) — see
-     * {@link EnyoSmartPlugSgReadyContact}.
+     * Set when this relay is wired as a control contact of an appliance owned
+     * by another energy app, e.g. the SG Ready input of a heat pump — see
+     * {@link EnyoSmartPlugExternalControlContact}.
      *
      * Only the energy app that owns the relay sets this field, from a user
-     * setting. The heat pump's energy app never sets it.
+     * setting. The app of the controlled appliance never sets it.
      *
-     * While it is set, the relay is the heat pump's actuator and no longer a
-     * free smart plug: the energy manager switches it with
-     * {@link EnyoDataBusSetSmartPlugSwitchV1} on the heat pump's behalf, and
-     * consumers must not use it for surplus switching, offer it as an automation
-     * target or show a manual on/off switch for it.
+     * **Write `null` to remove the link.** Omitting the field keeps the stored
+     * link: `ApplianceManager` merges smart plug metadata into what is stored,
+     * so a plug re-registered without the key stays linked.
+     *
+     * While it is set, the relay is the controlled appliance's actuator and no
+     * longer a free smart plug: the energy manager switches it with
+     * {@link EnyoDataBusSetSmartPlugSwitchV1} on that appliance's behalf, and
+     * consumers must not use it for surplus switching, offer it as an
+     * automation target or show a manual on/off switch for it.
      *
      * Heat pumps whose own energy app drives the SG Ready relays keep declaring
      * them in {@link EnyoHeatpumpApplianceMetadata.sgReadyRelays}; this field is
-     * only for a relay that lives in a different app than the heat pump.
+     * only for a relay that lives in a different app than the heat pump. At most
+     * one relay may act on a given function and zone of a heat pump: when the
+     * heat pump's own `sgReadyRelays` already cover it, or a second plug claims
+     * it, consumers must switch none of the conflicting relays and should report
+     * the conflict as a configuration error.
      */
-    sgReadyContactOf?: EnyoSmartPlugSgReadyContact;
+    externalControlContact?: EnyoSmartPlugExternalControlContact | null;
 }

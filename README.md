@@ -89,7 +89,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [The model](#-the-model)
   - [Guide: Energy Manager apps](#-guide-energy-manager-apps)
   - [Guide: regular energy apps (smart plugs like Shelly)](#-guide-regular-energy-apps-smart-plugs-like-shelly)
-  - [Smart plug as a heat pump's SG Ready contact](#️-smart-plug-as-a-heat-pumps-sg-ready-contact)
+  - [Smart plug as an external control contact](#️-smart-plug-as-an-external-control-contact)
   - [End-to-end: pool pump on solar](#-end-to-end-pool-pump-on-solar)
   - [Mandatory vs Flexible (current limitation)](#-mandatory-vs-flexible-current-limitation)
   - [Permissions](#-permissions)
@@ -5124,25 +5124,39 @@ sdk.useDataBus().listenForMessages(['AutomationTriggerV1'], async (message: any)
 });
 ```
 
-### 🌡️ Smart plug as a heat pump's SG Ready contact
+### 🌡️ Smart plug as an external control contact
 
-A relay can be wired to the SG Ready input of a heat pump that **another** app integrates — e.g. a Shelly 1 inside a Daikin Altherma whose heat pump comes in through the Onecta cloud. The app that owns the relay declares the link in `sgReadyContactOf`, from a user setting; the heat pump's app never sets it.
+A relay can be wired as a control contact of an appliance that **another** app integrates — e.g. a Shelly 1 on the SG Ready input of a Daikin Altherma whose heat pump comes in through the Onecta cloud. The app that owns the relay declares the link in `externalControlContact`, from a user setting; the controlled appliance's app never sets it.
 
 ```typescript
-import {EnyoHeatpumpSgReadyFunctionEnum} from '@enyo-energy/energy-app-sdk';
+import {
+    EnyoHeatpumpSgReadyFunctionEnum,
+    EnyoSmartPlugExternalControlTypeEnum,
+    validateSmartPlugExternalControlContact,
+} from '@enyo-energy/energy-app-sdk';
+
+const externalControlContact = userSetting.heatpumpApplianceId
+    ? {
+        type: EnyoSmartPlugExternalControlTypeEnum.HeatpumpSgReady,
+        applianceId: userSetting.heatpumpApplianceId,
+        function: EnyoHeatpumpSgReadyFunctionEnum.Heating,
+        // zoneIndex: 1,                                // only for a zone other than the first
+        // onState: EnyoHeatpumpSgReadyStateEnum.Forced, // default: Recommended
+    }
+    : null; // null removes the link — omitting the key keeps the stored one
+
+const {errors} = validateSmartPlugExternalControlContact(externalControlContact);
 
 const metadata: EnyoSmartPlugApplianceMetadata = {
     availableFeatures: [EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching],
-    sgReadyContactOf: {
-        heatpumpApplianceId: userSetting.heatpumpApplianceId,
-        function: EnyoHeatpumpSgReadyFunctionEnum.Heating,
-        // zoneIndex: 1, // only for a heating circuit / DHW other than the first
-    },
+    externalControlContact,
 };
 ```
 
-- **One contact:** relay On = SG Ready state `recommended` (3), relay Off = `normal` (2). The block contact is not used.
+- **Two states:** relay Off = SG Ready state `normal` (2), relay On = `onState`, which defaults to `recommended` (3).
+- **Unlinking:** write `null`. `ApplianceManager` merges smart plug metadata, so leaving the key out keeps the old link.
 - **Actuator, not a plug:** while the link is set, the energy manager switches the relay with `SetSmartPlugSwitchV1` on the heat pump's behalf. It is no longer a free smart plug — no surplus switching, no automations, no manual switch in the UI.
+- **One relay per function and zone:** if the heat pump's own `sgReadyRelays` or a second plug already claim it, none of the conflicting relays is switched and the conflict is a configuration error.
 - Heat pumps whose own app drives the SG Ready relays keep using `heatpump.sgReadyRelays`.
 
 ### 🅿️ End-to-end: pool pump on solar

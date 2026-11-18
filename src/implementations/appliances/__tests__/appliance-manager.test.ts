@@ -16,10 +16,12 @@ import {
     EnyoSmartPlugApplianceAvailableFeaturesEnum,
     EnyoSmartPlugApplianceIconEnum,
     EnyoSmartPlugApplianceStateEnum,
+    EnyoSmartPlugExternalControlTypeEnum,
 } from '../../../types/enyo-smart-plug-appliance.js';
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceModeEnum,
+    EnyoHeatpumpSgReadyFunctionEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../../types/enyo-heatpump-appliance.js';
 import type {EnyoApplianceCreatedFilter} from '../../../packages/energy-app-appliance.js';
@@ -580,6 +582,31 @@ describe('ApplianceManager', () => {
                     icon: EnyoSmartPlugApplianceIconEnum.Dishwasher,
                 },
             });
+
+            manager.dispose();
+        });
+
+        it('keeps a smartPlug externalControlContact when an update omits it, and removes it on null', async () => {
+            const link = {
+                type: EnyoSmartPlugExternalControlTypeEnum.HeatpumpSgReady,
+                applianceId: 'hp-1',
+                function: EnyoHeatpumpSgReadyFunctionEnum.Heating,
+            } as const;
+            const features = [EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching];
+            const a = makeAppliance('appl-1', {
+                type: EnyoApplianceTypeEnum.SmartPlug,
+                smartPlug: {availableFeatures: features, externalControlContact: link},
+            }, 'SN-1');
+            const sdk = createAppliancesFake([a]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.updateAppliance('appl-1', {smartPlug: {availableFeatures: features}});
+            let saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.smartPlug?.externalControlContact).toEqual(link);
+
+            await manager.updateAppliance('appl-1', {smartPlug: {availableFeatures: features, externalControlContact: null}});
+            saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.smartPlug?.externalControlContact).toBeNull();
 
             manager.dispose();
         });
