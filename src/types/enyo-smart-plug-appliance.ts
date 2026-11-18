@@ -1,3 +1,5 @@
+import {EnyoHeatpumpSgReadyFunctionEnum} from './enyo-heatpump-appliance.js';
+
 /**
  * Capabilities a smart plug / switchable relay appliance may support. A plug
  * that only reports power without being switchable lists {@link Power} alone;
@@ -104,6 +106,39 @@ export interface EnyoSmartPlugApplianceDefaults {
 }
 
 /**
+ * Declares that a smart plug's relay is wired to the SG Ready input of a heat
+ * pump appliance that belongs to **another** energy app — e.g. a Shelly relay
+ * inside a Daikin Altherma whose heat pump is integrated through the vendor
+ * cloud. Set on {@link EnyoSmartPlugApplianceMetadata.sgReadyContactOf}.
+ *
+ * The relay is a single SG Ready contact: relay
+ * {@link EnyoSmartPlugApplianceStateEnum.On | On} means SG Ready state
+ * {@link EnyoHeatpumpSgReadyStateEnum.Recommended} (3), relay
+ * {@link EnyoSmartPlugApplianceStateEnum.Off | Off} means
+ * {@link EnyoHeatpumpSgReadyStateEnum.Normal} (2). The block contact is not
+ * used, so {@link EnyoHeatpumpSgReadyStateEnum.Blocked} and
+ * {@link EnyoHeatpumpSgReadyStateEnum.Forced} cannot be switched this way.
+ */
+export interface EnyoSmartPlugSgReadyContact {
+    /**
+     * Identifier of the heat pump appliance whose SG Ready input this relay is
+     * wired to. References the `id` of an EnyoAppliance of type Heatpump,
+     * usually one registered by a different energy app than the plug.
+     */
+    heatpumpApplianceId: string;
+    /** What the contact raises on that heat pump (space heating, buffer tank, DHW). */
+    function: EnyoHeatpumpSgReadyFunctionEnum;
+    /**
+     * The zone the contact acts on, with the same meaning as
+     * {@link EnyoHeatpumpApplianceSgReadyRelay.zoneIndex}: the heating circuit
+     * index for {@link EnyoHeatpumpSgReadyFunctionEnum.Heating}, the buffer tank
+     * index for {@link EnyoHeatpumpSgReadyFunctionEnum.BufferTank}, the DHW index
+     * for the DHW functions. Omit for the first (or only) zone.
+     */
+    zoneIndex?: number;
+}
+
+/**
  * Type-specific metadata for a smart plug appliance — a switchable socket or
  * relay channel (e.g. one channel of a Shelly device) that powers an arbitrary
  * load.
@@ -174,4 +209,25 @@ export interface EnyoSmartPlugApplianceMetadata {
      * to their configured default behaviour.
      */
     controlAllowed?: boolean;
+    /**
+     * Set when this relay is wired to the SG Ready input of a heat pump
+     * appliance owned by another energy app. References that heat pump by
+     * {@link EnyoSmartPlugSgReadyContact.heatpumpApplianceId}; relay On means SG
+     * Ready state `recommended` (3), relay Off means `normal` (2) — see
+     * {@link EnyoSmartPlugSgReadyContact}.
+     *
+     * Only the energy app that owns the relay sets this field, from a user
+     * setting. The heat pump's energy app never sets it.
+     *
+     * While it is set, the relay is the heat pump's actuator and no longer a
+     * free smart plug: the energy manager switches it with
+     * {@link EnyoDataBusSetSmartPlugSwitchV1} on the heat pump's behalf, and
+     * consumers must not use it for surplus switching, offer it as an automation
+     * target or show a manual on/off switch for it.
+     *
+     * Heat pumps whose own energy app drives the SG Ready relays keep declaring
+     * them in {@link EnyoHeatpumpApplianceMetadata.sgReadyRelays}; this field is
+     * only for a relay that lives in a different app than the heat pump.
+     */
+    sgReadyContactOf?: EnyoSmartPlugSgReadyContact;
 }

@@ -89,6 +89,7 @@ The official TypeScript SDK for building Energy Apps on the enyo platform. Creat
   - [The model](#-the-model)
   - [Guide: Energy Manager apps](#-guide-energy-manager-apps)
   - [Guide: regular energy apps (smart plugs like Shelly)](#-guide-regular-energy-apps-smart-plugs-like-shelly)
+  - [Smart plug as a heat pump's SG Ready contact](#️-smart-plug-as-a-heat-pumps-sg-ready-contact)
   - [End-to-end: pool pump on solar](#-end-to-end-pool-pump-on-solar)
   - [Mandatory vs Flexible (current limitation)](#-mandatory-vs-flexible-current-limitation)
   - [Permissions](#-permissions)
@@ -5122,6 +5123,27 @@ sdk.useDataBus().listenForMessages(['AutomationTriggerV1'], async (message: any)
     }
 });
 ```
+
+### 🌡️ Smart plug as a heat pump's SG Ready contact
+
+A relay can be wired to the SG Ready input of a heat pump that **another** app integrates — e.g. a Shelly 1 inside a Daikin Altherma whose heat pump comes in through the Onecta cloud. The app that owns the relay declares the link in `sgReadyContactOf`, from a user setting; the heat pump's app never sets it.
+
+```typescript
+import {EnyoHeatpumpSgReadyFunctionEnum} from '@enyo-energy/energy-app-sdk';
+
+const metadata: EnyoSmartPlugApplianceMetadata = {
+    availableFeatures: [EnyoSmartPlugApplianceAvailableFeaturesEnum.Switching],
+    sgReadyContactOf: {
+        heatpumpApplianceId: userSetting.heatpumpApplianceId,
+        function: EnyoHeatpumpSgReadyFunctionEnum.Heating,
+        // zoneIndex: 1, // only for a heating circuit / DHW other than the first
+    },
+};
+```
+
+- **One contact:** relay On = SG Ready state `recommended` (3), relay Off = `normal` (2). The block contact is not used.
+- **Actuator, not a plug:** while the link is set, the energy manager switches the relay with `SetSmartPlugSwitchV1` on the heat pump's behalf. It is no longer a free smart plug — no surplus switching, no automations, no manual switch in the UI.
+- Heat pumps whose own app drives the SG Ready relays keep using `heatpump.sgReadyRelays`.
 
 ### 🅿️ End-to-end: pool pump on solar
 
