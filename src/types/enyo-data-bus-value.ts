@@ -2082,6 +2082,8 @@ export enum EnyoDataBusMessageEnum {
     VacationStoppedV1 = 'VacationStoppedV1',
     /** Live split of the grid power between the household (primary meter) and the meter cascade. Published by the core. */
     CascadeSplitUpdateV1 = 'CascadeSplitUpdateV1',
+    /** One finished compressor cycle of a heatpump — start, stop, run time and context. Published by the core. */
+    HeatpumpCompressorCycleV1 = 'HeatpumpCompressorCycleV1',
     EnergyAppStartedV1 = 'EnergyAppStartedV1'
 }
 
@@ -2954,6 +2956,104 @@ export interface EnyoDataBusCascadeSplitUpdateV1 extends EnyoDataBusMessage {
         subMeterPowerW?: number;
         /** Appliance ID of the cascade meter; absent when {@link estimated} */
         meterApplianceId?: string;
+    };
+}
+
+/**
+ * How the core decided that a heatpump's compressor was running, carried by
+ * {@link EnyoDataBusHeatpumpCompressorCycleV1}.
+ */
+export enum EnyoHeatpumpCompressorCycleSourceEnum {
+    /**
+     * From {@link EnyoDataBusHeatpumpValuesV1} `compressorRunning`, which the
+     * appliance reports itself. The preferred source.
+     */
+    CompressorFlag = 'compressor-flag',
+    /**
+     * From the heatpump's electrical power crossing a threshold, for appliances
+     * that do not report `compressorRunning`. A heating rod built into the pump
+     * that runs on its own can look like a compressor run here.
+     */
+    PowerThreshold = 'power-threshold',
+}
+
+/**
+ * One finished compressor cycle of a heatpump: from the compressor starting
+ * to it stopping again. Published by the core once the cycle has ended, for
+ * every heatpump that reports `compressorRunning` or its power in
+ * {@link EnyoDataBusHeatpumpValuesV1}. Subscribing requires the
+ * `SubscribeDataBus` permission.
+ *
+ * A cycle counts compressor starts, not changes of the operating mode: a
+ * modulating pump can stay in `Heating` while its compressor starts several
+ * times, and every one of those starts is its own cycle. A heating rod
+ * running without the compressor is no cycle.
+ *
+ * When the heatpump stops reporting while the compressor runs, the cycle is
+ * closed at the last value received and marked {@link data.truncated}, so a
+ * data gap never reads as a short cycle followed by a new start.
+ *
+ * @example
+ * ```typescript
+ * const msg: EnyoDataBusHeatpumpCompressorCycleV1 = {
+ *     id: 'c0ffee00-0000-4000-8000-000000000001',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.HeatpumpCompressorCycleV1,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-11-18T07:42:10.000Z',
+ *     data: {
+ *         startedAtIso: '2026-11-18T06:10:00.000Z',
+ *         endedAtIso: '2026-11-18T07:42:10.000Z',
+ *         runSeconds: 5530,
+ *         pauseBeforeSeconds: 2410,
+ *         operationMode: EnyoHeatpumpApplianceModeEnum.Heating,
+ *         source: EnyoHeatpumpCompressorCycleSourceEnum.CompressorFlag,
+ *         electricalEnergyWh: 1180,
+ *         heatingRodActive: false,
+ *         truncated: false,
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusHeatpumpCompressorCycleV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpCompressorCycleV1;
+    /** ID of the heatpump appliance the cycle belongs to */
+    applianceId: string;
+    data: {
+        /** When the compressor started, as ISO 8601 timestamp */
+        startedAtIso: string;
+        /** When the compressor stopped, as ISO 8601 timestamp */
+        endedAtIso: string;
+        /** Run time of the compressor in seconds — `endedAtIso − startedAtIso` */
+        runSeconds: number;
+        /**
+         * Seconds the compressor rested between the end of the previous cycle
+         * and this start. Absent when the previous cycle is not known (first
+         * cycle after the heatpump was added, or after a data gap).
+         */
+        pauseBeforeSeconds?: number;
+        /**
+         * The operating mode the heatpump reported for most of the run — what
+         * the cycle was for. Absent when the heatpump reported no mode.
+         */
+        operationMode?: EnyoHeatpumpApplianceModeEnum;
+        /** How the compressor state was determined */
+        source: EnyoHeatpumpCompressorCycleSourceEnum;
+        /**
+         * Electrical energy the heatpump drew during the run in Watt-hours,
+         * integrated from its reported power. Absent when it reports no power.
+         */
+        electricalEnergyWh?: number;
+        /** Whether the heatpump's integrated heating rod was on at any time during the run */
+        heatingRodActive: boolean;
+        /**
+         * `true` when the end of the run was not observed because the heatpump
+         * stopped reporting; {@link endedAtIso} is then the last value received
+         * while the compressor still ran.
+         */
+        truncated: boolean;
     };
 }
 
