@@ -1,5 +1,3 @@
-import type {EnyoHeatpumpSgReadyFunctionEnum} from './enyo-heatpump-appliance.js';
-
 /**
  * Capabilities a smart plug / switchable relay appliance may support. A plug
  * that only reports power without being switchable lists {@link Power} alone;
@@ -106,28 +104,6 @@ export interface EnyoSmartPlugApplianceDefaults {
 }
 
 /**
- * A smart plug relay wired as an SG Ready contact of a heat pump appliance that
- * belongs to another energy app — e.g. a Shelly relay inside a Daikin Altherma
- * whose heat pump is integrated through the vendor cloud.
- *
- * Relay {@link EnyoSmartPlugApplianceStateEnum.On | On} means SG Ready state
- * `recommended` (3), relay {@link EnyoSmartPlugApplianceStateEnum.Off | Off}
- * means `normal` (2). Only for a relay wired on the "recommended" contact.
- */
-export interface EnyoSmartPlugHeatpumpSgReadyContact {
-    /** `id` of the heat pump appliance whose SG Ready input the relay is wired to. */
-    heatpumpApplianceId: string;
-    /** What the contact acts on at that heat pump. */
-    function: EnyoHeatpumpSgReadyFunctionEnum;
-    /**
-     * The zone the contact acts on, with the same meaning as
-     * {@link EnyoHeatpumpApplianceSgReadyRelay.zoneIndex}. Omit for the first
-     * (or only) zone.
-     */
-    zoneIndex?: number;
-}
-
-/**
  * Type-specific metadata for a smart plug appliance — a switchable socket or
  * relay channel (e.g. one channel of a Shelly device) that powers an arbitrary
  * load.
@@ -198,20 +174,4 @@ export interface EnyoSmartPlugApplianceMetadata {
      * to their configured default behaviour.
      */
     controlAllowed?: boolean;
-    /**
-     * Set when the relay does not power a load of its own but is wired as an
-     * SG Ready contact of a heat pump owned by another energy app. Only the
-     * energy app that owns the relay sets it.
-     *
-     * While it is set, the energy manager switches the relay with
-     * {@link EnyoDataBusSetSmartPlugSwitchV1} on the heat pump's behalf, and
-     * consumers must not use the plug for surplus switching, automations or a
-     * manual switch. A plug with `controlAllowed: false` is not switched. When
-     * two plugs, or a plug and the heat pump's own `sgReadyRelays`, claim the
-     * same function and zone, none of them is switched.
-     *
-     * **Write `null` to remove the link.** Omitting the key through
-     * `ApplianceManager` keeps the stored link.
-     */
-    heatpumpSgReadyContact?: EnyoSmartPlugHeatpumpSgReadyContact | null;
 }
