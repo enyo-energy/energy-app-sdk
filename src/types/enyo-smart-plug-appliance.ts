@@ -112,7 +112,7 @@ export interface EnyoSmartPlugApplianceDefaults {
  *
  * Relay {@link EnyoSmartPlugApplianceStateEnum.On | On} means SG Ready state
  * `recommended` (3), relay {@link EnyoSmartPlugApplianceStateEnum.Off | Off}
- * means `normal` (2).
+ * means `normal` (2). Only for a relay wired on the "recommended" contact.
  */
 export interface EnyoSmartPlugHeatpumpSgReadyContact {
     /** `id` of the heat pump appliance whose SG Ready input the relay is wired to. */
@@ -206,7 +206,12 @@ export interface EnyoSmartPlugApplianceMetadata {
      * While it is set, the energy manager switches the relay with
      * {@link EnyoDataBusSetSmartPlugSwitchV1} on the heat pump's behalf, and
      * consumers must not use the plug for surplus switching, automations or a
-     * manual switch.
+     * manual switch. A plug with `controlAllowed: false` is not switched. When
+     * two plugs, or a plug and the heat pump's own `sgReadyRelays`, claim the
+     * same function and zone, none of them is switched.
+     *
+     * **Write `null` to remove the link.** Omitting the key through
+     * `ApplianceManager` keeps the stored link.
      */
-    heatpumpSgReadyContact?: EnyoSmartPlugHeatpumpSgReadyContact;
+    heatpumpSgReadyContact?: EnyoSmartPlugHeatpumpSgReadyContact | null;
 }
