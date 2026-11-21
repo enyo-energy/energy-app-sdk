@@ -3084,7 +3084,17 @@ export interface EnyoDataBusAggregatedStateValuesV1 extends EnyoDataBusMessage {
         gridPowerResolution: EnyoDataBusMessageResolution;
         gridConsumptionW?: number;
         gridFeedInW?: number;
+        /**
+         * Home consumption in Watt, excluding the managed appliances. Appliances
+         * marked {@link EnyoAppliance.excludedFromEnergyBalance} are already
+         * accounted for, so their power is not counted twice.
+         */
         homeConsumptionW?: number;
+        /**
+         * Home consumption in Watt, including the managed appliances. Appliances
+         * marked {@link EnyoAppliance.excludedFromEnergyBalance} are already
+         * accounted for, so their power is not counted twice.
+         */
         homeConsumptionWithAppliancesW?: number;
         /** battery power from all appliances (in Watt). Positive = consumption, negative = charging */
         batteryPowerW?: number;

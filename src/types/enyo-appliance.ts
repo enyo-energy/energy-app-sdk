@@ -524,6 +524,34 @@ export interface EnyoAppliance {
      * visible and only takes it out of energy management. Omitted means visible.
      */
     hidden?: boolean;
+    /**
+     * Set by the enyo Box, never by the app: the customer left this appliance
+     * out of the energy balance because its power is already counted elsewhere
+     * — typically a smart plug in front of a device that reports its own power,
+     * which would otherwise be counted twice.
+     *
+     * The appliance's own values (power, energy, state) stay valid and it is
+     * still shown and controllable, but never add it to household sums: apps
+     * that add up individual appliance power themselves (e.g. an energy
+     * manager or a self-consumption calculation) must skip appliances where
+     * this is `true`.
+     *
+     * Values the host computes already account for it — e.g. `homeConsumptionW`
+     * / `homeConsumptionWithAppliancesW` in the aggregated live values,
+     * {@link HomeConsumptionTimeseriesEntry} and the energy tiers — so do not
+     * subtract it from those again.
+     *
+     * Read-only: the host ignores this field when an app {@link EnergyAppAppliance.save | saves}
+     * the appliance. Omitted means the appliance counts normally.
+     *
+     * @example
+     * ```typescript
+     * const appliancePowerW = appliances
+     *     .filter(a => a.excludedFromEnergyBalance !== true)
+     *     .reduce((sum, a) => sum + (powerByApplianceId.get(a.id) ?? 0), 0);
+     * ```
+     */
+    excludedFromEnergyBalance?: boolean;
 }
 /**
  * A named group of appliances that the app UI shows as one collapsible entry.
