@@ -39,8 +39,8 @@ export class InMemoryApplianceManager extends ApplianceManager {
      */
     async createOrUpdateAppliance(appliance: ApplianceConfig): Promise<string> {
         this.throwIfDisposed();
-        // Build network device IDs list
-        const networkDeviceIds = appliance.networkDevices?.map(d => d.id) ?? [];
+        // Build network device IDs list; `undefined` keeps the stored links on an update
+        const networkDeviceIds = appliance.networkDevices?.map(d => d.id);
 
         // Try to find existing appliance using identifier strategy
         let existingAppliance: EnyoAppliance | undefined;
@@ -79,7 +79,7 @@ export class InMemoryApplianceManager extends ApplianceManager {
         const newApplianceData: Omit<EnyoAppliance, 'id'> = {
             name: appliance.name,
             type: appliance.type,
-            networkDeviceIds,
+            networkDeviceIds: networkDeviceIds ?? existingAppliance?.networkDeviceIds ?? [],
             metadata,
             ...(appliance.topology && {topology: appliance.topology}),
             meter: appliance.meter,
