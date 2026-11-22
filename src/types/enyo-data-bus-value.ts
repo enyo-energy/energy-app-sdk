@@ -42,6 +42,7 @@ import type {
     EnyoFlexibilityTargetPower
 } from "./enyo-flexibility-announcement.js";
 import {EnyoSmartPlugApplianceStateEnum} from "./enyo-smart-plug-appliance.js";
+import type {EnyoRoomControlModeEnum} from "./enyo-temperature-sensor-appliance.js";
 import {EnyoAirConditioningApplianceModeEnum, EnyoAirConditioningOptimizationModeEnum} from "./enyo-air-conditioning-appliance.js";
 import {EnergyAppPackageCategory} from "../energy-app-package-definition.js";
 import {EnyoPackageConfigurationTranslatedValue} from "./enyo-settings.js";
@@ -4699,8 +4700,34 @@ export interface EnyoTemperatureSensorValue {
     id: string;
     /** Current temperature in Celsius */
     temperatureC: number;
-    /** Optional target temperature in Celsius */
+    /**
+     * Setpoint in °C the device itself regulates to (thermostat setpoint).
+     *
+     * Not to be confused with {@link EnyoRoom.targetTemperatureC}, the
+     * customer's comfort target for the room, which is not written to any
+     * appliance. Omitted for sensors without a setpoint.
+     */
     targetTemperatureC?: number;
+    /**
+     * Control mode the thermostat currently runs in.
+     *
+     * Omitted means "not reported" (the sensor has no control mode, or did not
+     * report it this time), not any particular mode. Whether a sensor reports
+     * it at all is declared once on
+     * {@link EnyoTemperatureSensor.reportsControlMode}.
+     */
+    controlMode?: EnyoRoomControlModeEnum;
+    /**
+     * Whether the thermostat's boost (a temporary full-heat override) is
+     * currently running. Omitted means "not reported", not `false`.
+     */
+    boostActive?: boolean;
+    /**
+     * Whether the thermostat currently detects an open window, either through
+     * a window contact or by a temperature drop, and has lowered heating
+     * for it. Omitted means "not reported", not `false`.
+     */
+    windowOpen?: boolean;
     /**
      * Current **relative** humidity in percent (0-100), for sensors that
      * measure it — not absolute humidity in g/m³.
