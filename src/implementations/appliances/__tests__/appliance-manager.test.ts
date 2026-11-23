@@ -20,6 +20,8 @@ import {
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceModeEnum,
+    EnyoHeatpumpSgReadyFunctionEnum,
+    EnyoHeatpumpSgReadyStateEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../../types/enyo-heatpump-appliance.js';
 import type {EnyoApplianceCreatedFilter} from '../../../packages/energy-app-appliance.js';
@@ -376,6 +378,35 @@ describe('ApplianceManager', () => {
     });
 
     describe('updateAppliance (mergeApplianceData)', () => {
+        it('keeps an SG Ready relay another app linked into the heat pump when the heat pump app sends its own relays', async () => {
+            const ownRelay = {
+                index: 0,
+                function: EnyoHeatpumpSgReadyFunctionEnum.Heating,
+                activeState: EnyoHeatpumpSgReadyStateEnum.Normal,
+            };
+            const linkedRelay = {
+                index: 1,
+                function: EnyoHeatpumpSgReadyFunctionEnum.DhwHeatpump,
+                zoneIndex: 1,
+                supportedStates: [EnyoHeatpumpSgReadyStateEnum.Normal, EnyoHeatpumpSgReadyStateEnum.Recommended],
+                applianceId: 'shelly-plug',
+            };
+            const a = makeAppliance('appl-1', {
+                type: EnyoApplianceTypeEnum.Heatpump,
+                heatpump: {availableFeatures: [], sgReadyRelays: [ownRelay, linkedRelay]},
+            }, 'SN-1');
+            const sdk = createAppliancesFake([a]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            const raised = {...ownRelay, activeState: EnyoHeatpumpSgReadyStateEnum.Recommended};
+            await manager.updateAppliance('appl-1', {heatpump: {availableFeatures: [], sgReadyRelays: [raised]}});
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.heatpump?.sgReadyRelays).toEqual([raised, linkedRelay]);
+
+            manager.dispose();
+        });
+
         it('preserves existing metadata keys when patching only a subset', async () => {
             const a = makeAppliance('appl-1', {
                 metadata: {

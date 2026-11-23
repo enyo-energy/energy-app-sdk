@@ -17,6 +17,7 @@ import type {
     EnyoHeatpumpApplianceHeatingCircuit,
     EnyoHeatpumpApplianceHeatingCurve,
     EnyoHeatpumpApplianceMetadata,
+    EnyoHeatpumpApplianceSgReadyRelay,
 } from "../../types/enyo-heatpump-appliance.js";
 import type {EnyoBatteryApplianceMetadata} from "../../types/enyo-battery-appliance.js";
 import type {EnyoInverterApplianceMetadata} from "../../types/enyo-inverter-appliance.js";
@@ -237,7 +238,10 @@ export class ApplianceManager {
      * — losing `connectionType` and `vendorName`.
      *
      * Note: the merge is one level deep. Nested objects inside a metadata sub-object
-     * are replaced, not merged.
+     * are replaced, not merged. One exception: SG Ready relays another app linked
+     * into the heat pump (`heatpump.sgReadyRelays[].applianceId`) are kept when the
+     * update replaces `sgReadyRelays` without naming them — see
+     * {@link keepLinkedSgReadyRelays}.
      *
      * Update contract: an omitted optional field leaves the stored value unchanged.
      * For the {@link MERGEABLE_METADATA_KEYS} this is enforced by the per-key merge
@@ -260,7 +264,34 @@ export class ApplianceManager {
             const e = existing[key];
             merged[key] = u ? {...e, ...u} : e;
         }
+        if (update.heatpump?.sgReadyRelays && existing.heatpump) {
+            merged.heatpump = {
+                ...existing.heatpump,
+                ...update.heatpump,
+                sgReadyRelays: this.keepLinkedSgReadyRelays(existing.heatpump.sgReadyRelays, update.heatpump.sgReadyRelays),
+            };
+        }
         return merged as Omit<EnyoAppliance, 'id'>;
+    }
+
+    /**
+     * The relays a heat pump app sends, plus the relays another app linked into
+     * the heat pump (`applianceId` set) that the update does not name. The heat
+     * pump's own app rebuilds `sgReadyRelays` from its own wiring and knows nothing
+     * of a smart plug another app wired to its SG Ready input; only the app that
+     * owns that plug adds or removes its entry, via `useAppliances().save()`.
+     *
+     * @param stored The relays currently stored on the heat pump
+     * @param sent The relays the update replaces them with
+     * @returns `sent` with the linked relays it does not name appended
+     */
+    private keepLinkedSgReadyRelays(
+        stored: EnyoHeatpumpApplianceSgReadyRelay[] | undefined,
+        sent: EnyoHeatpumpApplianceSgReadyRelay[],
+    ): EnyoHeatpumpApplianceSgReadyRelay[] {
+        const named = new Set(sent.map(relay => relay.applianceId));
+        const linked = (stored ?? []).filter(relay => relay.applianceId && !named.has(relay.applianceId));
+        return [...sent, ...linked];
     }
 
     /**
