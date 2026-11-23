@@ -3285,8 +3285,52 @@ export interface EnyoDataBusSetChargingScheduleV1 extends EnyoDataBusMessage {
         relativeSchedule: EnyoOcppRelativeSchedule[];
         /** Optional reason why this command was issued */
         reason?: EnyoDataBusCommandReason;
+        /**
+         * What {@link relativeSchedule} describes:
+         * - `'setpoint'` — entry 0 is the current limit (the behaviour so far);
+         * - `'plan'` — the whole plan of the session, every planned block. Sent
+         *   only to chargers declaring
+         *   {@link EnyoChargerApplianceAvailableFeaturesEnum.FullChargingSchedule}.
+         *
+         * Omitted means `'setpoint'`.
+         *
+         * @default 'setpoint'
+         */
+        scheduleKind?: EnyoChargingScheduleKind;
+        /**
+         * Absolute anchor of {@link EnyoOcppRelativeSchedule.seconds}, as an
+         * ISO timestamp: a whole-day plan must not shift by the delivery delay.
+         * Omitted means the seconds count from the moment the command arrives.
+         */
+        startScheduleIso?: string;
+        /**
+         * End of the plan, as an ISO timestamp. After it nothing is planned —
+         * the last entry does not hold forever. Omitted means the last entry
+         * holds until the next command.
+         */
+        validUntilIso?: string;
+        /**
+         * Identifies the plan: the same id as before is a repeat (nothing to
+         * write), a new id is a replan. Mainly used with
+         * `scheduleKind: 'plan'`.
+         */
+        planId?: string;
+        /**
+         * Charge mode the plan was built for, as on
+         * {@link ChargerForecast.chargeMode}. Omit when the sender does not
+         * declare one; consumers should not infer a default.
+         */
+        chargeMode?: EnyoChargeModeEnum;
     };
 }
+
+/**
+ * What a {@link EnyoDataBusSetChargingScheduleV1} schedule describes, see
+ * {@link EnyoDataBusSetChargingScheduleV1.data.scheduleKind}:
+ * - `'setpoint'` — entry 0 is the current limit;
+ * - `'plan'` — the whole plan of the charging session.
+ */
+export type EnyoChargingScheduleKind = 'setpoint' | 'plan';
 
 /**
  * Command message to start a charging session on a specific charger.

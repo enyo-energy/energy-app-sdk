@@ -126,7 +126,21 @@ export enum EnyoChargerApplianceAvailableFeaturesEnum {
      * accept one. The switching logic lives in the app that controls the
      * vehicle (e.g. the Smartcar app), not in this SDK.
      */
-    VirtualWallbox = 'VirtualWallbox'
+    VirtualWallbox = 'VirtualWallbox',
+    /**
+     * The charger applies a whole charging plan itself — written once into the
+     * device or the vehicle (e.g. a charge window in the car via Smartcar) —
+     * instead of following live setpoints. The energy manager sends every
+     * planned block of the session in one {@link EnyoDataBusSetChargingScheduleV1}
+     * with `scheduleKind: 'plan'` and sends it again only when the plan
+     * changes; it sends no live on/off in between.
+     *
+     * Declared together with {@link SmartChargingSchedule}. Limits for the plan
+     * are given in {@link EnyoChargerApplianceMetadata.fullChargingSchedule}.
+     * A charger that turns out not to support it drops the feature again; the
+     * energy manager then falls back to setpoints.
+     */
+    FullChargingSchedule = 'FullChargingSchedule'
 }
 
 /**
@@ -309,6 +323,29 @@ export interface EnyoChargerApplianceMetadata extends EnyoChargePreferences {
      * {@link EnyoChargerApplianceAvailableFeaturesEnum.VirtualWallbox}.
      */
     virtualWallbox?: EnyoChargerApplianceVirtualWallboxMetadata;
+    /**
+     * Limits for whole charging plans. Present when {@link availableFeatures}
+     * contains
+     * {@link EnyoChargerApplianceAvailableFeaturesEnum.FullChargingSchedule}.
+     */
+    fullChargingSchedule?: EnyoChargerApplianceFullScheduleMetadata;
+}
+
+/**
+ * Limits of a charger that applies whole charging plans
+ * ({@link EnyoChargerApplianceAvailableFeaturesEnum.FullChargingSchedule}).
+ * Every rewrite of the plan can be a paid cloud call, so the energy manager
+ * keeps plans within these limits and replans rarely.
+ */
+export interface EnyoChargerApplianceFullScheduleMetadata {
+    /** Shortest time, in minutes, between two plans sent; a change within it waits. */
+    minRescheduleIntervalMinutes: number;
+    /** Most charging blocks one plan may hold (a car often takes one window per day). */
+    maxBlocksPerSchedule: number;
+    /** Block boundaries are rounded to this grid, in minutes, e.g. `15` — a car takes HH:MM. */
+    granularityMinutes: number;
+    /** How far ahead the plan is wanted, in hours — at least to the session's deadline. */
+    horizonHours?: number;
 }
 
 /**
