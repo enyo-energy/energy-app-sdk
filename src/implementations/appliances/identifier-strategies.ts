@@ -53,6 +53,13 @@ export class TypeStrategy implements IdentifierStrategy {
     }
 }
 
+/**
+ * Strategy that uses the appliance's hostname as the identifier.
+ *
+ * Not recommended: a hostname changes (IP address ↔ DNS name, router renames),
+ * and every change creates a second appliance. Use
+ * {@link NetworkDeviceIdStrategy} for devices without a serial number.
+ */
 export class HostnameStrategy implements IdentifierStrategy {
     name = 'hostname';
 
@@ -63,6 +70,78 @@ export class HostnameStrategy implements IdentifierStrategy {
      */
     extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
         return appliance.metadata?.hostname;
+    }
+}
+
+/**
+ * Extracts an optional sub-key that tells apart several appliances of the same
+ * type behind one network device, e.g. the Modbus unit id or a battery index.
+ * Must return the same value for the {@link ApplianceConfig} the app saves and
+ * for the stored {@link EnyoAppliance}, so read it from a field that is saved
+ * with the appliance (such as `metadata.modbus.unitId`).
+ */
+export type NetworkDeviceSubKeyExtractor =
+    (appliance: EnyoAppliance | ApplianceConfig) => string | number | undefined;
+
+/**
+ * Strategy that identifies an appliance by its type plus its first network
+ * device id (`<type>:<networkDeviceId>`), optionally followed by a sub-key
+ * (`<type>:<networkDeviceId>:<subKey>`).
+ *
+ * Recommended for apps whose devices report no serial number, in place of
+ * {@link HostnameStrategy}: the network device id stays the same when the
+ * device's IP address or hostname changes, because the box matches network
+ * devices by their MAC address. Typical use is as a fallback after the serial
+ * number:
+ *
+ * ```ts
+ * IdentifierStrategyFactory.fallback([
+ *     IdentifierStrategyFactory.serialNumber(),
+ *     IdentifierStrategyFactory.networkDeviceId(a => a.metadata?.modbus?.unitId),
+ * ]);
+ * ```
+ *
+ * The app must pass `networkDevices` on every `createOrUpdateAppliance` call;
+ * without them no identifier can be extracted.
+ */
+export class NetworkDeviceIdStrategy implements IdentifierStrategy {
+    name: string;
+
+    /**
+     * Creates a strategy that uses the appliance type and network device id.
+     * @param subKey Optional extractor for a sub-key that tells apart several
+     *               appliances of the same type behind one network device. When
+     *               given, it must return a value, otherwise no identifier is
+     *               extracted.
+     */
+    constructor(private subKey?: NetworkDeviceSubKeyExtractor) {
+        this.name = subKey ? 'networkDeviceId+subKey' : 'networkDeviceId';
+    }
+
+    /**
+     * Extracts `<type>:<networkDeviceId>[:<subKey>]` from the appliance. The
+     * network device id is the first of `networkDevices` (config) or
+     * `networkDeviceIds` (stored appliance).
+     * @param appliance The appliance to extract the identifier from
+     * @returns The identifier, or undefined if the network device id or a
+     *          requested sub-key is missing
+     */
+    extract(appliance: EnyoAppliance | ApplianceConfig): string | undefined {
+        const networkDeviceId = 'networkDeviceIds' in appliance
+            ? appliance.networkDeviceIds?.[0]
+            : appliance.networkDevices?.[0]?.id;
+        if (!networkDeviceId) {
+            return undefined;
+        }
+        const key = `${appliance.type}:${networkDeviceId}`;
+        if (!this.subKey) {
+            return key;
+        }
+        const subKey = this.subKey(appliance);
+        if (subKey === undefined || subKey === '') {
+            return undefined;
+        }
+        return `${key}:${subKey}`;
     }
 }
 
@@ -265,6 +344,18 @@ export class IdentifierStrategyFactory {
 
     static hostname(): HostnameStrategy {
         return new HostnameStrategy();
+    }
+
+    /**
+     * Creates a strategy that identifies an appliance by type and network
+     * device id. Recommended fallback for devices without a serial number,
+     * instead of {@link hostname}. See {@link NetworkDeviceIdStrategy}.
+     * @param subKey Optional extractor for a sub-key (e.g. Modbus unit id) that
+     *               tells apart several appliances of the same type behind one
+     *               network device
+     */
+    static networkDeviceId(subKey?: NetworkDeviceSubKeyExtractor): NetworkDeviceIdStrategy {
+        return new NetworkDeviceIdStrategy(subKey);
     }
 
     static chargePointId(): ChargePointIdStrategy {

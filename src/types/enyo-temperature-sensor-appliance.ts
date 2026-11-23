@@ -12,6 +12,25 @@ export enum EnyoTemperatureSensorTypeEnum {
     Other = 'Other',
 }
 
+/**
+ * Control mode a room thermostat (radiator or wall thermostat) runs in, as
+ * reported in {@link EnyoTemperatureSensorValue.controlMode}.
+ *
+ * Mirrors the modes common to room thermostats (e.g. Homematic's
+ * `AUTOMATIC` / `MANUAL` / `ECO`). Temporary overrides such as boost or an
+ * open window are not modes; they are reported separately as
+ * {@link EnyoTemperatureSensorValue.boostActive} and
+ * {@link EnyoTemperatureSensorValue.windowOpen}.
+ */
+export enum EnyoRoomControlModeEnum {
+    /** The thermostat follows its own time program. */
+    Automatic = 'Automatic',
+    /** The setpoint was set by hand and is held until changed. */
+    Manual = 'Manual',
+    /** The thermostat holds its lowered eco setpoint (e.g. while nobody is home). */
+    Eco = 'Eco',
+}
+
 export interface EnyoApplianceSensorName {
     language: EnergyAppPackageLanguage;
     name: string;
@@ -40,6 +59,19 @@ export interface EnyoTemperatureSensor {
      * value that is plainly there.
      */
     measuresHumidity?: boolean;
+    /**
+     * Whether this sensor is a thermostat that reports its control state:
+     * {@link EnyoTemperatureSensorValue.controlMode},
+     * {@link EnyoTemperatureSensorValue.boostActive} and
+     * {@link EnyoTemperatureSensorValue.windowOpen}.
+     *
+     * Declared here for the same reason as {@link measuresHumidity}: a consumer
+     * can lay out the mode row before the first reading arrives.
+     *
+     * Absent means unknown, not `false` — fall back to whatever the readings
+     * carry.
+     */
+    reportsControlMode?: boolean;
 }
 
 /**

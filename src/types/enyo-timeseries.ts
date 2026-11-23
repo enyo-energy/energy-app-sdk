@@ -298,6 +298,10 @@ export interface HomeConsumptionTimeseriesEntry extends TimeseriesEntryBase {
      * Time-weighted average home consumption power in Watts for this bucket,
      * excluding the managed appliances (heatpump, air conditioning, EV
      * charging, …). This is the household base load.
+     *
+     * Appliances marked {@link EnyoAppliance.excludedFromEnergyBalance} are
+     * already left out of this and the other consumption values of the entry,
+     * so their power is not counted twice.
      */
     homeConsumptionW: number;
     /**

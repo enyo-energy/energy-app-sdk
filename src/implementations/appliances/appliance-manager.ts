@@ -124,7 +124,11 @@ export interface ApplianceConfig {
     name: EnyoApplianceName[];
     /** Type of the appliance */
     type: EnyoApplianceTypeEnum;
-    /** Network device(s) associated with the appliance */
+    /**
+     * Network device(s) associated with the appliance. Forwarded to
+     * {@link EnyoAppliance.networkDeviceIds}. Omit to keep the stored links on an
+     * update; pass an explicit `[]` to clear them.
+     */
     networkDevices?: EnyoNetworkDevice[];
     /** Appliance metadata */
     metadata?: Partial<EnyoApplianceMetadata>;
@@ -247,7 +251,8 @@ export class ApplianceManager {
      * For the {@link MERGEABLE_METADATA_KEYS} this is enforced by the per-key merge
      * below; for the other optional top-level fields (`availableFeatures`,
      * `cloudPackageId`) the caller-facing {@link createOrUpdateAppliance} drops the
-     * key when the value is `undefined` so this spread cannot overwrite it. To clear
+     * key when the value is `undefined` so this spread cannot overwrite it, and it
+     * keeps the stored `networkDeviceIds` when no `networkDevices` are passed. To clear
      * or replace such a field, pass an explicit value (e.g. an empty array `[]`).
      *
      * @param existing The existing appliance data
@@ -373,7 +378,10 @@ export class ApplianceManager {
             console.debug(`Found existing appliance with ID ${existingApplianceId} for identifier ${identifier}`);
         }
 
-        const networkDeviceIds = appliance.networkDevices?.map(d => d.id) ?? [];
+        // `undefined` when the caller passes no networkDevices: an update then
+        // keeps the stored links (e.g. one added from the backoffice) instead of
+        // clearing them. An explicit `networkDevices: []` still clears them.
+        const networkDeviceIds = appliance.networkDevices?.map(d => d.id);
 
         const metadata: EnyoApplianceMetadata = {
             connectionType: this.config.defaultConnectionType,
@@ -387,7 +395,7 @@ export class ApplianceManager {
         const newApplianceData: Omit<EnyoAppliance, 'id'> = {
             name: appliance.name,
             type: appliance.type,
-            networkDeviceIds,
+            networkDeviceIds: networkDeviceIds ?? [],
             metadata,
             ...(appliance.topology && {topology: appliance.topology}),
             meter: appliance.meter,
@@ -415,7 +423,10 @@ export class ApplianceManager {
         if (existingApplianceId) {
             const existingAppliance = await this.energyApp.useAppliances().getById(existingApplianceId);
             if (existingAppliance) {
-                applianceData = this.mergeApplianceData(existingAppliance, newApplianceData);
+                applianceData = this.mergeApplianceData(existingAppliance, {
+                    ...newApplianceData,
+                    networkDeviceIds: networkDeviceIds ?? existingAppliance.networkDeviceIds,
+                });
             }
         }
 

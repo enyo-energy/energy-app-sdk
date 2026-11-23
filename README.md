@@ -3073,7 +3073,22 @@ await applianceManager.updateApplianceState(
 | `refreshCache()` / `clearCache()` | Manual cache control. |
 | `dispose()` | Release SDK listeners. |
 
-Identifier strategies are exported from the package — typical choices match on serial number, hostname, or a composite of `manufacturer + model + sn`.
+Identifier strategies are exported from the package — typical choices match on serial number, network device, or a composite of `manufacturer + model + sn`.
+
+For devices without a serial number, use `NetworkDeviceIdStrategy` as the fallback rather than `HostnameStrategy`. A hostname changes (IP address ↔ DNS name, router renames), and every change creates a second appliance. The network device id stays the same, because the box matches network devices by their MAC address. The strategy identifies an appliance by `type` + its first network device id. An optional sub-key, such as the Modbus unit id or a battery index, tells apart several appliances of the same type behind one gateway:
+
+```typescript
+const manager = await ApplianceManager.initialize(energyApp, {
+    identifierStrategy: IdentifierStrategyFactory.fallback([
+        IdentifierStrategyFactory.serialNumber(),
+        IdentifierStrategyFactory.networkDeviceId(a => a.metadata?.modbus?.unitId),
+    ]),
+});
+```
+
+With this strategy, pass `networkDevices` on every `createOrUpdateAppliance` call. Without them no identifier can be extracted.
+
+`createOrUpdateAppliance` keeps the stored `networkDeviceIds` when a call omits `networkDevices`, so a link added from the backoffice survives the app's next save. Pass `networkDevices: []` to clear the links.
 
 ### Battery-powered appliances
 

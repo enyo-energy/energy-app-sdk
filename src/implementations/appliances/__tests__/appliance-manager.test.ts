@@ -33,7 +33,12 @@ import {
     MissingIdentifierError,
 } from '../appliance-manager.js';
 import {InMemoryApplianceManager} from '../in-memory-appliance-manager.js';
-import {HostnameStrategy, SerialNumberStrategy} from '../identifier-strategies.js';
+import {
+    HostnameStrategy,
+    IdentifierStrategyFactory,
+    NetworkDeviceIdStrategy,
+    SerialNumberStrategy,
+} from '../identifier-strategies.js';
 
 type AppliancesFake = {
     list: ReturnType<typeof vi.fn>;
@@ -181,6 +186,17 @@ function makeConfig(serialNumber: string, networkDeviceIds: string[] = []): Appl
         })),
         metadata: {serialNumber},
     };
+}
+
+/** Returns {@link makeConfig}'s config without the `networkDevices` key, as an app sends it on a later save. */
+function makeConfigWithoutNetworkDevices(serialNumber: string): ApplianceConfig {
+    const {networkDevices: _, ...config} = makeConfig(serialNumber);
+    return config;
+}
+
+/** Returns a config without serial number on the given network devices, reporting the given hostname. */
+function makeHostnameConfig(networkDeviceIds: string[], hostname: string, type = EnyoApplianceTypeEnum.Inverter): ApplianceConfig {
+    return {...makeConfig('', networkDeviceIds), type, metadata: {hostname}};
 }
 
 const silent = {enableLogging: false};
@@ -481,6 +497,68 @@ describe('ApplianceManager', () => {
             await manager.createOrUpdateAppliance({...makeConfig('SN-1'), cloudPackageId: 'pkg-2'});
             saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
             expect(saved.cloudPackageId).toBe('pkg-2');
+
+            manager.dispose();
+        });
+
+        it('preserves stored networkDeviceIds when an update omits networkDevices', async () => {
+            const sdk = createAppliancesFake();
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1']));
+            await manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1'));
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(sdk.save.mock.calls.at(-1)![1]).toBeDefined();
+            expect(saved.networkDeviceIds).toEqual(['dev-1']);
+
+            manager.dispose();
+        });
+
+        it('clears stored networkDeviceIds when an update passes networkDevices: []', async () => {
+            const existing = makeAppliance('existing-1', {networkDeviceIds: ['dev-1']}, 'SN-1');
+            const sdk = createAppliancesFake([existing]);
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.createOrUpdateAppliance({...makeConfig('SN-1'), networkDevices: []});
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.networkDeviceIds).toEqual([]);
+
+            manager.dispose();
+        });
+
+        it('creates a new appliance with empty networkDeviceIds when networkDevices are omitted', async () => {
+            const sdk = createAppliancesFake();
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+            await manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1'));
+
+            const saved = sdk.save.mock.calls.at(-1)![0] as Omit<EnyoAppliance, 'id'>;
+            expect(saved.networkDeviceIds).toEqual([]);
+
+            manager.dispose();
+        });
+
+        it('updates the same appliance by network device id when the hostname changes', async () => {
+            const sdk = createAppliancesFake();
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), {
+                ...silent,
+                identifierStrategy: IdentifierStrategyFactory.networkDeviceId(),
+            });
+
+            const first = await manager.createOrUpdateAppliance({
+                ...makeConfig('', ['dev-1']),
+                metadata: {hostname: 'lambda-6.fritz.box'},
+            });
+            const second = await manager.createOrUpdateAppliance({
+                ...makeConfig('', ['dev-1']),
+                metadata: {hostname: 'lambda-7.fritz.box'},
+            });
+
+            expect(second).toBe(first);
+            expect(sdk.save).toHaveBeenCalledTimes(2);
+            expect(sdk.save.mock.calls[1][1]).toBe(first);
 
             manager.dispose();
         });
@@ -1290,6 +1368,362 @@ describe('InMemoryApplianceManager disposal contract', () => {
         });
         expect(stored?.availableFeatures).toEqual([EnyoApplianceAvailableFeaturesEnum.LimitPowerConsumption]);
         expect(stored?.cloudPackageId).toBe('pkg-1');
+
+        manager.dispose();
+    });
+});
+
+describe('InMemoryApplianceManager networkDeviceIds', () => {
+    it('keeps stored networkDeviceIds when an update omits networkDevices, and clears them on []', async () => {
+        const manager = new InMemoryApplianceManager(createEnergyAppFake(createAppliancesFake()), silent);
+        const id = await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1']));
+
+        await manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1'));
+        expect((await manager.getApplianceById(id))?.networkDeviceIds).toEqual(['dev-1']);
+
+        await manager.createOrUpdateAppliance({...makeConfig('SN-1'), networkDevices: []});
+        expect((await manager.getApplianceById(id))?.networkDeviceIds).toEqual([]);
+
+        manager.dispose();
+    });
+});
+
+describe('NetworkDeviceIdStrategy', () => {
+    it('extracts type and network device id from a config and a stored appliance alike', () => {
+        const strategy = new NetworkDeviceIdStrategy();
+        const config = makeConfig('SN-1', ['dev-1', 'dev-2']);
+        const stored = makeAppliance('appl-1', {networkDeviceIds: ['dev-1', 'dev-2']});
+
+        expect(strategy.extract(config)).toBe(`${EnyoApplianceTypeEnum.Inverter}:dev-1`);
+        expect(strategy.extract(stored)).toBe(strategy.extract(config));
+    });
+
+    it('returns undefined without a network device', () => {
+        const strategy = new NetworkDeviceIdStrategy();
+        expect(strategy.extract(makeConfigWithoutNetworkDevices('SN-1'))).toBeUndefined();
+        expect(strategy.extract(makeConfig('SN-1'))).toBeUndefined();
+        expect(strategy.extract(makeAppliance('appl-1'))).toBeUndefined();
+    });
+
+    it('appends the sub-key and requires it when an extractor is given', () => {
+        const strategy = new NetworkDeviceIdStrategy(a => a.metadata?.modbus?.unitId);
+        const config: ApplianceConfig = {...makeConfig('SN-1', ['dev-1']), metadata: {modbus: {unitId: 3}}};
+        const stored = makeAppliance('appl-1', {networkDeviceIds: ['dev-1']});
+        stored.metadata = {...stored.metadata!, modbus: {unitId: 3}};
+
+        expect(strategy.name).toBe('networkDeviceId+subKey');
+        expect(strategy.extract(config)).toBe(`${EnyoApplianceTypeEnum.Inverter}:dev-1:3`);
+        expect(strategy.extract(stored)).toBe(strategy.extract(config));
+        expect(strategy.extract(makeConfig('SN-1', ['dev-1']))).toBeUndefined();
+    });
+
+    it('keeps several appliances of the same type behind one network device apart', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), {
+            ...silent,
+            identifierStrategy: IdentifierStrategyFactory.networkDeviceId(a => a.metadata?.modbus?.unitId),
+        });
+
+        const unit1 = await manager.createOrUpdateAppliance({...makeConfig('', ['dev-1']), metadata: {modbus: {unitId: 1}}});
+        const unit2 = await manager.createOrUpdateAppliance({...makeConfig('', ['dev-1']), metadata: {modbus: {unitId: 2}}});
+
+        expect(unit2).not.toBe(unit1);
+
+        manager.dispose();
+    });
+});
+
+describe('createOrUpdateAppliance networkDeviceIds', () => {
+    it('keeps a link added from the backoffice while the save updates other fields', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+        const id = await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1']));
+
+        // The backoffice adds a second network device to the appliance.
+        const stored = (await sdk.getById(id)) as EnyoAppliance;
+        await sdk.emitUpdated({...stored, networkDeviceIds: ['dev-1', 'dev-bo']});
+
+        await manager.createOrUpdateAppliance({
+            ...makeConfigWithoutNetworkDevices('SN-1'),
+            name: [{language: 'en', name: 'renamed'}],
+        });
+        await manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1'));
+
+        const saved = (await sdk.getById(id)) as EnyoAppliance;
+        expect(saved.networkDeviceIds).toEqual(['dev-1', 'dev-bo']);
+        expect(sdk.save).toHaveBeenCalledTimes(3);
+
+        manager.dispose();
+    });
+
+    it('applies the other fields of an update that omits networkDevices', async () => {
+        const existing = makeAppliance('existing-1', {networkDeviceIds: ['dev-1']}, 'SN-1');
+        const sdk = createAppliancesFake([existing]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        await manager.createOrUpdateAppliance({
+            ...makeConfigWithoutNetworkDevices('SN-1'),
+            name: [{language: 'en', name: 'renamed'}],
+        });
+
+        const saved = (await sdk.getById('existing-1')) as EnyoAppliance;
+        expect(saved.name).toEqual([{language: 'en', name: 'renamed'}]);
+        expect(saved.networkDeviceIds).toEqual(['dev-1']);
+
+        manager.dispose();
+    });
+
+    it('replaces the stored ids instead of merging them when networkDevices are passed', async () => {
+        const existing = makeAppliance('existing-1', {networkDeviceIds: ['dev-1', 'dev-2']}, 'SN-1');
+        const sdk = createAppliancesFake([existing]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+
+        await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-3']));
+
+        expect(((await sdk.getById('existing-1')) as EnyoAppliance).networkDeviceIds).toEqual(['dev-3']);
+
+        manager.dispose();
+    });
+
+    it('keeps the reverse network device lookup after an update without networkDevices, and drops it after []', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), silent);
+        const id = await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1']));
+
+        await manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1'));
+        expect(manager.findAppliancesByNetworkDeviceId('dev-1').map(a => a.id)).toEqual([id]);
+
+        await manager.createOrUpdateAppliance({...makeConfig('SN-1'), networkDevices: []});
+        expect(manager.findAppliancesByNetworkDeviceId('dev-1')).toEqual([]);
+
+        manager.dispose();
+    });
+
+    it('InMemoryApplianceManager replaces the stored ids when networkDevices are passed', async () => {
+        const manager = new InMemoryApplianceManager(createEnergyAppFake(createAppliancesFake()), silent);
+        const id = await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1', 'dev-2']));
+
+        await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-3']));
+
+        expect((await manager.getApplianceById(id))?.networkDeviceIds).toEqual(['dev-3']);
+
+        manager.dispose();
+    });
+
+    it('InMemoryApplianceManager creates a new appliance with empty networkDeviceIds when networkDevices are omitted', async () => {
+        const manager = new InMemoryApplianceManager(createEnergyAppFake(createAppliancesFake()), silent);
+
+        const id = await manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1'));
+
+        expect((await manager.getApplianceById(id))?.networkDeviceIds).toEqual([]);
+
+        manager.dispose();
+    });
+});
+
+describe('NetworkDeviceIdStrategy extraction', () => {
+    it('is named networkDeviceId without a sub-key and is built by the factory', () => {
+        const strategy = IdentifierStrategyFactory.networkDeviceId();
+
+        expect(strategy).toBeInstanceOf(NetworkDeviceIdStrategy);
+        expect(strategy.name).toBe('networkDeviceId');
+        expect(IdentifierStrategyFactory.networkDeviceId(() => 1).name).toBe('networkDeviceId+subKey');
+    });
+
+    it('gives different keys to different appliance types on the same network device', () => {
+        const strategy = new NetworkDeviceIdStrategy();
+        const inverter = makeHostnameConfig(['dev-1'], 'gw', EnyoApplianceTypeEnum.Inverter);
+        const storage = makeHostnameConfig(['dev-1'], 'gw', EnyoApplianceTypeEnum.Storage);
+
+        expect(strategy.extract(inverter)).not.toBe(strategy.extract(storage));
+    });
+
+    it('uses only the first network device', () => {
+        const strategy = new NetworkDeviceIdStrategy();
+        const config = makeConfig('SN-1', ['dev-1', 'dev-2']);
+
+        expect(strategy.extract(config)).toBe(strategy.extract(makeAppliance('a', {networkDeviceIds: ['dev-1']})));
+        expect(strategy.extract(config)).not.toBe(strategy.extract(makeAppliance('b', {networkDeviceIds: ['dev-2', 'dev-1']})));
+    });
+
+    it('ignores the serial number and the hostname', () => {
+        const strategy = new NetworkDeviceIdStrategy();
+
+        expect(strategy.extract(makeConfig('SN-1', ['dev-1'])))
+            .toBe(strategy.extract(makeHostnameConfig(['dev-1'], '192.168.178.20')));
+    });
+
+    it('returns undefined for an empty network device id', () => {
+        const strategy = new NetworkDeviceIdStrategy();
+
+        expect(strategy.extract(makeConfig('SN-1', ['']))).toBeUndefined();
+        expect(strategy.extract(makeAppliance('a', {networkDeviceIds: ['']}))).toBeUndefined();
+    });
+
+    it('accepts 0 as a sub-key but not an empty string', () => {
+        const config = makeConfig('SN-1', ['dev-1']);
+
+        expect(new NetworkDeviceIdStrategy(() => 0).extract(config)).toBe(`${EnyoApplianceTypeEnum.Inverter}:dev-1:0`);
+        expect(new NetworkDeviceIdStrategy(() => '').extract(config)).toBeUndefined();
+    });
+
+    it('accepts a string sub-key such as a battery index', () => {
+        const strategy = new NetworkDeviceIdStrategy(a => a.metadata?.modelName);
+        const config: ApplianceConfig = {...makeConfig('', ['dev-1']), metadata: {modelName: 'battery-2'}};
+
+        expect(strategy.extract(config)).toBe(`${EnyoApplianceTypeEnum.Inverter}:dev-1:battery-2`);
+    });
+
+    it('does not call the sub-key extractor without a network device', () => {
+        const subKey = vi.fn(() => 1);
+
+        expect(new NetworkDeviceIdStrategy(subKey).extract(makeConfig('SN-1'))).toBeUndefined();
+        expect(subKey).not.toHaveBeenCalled();
+    });
+});
+
+describe('ApplianceManager with NetworkDeviceIdStrategy', () => {
+    const strategyConfig = {...silent, identifierStrategy: IdentifierStrategyFactory.networkDeviceId()};
+
+    it('updates an appliance stored before the manager started', async () => {
+        const existing = makeAppliance('existing-1', {networkDeviceIds: ['dev-1'], metadata: {
+            connectionType: EnyoApplianceConnectionType.Connector,
+            hostname: '192.168.178.20',
+        }});
+        const sdk = createAppliancesFake([existing]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), strategyConfig);
+
+        const id = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'lambda.fritz.box'));
+
+        expect(id).toBe('existing-1');
+        expect(((await sdk.getById(id)) as EnyoAppliance).metadata?.hostname).toBe('lambda.fritz.box');
+        expect(await sdk.list()).toHaveLength(1);
+
+        manager.dispose();
+    });
+
+    it('creates a separate appliance per type behind one network device', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), strategyConfig);
+
+        const inverter = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'gw', EnyoApplianceTypeEnum.Inverter));
+        const storage = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'gw', EnyoApplianceTypeEnum.Storage));
+        const inverterAgain = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'gw-renamed', EnyoApplianceTypeEnum.Inverter));
+
+        expect(storage).not.toBe(inverter);
+        expect(inverterAgain).toBe(inverter);
+
+        manager.dispose();
+    });
+
+    it('updates the matching unit when several units sit behind one network device', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), {
+            ...silent,
+            identifierStrategy: IdentifierStrategyFactory.networkDeviceId(a => a.metadata?.modbus?.unitId),
+        });
+        const unitConfig = (unitId: number, hostname: string): ApplianceConfig =>
+            ({...makeConfig('', ['dev-1']), metadata: {hostname, modbus: {unitId}}});
+
+        const unit1 = await manager.createOrUpdateAppliance(unitConfig(1, 'gw-6'));
+        const unit2 = await manager.createOrUpdateAppliance(unitConfig(2, 'gw-6'));
+        const unit2Again = await manager.createOrUpdateAppliance(unitConfig(2, 'gw-7'));
+
+        expect(unit2Again).toBe(unit2);
+        expect(((await sdk.getById(unit1)) as EnyoAppliance).metadata?.hostname).toBe('gw-6');
+        expect(((await sdk.getById(unit2)) as EnyoAppliance).metadata?.hostname).toBe('gw-7');
+
+        manager.dispose();
+    });
+
+    it('throws MissingIdentifierError and saves nothing when an update omits networkDevices', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), strategyConfig);
+        await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1']));
+        sdk.save.mockClear();
+
+        await expect(manager.createOrUpdateAppliance(makeConfigWithoutNetworkDevices('SN-1')))
+            .rejects.toThrow(MissingIdentifierError);
+        expect(sdk.save).not.toHaveBeenCalled();
+
+        manager.dispose();
+    });
+
+    it('throws DuplicateIdentifierError when two stored appliances of one type share the network device', async () => {
+        const a = makeAppliance('appl-1', {networkDeviceIds: ['dev-1']});
+        const b = makeAppliance('appl-2', {networkDeviceIds: ['dev-1']});
+        const sdk = createAppliancesFake([a, b]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), strategyConfig);
+
+        await expect(manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'gw')))
+            .rejects.toMatchObject({name: 'DuplicateIdentifierError', applianceIds: ['appl-1', 'appl-2']});
+        expect(sdk.save).not.toHaveBeenCalled();
+
+        manager.dispose();
+    });
+
+    it('finds stored appliances after switching to the strategy with setIdentifierStrategy', async () => {
+        const existing = makeAppliance('existing-1', {networkDeviceIds: ['dev-1']});
+        const sdk = createAppliancesFake([existing]);
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), {
+            ...silent,
+            identifierStrategy: new HostnameStrategy(),
+        });
+
+        await manager.setIdentifierStrategy(IdentifierStrategyFactory.networkDeviceId(), false);
+        const id = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'new-hostname'));
+
+        expect(id).toBe('existing-1');
+
+        manager.dispose();
+    });
+
+    it('as a fallback after the serial number, prefers the serial and otherwise uses the network device', async () => {
+        const sdk = createAppliancesFake();
+        const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), {
+            ...silent,
+            identifierStrategy: IdentifierStrategyFactory.fallback([
+                IdentifierStrategyFactory.serialNumber(),
+                IdentifierStrategyFactory.networkDeviceId(),
+            ]),
+        });
+
+        // With a serial number, a move to another network device updates the same appliance.
+        const withSerial = await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-1']));
+        expect(await manager.createOrUpdateAppliance(makeConfig('SN-1', ['dev-2']))).toBe(withSerial);
+
+        // Without one, a hostname change on the same network device updates the same appliance.
+        const withoutSerial = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-3'], 'sonnen-6'));
+        expect(await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-3'], 'sonnen-7'))).toBe(withoutSerial);
+
+        expect(withoutSerial).not.toBe(withSerial);
+        expect(await sdk.list()).toHaveLength(2);
+
+        manager.dispose();
+    });
+
+    it('creates a second appliance with HostnameStrategy where NetworkDeviceIdStrategy updates the first', async () => {
+        const run = async (identifierStrategy: HostnameStrategy | NetworkDeviceIdStrategy) => {
+            const sdk = createAppliancesFake();
+            const manager = await ApplianceManager.initialize(createEnergyAppFake(sdk), {...silent, identifierStrategy});
+            await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], '192.168.178.20'));
+            await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'lambda.fritz.box'));
+            manager.dispose();
+            return (await sdk.list()).length;
+        };
+
+        expect(await run(new HostnameStrategy())).toBe(2);
+        expect(await run(new NetworkDeviceIdStrategy())).toBe(1);
+    });
+
+    it('InMemoryApplianceManager updates the same appliance across hostname changes', async () => {
+        const manager = new InMemoryApplianceManager(createEnergyAppFake(createAppliancesFake()), strategyConfig);
+
+        const first = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'solarmax-6'));
+        const second = await manager.createOrUpdateAppliance(makeHostnameConfig(['dev-1'], 'solarmax-7'));
+
+        expect(second).toBe(first);
+        expect((await manager.getApplianceById(first))?.metadata?.hostname).toBe('solarmax-7');
 
         manager.dispose();
     });
