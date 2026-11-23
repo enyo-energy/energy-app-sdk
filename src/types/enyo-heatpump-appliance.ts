@@ -275,12 +275,17 @@ export interface EnyoHeatpumpApplianceSgReadyRelay {
      * on the SG Ready input of a heat pump integrated through the vendor cloud:
      * the `id` of that {@link EnyoApplianceTypeEnum.SmartPlug} appliance. The
      * energy manager then switches the plug with
-     * {@link EnyoDataBusSetSmartPlugSwitchV1} (On = the raising state of
-     * {@link supportedStates}, Off = `normal`) and reads the relay's state from
-     * the plug instead of {@link activeState}.
+     * {@link EnyoDataBusSetSmartPlugSwitchV1} and reads the relay's state from
+     * the plug instead of {@link activeState}: plug On is `recommended` when
+     * {@link supportedStates} lists it, otherwise `forced`; plug Off is
+     * `normal`. Set {@link supportedStates} explicitly on such an entry, e.g.
+     * `[normal, recommended]`; one that lists no raising state is not switched.
      *
-     * Only the energy app that owns the plug adds and removes such an entry.
-     * The heat pump's own app keeps it when it saves the heat pump again.
+     * Only the energy app that owns the plug adds, changes and removes such an
+     * entry, by saving the heat pump with `useAppliances().save()`. The enyo
+     * platform keeps the entry when the heat pump's own app saves the heat pump
+     * again without it, and moves it to a free {@link index} if that app now
+     * uses its index.
      */
     applianceId?: string;
 }
