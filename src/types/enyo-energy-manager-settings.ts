@@ -381,6 +381,13 @@ export interface EnergyManagerSettingValues {
      * {@link EnyoHeatpumpApplianceMetadata.controlAllowed}: this is the user's
      * house-wide preference, that one is the integration's capability. Both must
      * allow control before the energy manager acts.
+     *
+     * An energy manager declaring
+     * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations} does not read it
+     * for heat pumps: there the customer's mode per area in
+     * {@link EnyoHeatpumpApplianceMetadata.controlModes} decides, and this
+     * setting only seeds the defaults of areas the customer has not chosen yet
+     * (see {@link resolveHeatpumpControlModes}).
      */
     heatpumpControl?: boolean;
     /**
@@ -417,7 +424,13 @@ export interface EnergyManagerSettingValues {
      * {@link EnyoDataBusCommandReason.electricityPricePerKwh} set to the price
      * of the current slot.
      *
-     * Only meaningful while {@link heatpumpControl} is `true`.
+     * Only meaningful while {@link heatpumpControl} is `true`. For an energy
+     * manager declaring {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}
+     * it is instead only meaningful while the heat pump's
+     * {@link EnyoHeatpumpControlAreaEnum.CostOptimizedHeating} area resolves to
+     * {@link EnyoHeatpumpControlModeEnum.Auto}: eco in expensive hours runs only
+     * when that area is `Auto` **and** this setting is on. Eco produces no
+     * recommendations.
      */
     heatpumpEcoModeInExpensiveTimes?: boolean;
 

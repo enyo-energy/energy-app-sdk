@@ -47,6 +47,23 @@ export enum EnergyManagerFeatureEnum {
     HeatpumpDhwBoost = 'heatpump-dhw-boost',
     /** Shift heating loads to renewable generation periods */
     HeatpumpLoadShifting = 'heatpump-load-shifting',
+    /**
+     * The energy manager honours the customer's mode per heat pump area and
+     * recommends changes for areas in `Recommend`.
+     *
+     * It reads `EnyoHeatpumpApplianceMetadata.controlModes` through
+     * `resolveHeatpumpControlModes()` — for heat pumps that replaces
+     * `heatpumpControl` and `controlAllowed` — sends
+     * `HeatpumpRecommendationsV1` for every heat pump with an area in
+     * `Recommend`, handles `AcceptHeatpumpRecommendationV1` and
+     * `ResetHeatpumpRecommendationV1`, and reports each accepted
+     * recommendation's progress with `HeatpumpRecommendationStatusV1`.
+     *
+     * The app only shows the modes per area and the recommendations when the
+     * active energy manager declares this feature — without it, the old
+     * "allow control" switch stays.
+     */
+    HeatpumpRecommendations = 'heatpump-recommendations',
 
     // Climate Control / AC
 

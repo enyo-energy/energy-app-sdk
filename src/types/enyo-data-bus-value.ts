@@ -51,6 +51,11 @@ import type {EnergyManagerBatteryEvDischargeModeEnum} from "./enyo-energy-manage
 import type {ForecastResolutionEnum} from "./enyo-forecasting.js";
 import type {EnyoInverterApplianceAvailableFeaturesEnum} from "./enyo-inverter-appliance.js";
 import type {EnyoApplianceSteeringReasonCodeEnum} from "./enyo-diagnostics.js";
+import type {
+    EnyoHeatpumpRecommendation,
+    EnyoHeatpumpRecommendationStateEnum,
+    EnyoHeatpumpRecommendationStopReasonEnum,
+} from "./enyo-heatpump-recommendation.js";
 
 /**
  * Enum representing the reason type for why a data bus command was issued.
@@ -2056,6 +2061,14 @@ export enum EnyoDataBusMessageEnum {
     CancelBatteryChargeNowV1 = 'CancelBatteryChargeNowV1',
     /** The energy manager reports how a {@link EnyoDataBusMessageEnum.RequestBatteryChargeNowV1} request progresses. */
     BatteryChargeNowStatusV1 = 'BatteryChargeNowStatusV1',
+    /** The energy manager's complete list of open recommendations for a heat pump. Energy manager → host. */
+    HeatpumpRecommendationsV1 = 'HeatpumpRecommendationsV1',
+    /** The customer accepted a heat pump recommendation. Host → energy manager; never handled by the heat pump integration. */
+    AcceptHeatpumpRecommendationV1 = 'AcceptHeatpumpRecommendationV1',
+    /** The customer ends an accepted heat pump recommendation right away. Host → energy manager; never handled by the heat pump integration. */
+    ResetHeatpumpRecommendationV1 = 'ResetHeatpumpRecommendationV1',
+    /** The energy manager reports how an accepted heat pump recommendation progresses. Energy manager → host. */
+    HeatpumpRecommendationStatusV1 = 'HeatpumpRecommendationStatusV1',
     /** Live values of a smart plug: relay state, power draw and energy meter reading. */
     SmartPlugValuesUpdateV1 = 'SmartPlugValuesUpdateV1',
     /** Control command: switch a smart plug / relay channel on or off. */
@@ -4639,6 +4652,153 @@ export interface EnyoDataBusBatteryChargeNowStatusV1 extends EnyoDataBusMessage 
         chargingPowerW?: number;
         /** Estimated time the target SoC is reached, in ISO 8601 format. Only while running. */
         estimatedCompletionIso?: string;
+    };
+}
+
+/**
+ * The energy manager's **complete** list of open recommendations for one heat
+ * pump. A recommendation missing from the list is withdrawn.
+ *
+ * **Addressed to the heat pump appliance, sent by the energy manager to the
+ * host.** The heat pump integration never handles it. Only an energy manager
+ * declaring {@link EnergyManagerFeatureEnum.HeatpumpRecommendations} sends it.
+ *
+ * Energy manager contract:
+ * - Recommendations only for areas whose mode resolves to
+ *   {@link EnyoHeatpumpControlModeEnum.Recommend}
+ *   ({@link resolveHeatpumpControlModes}).
+ * - Evaluated at fixed times — 06:00 local time for today, 18:00 for
+ *   tomorrow — and right away when an area switches to `Recommend`. Not on
+ *   every re-plan, so the list does not flicker.
+ * - Sent on every evaluation, with an empty list too, so the host can show
+ *   when the heat pump was last evaluated.
+ * - The customer's decisions (later, dismissed) are the host's: it keeps them
+ *   by {@link EnyoHeatpumpRecommendation.id}. The energy manager simply keeps
+ *   sending a recommendation as long as it holds.
+ *
+ * Validate with {@link validateHeatpumpRecommendationsMessage}.
+ */
+export interface EnyoDataBusHeatpumpRecommendationsV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpRecommendationsV1;
+    /** ID of the heat pump appliance the recommendations are for. */
+    applianceId: string;
+    data: {
+        /** When the energy manager evaluated, ISO 8601. */
+        evaluatedAtIso: string;
+        /** Every open recommendation for this heat pump; ids are unique. Empty when there is none. */
+        recommendations: EnyoHeatpumpRecommendation[];
+    };
+}
+
+/**
+ * The customer accepted a recommendation of
+ * {@link EnyoDataBusHeatpumpRecommendationsV1}.
+ *
+ * **Addressed to the heat pump appliance, sent by the host to the energy
+ * manager.** The heat pump integration never handles it — it must neither act
+ * on it nor answer it, not even with `Rejected` or `NotSupported`.
+ *
+ * Accepting does **not** change the area's mode. What it means depends on the
+ * recommendation's {@link EnyoHeatpumpRecommendation.execution}:
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime}: carry it out once
+ *   inside its window. The customer's acceptance is the release; the mode
+ *   stays as it is.
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.Permanent}: apply it and
+ *   hold it until it is reset.
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.Manual}: the customer made
+ *   the change on the device; the energy manager computes with the new state
+ *   from now on. This matters for the heating curve in shadow mode, so the
+ *   energy manager does not correct the curve a second time.
+ *
+ * Energy manager contract:
+ * - Check the recommendation again before acting on it. If it no longer
+ *   holds, report {@link EnyoHeatpumpRecommendationStateEnum.Rejected} with the
+ *   reason ({@link EnyoHeatpumpRecommendationStopReasonEnum.NoLongerValid},
+ *   `Expired`, `ModeOff`, `NotFound`, …).
+ * - Report every state change with {@link EnyoDataBusHeatpumpRecommendationStatusV1}.
+ * - Accepting an id that is already accepted or active is not an error: report
+ *   the current state again.
+ */
+export interface EnyoDataBusAcceptHeatpumpRecommendationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.AcceptHeatpumpRecommendationV1;
+    /** ID of the heat pump appliance the recommendation is for. */
+    applianceId: string;
+    data: {
+        /** {@link EnyoHeatpumpRecommendation.id} of the accepted recommendation. */
+        recommendationId: string;
+        /** Optional reason, usually {@link EnyoDataBusCommandReasonTypeEnum.UserRequest}. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Ends an accepted recommendation right away; afterwards the heat pump runs
+ * as before.
+ *
+ * **Addressed to the heat pump appliance, sent by the host to the energy
+ * manager.** The heat pump integration never handles it — it must neither act
+ * on it nor answer it.
+ *
+ * By {@link EnyoHeatpumpRecommendation.execution}:
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime}: cancel it, e.g.
+ *   with {@link EnyoDataBusHeatpumpControlCancelV3}.
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.Permanent}: restore the
+ *   previous offset
+ *   ({@link EnyoHeatpumpHeatingCurveLoweringParams.currentOffsetK} at the time
+ *   of accepting).
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.Manual}: compute with the
+ *   previous state again.
+ *
+ * The energy manager reports
+ * {@link EnyoHeatpumpRecommendationStateEnum.Reset}. Idempotent like
+ * {@link EnyoDataBusCancelBatteryChargeNowV1}: resetting a recommendation that
+ * was never accepted or has already ended is not an error.
+ */
+export interface EnyoDataBusResetHeatpumpRecommendationV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.ResetHeatpumpRecommendationV1;
+    /** ID of the heat pump appliance the recommendation is for. */
+    applianceId: string;
+    data: {
+        /** {@link EnyoHeatpumpRecommendation.id} of the recommendation to end. */
+        recommendationId: string;
+        /** Optional reason, usually {@link EnyoDataBusCommandReasonTypeEnum.UserRequest}. */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Status of an accepted recommendation, published by the energy manager on
+ * every state change so the app can show progress and the outcome.
+ *
+ * **Addressed to the heat pump appliance, sent by the energy manager to the
+ * host.** The heat pump integration never handles it.
+ */
+export interface EnyoDataBusHeatpumpRecommendationStatusV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.HeatpumpRecommendationStatusV1;
+    /** ID of the heat pump appliance the recommendation is for. */
+    applianceId: string;
+    data: {
+        /** {@link EnyoHeatpumpRecommendation.id} this status refers to. */
+        recommendationId: string;
+        /** Where the recommendation stands. */
+        state: EnyoHeatpumpRecommendationStateEnum;
+        /**
+         * Why it ended early. Set exactly when {@link state} is
+         * {@link EnyoHeatpumpRecommendationStateEnum.Rejected} or
+         * {@link EnyoHeatpumpRecommendationStateEnum.Aborted}.
+         */
+        stopReason?: EnyoHeatpumpRecommendationStopReasonEnum;
+        /**
+         * Until when it is in effect, ISO 8601. Set while
+         * {@link EnyoHeatpumpRecommendationStateEnum.Active} for a
+         * {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime} recommendation;
+         * omitted for `Permanent` and `Manual`, which last until reset.
+         */
+        activeUntilIso?: string;
     };
 }
 

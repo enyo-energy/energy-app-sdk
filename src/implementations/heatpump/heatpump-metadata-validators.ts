@@ -18,6 +18,8 @@
 import {
     EnyoHeatpumpApplianceAdditionalDeviceEnum,
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
+    EnyoHeatpumpControlAreaEnum,
+    EnyoHeatpumpControlModeEnum,
     EnyoHeatpumpHeatingControlReferenceEnum,
     EnyoHeatpumpProgramModeEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
@@ -73,6 +75,8 @@ const PROGRAM_MODES = new Set<string>(Object.values(EnyoHeatpumpProgramModeEnum)
 const OVERRIDE_PROGRAM_MODES = new Set<string>([EnyoHeatpumpProgramModeEnum.Comfort, EnyoHeatpumpProgramModeEnum.Eco]);
 const SG_READY_FUNCTIONS = new Set<string>(Object.values(EnyoHeatpumpSgReadyFunctionEnum));
 const SG_READY_STATES = new Set<string>(Object.values(EnyoHeatpumpSgReadyStateEnum));
+const CONTROL_AREAS = new Set<string>(Object.values(EnyoHeatpumpControlAreaEnum));
+const CONTROL_MODES = new Set<string>(Object.values(EnyoHeatpumpControlModeEnum));
 
 /**
  * Validates the program-switch fields of one heating circuit or DHW zone
@@ -521,13 +525,17 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *    a `vacationLoweredRangeC` is set without `VacationLowered`, or the range
  *    is not finite or has `minC` above `maxC`.
  *  - SG Ready relays: errors and warnings from {@link checkSgReadyRelays}.
+ *  - Error: `controlModes` names an area that is not an
+ *    `EnyoHeatpumpControlAreaEnum` member, or a mode that is not an
+ *    `EnyoHeatpumpControlModeEnum` member. Whether the heat pump offers the
+ *    mode is not checked — `resolveHeatpumpControlModes` falls back for that.
  *
  * @param metadata - The heatpump metadata to validate.
  * @returns The validation result.
  */
 export function validateHeatpumpAdvancedMetadata(
     metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>
-        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'bufferTanks' | 'additionalDevices' | 'vacationLoweredRangeC'>>,
+        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'bufferTanks' | 'additionalDevices' | 'vacationLoweredRangeC' | 'controlModes'>>,
 ): HeatpumpMetadataValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -653,6 +661,14 @@ export function validateHeatpumpAdvancedMetadata(
         }
     }
     checkSgReadyRelays(metadata.sgReadyRelays ?? [], metadata, errors, warnings);
+
+    for (const [area, mode] of Object.entries(metadata.controlModes ?? {})) {
+        if (!CONTROL_AREAS.has(area)) {
+            errors.push(`controlModes: "${area}" is not a valid control area`);
+        } else if (mode !== undefined && !CONTROL_MODES.has(mode)) {
+            errors.push(`controlModes.${area}: "${mode}" is not a valid control mode`);
+        }
+    }
 
     return {ok: errors.length === 0, errors, warnings};
 }
