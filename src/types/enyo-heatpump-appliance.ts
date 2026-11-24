@@ -647,6 +647,17 @@ export interface EnyoHeatpumpHeatingCurveOptimizationSettings {
      * energy manager changes the curve only after the customer actively agreed.
      * Turning it off makes the energy manager restore the initial curve
      * (`offsetK: 0`).
+     *
+     * An energy manager declaring
+     * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations} does not read
+     * this field: for it, the mode of
+     * {@link EnyoHeatpumpControlAreaEnum.HeatingCurve} in
+     * {@link EnyoHeatpumpApplianceMetadata.controlModes} decides. The host
+     * keeps it in sync for older energy managers as
+     * `mode === `{@link EnyoHeatpumpControlModeEnum.Auto} (see
+     * {@link deriveHeatpumpCurveOptimizationEnabled}) — not `mode !== Off`,
+     * since an older energy manager would otherwise lower the curve on a heat
+     * pump the customer only wants recommendations for.
      */
     enabled: boolean;
     /**
@@ -658,9 +669,79 @@ export interface EnyoHeatpumpHeatingCurveOptimizationSettings {
      * target decides how low the curve may go; rooms without a sensor are left
      * out, and without any room that has one the optimisation cannot run. The
      * curve is lowered by at most {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}.
+     *
+     * Stays the setup the curve needs under
+     * {@link EnyoHeatpumpApplianceMetadata.controlModes} too: in
+     * {@link EnyoHeatpumpControlModeEnum.Recommend} and
+     * {@link EnyoHeatpumpControlModeEnum.Auto} alike the energy manager judges
+     * the curve by these rooms.
      */
     roomIds?: string[];
 }
+
+/**
+ * An area of a heat pump the energy manager can control, each with its own
+ * {@link EnyoHeatpumpControlModeEnum | mode} chosen by the customer in
+ * {@link EnyoHeatpumpApplianceMetadata.controlModes}.
+ *
+ * Which areas a heat pump offers follows from its features — see
+ * {@link heatpumpControlAreas} and {@link availableHeatpumpControlModes}.
+ */
+export enum EnyoHeatpumpControlAreaEnum {
+    /**
+     * Hot water from solar power: the domestic-hot-water boost on PV surplus,
+     * announcing the surplus to the heat pump
+     * ({@link EnyoHeatpumpApplianceAvailableFeaturesEnum.PvSurplusSignal} /
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.AvailablePowerAnnouncement}),
+     * and the heat pump's heating rod via `heatSource` on slots paid for with
+     * solar power. The heating rod has no area of its own.
+     */
+    SolarHotWater = 'solar-hot-water',
+    /**
+     * Heating optimised for electricity cost: pre-heating (buffer tank, rooms,
+     * available power) before heating starts, when that is cheaper or more
+     * efficient, and eco in expensive hours via
+     * {@link EnyoDataBusHeatpumpProgramSwitchV3}.
+     *
+     * Eco in expensive hours runs only when this area is
+     * {@link EnyoHeatpumpControlModeEnum.Auto} **and**
+     * {@link EnergyManagerSettingValues.heatpumpEcoModeInExpensiveTimes} is on.
+     * Eco produces no recommendations.
+     */
+    CostOptimizedHeating = 'cost-optimized-heating',
+    /**
+     * The heating curve: lowering the curve of a heating circuit as far as its
+     * rooms allow, via {@link EnyoDataBusSetHeatpumpHeatingCurveOffsetV1}. The
+     * rooms are set up in
+     * {@link EnyoHeatpumpApplianceHeatingCircuit.curveOptimization}.
+     */
+    HeatingCurve = 'heating-curve',
+}
+
+/**
+ * How the energy manager treats one {@link EnyoHeatpumpControlAreaEnum | area}
+ * of a heat pump.
+ */
+export enum EnyoHeatpumpControlModeEnum {
+    /** The heat pump runs as set on the device. The energy manager neither controls nor recommends anything. */
+    Off = 'off',
+    /**
+     * The heat pump runs as set on the device. The energy manager still
+     * computes and proposes changes via
+     * {@link EnyoDataBusHeatpumpRecommendationsV1}; the customer decides. The
+     * default for new customers.
+     */
+    Recommend = 'recommend',
+    /** The energy manager controls this area itself. */
+    Auto = 'auto',
+}
+
+/**
+ * The customer's mode per {@link EnyoHeatpumpControlAreaEnum | area} — see
+ * {@link EnyoHeatpumpApplianceMetadata.controlModes}. A missing area falls back
+ * to its default ({@link resolveHeatpumpControlModes}).
+ */
+export type EnyoHeatpumpControlModes = Partial<Record<EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeEnum>>;
 
 /**
  * A domestic-hot-water zone of the installation.
@@ -896,6 +977,13 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
      * this circuit's heating curve. Customer-owned: integrations must not set
      * it, the host keeps the customer's value. Omitted means the optimisation
      * is off.
+     *
+     * For an energy manager declaring
+     * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}, the mode of
+     * {@link EnyoHeatpumpControlAreaEnum.HeatingCurve} in
+     * {@link EnyoHeatpumpApplianceMetadata.controlModes} decides what happens
+     * to the curve; {@link EnyoHeatpumpHeatingCurveOptimizationSettings.roomIds}
+     * stays the setup it needs.
      */
     curveOptimization?: EnyoHeatpumpHeatingCurveOptimizationSettings;
 }
@@ -1003,8 +1091,39 @@ export interface EnyoHeatpumpApplianceMetadata {
      * heatpump. When `false`, the heatpump is treated as read-only/monitor-only
      * and the EMS must not issue control commands to it. When omitted,
      * consumers should fall back to their configured default behaviour.
+     *
+     * This stays the integration's capability, also for an energy manager
+     * declaring {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}: with
+     * `false`, {@link resolveHeatpumpControlModes} resolves every area to
+     * {@link EnyoHeatpumpControlModeEnum.Off}, whatever the customer stored in
+     * {@link controlModes} — no recommendations, no commands. Nobody derives or
+     * overwrites it from the modes.
      */
     controlAllowed?: boolean;
+    /**
+     * The customer's {@link EnyoHeatpumpControlModeEnum | mode} per
+     * {@link EnyoHeatpumpControlAreaEnum | area}: off, recommend or auto.
+     *
+     * **Customer-owned.** Set in the enyo app, never by an integration: the
+     * host keeps the customer's value whenever an integration saves the
+     * appliance. Integrations and the energy manager only read it.
+     *
+     * An area that is missing takes its default, and a mode the heat pump
+     * cannot offer falls back — always read the field through
+     * {@link resolveHeatpumpControlModes}, never directly.
+     *
+     * For an energy manager declaring
+     * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}, the resolved
+     * modes decide what it may do per area: the house-wide
+     * {@link EnergyManagerSettingValues.heatpumpControl} only seeds the
+     * defaults. {@link controlAllowed} still applies — a monitor-only heat pump
+     * resolves to `Off` everywhere. The host keeps
+     * {@link EnyoHeatpumpHeatingCurveOptimizationSettings.enabled} in sync (see
+     * {@link deriveHeatpumpCurveOptimizationEnabled}) so an older energy
+     * manager does not lower a curve the customer only wants recommended; it
+     * never writes {@link controlAllowed}.
+     */
+    controlModes?: EnyoHeatpumpControlModes;
     /**
      * Additional heating devices present in the installation alongside the
      * heatpump (e.g. a heating rod or a solar thermal system).

@@ -5539,6 +5539,46 @@ dataBus.listenForMessages([EnyoDataBusMessageEnum.RequestBatteryChargeNowV1], (m
 });
 ```
 
+## Heat Pump Control Modes & Recommendations
+
+Instead of one switch for the whole heat pump, the customer picks a mode per **area** in `EnyoHeatpumpApplianceMetadata.controlModes`:
+
+| Area (`EnyoHeatpumpControlAreaEnum`) | Covers |
+|---|---|
+| `SolarHotWater` | DHW boost on PV surplus, the surplus signal (`PvSurplusSignal` / `AvailablePowerAnnouncement`), the heat pump's heating rod on solar-paid slots |
+| `CostOptimizedHeating` | Pre-heating (buffer, rooms, available power) before heating starts; eco in expensive hours (`HeatpumpProgramSwitchV3`, only with `heatpumpEcoModeInExpensiveTimes` on) |
+| `HeatingCurve` | Lowering the curve via `SetHeatpumpHeatingCurveOffsetV1`; rooms come from `curveOptimization.roomIds` |
+
+Modes (`EnyoHeatpumpControlModeEnum`): `Off` (runs as set on the device), `Recommend` (runs as set, the energy manager proposes changes; the default for new customers), `Auto` (the energy manager controls the area).
+
+`controlModes` is **customer-owned**: set in the enyo app, never by an integration. Always read it through `resolveHeatpumpControlModes(metadata, settings)`. It returns one mode for each area the heat pump offers, falls back when a stored mode isn't offered, and derives defaults for new customers from `heatpumpControl` / `controlAllowed` / `curveOptimization.enabled`. `heatpumpControlAreas()` and `availableHeatpumpControlModes()` say what the heat pump offers. `controlAllowed` stays the integration's capability: a monitor-only heat pump (`controlAllowed: false`) offers and resolves to `Off` in every area, whatever is stored, and nobody derives or overwrites `controlAllowed` from the modes. For older energy managers the host keeps only `curveOptimization.enabled = deriveHeatpumpCurveOptimizationEnabled(modes)` in sync. After a rollback to an energy manager without `HeatpumpRecommendations`, hot water and pre-heating follow the old switches (`heatpumpControl`, `controlAllowed`) again, also where the customer chose `Recommend`; only the heating curve stays protected. This is accepted: the app offers the modes only while the active energy manager declares the feature, and `heatpumpControl` is per house, so it cannot carry a choice made per heat pump. Eco in expensive hours is gated per heat pump with `isHeatpumpEcoModeActive(metadata, settings)` (CostOptimizedHeating is `Auto` and `heatpumpEcoModeInExpensiveTimes` is on); pass `{energyManagerFeatures}` to `validateEnergyManagerSettingsState()` so it does not warn about the house-wide `heatpumpControl` gate.
+
+Recommendations are data bus messages **addressed to the heat pump** but exchanged between **energy manager and host**. The heat pump integration never subscribes to them or answers them.
+
+```
+Energy manager ──HeatpumpRecommendationsV1 (full list, also empty)──▶ Host / app
+Host / app ──HeatpumpRecommendationAnswerV1 (accept / reject) / ResetHeatpumpRecommendationV1──▶ Energy manager
+Energy manager ──HeatpumpRecommendationStatusV1 (accepted → active → completed / reset / rejected / aborted)──▶ Host / app
+```
+
+| Message | Sent by | Purpose |
+|---|---|---|
+| `HeatpumpRecommendationsV1` | energy manager | Every open recommendation for the heat pump (`evaluatedAtIso`, `recommendations`). Whatever is missing is withdrawn |
+| `HeatpumpRecommendationAnswerV1` | host | The customer's `answer` to `recommendationId`: `Accept` or `Reject`. Does not change the mode; a reject starts nothing and gets no status |
+| `ResetHeatpumpRecommendationV1` | host | End an accepted recommendation right away. Idempotent |
+| `HeatpumpRecommendationStatusV1` | energy manager | `state`, `stopReason` (exactly with `Rejected` / `Aborted`), `activeUntilIso` (only with `Active`) |
+
+Check incoming messages with `validateHeatpumpRecommendationsMessage()`, `validateHeatpumpRecommendationStatusMessage()` (host) and `validateHeatpumpRecommendationRequestMessage()` (energy manager, for answer and reset).
+
+A recommendation (`EnyoHeatpumpRecommendation`) is a union over `type`: `SolarHotWaterBoost`, `PreHeat`, `HeatingCurveLowering`. It carries **no texts and no money**, only parameters the app turns into text: `cause`, `execution` (`OneTime` / `Permanent` / `Manual`), `window`, `validUntilIso`, `benefit` (kWh of solar or % less electricity), `timeline`, `floorTemperatureC` and typed `params`. Its `id` is deterministic, so the host can keep the customer's decision ("later", "dismissed") across evaluations.
+
+**What the energy manager must do** (declare `EnergyManagerFeatureEnum.HeatpumpRecommendations`; the app shows modes and recommendations only then):
+
+- Act per area only on the resolved modes. For heat pumps, the house-wide `heatpumpControl` no longer applies; `controlAllowed: false` still means monitor-only (everything resolves to `Off`). Gate eco with `isHeatpumpEcoModeActive()`.
+- Evaluate areas in `Recommend` at 06:00 (today) and 18:00 (tomorrow), and right away when an area switches to `Recommend`. Not on every re-plan. Send the full list every time and check it with `validateHeatpumpRecommendationsMessage()`.
+- On a `Reject` answer, do nothing; you may leave the id out of later lists. On `Accept`, check again. `OneTime`: carry it out once in its window. `Permanent`: apply and hold the curve offset. `Manual`: compute with the state the customer set on the device. If the recommendation no longer holds, report `Rejected`.
+- On reset: cancel (`HeatpumpControlCancelV3`), restore the previous offset, or compute with the previous state again. Then report `Reset`.
+
 ## Batteries That Only Grid-Charge at Full Power
 
 Some batteries have exactly one control: charge from the grid at full power until full. One example is the safety charge of a SENEC.Home V3. They have no power setpoint, no holding and no discharge lock. Such a battery is still worth controlling with a dynamic tariff, because it can be filled from the grid in cheap hours.

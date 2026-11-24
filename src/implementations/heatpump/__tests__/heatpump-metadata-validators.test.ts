@@ -10,6 +10,8 @@ import {
 import {
     EnyoHeatpumpApplianceAdditionalDeviceEnum,
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
+    EnyoHeatpumpControlAreaEnum,
+    EnyoHeatpumpControlModeEnum,
     EnyoHeatpumpRoomTemperatureSourceEnum,
     EnyoHeatpumpSgReadyFunctionEnum,
     EnyoHeatpumpSgReadyStateEnum,
@@ -17,6 +19,7 @@ import {
 } from '../../../types/enyo-heatpump-appliance.js';
 import type {
     EnyoHeatpumpApplianceHeatingCurve,
+    EnyoHeatpumpControlModes,
     EnyoHeatpumpTimeProgram,
     EnyoHeatpumpTimeProgramPeriod,
 } from '../../../types/enyo-heatpump-appliance.js';
@@ -316,5 +319,36 @@ describe('validateHeatpumpAdvancedMetadata sgReadyRelays', () => {
             'sgReadyRelays[index=3]: supportedStates contains duplicate states',
             'sgReadyRelays[index=3]: supportedStates does not include normal — the relay could never release the heatpump',
         ]);
+    });
+});
+
+describe('validateHeatpumpAdvancedMetadata controlModes', () => {
+    const base = {availableFeatures: [EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurve], heatingCircuits: []};
+
+    it('accepts known areas and modes, whether or not the heat pump offers them', () => {
+        expect(validateHeatpumpAdvancedMetadata({
+            ...base,
+            controlModes: {
+                [EnyoHeatpumpControlAreaEnum.HeatingCurve]: EnyoHeatpumpControlModeEnum.Auto,
+                [EnyoHeatpumpControlAreaEnum.SolarHotWater]: EnyoHeatpumpControlModeEnum.Off,
+            },
+        })).toEqual({ok: true, errors: [], warnings: []});
+        expect(validateHeatpumpAdvancedMetadata({...base, controlModes: {}}).ok).toBe(true);
+    });
+
+    it('rejects an unknown area', () => {
+        const result = validateHeatpumpAdvancedMetadata({
+            ...base,
+            controlModes: {'heating-rod': EnyoHeatpumpControlModeEnum.Auto} as EnyoHeatpumpControlModes,
+        });
+        expect(result.errors).toEqual(['controlModes: "heating-rod" is not a valid control area']);
+    });
+
+    it('rejects an unknown mode', () => {
+        const result = validateHeatpumpAdvancedMetadata({
+            ...base,
+            controlModes: {[EnyoHeatpumpControlAreaEnum.HeatingCurve]: 'on' as EnyoHeatpumpControlModeEnum},
+        });
+        expect(result.errors).toEqual(['controlModes.heating-curve: "on" is not a valid control mode']);
     });
 });
