@@ -27,6 +27,7 @@ import {
     EnyoHeatpumpSgReadyStateEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
 } from '../../types/enyo-heatpump-appliance.js';
+import {validateLegionellaProgramMetadata} from '../legionella/legionella-validators.js';
 import type {
     EnyoHeatpumpApplianceDomesticHotWater,
     EnyoHeatpumpApplianceHeatingCircuit,
@@ -524,6 +525,9 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *  - Error: `VacationLowered` is declared without a `vacationLoweredRangeC`,
  *    a `vacationLoweredRangeC` is set without `VacationLowered`, or the range
  *    is not finite or has `minC` above `maxC`.
+ *  - Legionella program of a DHW zone: errors and warnings from
+ *    {@link validateLegionellaProgramMetadata}. Warning: `LegionellaSchedule`
+ *    is declared but no zone reports `legionella`.
  *  - SG Ready relays: errors and warnings from {@link checkSgReadyRelays}.
  *  - Error: `controlModes` names an area that is not an
  *    `EnyoHeatpumpControlAreaEnum` member, or a mode that is not an
@@ -655,10 +659,22 @@ export function validateHeatpumpAdvancedMetadata(
             );
         }
     }
+    const declaresLegionellaSchedule = (metadata.availableFeatures ?? []).includes(
+        EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule,
+    );
     for (const zone of dhwZones) {
         if (zone.timeProgram) {
             merge(`domesticHotWater[index=${zone.index}].timeProgram`, validateHeatpumpTimeProgram(zone.timeProgram));
         }
+        if (zone.legionella) {
+            merge(
+                `domesticHotWater[index=${zone.index}].legionella`,
+                validateLegionellaProgramMetadata(zone.legionella, declaresLegionellaSchedule),
+            );
+        }
+    }
+    if (declaresLegionellaSchedule && !dhwZones.some((zone) => zone.legionella !== undefined)) {
+        warnings.push('LegionellaSchedule is declared but no domesticHotWater zone reports legionella');
     }
     checkSgReadyRelays(metadata.sgReadyRelays ?? [], metadata, errors, warnings);
 

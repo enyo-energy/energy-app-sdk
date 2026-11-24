@@ -11,6 +11,7 @@ import {
     EnyoHeatpumpRecommendationExecutionEnum as Execution,
     EnyoHeatpumpRecommendationTypeEnum as Type,
     EnyoHeatpumpSolarHotWaterBoostRecommendation,
+    EnyoLegionellaProgramShiftRecommendation,
 } from '../../../types/enyo-heatpump-recommendation.js';
 import {EnyoSourceEnum} from '../../../types/enyo-source.enum.js';
 import {
@@ -343,5 +344,49 @@ describe('validateHeatpumpRecommendationRequestMessage', () => {
     it('rejects an answer that is neither accept nor reject', () => {
         expect(validateHeatpumpRecommendationRequestMessage(answer('hp-1', BOOST.id, 'later' as Answer)).errors)
             .toEqual(['answer must be an EnyoHeatpumpRecommendationAnswerEnum value, got later']);
+    });
+});
+
+describe('validateHeatpumpRecommendation — legionella program shift', () => {
+    const SHIFT: EnyoLegionellaProgramShiftRecommendation = {
+        id: 'hp-1:legionella-program-shift:0:6-13:00:2026-11-28',
+        area: Area.LegionellaProgram,
+        type: Type.LegionellaProgramShift,
+        cause: Cause.SolarSurplus,
+        execution: Execution.OneTime,
+        window: {startIso: '2026-11-28T11:00:00.000Z', endIso: '2026-11-28T14:00:00.000Z'},
+        validUntilIso: '2026-11-28T00:00:00.000Z',
+        benefit: {kind: Benefit.SolarEnergyKwh, value: 3.1},
+        params: {
+            domesticHotWaterIndex: 0,
+            currentSlot: {dayOfWeek: 6, timeOfDay: '01:00'},
+            proposedSlot: {dayOfWeek: 6, timeOfDay: '13:00'},
+            nextRunIso: '2026-11-28T12:00:00.000Z',
+            targetTemperatureC: 60,
+        },
+    };
+
+    it('accepts one-time, permanent and manual shifts', () => {
+        expect(errorsOf(SHIFT)).toEqual([]);
+        expect(errorsOf({...SHIFT, execution: Execution.Permanent, window: undefined})).toEqual([]);
+        expect(errorsOf({...SHIFT, execution: Execution.Manual, window: undefined})).toEqual([]);
+    });
+
+    it('requires the legionella area', () => {
+        expect(errorsOf(invalid(SHIFT, {area: Area.SolarHotWater}))).toHaveLength(1);
+    });
+
+    it('rejects malformed slots, an unchanged slot and a bad next run', () => {
+        expect(errorsOf(invalid(SHIFT, {params: {...SHIFT.params, proposedSlot: {dayOfWeek: 9, timeOfDay: '13:00'}}})))
+            .toHaveLength(1);
+        expect(errorsOf(invalid(SHIFT, {params: {...SHIFT.params, proposedSlot: SHIFT.params.currentSlot}})))
+            .toEqual(['params.proposedSlot must differ from params.currentSlot']);
+        expect(errorsOf(invalid(SHIFT, {params: {...SHIFT.params, nextRunIso: 'saturday'}}))).toHaveLength(1);
+        expect(errorsOf(invalid(SHIFT, {params: {...SHIFT.params, domesticHotWaterIndex: -1}}))).toHaveLength(1);
+    });
+
+    it('requires a one-time next run inside the window', () => {
+        expect(errorsOf(invalid(SHIFT, {params: {...SHIFT.params, nextRunIso: '2026-11-28T15:00:00.000Z'}})))
+            .toEqual(['params.nextRunIso 2026-11-28T15:00:00.000Z must lie inside window']);
     });
 });

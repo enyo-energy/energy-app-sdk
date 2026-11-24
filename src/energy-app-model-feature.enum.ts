@@ -122,6 +122,8 @@ export enum EnergyAppModelFeatureEnum {
     HeatpumpHeatingCurveOffset = 'heatpump-heating-curve-offset',
     /** The heat pump can be set to a vacation mode (frost protection, lowered heating or hot water pause) */
     HeatpumpVacationMode = 'heatpump-vacation-mode',
+    /** The start (weekday and / or time) of the weekly legionella program can be moved by the energy manager */
+    HeatpumpLegionellaSchedule = 'heatpump-legionella-schedule',
     /** The heat pump can cool (reversible heat pump) */
     HeatpumpCooling = 'heatpump-cooling',
     /** The heat pump's electrical power consumption can be read out */
@@ -138,6 +140,8 @@ export enum EnergyAppModelFeatureEnum {
     HeatingRodPowerModulation = 'heating-rod-power-modulation',
     /** The heating rod measures the hot water tank temperature itself */
     HeatingRodDhwSensor = 'heating-rod-dhw-sensor',
+    /** The start (weekday and / or time) of the rod's weekly legionella program can be moved by the energy manager */
+    HeatingRodLegionellaSchedule = 'heating-rod-legionella-schedule',
 
     // Climate Control / Air Conditioning
 

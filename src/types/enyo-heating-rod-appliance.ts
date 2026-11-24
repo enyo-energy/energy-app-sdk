@@ -1,3 +1,6 @@
+import type {EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeEnum} from './enyo-heatpump-appliance.js';
+import type {EnyoLegionellaProgramMetadata} from './enyo-legionella.js';
+
 /**
  * Available features for a heating rod (immersion / electric resistive heating
  * element) appliance.
@@ -17,7 +20,38 @@ export enum EnyoHeatingRodApplianceAvailableFeaturesEnum {
      * measured temperature to compare it against.
      */
     DomesticHotWaterSensor = 'DomesticHotWaterSensor',
+    /**
+     * If the heating rod's app can write the start of its weekly legionella
+     * program via {@link EnyoDataBusSetLegionellaScheduleV1} — so the energy
+     * manager can move it to a time with solar power or cheaper electricity.
+     *
+     * Declare it only when the app handles the message (check it with
+     * {@link validateHeatingRodLegionellaSchedule} first), and report
+     * {@link EnyoHeatingRodApplianceMetadata.legionella} with `ownerSlot` and
+     * `adjustable`. Without the feature, a rod reporting `legionella` still
+     * gets recommendations the customer carries out on the device.
+     */
+    LegionellaSchedule = 'LegionellaSchedule',
+    /**
+     * If the heating rod's app publishes {@link EnyoDataBusLegionellaStatusV1}
+     * for every run of its legionella program. Optional: without it the
+     * energy manager assumes a run is done `estimatedDurationMinutes` after
+     * its start.
+     */
+    LegionellaRunStatus = 'LegionellaRunStatus',
 }
+
+/**
+ * The customer's {@link EnyoHeatpumpControlModeEnum | mode} per control area of
+ * a heating rod — see {@link EnyoHeatingRodApplianceMetadata.controlModes}. A
+ * heating rod has one area,
+ * {@link EnyoHeatpumpControlAreaEnum.LegionellaProgram}; the rod's surplus
+ * heating keeps following the energy manager settings (`heatingRodControl`,
+ * `heatingRodMode`).
+ */
+export type EnyoHeatingRodControlModes = Partial<
+    Record<EnyoHeatpumpControlAreaEnum.LegionellaProgram, EnyoHeatpumpControlModeEnum>
+>;
 
 /**
  * Operating modes for a heating rod appliance.
@@ -106,4 +140,26 @@ export interface EnyoHeatingRodApplianceMetadata {
      * behaviour.
      */
     controlAllowed?: boolean;
+    /**
+     * The weekly legionella program of the tank this rod heats, when the rod
+     * runs it itself. Makes the control area
+     * {@link EnyoHeatpumpControlAreaEnum.LegionellaProgram} available; with
+     * {@link EnyoHeatingRodApplianceAvailableFeaturesEnum.LegionellaSchedule}
+     * the energy manager can also move the slot itself.
+     *
+     * When the rod belongs to a heatpump ({@link heatpumpApplianceId}) and the
+     * heatpump runs the program, report it on the heatpump's
+     * domestic-hot-water zone only, not here.
+     */
+    legionella?: EnyoLegionellaProgramMetadata;
+    /**
+     * The customer's mode per control area: off, recommend or auto. The only
+     * area is {@link EnyoHeatpumpControlAreaEnum.LegionellaProgram}.
+     *
+     * **Customer-owned.** Set in the enyo app, never by an integration: the
+     * host keeps the customer's value whenever an integration saves the
+     * appliance. Always read it through {@link resolveHeatingRodControlModes}.
+     * A monitor-only rod ({@link controlAllowed} `false`) resolves to `Off`.
+     */
+    controlModes?: EnyoHeatingRodControlModes;
 }

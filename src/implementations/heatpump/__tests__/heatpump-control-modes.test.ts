@@ -14,6 +14,7 @@ import {
     isHeatpumpEcoModeActive,
     resolveHeatpumpControlModes,
 } from '../heatpump-control-modes.js';
+import {EnyoLegionellaSlotAdjustableEnum} from '../../../types/enyo-legionella.js';
 
 const CURVE: EnyoHeatpumpApplianceHeatingCurve = {
     points: [{outdoorTemperatureC: -10, flowTemperatureC: 45}, {outdoorTemperatureC: 20, flowTemperatureC: 25}],
@@ -34,6 +35,16 @@ const IDM: EnyoHeatpumpApplianceMetadata = {
         index: 0,
         heatingCurve: CURVE,
         supportedProgramModes: [EnyoHeatpumpProgramModeEnum.Comfort, EnyoHeatpumpProgramModeEnum.Eco],
+    }],
+};
+/** {@link IDM} that also reports a legionella program it can move — every area offered. */
+const IDM_WITH_LEGIONELLA: EnyoHeatpumpApplianceMetadata = {
+    ...IDM,
+    availableFeatures: [...IDM.availableFeatures, Feature.LegionellaSchedule],
+    domesticHotWater: [{
+        index: 0,
+        targetTemperatureC: 50,
+        legionella: {ownerSlot: {dayOfWeek: 6, timeOfDay: '01:00'}, adjustable: EnyoLegionellaSlotAdjustableEnum.TimeOnly},
     }],
 };
 /** LAMBDA-like: nothing but the available-power announcement. */
@@ -104,7 +115,7 @@ describe('heatpumpControlAreas', () => {
 describe('availableHeatpumpControlModes', () => {
     it('offers every mode in every area of an iDM-like heat pump', () => {
         for (const area of Object.values(Area)) {
-            expect(availableHeatpumpControlModes(IDM, area)).toEqual([Mode.Off, Mode.Recommend, Mode.Auto]);
+            expect(availableHeatpumpControlModes(IDM_WITH_LEGIONELLA, area)).toEqual([Mode.Off, Mode.Recommend, Mode.Auto]);
         }
     });
 
@@ -124,7 +135,7 @@ describe('availableHeatpumpControlModes', () => {
 
     it('offers only Off on a heat pump the integration marks monitor-only', () => {
         for (const area of Object.values(Area)) {
-            expect(availableHeatpumpControlModes({...IDM, controlAllowed: false}, area)).toEqual([Mode.Off]);
+            expect(availableHeatpumpControlModes({...IDM_WITH_LEGIONELLA, controlAllowed: false}, area)).toEqual([Mode.Off]);
         }
         expect(availableHeatpumpControlModes({...NO_FEATURES, controlAllowed: false}, Area.SolarHotWater)).toEqual([]);
     });
@@ -269,5 +280,35 @@ describe('deriveHeatpumpCurveOptimizationEnabled', () => {
             .toBe(false);
         expect(deriveHeatpumpCurveOptimizationEnabled({[Area.HeatingCurve]: Mode.Off})).toBe(false);
         expect(deriveHeatpumpCurveOptimizationEnabled({})).toBe(false);
+    });
+});
+
+describe('LegionellaProgram area', () => {
+    const recommendOnly: EnyoHeatpumpApplianceMetadata = {
+        availableFeatures: [],
+        domesticHotWater: [{index: 0, targetTemperatureC: 50, legionella: {ownerSlot: {dayOfWeek: 6, timeOfDay: '01:00'}}}],
+    };
+
+    it('is offered after the heating curve when a hot water zone reports its program', () => {
+        expect(heatpumpControlAreas(IDM_WITH_LEGIONELLA)).toEqual([
+            Area.SolarHotWater, Area.CostOptimizedHeating, Area.HeatingCurve, Area.LegionellaProgram,
+        ]);
+        expect(heatpumpControlAreas(IDM)).not.toContain(Area.LegionellaProgram);
+    });
+
+    it('offers no Auto without LegionellaSchedule or without adjustable', () => {
+        expect(availableHeatpumpControlModes(recommendOnly, Area.LegionellaProgram)).toEqual([Mode.Off, Mode.Recommend]);
+        const featureWithoutAdjustable = {...recommendOnly, availableFeatures: [Feature.LegionellaSchedule]};
+        expect(availableHeatpumpControlModes(featureWithoutAdjustable, Area.LegionellaProgram)).toEqual([Mode.Off, Mode.Recommend]);
+    });
+
+    it('defaults to Recommend even where the energy manager controls today', () => {
+        expect(resolveHeatpumpControlModes(IDM_WITH_LEGIONELLA, {heatpumpControl: true})[Area.LegionellaProgram]).toBe(Mode.Recommend);
+    });
+
+    it('keeps a stored Auto when offered and falls back to Recommend when not', () => {
+        const stored = {[Area.LegionellaProgram]: Mode.Auto};
+        expect(resolveHeatpumpControlModes({...IDM_WITH_LEGIONELLA, controlModes: stored}, {})[Area.LegionellaProgram]).toBe(Mode.Auto);
+        expect(resolveHeatpumpControlModes({...recommendOnly, controlModes: stored}, {})[Area.LegionellaProgram]).toBe(Mode.Recommend);
     });
 });

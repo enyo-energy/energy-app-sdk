@@ -4153,7 +4153,7 @@ Drives a heatpump. Manages building / DHW overheating commands and grid-power-av
 
 > **Preferred: control heatpumps with the V3 messages.** `HeatpumpControlV3` (power, power sources, which zones to heat now, until when), `HeatpumpControlCancelV3` (cancel a session) and `HeatpumpControlStatusV3` (progress) are the preferred way to control a heatpump — for energy managers sending commands and for integrations receiving them. Use them for all new work. `HeatpumpOverheatingV1`, `SetHeatpumpAvailablePowerV2` and `HeatpumpAvailablePowerAnnouncementV1` are deprecated and only remain for heatpumps that do not declare `ControlV3`. See [HeatpumpControlV3](#heatpumpcontrolv3). Likewise, a heatpump offers its flexibility with `HeatpumpFlexibilityAnnouncementV3` rather than the generic `ApplianceFlexibilityAnnouncementV1` / `V2` — see [HeatpumpFlexibilityAnnouncementV3](#heatpumpflexibilityannouncementv3).
 
-- **Subscribed commands:** `HeatpumpControlV3`, `HeatpumpControlCancelV3`, `HeatpumpProgramSwitchV3`, `SetHeatpumpHeatingCurveOffsetV1`, `VacationStartedV1`, `VacationStoppedV1`, `HeatpumpOverheatingV1` (deprecated), `HeatpumpAvailablePowerAnnouncementV1` (deprecated), `SetHeatpumpAvailablePowerV2` (deprecated), `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Subscribed commands:** `HeatpumpControlV3`, `HeatpumpControlCancelV3`, `HeatpumpProgramSwitchV3`, `SetHeatpumpHeatingCurveOffsetV1`, `VacationStartedV1`, `VacationStoppedV1`, `SetLegionellaScheduleV1`, `HeatpumpOverheatingV1` (deprecated), `HeatpumpAvailablePowerAnnouncementV1` (deprecated), `SetHeatpumpAvailablePowerV2` (deprecated), `SetHeatpumpRoomTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
 - **Implement:** `handleHeatpumpOverheating`, `handleHeatpumpAvailablePowerAnnouncement`, `handleSetHeatpumpAvailablePower`, `handleGridOperatorPowerLimitation`
 - **Optional overrides:**
   - `handleSetHeatpumpRoomTemperature` — write a measured room temperature into a heating circuit. Answers `NotSupported` by default; override it when the heatpump declares `RoomTemperatureInput`.
@@ -4161,6 +4161,8 @@ Drives a heatpump. Manages building / DHW overheating commands and grid-power-av
   - `handleHeatpumpProgramSwitch(request)` — switch a zone to comfort or eco, or back to its time program (see [HeatpumpProgramSwitchV3](#heatpumpprogramswitchv3)). Answers `NotSupported` by default; override it and declare `ProgramSwitch`.
   - `handleHeatpumpHeatingCurveOffset(message)` — shift a heating circuit's curve permanently, relative to its initial curve (see [SetHeatpumpHeatingCurveOffsetV1](#setheatpumpheatingcurveoffsetv1)). Answers `NotSupported` by default; override it and declare `HeatingCurveOffset`.
   - `handleVacationStarted(message)` / `handleVacationStopped(message)` — the customer is away: heat with frost protection or lowered and / or pause hot water, then restore everything (see [VacationStartedV1 / VacationStoppedV1](#vacationstartedv1--vacationstoppedv1)). Answer `NotSupported` by default; override both and declare `VacationFrostProtection`, `VacationLowered` and / or `VacationHotWaterPause`.
+  - `handleLegionellaSchedule(message)` — write a new start slot of the weekly legionella program of a hot water zone (see [SetLegionellaScheduleV1](#setlegionellaschedulev1)). Answers `NotSupported` by default; override it and declare `LegionellaSchedule`. After `Accepted`, the base class stores the slot as `energyManagerSlot` (`recordLegionellaSchedule()`).
+  - `publishLegionellaStatus(applianceId, status)` — optional: report a legionella run (see [LegionellaStatusV1](#legionellastatusv1-optional)); declare `LegionellaRunStatus`.
   - `handleHeatpumpControlCancel` — withdraw a cancelled session on the device. By default `Accepted` for heatpumps declaring `ControlV3`, `NotSupported` otherwise.
   - `onHeatpumpControlEnded(applianceId, cause)` — return the heatpump to its own behaviour when a session ends; `cause` is `HeatpumpControlEndCauseEnum.Expired`, `Ended` or `Cancelled`. Does nothing by default.
   - `resolveHeatpumpMetadata(applianceId)` — the metadata actions are validated against. Defaults to the stored appliance's `heatpump` metadata.
@@ -4285,6 +4287,53 @@ The customer is away (`useVacations()`): `VacationStartedV1` carries the custome
 - **Stop is always accepted.** Answer `VacationStoppedV1` `Accepted` even when nothing runs.
 - **Precedence.** While a vacation heating state is active the energy manager sends no `HeatpumpProgramSwitchV3` and no `HeatpumpControlV3` room action for the heatpump; while `heatpump.domesticHotWater.pause` is set, no hot water boosts.
 - **Validation** (run by the base class before the handlers, or `validateVacationStarted(data, metadata)` / `validateVacationStopped(data)` directly): malformed data is `Rejected`; a `heatpump.heating` mode whose feature is missing, a lowered target outside `vacationLoweredRangeC` or `heatpump.domesticHotWater.pause: true` without `VacationHotWaterPause` is `NotSupported`. A stop is only rejected when malformed.
+
+#### SetLegionellaScheduleV1
+
+Once a week the device heats the hot water tank to about 60 °C, at a slot the owner set on the device (e.g. Saturday 01:00). `SetLegionellaScheduleV1` moves that slot to a time with solar power or cheaper electricity, or puts the owner's slot back. The device still runs the program itself: the energy manager never starts or stops a run and never changes the temperature. The same message goes to heat pumps (per hot water zone) and to heating rods.
+
+```typescript
+{
+    domesticHotWaterIndex: 0,                        // heat pump zone; omit for a heating rod or the first zone
+    slot: { dayOfWeek: 6, timeOfDay: '13:00' },      // 0 = Sunday … 6 = Saturday, local HH:mm
+    nextRunIso: '2026-11-28T13:00:00+01:00',         // the absolute start this slot stands for
+    ownerRunIso: '2026-11-28T01:00:00+01:00',        // the owner's run this move replaces
+    // restored: true,                               // puts the owner's slot back
+    reason: { /* deviceSetting: HygieneProgramStart, ownerValue → appliedValue */ },
+}
+```
+
+- **Report the program.** Set `legionella` (`EnyoLegionellaProgramMetadata`) on the hot water zone (`EnyoHeatpumpApplianceDomesticHotWater.legionella`) or on the heating rod (`EnyoHeatingRodApplianceMetadata.legionella`): `ownerSlot` (required; keep it when the energy manager writes another slot), `activeSlot` (what the device holds now), `adjustable` (`DayAndTime` or `TimeOnly`), `granularityMinutes`, `targetTemperatureC`, `estimatedDurationMinutes`, `lastCompletedIso`, and `energyManagerSlot` (the slot the energy manager wrote; see below). Reporting the program is enough for recommendations the customer carries out by hand.
+- **Energy manager slot vs. owner change.** After an `Accepted` answer `HeatpumpIntegrationEnergyApp` stores the slot as `energyManagerSlot` and `activeSlot` (`applyLegionellaSchedule()`; override `recordLegionellaSchedule()` to store it elsewhere), and clears `energyManagerSlot` on `restored`. Every time you read the slot from the device, call `reconcileLegionellaProgram(program, deviceSlot)` and save the result: a slot that is neither `energyManagerSlot` nor (without one) `ownerSlot` was set by the owner, becomes the new `ownerSlot`, and `ownerChanged` is `true`. Heating rod apps call `applyLegionellaSchedule()` themselves after writing.
+- **Declare `LegionellaSchedule`** (`EnyoHeatpumpApplianceAvailableFeaturesEnum` / `EnyoHeatingRodApplianceAvailableFeaturesEnum`) together with `adjustable` when the app can write the slot. Only then is the command sent, and only then can the customer pick `Auto`.
+- **Write it into the device**, so the run happens even when the app or the energy manager is not running. Same slot again is `Accepted`.
+- **Never skip a week.** `nextRunIso` must be in the future and, when `lastCompletedIso` is known, at most `LEGIONELLA_PROGRAM_MAX_GAP_HOURS` (8 days) after it. Restoring the owner's slot is exempt.
+- **In time.** A move must arrive at least `LEGIONELLA_PROGRAM_MIN_LEAD_MINUTES` (60) before `ownerRunIso`; once the owner's run of a week has passed, that week is not moved (it would run twice). Compute `nextRunIso` and `ownerRunIso` with `nextLegionellaRunIso(slot, timeZone, now)`, so both sides get the same instant across DST changes.
+- **Precedence.** The legionella run wins over a vacation hot water pause and over eco.
+- **Validation** (run by `HeatpumpIntegrationEnergyApp` before `handleLegionellaSchedule`; heating rod apps call `validateHeatingRodLegionellaSchedule(data, metadata)` in their own listener, and `validateHeatpumpLegionellaSchedule(data, metadata)` exists for heat pumps): malformed data, `restored` with a slot other than `ownerSlot`, a next run in the past or one that skips a week, or a move closer than the lead time to the owner's run is `Rejected`; a missing feature, program or `adjustable`, another weekday under `TimeOnly`, or a time off the `granularityMinutes` grid is `NotSupported`. `validateLegionellaProgramMetadata(program, scheduleDeclared)` checks the reported metadata; `validateHeatpumpAdvancedMetadata()` runs it for every hot water zone.
+
+#### LegionellaStatusV1 (optional)
+
+An energy app may report each run of the legionella program: `Scheduled` → `Running` → `Completed` / `Failed` (`EnyoLegionellaRunStateEnum`). It is **optional**: declare `LegionellaRunStatus` (heat pump or heating rod feature) only when the app sends it. Without it, the energy manager assumes a run is done `estimatedDurationMinutes` after `nextRunIso`, and the app shows no run progress.
+
+```typescript
+{
+    domesticHotWaterIndex: 0,                         // omit for a heating rod
+    state: EnyoLegionellaRunStateEnum.Completed,
+    slot: { dayOfWeek: 6, timeOfDay: '13:00' },
+    movedByEnergyManager: true,                       // slot is energyManagerSlot
+    startedIso: '2026-11-28T12:00:00.000Z',           // Running / Completed / Failed
+    completedIso: '2026-11-28T13:20:00.000Z',         // Completed
+    reachedTemperatureC: 61,
+    // nextRunIso: …                                  // Scheduled
+    // failureReason: '60 °C not reached within 3 h'  // Failed
+}
+```
+
+- Send it on every state change, and `Scheduled` again whenever the slot changes. It is not a command and is not acknowledged.
+- Heat pumps: `publishLegionellaStatus(applianceId, status)`. Heating rods: `buildLegionellaStatusMessage(applianceId, status, source)` and send it yourself. Both validate with `validateLegionellaStatusMessage()`.
+- Devices that run the program but don't report it: feed the tank temperature into `LegionellaRunDetector` (`schedule(nextRunIso)`, then `update(temperatureC)`). It reports `Running` from the start, `Completed` once `targetTemperatureC - toleranceK` held for `holdMinutes` (default 30), and `Failed` after `maxDurationMinutes` (default 240).
+- The energy manager restores the owner's slot on `Completed` or `Failed`; the host shows the next run, whether it was moved, and its outcome — also in `Auto`.
 
 #### HeatpumpFlexibilityAnnouncementV3
 
@@ -5548,10 +5597,13 @@ Instead of one switch for the whole heat pump, the customer picks a mode per **a
 | `SolarHotWater` | DHW boost on PV surplus, the surplus signal (`PvSurplusSignal` / `AvailablePowerAnnouncement`), the heat pump's heating rod on solar-paid slots |
 | `CostOptimizedHeating` | Pre-heating (buffer, rooms, available power) before heating starts; eco in expensive hours (`HeatpumpProgramSwitchV3`, only with `heatpumpEcoModeInExpensiveTimes` on) |
 | `HeatingCurve` | Lowering the curve via `SetHeatpumpHeatingCurveOffsetV1`; rooms come from `curveOptimization.roomIds` |
+| `LegionellaProgram` | Moving the weekly legionella slot (e.g. Sat 01:00 → Sat 13:00) via `SetLegionellaScheduleV1`. Offered when a hot water zone reports `legionella`; `Auto` needs `LegionellaSchedule` and `legionella.adjustable`. Default is always `Recommend`. Needs an energy manager declaring `EnergyManagerFeatureEnum.LegionellaProgram` |
 
 Modes (`EnyoHeatpumpControlModeEnum`): `Off` (runs as set on the device), `Recommend` (runs as set, the energy manager proposes changes; the default for new customers), `Auto` (the energy manager controls the area).
 
 `controlModes` is **customer-owned**: set in the enyo app, never by an integration. Always read it through `resolveHeatpumpControlModes(metadata, settings)`. It returns one mode for each area the heat pump offers, falls back when a stored mode isn't offered, and derives defaults for new customers from `heatpumpControl` / `controlAllowed` / `curveOptimization.enabled`. `heatpumpControlAreas()` and `availableHeatpumpControlModes()` say what the heat pump offers. `controlAllowed` stays the integration's capability: a monitor-only heat pump (`controlAllowed: false`) offers and resolves to `Off` in every area, whatever is stored, and nobody derives or overwrites `controlAllowed` from the modes. For older energy managers the host keeps only `curveOptimization.enabled = deriveHeatpumpCurveOptimizationEnabled(modes)` in sync. After a rollback to an energy manager without `HeatpumpRecommendations`, hot water and pre-heating follow the old switches (`heatpumpControl`, `controlAllowed`) again, also where the customer chose `Recommend`; only the heating curve stays protected. This is accepted: the app offers the modes only while the active energy manager declares the feature, and `heatpumpControl` is per house, so it cannot carry a choice made per heat pump. Eco in expensive hours is gated per heat pump with `isHeatpumpEcoModeActive(metadata, settings)` (CostOptimizedHeating is `Auto` and `heatpumpEcoModeInExpensiveTimes` is on); pass `{energyManagerFeatures}` to `validateEnergyManagerSettingsState()` so it does not warn about the house-wide `heatpumpControl` gate.
+
+**Heating rods** have one area, `LegionellaProgram`, in `EnyoHeatingRodApplianceMetadata.controlModes`: offered when the rod reports `legionella`, `Auto` with `LegionellaSchedule` and `legionella.adjustable`, default `Recommend`, `Off` for a monitor-only rod (`controlAllowed: false`). Read it through `resolveHeatingRodControlModes(metadata)`; `heatingRodControlAreas()` and `availableHeatingRodControlModes()` say what the rod offers. The rod's surplus heating keeps following `heatingRodControl` / `heatingRodMode`. Recommendations for a rod use the same four messages below, addressed to the rod, and only ever contain `LegionellaProgramShift`.
 
 Recommendations are data bus messages **addressed to the heat pump** but exchanged between **energy manager and host**. The heat pump integration never subscribes to them or answers them.
 
@@ -5570,7 +5622,7 @@ Energy manager ──HeatpumpRecommendationStatusV1 (accepted → active → com
 
 Check incoming messages with `validateHeatpumpRecommendationsMessage()`, `validateHeatpumpRecommendationStatusMessage()` (host) and `validateHeatpumpRecommendationRequestMessage()` (energy manager, for answer and reset).
 
-A recommendation (`EnyoHeatpumpRecommendation`) is a union over `type`: `SolarHotWaterBoost`, `PreHeat`, `HeatingCurveLowering`. It carries **no texts and no money**, only parameters the app turns into text: `cause`, `execution` (`OneTime` / `Permanent` / `Manual`), `window`, `validUntilIso`, `benefit` (kWh of solar or % less electricity), `timeline`, `floorTemperatureC` and typed `params`. Its `id` is deterministic, so the host can keep the customer's decision ("later", "dismissed") across evaluations.
+A recommendation (`EnyoHeatpumpRecommendation`) is a union over `type`: `SolarHotWaterBoost`, `PreHeat`, `HeatingCurveLowering`, `LegionellaProgramShift`. It carries **no texts and no money**, only parameters the app turns into text: `cause`, `execution` (`OneTime` / `Permanent` / `Manual`), `window`, `validUntilIso`, `benefit` (kWh of solar or % less electricity), `timeline`, `floorTemperatureC` and typed `params`. Its `id` is deterministic, so the host can keep the customer's decision ("later", "dismissed") across evaluations.
 
 **What the energy manager must do** (declare `EnergyManagerFeatureEnum.HeatpumpRecommendations`; the app shows modes and recommendations only then):
 
@@ -5578,6 +5630,15 @@ A recommendation (`EnyoHeatpumpRecommendation`) is a union over `type`: `SolarHo
 - Evaluate areas in `Recommend` at 06:00 (today) and 18:00 (tomorrow), and right away when an area switches to `Recommend`. Not on every re-plan. Send the full list every time and check it with `validateHeatpumpRecommendationsMessage()`.
 - On a `Reject` answer, do nothing; you may leave the id out of later lists. On `Accept`, check again. `OneTime`: carry it out once in its window. `Permanent`: apply and hold the curve offset. `Manual`: compute with the state the customer set on the device. If the recommendation no longer holds, report `Rejected`.
 - On reset: cancel (`HeatpumpControlCancelV3`), restore the previous offset, or compute with the previous state again. Then report `Reset`.
+
+**Legionella program** (`LegionellaProgramShift`, params `currentSlot`, `proposedSlot`, `nextRunIso`, optional `domesticHotWaterIndex` / `targetTemperatureC`) — the energy manager, declaring `EnergyManagerFeatureEnum.LegionellaProgram`:
+
+- `Off`: nothing; the device runs at the owner's slot.
+- `Recommend`: send a `LegionellaProgramShift` ahead of the run. On accept: `OneTime` moves only the next run (its `nextRunIso` lies inside `window`) with `SetLegionellaScheduleV1` and restores the owner's slot afterwards (`restored: true`); `Permanent` writes `proposedSlot` and holds it until reset, a reset restores the owner's slot; `Manual` means the customer set it on the device (devices without `LegionellaSchedule`).
+- `Auto`: move the slot every week with `SetLegionellaScheduleV1` and restore the owner's slot afterwards, also when the area goes back to `Off`.
+- Plan at the evaluation before the owner's run (18:00 the day before, or the one before for a night slot) and send at least `LEGIONELLA_PROGRAM_MIN_LEAD_MINUTES` ahead of `ownerRunIso`; give a `OneTime` recommendation a `validUntilIso` no later than that. Never skip a week (`LEGIONELLA_PROGRAM_MAX_GAP_HOURS`), and under `TimeOnly` keep the weekday.
+- **When is a run done?** With `LegionellaRunStatus`: on `LegionellaStatusV1` `Completed` (recommendation → `completed`) or `Failed` (restore right away, recommendation → `aborted` with stop reason `Failed`). Without it: at `nextRunIso + estimatedDurationMinutes`.
+- **Owner changed it on the device** (`ownerSlot` changed and `energyManagerSlot` is gone, see `reconcileLegionellaProgram()`): end a running `OneTime` / `Permanent` recommendation as `aborted` with stop reason `ChangedOnDevice` and plan from the new `ownerSlot`. A `Manual` recommendation is done once `ownerSlot` equals its `proposedSlot`.
 
 ## Batteries That Only Grid-Charge at Full Power
 

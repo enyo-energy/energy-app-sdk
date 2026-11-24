@@ -17,6 +17,8 @@ import {
     EnyoDataBusMessageEnum,
     EnyoDataBusResetHeatpumpRecommendationV1,
 } from '../../types/enyo-data-bus-value.js';
+import {legionellaSlotErrors, legionellaSlotsEqual} from '../legionella/legionella-validators.js';
+import type {EnyoLegionellaSlot} from '../../types/enyo-legionella.js';
 
 /**
  * Result of {@link validateHeatpumpRecommendation},
@@ -39,6 +41,7 @@ const AREA_OF_TYPE: Record<EnyoHeatpumpRecommendationTypeEnum, EnyoHeatpumpContr
     [EnyoHeatpumpRecommendationTypeEnum.SolarHotWaterBoost]: EnyoHeatpumpControlAreaEnum.SolarHotWater,
     [EnyoHeatpumpRecommendationTypeEnum.PreHeat]: EnyoHeatpumpControlAreaEnum.CostOptimizedHeating,
     [EnyoHeatpumpRecommendationTypeEnum.HeatingCurveLowering]: EnyoHeatpumpControlAreaEnum.HeatingCurve,
+    [EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift]: EnyoHeatpumpControlAreaEnum.LegionellaProgram,
 };
 
 /** The executions each recommendation type allows. */
@@ -46,6 +49,7 @@ const EXECUTIONS_OF_TYPE: Record<EnyoHeatpumpRecommendationTypeEnum, EnyoHeatpum
     [EnyoHeatpumpRecommendationTypeEnum.SolarHotWaterBoost]: [OneTime],
     [EnyoHeatpumpRecommendationTypeEnum.PreHeat]: [OneTime],
     [EnyoHeatpumpRecommendationTypeEnum.HeatingCurveLowering]: [Permanent, Manual],
+    [EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift]: [OneTime, Permanent, Manual],
 };
 
 const CAUSES = new Set<string>(Object.values(EnyoHeatpumpRecommendationCauseEnum));
@@ -149,6 +153,26 @@ function checkParams(type: EnyoHeatpumpRecommendationTypeEnum, params: unknown, 
                 errors.push('params.currentOffsetK must be a finite number');
             }
             break;
+        case EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift: {
+            if (p.domesticHotWaterIndex !== undefined
+                && (!Number.isInteger(p.domesticHotWaterIndex) || (p.domesticHotWaterIndex as number) < 0)) {
+                errors.push('params.domesticHotWaterIndex must be a non-negative integer');
+            }
+            const slotErrors = [
+                ...legionellaSlotErrors(p.currentSlot, 'params.currentSlot'),
+                ...legionellaSlotErrors(p.proposedSlot, 'params.proposedSlot'),
+            ];
+            errors.push(...slotErrors);
+            if (slotErrors.length === 0
+                && legionellaSlotsEqual(p.currentSlot as EnyoLegionellaSlot, p.proposedSlot as EnyoLegionellaSlot)) {
+                errors.push('params.proposedSlot must differ from params.currentSlot');
+            }
+            if (!isIsoTimestamp(p.nextRunIso)) {
+                errors.push('params.nextRunIso must be an ISO 8601 timestamp');
+            }
+            checkOptionalFinite(p.targetTemperatureC, 'params.targetTemperatureC', errors);
+            break;
+        }
     }
 }
 
@@ -160,9 +184,11 @@ function checkParams(type: EnyoHeatpumpRecommendationTypeEnum, params: unknown, 
  * - `id` is empty.
  * - `type`, `cause` or `benefit.kind` is not a known value.
  * - `area` does not match `type`: `SolarHotWaterBoost` → `SolarHotWater`,
- *   `PreHeat` → `CostOptimizedHeating`, `HeatingCurveLowering` → `HeatingCurve`.
+ *   `PreHeat` → `CostOptimizedHeating`, `HeatingCurveLowering` → `HeatingCurve`,
+ *   `LegionellaProgramShift` → `LegionellaProgram`.
  * - `execution` does not match `type`: `HeatingCurveLowering` only
- *   `Permanent` or `Manual`, the others only `OneTime`.
+ *   `Permanent` or `Manual`, `LegionellaProgramShift` any, the others only
+ *   `OneTime`.
  * - `window` is missing for `OneTime`, or a window (also in `timeline`) is
  *   not two ISO 8601 timestamps with start before end.
  * - `validUntilIso` (or `params.heatingOnsetIso`) is not an ISO 8601 timestamp.
@@ -171,10 +197,14 @@ function checkParams(type: EnyoHeatpumpRecommendationTypeEnum, params: unknown, 
  * - The `params` the type requires are missing or not finite; for
  *   `HeatingCurveLowering`, `offsetK` is not negative or below
  *   `-`{@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}.
+ * - For `LegionellaProgramShift`: a slot is malformed, `proposedSlot` equals
+ *   `currentSlot`, `nextRunIso` is not an ISO 8601 timestamp or, for
+ *   `OneTime`, lies outside `window`.
  * - `floorTemperatureC` is set but not finite.
  *
  * Whether the heat pump offers the area, or `Permanent` (which needs
- * `HeatingCurveOffset`), is not checked here — that needs the metadata, see
+ * `HeatingCurveOffset`, or `LegionellaSchedule` for the legionella program),
+ * or a `TimeOnly` device can take the proposed slot, is not checked here — that needs the metadata, see
  * {@link availableHeatpumpControlModes}.
  *
  * @param recommendation - The recommendation to validate.
@@ -218,6 +248,13 @@ export function validateHeatpumpRecommendation(
         if (r.execution === OneTime) errors.push('window is required for execution "one-time"');
     } else {
         checkWindow(r.window, 'window', errors);
+        const nextRunIso = (r.params as {nextRunIso?: unknown} | undefined)?.nextRunIso;
+        const {startIso, endIso} = r.window as {startIso?: unknown; endIso?: unknown};
+        if (type === EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift && r.execution === OneTime
+            && isIsoTimestamp(nextRunIso) && isIsoTimestamp(startIso) && isIsoTimestamp(endIso)
+            && (Date.parse(nextRunIso) < Date.parse(startIso) || Date.parse(nextRunIso) >= Date.parse(endIso))) {
+            errors.push(`params.nextRunIso ${nextRunIso} must lie inside window`);
+        }
     }
 
     if (!isIsoTimestamp(r.validUntilIso)) {

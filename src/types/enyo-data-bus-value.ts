@@ -8,6 +8,7 @@ import {
     EnyoApplianceTypeEnum
 } from "./enyo-appliance.js";
 import type {EnyoAutomationTriggerData} from "./enyo-automation.js";
+import type {EnyoLegionellaRunStateEnum, EnyoLegionellaSlot} from "./enyo-legionella.js";
 import {EnyoSourceEnum} from "./enyo-source.enum.js";
 import {EnyoOcppRelativeSchedule} from "./enyo-ocpp.js";
 import {
@@ -2095,6 +2096,10 @@ export enum EnyoDataBusMessageEnum {
     VacationStartedV1 = 'VacationStartedV1',
     /** Control command: the vacation is over (return, early return or removed) — restore everything. Accepted even when nothing runs. */
     VacationStoppedV1 = 'VacationStoppedV1',
+    /** Control command: move the weekly legionella program of a heatpump's hot water zone or a heating rod to another slot, or put the owner's slot back. Only for appliances declaring the `LegionellaSchedule` feature. */
+    SetLegionellaScheduleV1 = 'SetLegionellaScheduleV1',
+    /** A heatpump or heating rod reports a run of its legionella program: scheduled, running, completed or failed. Optional; only from appliances declaring the `LegionellaRunStatus` feature. */
+    LegionellaStatusV1 = 'LegionellaStatusV1',
     /** Live split of the grid power between the household (primary meter) and the meter cascade. Published by the core. */
     CascadeSplitUpdateV1 = 'CascadeSplitUpdateV1',
     /** One finished compressor cycle of a heatpump — start, stop, run time and context. Published by the core. */
@@ -4660,6 +4665,12 @@ export interface EnyoDataBusBatteryChargeNowStatusV1 extends EnyoDataBusMessage 
  * The energy manager's **complete** list of open recommendations for one heat
  * pump. A recommendation missing from the list is withdrawn.
  *
+ * Also sent for a heating rod whose
+ * {@link EnyoHeatpumpControlAreaEnum.LegionellaProgram} resolves to
+ * `Recommend` ({@link resolveHeatingRodControlModes}), addressed to the rod and
+ * holding only {@link EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift}
+ * recommendations. Answer, reset and status work the same way.
+ *
  * **Addressed to the heat pump appliance, sent by the energy manager to the
  * host.** The heat pump integration never handles it. Only an energy manager
  * declaring {@link EnergyManagerFeatureEnum.HeatpumpRecommendations} sends it.
@@ -4682,7 +4693,11 @@ export interface EnyoDataBusBatteryChargeNowStatusV1 extends EnyoDataBusMessage 
 export interface EnyoDataBusHeatpumpRecommendationsV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.HeatpumpRecommendationsV1;
-    /** ID of the heat pump appliance the recommendations are for. */
+    /**
+     * ID of the heat pump appliance the recommendations are for — or of a
+     * heating rod, which only gets
+     * {@link EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift}.
+     */
     applianceId: string;
     data: {
         /** When the energy manager evaluated, ISO 8601. */
@@ -4729,7 +4744,7 @@ export interface EnyoDataBusHeatpumpRecommendationsV1 extends EnyoDataBusMessage
 export interface EnyoDataBusHeatpumpRecommendationAnswerV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.HeatpumpRecommendationAnswerV1;
-    /** ID of the heat pump appliance the recommendation is for. */
+    /** ID of the heat pump (or heating rod, see {@link EnyoDataBusHeatpumpRecommendationsV1}) the recommendation is for. */
     applianceId: string;
     data: {
         /** {@link EnyoHeatpumpRecommendation.id} of the answered recommendation. */
@@ -4751,11 +4766,13 @@ export interface EnyoDataBusHeatpumpRecommendationAnswerV1 extends EnyoDataBusMe
  *
  * By {@link EnyoHeatpumpRecommendation.execution}:
  * - {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime}: cancel it, e.g.
- *   with {@link EnyoDataBusHeatpumpControlCancelV3}.
+ *   with {@link EnyoDataBusHeatpumpControlCancelV3}, or by putting the owner's
+ *   legionella slot back.
  * - {@link EnyoHeatpumpRecommendationExecutionEnum.Permanent}: restore the
  *   previous offset
  *   ({@link EnyoHeatpumpHeatingCurveLoweringParams.currentOffsetK} at the time
- *   of accepting).
+ *   of accepting), or put the owner's legionella slot back with
+ *   {@link EnyoDataBusSetLegionellaScheduleV1} (`restored: true`).
  * - {@link EnyoHeatpumpRecommendationExecutionEnum.Manual}: compute with the
  *   previous state again.
  *
@@ -4767,7 +4784,7 @@ export interface EnyoDataBusHeatpumpRecommendationAnswerV1 extends EnyoDataBusMe
 export interface EnyoDataBusResetHeatpumpRecommendationV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.ResetHeatpumpRecommendationV1;
-    /** ID of the heat pump appliance the recommendation is for. */
+    /** ID of the heat pump (or heating rod, see {@link EnyoDataBusHeatpumpRecommendationsV1}) the recommendation is for. */
     applianceId: string;
     data: {
         /** {@link EnyoHeatpumpRecommendation.id} of the recommendation to end. */
@@ -4787,7 +4804,7 @@ export interface EnyoDataBusResetHeatpumpRecommendationV1 extends EnyoDataBusMes
 export interface EnyoDataBusHeatpumpRecommendationStatusV1 extends EnyoDataBusMessage {
     type: 'message';
     message: EnyoDataBusMessageEnum.HeatpumpRecommendationStatusV1;
-    /** ID of the heat pump appliance the recommendation is for. */
+    /** ID of the heat pump (or heating rod, see {@link EnyoDataBusHeatpumpRecommendationsV1}) the recommendation is for. */
     applianceId: string;
     data: {
         /** {@link EnyoHeatpumpRecommendation.id} this status refers to. */
@@ -6085,6 +6102,205 @@ export interface EnyoDataBusVacationStoppedV1 extends EnyoDataBusMessage {
         vacationId: string;
         /** Why, e.g. `user-request` for a return or removal. */
         reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Moves the weekly legionella program of a heat pump's domestic-hot-water zone
+ * or of a heating rod to another slot — or, with `restored`, puts the owner's
+ * slot back. The device runs the program itself at the written slot; the
+ * energy manager never starts or stops a run, and never changes the
+ * temperature.
+ *
+ * Sent only to appliances declaring `LegionellaSchedule`
+ * ({@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule},
+ * {@link EnyoHeatingRodApplianceAvailableFeaturesEnum.LegionellaSchedule}), by
+ * an energy manager declaring
+ * {@link EnergyManagerFeatureEnum.LegionellaProgram}: in
+ * {@link EnyoHeatpumpControlModeEnum.Auto} on its own, in
+ * {@link EnyoHeatpumpControlModeEnum.Recommend} once the customer accepted a
+ * `LegionellaProgramShift` recommendation that the energy manager carries out.
+ *
+ * - **Written into the device.** Write {@link EnyoLegionellaSlot | slot} as the
+ *   program's start, so the run happens even when the app or the energy
+ *   manager is not running. Keep
+ *   {@link EnyoLegionellaProgramMetadata.ownerSlot} as it is.
+ * - **Idempotent.** The same slot again is not an error; answer `Accepted`.
+ * - **Never skip a week.** The energy manager sends a slot whose next run
+ *   (`nextRunIso`) lies in the future and, when the device reports
+ *   `lastCompletedIso`, at most {@link LEGIONELLA_PROGRAM_MAX_GAP_HOURS} after
+ *   it.
+ * - **In time.** A move is sent at least
+ *   {@link LEGIONELLA_PROGRAM_MIN_LEAD_MINUTES} before the owner's run it
+ *   replaces (`ownerRunIso`). Once the owner's run of a week has passed, the
+ *   energy manager does not move that week — a later slot would run twice.
+ *   Compute both timestamps with {@link nextLegionellaRunIso}.
+ * - **Remembered.** After an `Accepted` answer
+ *   `HeatpumpIntegrationEnergyApp` stores the slot as
+ *   {@link EnyoLegionellaProgramMetadata.energyManagerSlot} (cleared on
+ *   `restored`), so a later change by the owner can be told apart — see
+ *   {@link reconcileLegionellaProgram}. A heating rod app does that itself.
+ * - **Restore.** After a one-time move the energy manager sends the owner's
+ *   slot with `restored: true`. Also when the area goes back to `Off`.
+ * - **Precedence.** The legionella run wins over a hot water pause
+ *   ({@link EnyoDataBusVacationStartedV1}) and over eco.
+ *
+ * **Answer.** An {@link EnyoDataBusCommandAcknowledgeV1}: `Accepted` once the
+ * slot is written; `Rejected` for malformed data, a next run in the past or too
+ * far away, or when the device cannot be written right now; `NotSupported`
+ * when the appliance lacks the feature, the zone reports no program, or the
+ * slot changes what the device cannot (`TimeOnly` and another weekday, off the
+ * `granularityMinutes` grid). Check it with
+ * {@link validateHeatpumpLegionellaSchedule} /
+ * {@link validateHeatingRodLegionellaSchedule}; `HeatpumpIntegrationEnergyApp`
+ * does that before it calls `handleLegionellaSchedule`.
+ *
+ * @example
+ * ```ts
+ * // Move this week's run from Saturday 01:00 to Saturday 13:00 — sun expected:
+ * const msg: EnyoDataBusSetLegionellaScheduleV1 = {
+ *     id: 'msg-8',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.SetLegionellaScheduleV1,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-11-27T18:00:00.000Z',
+ *     data: {
+ *         domesticHotWaterIndex: 0,
+ *         slot: {dayOfWeek: 6, timeOfDay: '13:00'},
+ *         nextRunIso: '2026-11-28T13:00:00+01:00',
+ *         ownerRunIso: '2026-11-28T01:00:00+01:00',
+ *         reason: {
+ *             type: EnyoDataBusCommandReasonTypeEnum.PvSurplusAvailable,
+ *             category: EnyoDataBusCommandReasonCategoryEnum.PvSurplus,
+ *             context: {
+ *                 deviceSetting: {
+ *                     setting: EnyoDeviceSettingEnum.HygieneProgramStart,
+ *                     ownerValue: '2026-11-28T01:00:00+01:00',
+ *                     appliedValue: '2026-11-28T13:00:00+01:00',
+ *                 },
+ *             },
+ *         },
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusSetLegionellaScheduleV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetLegionellaScheduleV1;
+    /** ID of the heat pump or heating rod appliance. */
+    applianceId: string;
+    data: {
+        /**
+         * {@link EnyoHeatpumpApplianceDomesticHotWater.index} of the heat
+         * pump's zone. Omit for a heating rod, and for the first (or only)
+         * zone of a heat pump.
+         */
+        domesticHotWaterIndex?: number;
+        /** The slot to write: weekday and local time of the weekly start. */
+        slot: EnyoLegionellaSlot;
+        /**
+         * When the next run starts with this slot, ISO 8601 — the absolute
+         * time {@link slot} stands for, so integration and energy manager can
+         * check it without knowing the site's timezone.
+         */
+        nextRunIso: string;
+        /**
+         * The owner's run this move replaces, ISO 8601 — the next occurrence
+         * of {@link EnyoLegionellaProgramMetadata.ownerSlot} that
+         * {@link nextRunIso} stands in for. A move must arrive at least
+         * {@link LEGIONELLA_PROGRAM_MIN_LEAD_MINUTES} before it. With
+         * `restored` it is the owner's next run and equals {@link nextRunIso}.
+         */
+        ownerRunIso: string;
+        /**
+         * `true` when this puts the owner's slot back
+         * ({@link EnyoLegionellaProgramMetadata.ownerSlot}); {@link slot} then
+         * equals it.
+         */
+        restored?: boolean;
+        /**
+         * Why — typically with a
+         * {@link EnyoDataBusCommandReasonDeviceSettingContext} for
+         * {@link EnyoDeviceSettingEnum.HygieneProgramStart}.
+         */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * A heat pump (per hot water zone) or heating rod reports one run of its
+ * legionella program. **Optional:** only appliances declaring
+ * `LegionellaRunStatus`
+ * ({@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaRunStatus},
+ * {@link EnyoHeatingRodApplianceAvailableFeaturesEnum.LegionellaRunStatus})
+ * send it. Without it, the energy manager assumes a run is done
+ * `estimatedDurationMinutes` after `nextRunIso`.
+ *
+ * Sent by the integration to the energy manager and the host:
+ * - the energy manager puts the owner's slot back on
+ *   {@link EnyoLegionellaRunStateEnum.Completed} or
+ *   {@link EnyoLegionellaRunStateEnum.Failed}, and ends a
+ *   `LegionellaProgramShift` recommendation as completed or aborted;
+ * - the host shows the next run, whether the energy manager moved it, and its
+ *   outcome — also in `Auto`, where no recommendation exists.
+ *
+ * Send it on every state change, and `Scheduled` again whenever the slot
+ * changes. It is not a command: nobody acknowledges it. A device that cannot
+ * tell a run apart from normal heating can use {@link LegionellaRunDetector}.
+ * Build it with {@link buildLegionellaStatusMessage} (or
+ * `HeatpumpIntegrationEnergyApp.publishLegionellaStatus`) and check it with
+ * {@link validateLegionellaStatusMessage}.
+ *
+ * @example
+ * ```ts
+ * const msg: EnyoDataBusLegionellaStatusV1 = {
+ *     id: 'msg-9',
+ *     type: 'message',
+ *     message: EnyoDataBusMessageEnum.LegionellaStatusV1,
+ *     source: EnyoSourceEnum.Device,
+ *     applianceId: 'heatpump-1',
+ *     timestampIso: '2026-11-28T13:20:00.000Z',
+ *     data: {
+ *         domesticHotWaterIndex: 0,
+ *         state: EnyoLegionellaRunStateEnum.Completed,
+ *         slot: {dayOfWeek: 6, timeOfDay: '13:00'},
+ *         movedByEnergyManager: true,
+ *         startedIso: '2026-11-28T12:00:00.000Z',
+ *         completedIso: '2026-11-28T13:20:00.000Z',
+ *         reachedTemperatureC: 61,
+ *     },
+ * };
+ * ```
+ */
+export interface EnyoDataBusLegionellaStatusV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.LegionellaStatusV1;
+    /** ID of the heat pump or heating rod appliance. */
+    applianceId: string;
+    data: {
+        /** The heat pump's hot water zone; omitted for a heating rod and the first zone. */
+        domesticHotWaterIndex?: number;
+        /** Where the run stands. */
+        state: EnyoLegionellaRunStateEnum;
+        /** The slot this run belongs to. */
+        slot: EnyoLegionellaSlot;
+        /**
+         * `true` when {@link slot} is one the energy manager wrote
+         * ({@link EnyoLegionellaProgramMetadata.energyManagerSlot}), `false`
+         * for the owner's own slot.
+         */
+        movedByEnergyManager: boolean;
+        /** When the run starts, ISO 8601. Required for `Scheduled`. */
+        nextRunIso?: string;
+        /** When heating for the run started, ISO 8601. Required for `Running`, `Completed`, `Failed`. */
+        startedIso?: string;
+        /** When the target had been held long enough, ISO 8601. Required for `Completed`. */
+        completedIso?: string;
+        /** The highest tank temperature of the run, in °C, when measured. */
+        reachedTemperatureC?: number;
+        /** Why the run failed, e.g. `60 °C not reached within 3 h`. Required for `Failed`. */
+        failureReason?: string;
     };
 }
 

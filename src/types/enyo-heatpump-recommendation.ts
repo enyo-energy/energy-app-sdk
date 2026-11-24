@@ -1,4 +1,5 @@
 import type {EnyoHeatpumpControlAreaEnum} from './enyo-heatpump-appliance.js';
+import type {EnyoLegionellaSlot} from './enyo-legionella.js';
 
 /**
  * What an {@link EnyoHeatpumpRecommendation} proposes. Each type belongs to
@@ -12,6 +13,12 @@ export enum EnyoHeatpumpRecommendationTypeEnum {
     PreHeat = 'pre-heat',
     /** Lower the heating curve of a heating circuit. Area {@link EnyoHeatpumpControlAreaEnum.HeatingCurve}. */
     HeatingCurveLowering = 'heating-curve-lowering',
+    /**
+     * Move the weekly legionella program to a better slot. Area
+     * {@link EnyoHeatpumpControlAreaEnum.LegionellaProgram}. The only type a
+     * heating rod gets.
+     */
+    LegionellaProgramShift = 'legionella-program-shift',
 }
 
 /**
@@ -54,7 +61,8 @@ export enum EnyoHeatpumpRecommendationExecutionEnum {
     /**
      * The energy manager applies it and holds it until it is reset — the
      * heating curve on a heat pump declaring
-     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset}.
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.HeatingCurveOffset},
+     * or a legionella slot on an appliance declaring `LegionellaSchedule`.
      */
     Permanent = 'permanent',
     /**
@@ -133,6 +141,13 @@ export enum EnyoHeatpumpRecommendationStopReasonEnum {
     ControlNotPossible = 'control-not-possible',
     /** A newer recommendation for the same heat pump and area replaced it. */
     Superseded = 'superseded',
+    /**
+     * The owner changed the setting on the device meanwhile — e.g. set another
+     * legionella slot by hand ({@link reconcileLegionellaProgram}).
+     */
+    ChangedOnDevice = 'changed-on-device',
+    /** The device ran it but it did not succeed, e.g. a legionella run that did not reach its temperature. */
+    Failed = 'failed',
 }
 
 /** A time window, as two ISO 8601 timestamps. */
@@ -248,6 +263,27 @@ export interface EnyoHeatpumpHeatingCurveLoweringParams {
     currentOffsetK: number;
 }
 
+/** The parameters of a {@link EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift}. */
+export interface EnyoLegionellaProgramShiftParams {
+    /**
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.index} of the heat pump's
+     * zone. Omitted for a heating rod and for the first (or only) zone.
+     */
+    domesticHotWaterIndex?: number;
+    /** The slot the device holds now — usually the owner's. */
+    currentSlot: EnyoLegionellaSlot;
+    /** The proposed slot. Differs from {@link currentSlot}. */
+    proposedSlot: EnyoLegionellaSlot;
+    /**
+     * When the next run would start with {@link proposedSlot}, ISO 8601. For
+     * {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime} it lies inside
+     * the recommendation's `window`.
+     */
+    nextRunIso: string;
+    /** The temperature the run heats to, in °C, when known. */
+    targetTemperatureC?: number;
+}
+
 /** Heat domestic hot water in the solar window — carried out once. */
 export interface EnyoHeatpumpSolarHotWaterBoostRecommendation extends EnyoHeatpumpRecommendationBase {
     type: EnyoHeatpumpRecommendationTypeEnum.SolarHotWaterBoost;
@@ -281,6 +317,29 @@ export interface EnyoHeatpumpHeatingCurveLoweringRecommendation extends EnyoHeat
 }
 
 /**
+ * Move the weekly legionella program of a heat pump's hot water zone or a
+ * heating rod to a better slot. By `execution`:
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime}: the energy manager
+ *   moves only the next run (inside `window`) and puts the owner's slot back
+ *   afterwards. Needs the feature `LegionellaSchedule`.
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.Permanent}: the energy
+ *   manager writes {@link EnyoLegionellaProgramShiftParams.proposedSlot} and
+ *   holds it until reset; a reset puts the owner's slot back. Needs the
+ *   feature `LegionellaSchedule`.
+ * - {@link EnyoHeatpumpRecommendationExecutionEnum.Manual}: the customer sets
+ *   the new slot on the device — for devices without the feature.
+ */
+export interface EnyoLegionellaProgramShiftRecommendation extends EnyoHeatpumpRecommendationBase {
+    type: EnyoHeatpumpRecommendationTypeEnum.LegionellaProgramShift;
+    area: EnyoHeatpumpControlAreaEnum.LegionellaProgram;
+    execution:
+        | EnyoHeatpumpRecommendationExecutionEnum.OneTime
+        | EnyoHeatpumpRecommendationExecutionEnum.Permanent
+        | EnyoHeatpumpRecommendationExecutionEnum.Manual;
+    params: EnyoLegionellaProgramShiftParams;
+}
+
+/**
  * One open proposal of the energy manager for a heat pump, sent in
  * {@link EnyoDataBusHeatpumpRecommendationsV1}. A discriminated union over
  * `type`: narrowing on it types `area`, `execution`, `window` and `params`.
@@ -290,4 +349,5 @@ export interface EnyoHeatpumpHeatingCurveLoweringRecommendation extends EnyoHeat
 export type EnyoHeatpumpRecommendation =
     | EnyoHeatpumpSolarHotWaterBoostRecommendation
     | EnyoHeatpumpPreHeatRecommendation
-    | EnyoHeatpumpHeatingCurveLoweringRecommendation;
+    | EnyoHeatpumpHeatingCurveLoweringRecommendation
+    | EnyoLegionellaProgramShiftRecommendation;

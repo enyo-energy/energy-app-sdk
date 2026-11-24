@@ -1,3 +1,5 @@
+import type {EnyoLegionellaProgramMetadata} from './enyo-legionella.js';
+
 export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
     /** If the heatpump is capable of domestic hot water*/
     DomesticHotWater = 'DomesticHotWater',
@@ -158,6 +160,28 @@ export enum EnyoHeatpumpApplianceAvailableFeaturesEnum {
      * running** during the pause.
      */
     VacationHotWaterPause = 'VacationHotWaterPause',
+    /**
+     * If the heatpump's app can write the start of the weekly legionella
+     * program of a domestic-hot-water zone via
+     * {@link EnyoDataBusSetLegionellaScheduleV1} — so the energy manager can
+     * move it to a time with solar power or cheaper electricity.
+     *
+     * Declare it only when the app overrides
+     * `HeatpumpIntegrationEnergyApp.handleLegionellaSchedule`, and report per
+     * zone {@link EnyoHeatpumpApplianceDomesticHotWater.legionella} with
+     * `ownerSlot` and `adjustable`. Without the feature, a zone reporting
+     * `legionella` still gets recommendations the customer carries out on the
+     * device.
+     */
+    LegionellaSchedule = 'LegionellaSchedule',
+    /**
+     * If the heatpump's app publishes {@link EnyoDataBusLegionellaStatusV1}
+     * for every run of the legionella program (scheduled, running, completed,
+     * failed). Optional: without it the energy manager assumes a run is done
+     * `estimatedDurationMinutes` after its start, and the app shows no run
+     * progress.
+     */
+    LegionellaRunStatus = 'LegionellaRunStatus',
 }
 
 /**
@@ -716,6 +740,22 @@ export enum EnyoHeatpumpControlAreaEnum {
      * {@link EnyoHeatpumpApplianceHeatingCircuit.curveOptimization}.
      */
     HeatingCurve = 'heating-curve',
+    /**
+     * The weekly legionella program: moving its slot (e.g. Saturday 01:00) to
+     * a time with solar power or cheaper electricity. Only the weekday and / or
+     * time change, never the temperature or the weekly rhythm. Offered when a
+     * domestic-hot-water zone reports
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.legionella}; `Auto` needs
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule}.
+     *
+     * Also the only area of a heating rod
+     * ({@link EnyoHeatingRodApplianceMetadata.controlModes}). Its default is
+     * always {@link EnyoHeatpumpControlModeEnum.Recommend}: a hygiene setting
+     * is not moved without the customer choosing `Auto`. Handled only by an
+     * energy manager declaring
+     * {@link EnergyManagerFeatureEnum.LegionellaProgram}.
+     */
+    LegionellaProgram = 'legionella-program',
 }
 
 /**
@@ -815,6 +855,14 @@ export interface EnyoHeatpumpApplianceDomesticHotWater {
      * manager notices when the user switched it by hand. Omitted means unknown.
      */
     activeProgramMode?: EnyoHeatpumpProgramModeEnum;
+    /**
+     * The weekly legionella program of this zone, when the heatpump reports
+     * it. Makes the control area
+     * {@link EnyoHeatpumpControlAreaEnum.LegionellaProgram} available; with
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule}
+     * the energy manager can also move the slot itself.
+     */
+    legionella?: EnyoLegionellaProgramMetadata;
 }
 
 /**

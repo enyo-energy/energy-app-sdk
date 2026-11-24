@@ -25,6 +25,7 @@ const {Accepted} = EnyoCommandAcknowledgeAnswerEnum;
 /** Minimal stand-in for the runtime SDK, enough for an integration to run. */
 export function installSdk(appliances: Record<string, {heatpump?: EnyoHeatpumpApplianceMetadata}>) {
     const sent: EnyoDataBusMessage[] = [];
+    const saved: Array<{id: string | undefined; appliance: unknown}> = [];
     const listeners: Array<{types: EnyoDataBusMessageEnum[]; cb: (m: EnyoDataBusMessage) => void}> = [];
     (globalThis as Record<string, unknown>).energyAppSdkInstance = {
         useDataBus: () => ({
@@ -35,9 +36,16 @@ export function installSdk(appliances: Record<string, {heatpump?: EnyoHeatpumpAp
             sendMessage: (messages: EnyoDataBusMessage[]) => sent.push(...messages),
             unsubscribe: () => undefined,
         }),
-        useAppliances: () => ({getById: async (id: string) => appliances[id] ?? null}),
+        useAppliances: () => ({
+            getById: async (id: string) => appliances[id] ?? null,
+            save: async (appliance: {heatpump?: EnyoHeatpumpApplianceMetadata}, id: string | undefined) => {
+                saved.push({id, appliance});
+                if (id !== undefined) appliances[id] = appliance;
+                return id ?? 'new';
+            },
+        }),
     };
-    return {sent, listeners};
+    return {sent, listeners, saved};
 }
 
 /** The base class's private dispatchers, reached from the tests. */

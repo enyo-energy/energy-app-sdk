@@ -13,6 +13,8 @@ import {
     EnyoDataBusHeatpumpProgramSwitchV3,
     EnyoDataBusVacationStartedV1,
     EnyoDataBusVacationStoppedV1,
+    EnyoDataBusSetLegionellaScheduleV1,
+    EnyoDataBusLegionellaStatusV1,
     EnyoDataBusHeatpumpTemperaturesV1,
     EnyoDataBusHeatpumpValuesV1,
     EnyoCommandAcknowledgeAnswerEnum,
@@ -46,6 +48,11 @@ import {
     heatpumpControlActionsKey,
     HeatpumpControlSessionTracker
 } from "../implementations/heatpump/heatpump-control-session.js";
+import {
+    applyLegionellaSchedule,
+    buildLegionellaStatusMessage,
+    validateHeatpumpLegionellaSchedule
+} from "../implementations/legionella/legionella-validators.js";
 
 /** Default validity of a published heatpump flexibility offer, in seconds. */
 export const HEATPUMP_FLEXIBILITY_DEFAULT_VALID_FOR_SECONDS = 900;
@@ -170,11 +177,21 @@ export function combineHeatpumpControlAnswers(answers: EnyoCommandAcknowledgeAns
  *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.VacationHotWaterPause}).
  *    The base class validates them with {@link validateVacationStarted} /
  *    {@link validateVacationStopped} first.
+ *  - `SetLegionellaScheduleV1` — move the weekly legionella program of a DHW
+ *    zone to another slot, or put the owner's slot back (optional: override
+ *    {@link handleLegionellaSchedule} and declare
+ *    {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule}).
+ *    The base class validates it with
+ *    {@link validateHeatpumpLegionellaSchedule} first and, once accepted,
+ *    stores the slot as `legionella.energyManagerSlot`
+ *    ({@link recordLegionellaSchedule}).
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  *
  * Publishes `HeatpumpFlexibilityAnnouncementV3` offers via
  * {@link publishHeatpumpFlexibility} (repeated automatically while they hold)
- * and the progress of control sessions via {@link publishHeatpumpControlStatus}.
+ * and the progress of control sessions via {@link publishHeatpumpControlStatus},
+ * and — optionally, with `LegionellaRunStatus` — the runs of the legionella
+ * program via {@link publishLegionellaStatus}.
  *
  * Subclasses implement the `handle*` async methods, returning `Accepted`,
  * `Rejected`, or `NotSupported` to acknowledge the command. The base class
@@ -272,6 +289,10 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
         this.registerCommandHandler<EnyoDataBusVacationStoppedV1>(
             EnyoDataBusMessageEnum.VacationStoppedV1,
             (msg) => this.dispatchVacationStopped(msg)
+        );
+        this.registerCommandHandler<EnyoDataBusSetLegionellaScheduleV1>(
+            EnyoDataBusMessageEnum.SetLegionellaScheduleV1,
+            (msg) => this.dispatchLegionellaSchedule(msg)
         );
     }
 
@@ -614,6 +635,39 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     }
 
     /**
+     * Publishes a `LegionellaStatusV1` for one run of a hot water zone's
+     * legionella program: scheduled, running, completed or failed.
+     * **Optional** — only for heatpumps declaring
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaRunStatus}.
+     * Without it the energy manager assumes a run is done
+     * `estimatedDurationMinutes` after its start.
+     *
+     * Call it on every state change, and with `Scheduled` whenever the slot
+     * changes. A device that does not report runs can use
+     * {@link LegionellaRunDetector}.
+     *
+     * @param applianceId - The heatpump.
+     * @param status - The run's status.
+     * @throws {Error} When the status is invalid ({@link validateLegionellaStatusMessage}).
+     *
+     * @example
+     * ```ts
+     * this.publishLegionellaStatus('heatpump-1', {
+     *     domesticHotWaterIndex: 0,
+     *     state: EnyoLegionellaRunStateEnum.Completed,
+     *     slot: {dayOfWeek: 6, timeOfDay: '13:00'},
+     *     movedByEnergyManager: true,
+     *     startedIso: '2026-11-28T12:00:00.000Z',
+     *     completedIso: '2026-11-28T13:20:00.000Z',
+     *     reachedTemperatureC: 61,
+     * });
+     * ```
+     */
+    public publishLegionellaStatus(applianceId: string, status: EnyoDataBusLegionellaStatusV1['data']): void {
+        this.useDataBus().sendMessage([buildLegionellaStatusMessage(applianceId, status, this.source)]);
+    }
+
+    /**
      * Reads the heatpump metadata used to validate `HeatpumpControlV3`
      * actions. Defaults to the appliance's stored `heatpump` metadata; override
      * it when the integration keeps fresher values (e.g. the live DHW setpoint).
@@ -889,6 +943,60 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
     }
 
     /**
+     * Handles a `SetLegionellaScheduleV1` command: write `message.data.slot`
+     * as the start of the weekly legionella program of the DHW zone
+     * `message.data.domesticHotWaterIndex` (the first zone when omitted).
+     * Answers `NotSupported` by default. Override it and declare
+     * {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule},
+     * and report the zone's
+     * {@link EnyoHeatpumpApplianceDomesticHotWater.legionella} with `ownerSlot`
+     * and `adjustable`.
+     *
+     * What an implementation must do:
+     * - Write the slot into the device's own program, so the run happens even
+     *   when the app or the energy manager is not running. Never start or stop
+     *   a run, and never change the temperature.
+     * - Keep `legionella.ownerSlot` as it is. After an `Accepted` answer the
+     *   base class stores the slot as `activeSlot` and `energyManagerSlot`
+     *   (see {@link recordLegionellaSchedule}); call
+     *   {@link reconcileLegionellaProgram} whenever you read the slot from
+     *   the device, so a change by the owner is noticed.
+     * - With `LegionellaRunStatus`, publish {@link publishLegionellaStatus}
+     *   `Scheduled` for the new slot.
+     * - Treat the message as idempotent: the same slot again is `Accepted`.
+     * - Answer `Rejected` (with `rejectionReason`) when the device cannot be
+     *   written right now.
+     *
+     * The base class has already validated the message with
+     * {@link validateHeatpumpLegionellaSchedule}: the data is well-formed, the
+     * feature is declared, the zone reports a program, the slot keeps the
+     * weekday for `TimeOnly` and lies on the `granularityMinutes` grid, and the
+     * next run is in the future and does not skip a week.
+     *
+     * @param _message - The legionella schedule command.
+     * @returns `Accepted` once the slot is written, `Rejected` (with
+     *   `rejectionReason`) when it cannot be written right now,
+     *   `NotSupported` when the integration does not support it.
+     *
+     * @example
+     * ```ts
+     * protected async handleLegionellaSchedule(message: EnyoDataBusSetLegionellaScheduleV1) {
+     *     const {slot} = message.data;
+     *     await this.device.writeLegionellaStart(slot.dayOfWeek, slot.timeOfDay);
+     *     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};
+     * }
+     * ```
+     */
+    protected async handleLegionellaSchedule(
+        _message: EnyoDataBusSetLegionellaScheduleV1
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: 'Heatpump integration does not support SetLegionellaScheduleV1',
+        };
+    }
+
+    /**
      * @inheritDoc
      */
     protected abstract handleGridOperatorPowerLimitation(
@@ -1105,6 +1213,62 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
             return validation;
         }
         return this.handleVacationStarted(message);
+    }
+
+    /**
+     * Validates a `SetLegionellaScheduleV1` against the metadata, then calls
+     * {@link handleLegionellaSchedule}. Only reached for the app's own heat
+     * pumps (see {@link IntegrationEnergyApp.extractApplianceId}).
+     */
+    private async dispatchLegionellaSchedule(
+        message: EnyoDataBusSetLegionellaScheduleV1
+    ): Promise<IntegrationCommandResponse> {
+        const metadata = await this.resolveHeatpumpMetadata(message.applianceId);
+        const validation = validateHeatpumpLegionellaSchedule(message.data, metadata);
+        if (validation.answer !== EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            return validation;
+        }
+        const response = await this.handleLegionellaSchedule(message);
+        if (response.answer === EnyoCommandAcknowledgeAnswerEnum.Accepted) {
+            try {
+                await this.recordLegionellaSchedule(message);
+            } catch {
+                // The slot is written on the device; a failed metadata save
+                // must not turn the answer into an error. The next
+                // reconcileLegionellaProgram() would then treat the slot as
+                // the owner's — acceptable, and logged by the app if it wants.
+            }
+        }
+        return response;
+    }
+
+    /**
+     * Stores an accepted `SetLegionellaScheduleV1` in the heatpump's
+     * metadata: the zone's `legionella` becomes
+     * {@link applyLegionellaSchedule}`(legionella, message.data)` —
+     * `activeSlot` and `energyManagerSlot` are the written slot, or
+     * `energyManagerSlot` is cleared when the owner's slot was `restored`.
+     * Called by the base class after {@link handleLegionellaSchedule} answered
+     * `Accepted`; a failure here does not change the answer.
+     *
+     * Override it when the app keeps its metadata elsewhere (e.g. writes it
+     * through its own `ApplianceManager`).
+     *
+     * @param message - The accepted command.
+     */
+    protected async recordLegionellaSchedule(message: EnyoDataBusSetLegionellaScheduleV1): Promise<void> {
+        const appliances = this.useAppliances();
+        const appliance = await appliances.getById(message.applianceId);
+        const zones = appliance?.heatpump?.domesticHotWater;
+        if (!appliance || !zones) return;
+        const index = message.data.domesticHotWaterIndex;
+        const position = index === undefined ? 0 : zones.findIndex((zone) => zone.index === index);
+        const zone = zones[position];
+        if (!zone?.legionella) return;
+        const updatedZones = [...zones];
+        updatedZones[position] = {...zone, legionella: applyLegionellaSchedule(zone.legionella, message.data)};
+        const {id: _id, ...rest} = appliance;
+        await appliances.save({...rest, heatpump: {...appliance.heatpump!, domesticHotWater: updatedZones}}, message.applianceId);
     }
 
     /** Validates a `VacationStoppedV1`, then calls {@link handleVacationStopped}. */

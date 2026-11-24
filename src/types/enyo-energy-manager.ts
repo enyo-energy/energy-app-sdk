@@ -67,6 +67,27 @@ export enum EnergyManagerFeatureEnum {
      * "allow control" switch stays.
      */
     HeatpumpRecommendations = 'heatpump-recommendations',
+    /**
+     * The energy manager handles the control area `LegionellaProgram` of heat
+     * pumps and heating rods: it moves the weekly legionella slot to a time
+     * with solar power or cheaper electricity.
+     *
+     * Per heat pump (`resolveHeatpumpControlModes()`) or heating rod
+     * (`resolveHeatingRodControlModes()`): in `Recommend` it sends a
+     * `LegionellaProgramShift` recommendation in `HeatpumpRecommendationsV1`
+     * (addressed to the heat pump or heating rod) and handles the answer; in
+     * `Auto` it moves the slot itself with `SetLegionellaScheduleV1` and puts
+     * the owner's slot back afterwards — on `LegionellaStatusV1` completed or
+     * failed when the appliance declares `LegionellaRunStatus`, otherwise
+     * `estimatedDurationMinutes` after the run's start. A slot the owner
+     * changed on the device (`reconcileLegionellaProgram()`) ends a running
+     * recommendation as `ChangedOnDevice`. Needs
+     * {@link HeatpumpRecommendations} for the recommendation messages.
+     *
+     * The app only shows the area while the active energy manager declares
+     * this feature.
+     */
+    LegionellaProgram = 'legionella-program',
 
     // Climate Control / AC
 

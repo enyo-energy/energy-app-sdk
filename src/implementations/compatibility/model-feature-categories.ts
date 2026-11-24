@@ -86,12 +86,14 @@ export const ENERGY_APP_MODEL_FEATURE_CATEGORIES: Readonly<Record<EnergyAppModel
     [EnergyAppModelFeatureEnum.HeatpumpProgramSwitch]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpHeatingCurveOffset]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpVacationMode]: [EnergyAppPackageCategory.HeatPump],
+    [EnergyAppModelFeatureEnum.HeatpumpLegionellaSchedule]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpCooling]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpPowerReadout]: [EnergyAppPackageCategory.HeatPump],
 
     [EnergyAppModelFeatureEnum.HeatingRodSwitching]: [EnergyAppPackageCategory.HeatingRod],
     [EnergyAppModelFeatureEnum.HeatingRodPowerModulation]: [EnergyAppPackageCategory.HeatingRod],
     [EnergyAppModelFeatureEnum.HeatingRodDhwSensor]: [EnergyAppPackageCategory.HeatingRod],
+    [EnergyAppModelFeatureEnum.HeatingRodLegionellaSchedule]: [EnergyAppPackageCategory.HeatingRod],
 
     [EnergyAppModelFeatureEnum.ClimateTemperatureSetpoint]: CLIMATE_CATEGORIES,
     [EnergyAppModelFeatureEnum.ClimateModeControl]: CLIMATE_CATEGORIES,

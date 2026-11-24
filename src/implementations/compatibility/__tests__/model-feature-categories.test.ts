@@ -29,6 +29,7 @@ describe('getModelFeaturesForCategory', () => {
             F.HeatingRodSwitching,
             F.HeatingRodPowerModulation,
             F.HeatingRodDhwSensor,
+            F.HeatingRodLegionellaSchedule,
             F.EnergyConsumptionReadout,
             F.GridOperatorConsumptionLimitation,
         ]);

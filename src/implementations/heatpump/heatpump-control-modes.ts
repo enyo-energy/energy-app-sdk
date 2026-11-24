@@ -29,6 +29,7 @@ const AREA_ORDER: readonly EnyoHeatpumpControlAreaEnum[] = [
     EnyoHeatpumpControlAreaEnum.SolarHotWater,
     EnyoHeatpumpControlAreaEnum.CostOptimizedHeating,
     EnyoHeatpumpControlAreaEnum.HeatingCurve,
+    EnyoHeatpumpControlAreaEnum.LegionellaProgram,
 ];
 
 /**
@@ -91,6 +92,30 @@ function hasHeatingCurve(metadata: EnyoHeatpumpApplianceMetadata): boolean {
 }
 
 /**
+ * Whether a domestic-hot-water zone reports its legionella program, so the
+ * energy manager can at least recommend a slot.
+ *
+ * @param metadata - The heat pump's metadata.
+ * @returns `true` when the legionella area is offered.
+ */
+function hasLegionellaProgram(metadata: EnyoHeatpumpApplianceMetadata): boolean {
+    return (metadata.domesticHotWater ?? []).some((zone) => zone.legionella !== undefined);
+}
+
+/**
+ * Whether the energy manager can write the legionella slot itself: the heat
+ * pump declares {@link EnyoHeatpumpApplianceAvailableFeaturesEnum.LegionellaSchedule}
+ * and a zone states which parts of the slot are `adjustable`.
+ *
+ * @param metadata - The heat pump's metadata.
+ * @returns `true` when `Auto` is possible for the legionella area.
+ */
+function canScheduleLegionella(metadata: EnyoHeatpumpApplianceMetadata): boolean {
+    return hasAny(metadata, Feature.LegionellaSchedule)
+        && (metadata.domesticHotWater ?? []).some((zone) => zone.legionella?.adjustable !== undefined);
+}
+
+/**
  * The modes the customer can choose for one area of this heat pump, in the
  * order `Off`, `Recommend`, `Auto`. Empty when the heat pump does not offer
  * the area at all; otherwise `Off` is always included.
@@ -100,6 +125,7 @@ function hasHeatingCurve(metadata: EnyoHeatpumpApplianceMetadata): boolean {
  * | `SolarHotWater` | `DomesticHotWaterOverheating`, `PvSurplusSignal` or `AvailablePowerAnnouncement` | offered | offered |
  * | `CostOptimizedHeating` | pre-heating (`BufferTankOverheating`, `RoomOverheating`, `AvailablePowerAnnouncement` or `PvSurplusSignal`) or eco (`ProgramSwitch` and a heating circuit listing eco) | pre-heating — eco gives no recommendations | offered |
  * | `HeatingCurve` | `HeatingCurve` or `HeatingCurveOffset`, or a circuit reports `heatingCurve` | offered | `HeatingCurveOffset` |
+ * | `LegionellaProgram` | a DHW zone reports `legionella` | offered (the customer moves the slot on the device) | `LegionellaSchedule` and a zone with `legionella.adjustable` |
  *
  * A heat pump the integration marks monitor-only
  * ({@link EnyoHeatpumpApplianceMetadata.controlAllowed} `false`) offers only
@@ -146,6 +172,9 @@ function offeredHeatpumpControlModes(
         case EnyoHeatpumpControlAreaEnum.HeatingCurve:
             if (!hasHeatingCurve(metadata)) return [];
             return hasAny(metadata, Feature.HeatingCurveOffset) ? [Off, Recommend, Auto] : [Off, Recommend];
+        case EnyoHeatpumpControlAreaEnum.LegionellaProgram:
+            if (!hasLegionellaProgram(metadata)) return [];
+            return canScheduleLegionella(metadata) ? [Off, Recommend, Auto] : [Off, Recommend];
         default:
             return [];
     }
@@ -153,7 +182,7 @@ function offeredHeatpumpControlModes(
 
 /**
  * The areas this heat pump offers, in the fixed order `SolarHotWater`,
- * `CostOptimizedHeating`, `HeatingCurve`. See
+ * `CostOptimizedHeating`, `HeatingCurve`, `LegionellaProgram`. See
  * {@link availableHeatpumpControlModes} for when an area is offered.
  *
  * @param metadata - The heat pump's metadata.
@@ -184,6 +213,8 @@ export function heatpumpControlAreas(metadata: EnyoHeatpumpApplianceMetadata): E
  *     `Recommend` is not offered (eco only)
  *   - `HeatingCurve`: `Auto` when `controlled`, a circuit has
  *     `curveOptimization.enabled` and `Auto` is offered; `Recommend` otherwise
+ *   - `LegionellaProgram`: always `Recommend` — no switch ever covered it, and
+ *     a hygiene setting is not moved without the customer choosing `Auto`
  *
  * So nobody who lets the energy manager control today loses anything, and new
  * customers start on `Recommend`.
@@ -208,6 +239,7 @@ export function resolveHeatpumpControlModes(
         [EnyoHeatpumpControlAreaEnum.SolarHotWater]: controlled ? Auto : Recommend,
         [EnyoHeatpumpControlAreaEnum.CostOptimizedHeating]: controlled ? Auto : Recommend,
         [EnyoHeatpumpControlAreaEnum.HeatingCurve]: controlled && curveOptimizationEnabled ? Auto : Recommend,
+        [EnyoHeatpumpControlAreaEnum.LegionellaProgram]: Recommend,
     };
 
     const resolved: EnyoHeatpumpControlModes = {};
