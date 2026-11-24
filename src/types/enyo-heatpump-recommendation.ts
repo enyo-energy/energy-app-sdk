@@ -30,8 +30,19 @@ export enum EnyoHeatpumpRecommendationCauseEnum {
 }
 
 /**
+ * The customer's answer to an {@link EnyoHeatpumpRecommendation}, sent with
+ * {@link EnyoDataBusHeatpumpRecommendationAnswerV1}.
+ */
+export enum EnyoHeatpumpRecommendationAnswerEnum {
+    /** Carry it out — see {@link EnyoHeatpumpRecommendationExecutionEnum}. */
+    Accept = 'accept',
+    /** The customer does not want it. Nothing runs and no status follows. */
+    Reject = 'reject',
+}
+
+/**
  * What accepting an {@link EnyoHeatpumpRecommendation} does
- * ({@link EnyoDataBusAcceptHeatpumpRecommendationV1}).
+ * ({@link EnyoDataBusHeatpumpRecommendationAnswerV1}).
  */
 export enum EnyoHeatpumpRecommendationExecutionEnum {
     /**

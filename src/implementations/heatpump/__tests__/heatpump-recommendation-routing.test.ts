@@ -6,7 +6,7 @@ import {installSdk, TestHeatpump} from './heatpump-test-harness.js';
 /** The recommendation messages: addressed to the heat pump, but for the energy manager and the host. */
 const RECOMMENDATION_MESSAGES = [
     EnyoDataBusMessageEnum.HeatpumpRecommendationsV1,
-    EnyoDataBusMessageEnum.AcceptHeatpumpRecommendationV1,
+    EnyoDataBusMessageEnum.HeatpumpRecommendationAnswerV1,
     EnyoDataBusMessageEnum.ResetHeatpumpRecommendationV1,
     EnyoDataBusMessageEnum.HeatpumpRecommendationStatusV1,
 ];

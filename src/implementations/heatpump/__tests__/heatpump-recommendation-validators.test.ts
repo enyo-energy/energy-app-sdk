@@ -20,10 +20,12 @@ import {
     validateHeatpumpRecommendationStatusMessage,
 } from '../heatpump-recommendation-validators.js';
 import {
-    EnyoDataBusAcceptHeatpumpRecommendationV1,
+    EnyoDataBusHeatpumpRecommendationAnswerV1,
     EnyoDataBusHeatpumpRecommendationStatusV1,
+    EnyoDataBusResetHeatpumpRecommendationV1,
 } from '../../../types/enyo-data-bus-value.js';
 import {
+    EnyoHeatpumpRecommendationAnswerEnum as Answer,
     EnyoHeatpumpRecommendationStateEnum as State,
     EnyoHeatpumpRecommendationStopReasonEnum as StopReason,
 } from '../../../types/enyo-heatpump-recommendation.js';
@@ -302,24 +304,44 @@ describe('validateHeatpumpRecommendationStatusMessage', () => {
 });
 
 describe('validateHeatpumpRecommendationRequestMessage', () => {
-    const accept = (applianceId: string, recommendationId: string): EnyoDataBusAcceptHeatpumpRecommendationV1 => ({
+    const answer = (
+        applianceId: string,
+        recommendationId: string,
+        value: Answer = Answer.Accept,
+    ): EnyoDataBusHeatpumpRecommendationAnswerV1 => ({
         id: 'msg-3',
         type: 'message',
-        message: EnyoDataBusMessageEnum.AcceptHeatpumpRecommendationV1,
+        message: EnyoDataBusMessageEnum.HeatpumpRecommendationAnswerV1,
         source: EnyoSourceEnum.Device,
         applianceId,
         timestampIso: '2026-11-25T07:00:00.000Z',
-        data: {recommendationId},
+        data: {recommendationId, answer: value},
     });
+    const reset: EnyoDataBusResetHeatpumpRecommendationV1 = {
+        id: 'msg-4',
+        type: 'message',
+        message: EnyoDataBusMessageEnum.ResetHeatpumpRecommendationV1,
+        source: EnyoSourceEnum.Device,
+        applianceId: 'hp-1',
+        timestampIso: '2026-11-25T07:00:00.000Z',
+        data: {recommendationId: BOOST.id},
+    };
 
-    it('accepts a request naming the heat pump and the recommendation', () => {
-        expect(validateHeatpumpRecommendationRequestMessage(accept('hp-1', BOOST.id))).toEqual({ok: true, errors: []});
+    it('accepts an accept, a reject and a reset naming the heat pump and the recommendation', () => {
+        expect(validateHeatpumpRecommendationRequestMessage(answer('hp-1', BOOST.id))).toEqual({ok: true, errors: []});
+        expect(validateHeatpumpRecommendationRequestMessage(answer('hp-1', BOOST.id, Answer.Reject))).toEqual({ok: true, errors: []});
+        expect(validateHeatpumpRecommendationRequestMessage(reset)).toEqual({ok: true, errors: []});
     });
 
     it('rejects a request without heat pump or recommendation id', () => {
-        expect(validateHeatpumpRecommendationRequestMessage(accept('', ''))).toEqual({
+        expect(validateHeatpumpRecommendationRequestMessage(answer('', ''))).toEqual({
             ok: false,
             errors: ['applianceId must be a non-empty string', 'recommendationId must be a non-empty string'],
         });
+    });
+
+    it('rejects an answer that is neither accept nor reject', () => {
+        expect(validateHeatpumpRecommendationRequestMessage(answer('hp-1', BOOST.id, 'later' as Answer)).errors)
+            .toEqual(['answer must be an EnyoHeatpumpRecommendationAnswerEnum value, got later']);
     });
 });

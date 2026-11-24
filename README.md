@@ -5557,18 +5557,18 @@ Recommendations are data bus messages **addressed to the heat pump** but exchang
 
 ```
 Energy manager ──HeatpumpRecommendationsV1 (full list, also empty)──▶ Host / app
-Host / app ──AcceptHeatpumpRecommendationV1 / ResetHeatpumpRecommendationV1──▶ Energy manager
+Host / app ──HeatpumpRecommendationAnswerV1 (accept / reject) / ResetHeatpumpRecommendationV1──▶ Energy manager
 Energy manager ──HeatpumpRecommendationStatusV1 (accepted → active → completed / reset / rejected / aborted)──▶ Host / app
 ```
 
 | Message | Sent by | Purpose |
 |---|---|---|
 | `HeatpumpRecommendationsV1` | energy manager | Every open recommendation for the heat pump (`evaluatedAtIso`, `recommendations`). Whatever is missing is withdrawn |
-| `AcceptHeatpumpRecommendationV1` | host | The customer accepted `recommendationId`. Does not change the mode |
+| `HeatpumpRecommendationAnswerV1` | host | The customer's `answer` to `recommendationId`: `Accept` or `Reject`. Does not change the mode; a reject starts nothing and gets no status |
 | `ResetHeatpumpRecommendationV1` | host | End an accepted recommendation right away. Idempotent |
 | `HeatpumpRecommendationStatusV1` | energy manager | `state`, `stopReason` (exactly with `Rejected` / `Aborted`), `activeUntilIso` (only with `Active`) |
 
-Check incoming messages with `validateHeatpumpRecommendationsMessage()`, `validateHeatpumpRecommendationStatusMessage()` (host) and `validateHeatpumpRecommendationRequestMessage()` (energy manager, for accept and reset).
+Check incoming messages with `validateHeatpumpRecommendationsMessage()`, `validateHeatpumpRecommendationStatusMessage()` (host) and `validateHeatpumpRecommendationRequestMessage()` (energy manager, for answer and reset).
 
 A recommendation (`EnyoHeatpumpRecommendation`) is a union over `type`: `SolarHotWaterBoost`, `PreHeat`, `HeatingCurveLowering`. It carries **no texts and no money**, only parameters the app turns into text: `cause`, `execution` (`OneTime` / `Permanent` / `Manual`), `window`, `validUntilIso`, `benefit` (kWh of solar or % less electricity), `timeline`, `floorTemperatureC` and typed `params`. Its `id` is deterministic, so the host can keep the customer's decision ("later", "dismissed") across evaluations.
 
@@ -5576,7 +5576,7 @@ A recommendation (`EnyoHeatpumpRecommendation`) is a union over `type`: `SolarHo
 
 - Act per area only on the resolved modes. For heat pumps, the house-wide `heatpumpControl` no longer applies; `controlAllowed: false` still means monitor-only (everything resolves to `Off`). Gate eco with `isHeatpumpEcoModeActive()`.
 - Evaluate areas in `Recommend` at 06:00 (today) and 18:00 (tomorrow), and right away when an area switches to `Recommend`. Not on every re-plan. Send the full list every time and check it with `validateHeatpumpRecommendationsMessage()`.
-- On accept, check again. `OneTime`: carry it out once in its window. `Permanent`: apply and hold the curve offset. `Manual`: compute with the state the customer set on the device. If the recommendation no longer holds, report `Rejected`.
+- On a `Reject` answer, do nothing; you may leave the id out of later lists. On `Accept`, check again. `OneTime`: carry it out once in its window. `Permanent`: apply and hold the curve offset. `Manual`: compute with the state the customer set on the device. If the recommendation no longer holds, report `Rejected`.
 - On reset: cancel (`HeatpumpControlCancelV3`), restore the previous offset, or compute with the previous state again. Then report `Reset`.
 
 ## Batteries That Only Grid-Charge at Full Power

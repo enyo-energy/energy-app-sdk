@@ -53,6 +53,7 @@ import type {EnyoInverterApplianceAvailableFeaturesEnum} from "./enyo-inverter-a
 import type {EnyoApplianceSteeringReasonCodeEnum} from "./enyo-diagnostics.js";
 import type {
     EnyoHeatpumpRecommendation,
+    EnyoHeatpumpRecommendationAnswerEnum,
     EnyoHeatpumpRecommendationStateEnum,
     EnyoHeatpumpRecommendationStopReasonEnum,
 } from "./enyo-heatpump-recommendation.js";
@@ -2063,8 +2064,8 @@ export enum EnyoDataBusMessageEnum {
     BatteryChargeNowStatusV1 = 'BatteryChargeNowStatusV1',
     /** The energy manager's complete list of open recommendations for a heat pump. Energy manager → host. */
     HeatpumpRecommendationsV1 = 'HeatpumpRecommendationsV1',
-    /** The customer accepted a heat pump recommendation. Host → energy manager; never handled by the heat pump integration. */
-    AcceptHeatpumpRecommendationV1 = 'AcceptHeatpumpRecommendationV1',
+    /** The customer accepted or rejected a heat pump recommendation. Host → energy manager; never handled by the heat pump integration. */
+    HeatpumpRecommendationAnswerV1 = 'HeatpumpRecommendationAnswerV1',
     /** The customer ends an accepted heat pump recommendation right away. Host → energy manager; never handled by the heat pump integration. */
     ResetHeatpumpRecommendationV1 = 'ResetHeatpumpRecommendationV1',
     /** The energy manager reports how an accepted heat pump recommendation progresses. Energy manager → host. */
@@ -4692,15 +4693,20 @@ export interface EnyoDataBusHeatpumpRecommendationsV1 extends EnyoDataBusMessage
 }
 
 /**
- * The customer accepted a recommendation of
- * {@link EnyoDataBusHeatpumpRecommendationsV1}.
+ * The customer's answer to a recommendation of
+ * {@link EnyoDataBusHeatpumpRecommendationsV1}: accepted or rejected.
  *
  * **Addressed to the heat pump appliance, sent by the host to the energy
  * manager.** The heat pump integration never handles it — it must neither act
  * on it nor answer it, not even with `Rejected` or `NotSupported`.
  *
- * Accepting does **not** change the area's mode. What it means depends on the
- * recommendation's {@link EnyoHeatpumpRecommendation.execution}:
+ * {@link EnyoHeatpumpRecommendationAnswerEnum.Reject}: nothing runs and no
+ * status follows. The energy manager may leave the id out of later lists; the
+ * host keeps the customer's decision either way.
+ *
+ * {@link EnyoHeatpumpRecommendationAnswerEnum.Accept} does **not** change the
+ * area's mode. What it means depends on the recommendation's
+ * {@link EnyoHeatpumpRecommendation.execution}:
  * - {@link EnyoHeatpumpRecommendationExecutionEnum.OneTime}: carry it out once
  *   inside its window. The customer's acceptance is the release; the mode
  *   stays as it is.
@@ -4711,7 +4717,7 @@ export interface EnyoDataBusHeatpumpRecommendationsV1 extends EnyoDataBusMessage
  *   from now on. This matters for the heating curve in shadow mode, so the
  *   energy manager does not correct the curve a second time.
  *
- * Energy manager contract:
+ * Energy manager contract on accept:
  * - Check the recommendation again before acting on it. If it no longer
  *   holds, report {@link EnyoHeatpumpRecommendationStateEnum.Rejected} with the
  *   reason ({@link EnyoHeatpumpRecommendationStopReasonEnum.NoLongerValid},
@@ -4720,14 +4726,16 @@ export interface EnyoDataBusHeatpumpRecommendationsV1 extends EnyoDataBusMessage
  * - Accepting an id that is already accepted or active is not an error: report
  *   the current state again.
  */
-export interface EnyoDataBusAcceptHeatpumpRecommendationV1 extends EnyoDataBusMessage {
+export interface EnyoDataBusHeatpumpRecommendationAnswerV1 extends EnyoDataBusMessage {
     type: 'message';
-    message: EnyoDataBusMessageEnum.AcceptHeatpumpRecommendationV1;
+    message: EnyoDataBusMessageEnum.HeatpumpRecommendationAnswerV1;
     /** ID of the heat pump appliance the recommendation is for. */
     applianceId: string;
     data: {
-        /** {@link EnyoHeatpumpRecommendation.id} of the accepted recommendation. */
+        /** {@link EnyoHeatpumpRecommendation.id} of the answered recommendation. */
         recommendationId: string;
+        /** Whether the customer accepted or rejected it. */
+        answer: EnyoHeatpumpRecommendationAnswerEnum;
         /** Optional reason, usually {@link EnyoDataBusCommandReasonTypeEnum.UserRequest}. */
         reason?: EnyoDataBusCommandReason;
     };

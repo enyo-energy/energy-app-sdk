@@ -58,7 +58,7 @@ export enum EnergyManagerFeatureEnum {
      * recommended for nor controlled — gates eco per heat pump with
      * `isHeatpumpEcoModeActive()`, sends
      * `HeatpumpRecommendationsV1` for every heat pump with an area in
-     * `Recommend`, handles `AcceptHeatpumpRecommendationV1` and
+     * `Recommend`, handles `HeatpumpRecommendationAnswerV1` and
      * `ResetHeatpumpRecommendationV1`, and reports each accepted
      * recommendation's progress with `HeatpumpRecommendationStatusV1`.
      *
