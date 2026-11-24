@@ -232,6 +232,15 @@ export function resolveHeatpumpControlModes(
  * combined with `Auto` in another area would lower the curve against the
  * customer's choice.
  *
+ * This is the only field kept in sync for older energy managers. The other
+ * areas are not: `controlAllowed` stays the integration's monitor-only flag,
+ * and the house-wide `heatpumpControl` cannot carry a choice made per heat
+ * pump. So after a rollback to an energy manager without
+ * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}, hot water and
+ * pre-heating follow the old switches again, also where the customer chose
+ * `Recommend`. Accepted on purpose: the app offers the modes only while the
+ * active energy manager declares that feature.
+ *
  * @param modes - The resolved modes ({@link resolveHeatpumpControlModes}).
  * @returns Whether an older energy manager may optimise the heating curve.
  */
