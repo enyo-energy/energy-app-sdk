@@ -5590,6 +5590,8 @@ dataBus.listenForMessages([EnyoDataBusMessageEnum.RequestBatteryChargeNowV1], (m
 
 ## Heat Pump Control Modes & Recommendations
 
+> The legionella program (`LegionellaProgram` area, `SetLegionellaScheduleV1`, `LegionellaStatusV1`) has its own step-by-step guide for energy apps, the energy manager and core: [LEGIONELLA.md](LEGIONELLA.md).
+
 Instead of one switch for the whole heat pump, the customer picks a mode per **area** in `EnyoHeatpumpApplianceMetadata.controlModes`:
 
 | Area (`EnyoHeatpumpControlAreaEnum`) | Covers |
