@@ -908,8 +908,9 @@ A package in the `vehicle` category talks to a manufacturer's cloud and links
 one of its cars to a vehicle the user already created. It does not invent
 vehicles and it does not go looking for them — the flow starts with the user:
 
-1. The user signs into the vendor account (`useAuthentication()`, OAuth or
-   credentials).
+1. The user signs into the vendor account (`useAuthenticationV2()`, OAuth or
+   credentials). When pairing fails with `not-authenticated`, return the
+   `authenticationKey` so the enyo app opens the right sign-in.
 2. The user picks one of their vehicles in the enyo app and chooses this
    package to link it to. Which packages are offered comes from the brand
    declared in `compatibility` — see below.
@@ -1249,22 +1250,77 @@ check `request.applianceId` and reject requests for appliances it does not own.
 
 ### User Features
 
-#### `useAuthentication(): EnergyAppAuthentication`
+#### `useAuthenticationV2(): EnergyAppAuthenticationV2`
 
-Handle user authentication:
+Manage the sign-ins (vendor accounts, API keys, OAuth logins) the package needs. Each *authentication* is identified
+by a key the package chooses and lists what it is used for: the whole package, or any number of appliances and
+vehicles. Each has its own state, which the host persists and shows to the user together with the translated name,
+description and state explanation (`de` / `en`).
+
+| State | Meaning |
+|---|---|
+| `Unauthenticated` | Nobody signed in yet, or the user signed out. |
+| `Authenticated` | The sign-in works for every target. |
+| `ReauthenticationRequired` | A sign-in that used to work was lost; the user has to sign in again. |
+| `AuthenticationFailed` | The last attempt failed; see `failureReason`. |
 
 ```typescript
-const auth = energyApp.useAuthentication();
+const auth = energyApp.useAuthenticationV2();
 
-// Get current user
-const user = await auth.getCurrentUser();
+// Check submitted credentials (one listener for all authentications of the package).
+auth.listenForAuthenticationResponse(async (response) => {
+    const session = await vendor.login(response.usernamePassword!);
+    return session.ok
+        ? {state: EnyoAuthenticationV2StateEnum.Authenticated, accountName: session.email}
+        : {state: EnyoAuthenticationV2StateEnum.AuthenticationFailed, failureReason: 'invalidCredentials'};
+});
 
-// Check permissions
-const hasPermission = await auth.hasPermission('admin');
+// One login for two cars. Upsert on every start; the state is kept.
+await auth.upsert({
+    authenticationKey: 'vendor-account',
+    targets: [{type: 'vehicle', vehicleId: 'veh-1'}, {type: 'vehicle', vehicleId: 'veh-2'}],
+    name: [{language: 'de', value: 'Hersteller-Konto'}, {language: 'en', value: 'Vendor account'}],
+    description: [
+        {language: 'de', value: 'Mit diesem Konto lesen wir den Ladestand deiner Fahrzeuge.'},
+        {language: 'en', value: 'We use this account to read the state of charge of your vehicles.'},
+    ],
+    authenticationType: 'oauth',
+    oauth: {},
+});
+await auth.requestAuthentication('vendor-account');
 
-// Authenticate action
-const token = await auth.createAuthToken('user-action');
+// Which sign-ins does a vehicle have, and do they work?
+const forCar = await auth.list({vehicleId: 'veh-1'});
+
+// Add a newly paired car to the same login, with the vendor's ids for it.
+// externalIds are stored per target and come back with list()/get() — never put secrets there.
+await auth.addTargets('vendor-account', [
+    {type: 'vehicle', vehicleId: 'veh-3', externalIds: {userId: 'u-4711', vendorVehicleId: 'LRW123'}},
+]);
 ```
+
+To ask the user to sign in again, call `requireReauthentication(key, {reason, stateReason?, affectedTargets?})`. It
+sets `ReauthenticationRequired` and opens the sign-in in one step, also while the authentication is still
+`Authenticated`:
+
+| Situation | `reason` |
+|---|---|
+| Token expired or revoked, refresh failed | `sessionExpired` |
+| More rights needed, e.g. new OAuth scopes, or access to one car revoked | `insufficientPermissions` |
+| Vendor wants an action first (terms, e-mail verification) | `accountActionRequired` |
+
+Pass `affectedTargets` when only some appliances or vehicles are affected. The user's new sign-in arrives at
+`listenForAuthenticationResponse`; answering `Authenticated` ends the re-authentication. For an OAuth permission
+update, request the new scopes when building the authorize URL in `listenForOauthStart`.
+
+Validate a definition locally with `validateAuthenticationV2Definition()` / `assertValidAuthenticationV2Definition()`.
+`signOut(key)` signs out of one authentication only; for a vehicle package it unpairs only the vehicles of that
+authentication. For a lost sign-in, see [Lost sign-in](#lost-sign-in).
+
+#### `useAuthentication(): EnergyAppAuthentication` (deprecated)
+
+The v1 API knows a single package-wide state. Use `useAuthenticationV2()` instead. Sign-ins created through v1 appear
+in v2 under the key `legacy` (or `legacy:appliance:<applianceId>`, see `legacyAuthenticationV2Key()`).
 
 #### `useSettings(): EnergyAppSettings`
 
@@ -1468,7 +1524,7 @@ Targets (`options.target`) decide where tapping the notification leads:
 | `{ type: 'energy-app-settings' }` | The package's own settings. |
 | `{ type: 'appliance-settings', applianceId }` | The settings screen of an appliance. |
 | `{ type: 'appliance', applianceId }` | The live view of an appliance (current state, power and session). |
-| `{ type: 'authentication', applianceId? }` | The package's pending sign-in, created with `requestAuthentication()`. |
+| `{ type: 'authentication', authenticationKey? }` | The pending sign-in of an authentication, created with `useAuthenticationV2().requestAuthentication()`. (v1: `applianceId?`) |
 | `{ type: 'subscription-offer', planKey }` | The offer screen for a subscription plan. |
 
 `sendNotification` throws an `EnyoNotificationSendError` with `type: 'not-registered'` if the category was not
@@ -1549,22 +1605,26 @@ notification.sendNotification(
 `requestAuthentication()` already prompts the user, including for the first sign-in during onboarding.
 `authentication-required` is only for a sign-in that **used to work** and was lost. Send one only when:
 
-- The package was `Authenticated` before, the vendor now rejects the credentials or token, and a refresh failed.
+- The authentication was `Authenticated` before, the vendor now rejects the credentials or token, and a refresh failed.
 - The failure is not transient. Timeouts or a vendor outage are a `connection-issue`.
 - The user did not sign out themselves.
 
-Before sending, set the state with `setAuthenticationState()` and create a new request with
-`requestAuthentication()`, so the `authentication` target has a sign-in to open. Send it **at most once per lost
-session**, and not again until the package is `Authenticated` again. The host allows one per package (or per
-appliance, for an appliance sign-in) per 24 hours.
+Before sending, call `requireReauthentication()`, so the `authentication` target has a sign-in to open. Send it **at most once per lost
+session**, and not again until the authentication is `Authenticated` again. One notification covers every appliance
+and vehicle of the authentication. The host allows one per authentication per 24 hours.
 
 ```typescript
-await auth.setAuthenticationState({state: EnyoAuthenticationStateEnum.AuthenticationFailed});
-await auth.requestAuthentication({authenticationType: 'oauth', oauth: {}, oneTimeAuthentication: false});
+await auth.requireReauthentication('vendor-account', {
+    reason: 'sessionExpired',
+    stateReason: [
+        {language: 'de', value: 'Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.'},
+        {language: 'en', value: 'Your sign-in has expired. Please sign in again.'},
+    ],
+});
 
 notification.sendNotification(
     'authentication-required',
-    {target: {type: 'authentication'}},
+    {target: {type: 'authentication', authenticationKey: 'vendor-account'}},
     [
         {language: 'de', title: 'Bitte erneut anmelden', body: 'Deine Anmeldung ist abgelaufen. Melde dich erneut an, damit wir deine Geräte weiter steuern können.'},
         {language: 'en', title: 'Please sign in again', body: 'Your sign-in has expired. Sign in again so we can keep controlling your devices.'},

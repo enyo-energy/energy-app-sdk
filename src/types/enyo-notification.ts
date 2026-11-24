@@ -136,7 +136,8 @@ export interface EnyoNotificationApplianceTarget {
 /**
  * Target that opens the package's pending sign-in, i.e. the authentication
  * request previously created via
- * {@link EnergyAppAuthentication.requestAuthentication}.
+ * {@link EnergyAppAuthenticationV2.requestAuthentication} (or the deprecated
+ * {@link EnergyAppAuthentication.requestAuthentication}).
  *
  * This is the target to use for `authentication-required` notifications.
  * Create the authentication request before sending the notification, so that
@@ -145,6 +146,19 @@ export interface EnyoNotificationApplianceTarget {
 export interface EnyoNotificationAuthenticationTarget {
     /** Discriminator identifying this as an authentication target. */
     type: 'authentication';
+    /**
+     * Key of the authentication (v2) whose pending sign-in to open
+     * ({@link EnyoAuthenticationV2Definition.authenticationKey}). Set it for
+     * sign-ins managed through `useAuthenticationV2()`; it takes precedence
+     * over {@link applianceId} and {@link vehicleId}.
+     */
+    authenticationKey?: string;
+    /**
+     * Identifier of the vehicle the sign-in belongs to. The host opens the
+     * pending sign-in of the authentication (v2) whose targets include this
+     * vehicle. Prefer {@link authenticationKey} when known.
+     */
+    vehicleId?: string;
     /**
      * Identifier of the appliance the sign-in belongs to. Set it when the
      * authentication request was created for a specific appliance

@@ -119,6 +119,8 @@ export interface EnyoOauthAuthentication {
 /**
  * OAuth authentication start configuration
  * Contains the required redirect URL and optional client credentials
+ *
+ * @deprecated Use {@link EnyoAuthenticationV2OauthStart} with `useAuthenticationV2()`.
  */
 export interface EnyoOauthAuthenticationStart {
     requestId: string;
@@ -163,10 +165,20 @@ export interface EnyoOauthAuthenticationStart {
     redirectUrlFilter?: EnyoOauthRedirectUrlFilter;
 }
 
+/**
+ * Answer of a v1 OAuth start listener.
+ *
+ * @deprecated v2 listeners resolve with `{ redirectUrl }` directly; see {@link EnyoAuthenticationV2OauthStartListener}.
+ */
 export interface EnyoOauthAuthenticationRedirectUrlResponse {
     redirectUrl: string;
 }
 
+/**
+ * Sign-in request of the v1 API.
+ *
+ * @deprecated Use {@link EnyoAuthenticationV2Definition} with `useAuthenticationV2()`.
+ */
 export interface EnyoAuthentication {
     /** The authentication mode */
     authenticationType: EnyoAuthenticationType;
@@ -248,6 +260,11 @@ export interface EnyoOauthAuthenticationResponse {
     urlParams: Record<string, string>;
 }
 
+/**
+ * Submitted credentials as delivered by the v1 API.
+ *
+ * @deprecated Use {@link EnyoAuthenticationV2Response} with `useAuthenticationV2()`.
+ */
 export interface EnyoAuthenticationResponse {
     requestId: string;
     /** Optional appliance ID. If provided, authentication is for specific appliance. If omitted, authentication is for the whole package */
@@ -258,6 +275,11 @@ export interface EnyoAuthenticationResponse {
     oauth?: EnyoOauthAuthenticationResponse;
 }
 
+/**
+ * Authentication state of the v1 API.
+ *
+ * @deprecated Use {@link EnyoAuthenticationV2StateEnum}, which adds `ReauthenticationRequired`.
+ */
 export enum EnyoAuthenticationStateEnum {
     Authenticated = 'Authenticated',
     AuthenticationFailed = 'AuthenticationFailed',
@@ -295,6 +317,11 @@ export type EnyoAuthenticationFailureReason =
     | 'accountActionRequired'
     | 'insufficientPermissions';
 
+/**
+ * Authentication state reported by the v1 API.
+ *
+ * @deprecated Use {@link EnyoAuthenticationV2} / {@link EnyoAuthenticationV2StateUpdate} with `useAuthenticationV2()`.
+ */
 export interface EnyoAuthenticateState {
     state: EnyoAuthenticationStateEnum;
     authenticatedByRequestId?: string;

@@ -11,6 +11,7 @@ import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 import {getSdkVersion} from "./version.js";
 import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
+import {EnergyAppAuthenticationV2} from "./packages/energy-app-authentication-v2.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
 import {EnergyAppEnergyPrices} from "./packages/energy-app-energy-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
@@ -185,8 +186,27 @@ export class EnergyApp implements EnyoEnergyAppSdk {
         return this.energyAppSdk.useCharge();
     }
 
+    /**
+     * Gets the Authentication API (v1), which knows a single package-wide sign-in state.
+     *
+     * @deprecated Use {@link useAuthenticationV2}. Sign-ins created through v1 are visible there under the key `legacy`
+     * (or `legacy:appliance:<applianceId>`).
+     * @returns The Authentication API (v1) instance
+     */
     public useAuthentication(): EnergyAppAuthentication {
         return this.energyAppSdk.useAuthentication();
+    }
+
+    /**
+     * Gets the Authentication API (v2): sign-ins for the whole package or for any number of appliances and
+     * vehicles, each with its own state (authenticated, unauthenticated, re-authentication required, failed) and
+     * translated name, description and state explanation.
+     *
+     * Not permission-gated.
+     * @returns The Authentication API (v2) instance
+     */
+    public useAuthenticationV2(): EnergyAppAuthenticationV2 {
+        return this.energyAppSdk.useAuthenticationV2();
     }
 
     public useSettings(): EnergyAppSettings {

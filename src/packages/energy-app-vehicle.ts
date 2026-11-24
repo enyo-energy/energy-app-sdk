@@ -49,7 +49,7 @@ import {
  * A package in the `vehicle` category — a manufacturer cloud integration —
  * does not invent vehicles either. The user creates the {@link EnyoVehicle} in
  * the enyo app, signs into the vendor account through
- * {@link EnergyAppAuthentication}, and then picks this package to link the car
+ * {@link EnergyAppAuthenticationV2}, and then picks this package to link the car
  * to. The host calls the handler registered with {@link onPairVehicle}, and
  * from then on the package knows which `vehicleId` its readings belong to.
  *

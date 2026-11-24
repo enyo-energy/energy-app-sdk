@@ -9,6 +9,7 @@ import {EnergyAppCharge} from "./packages/energy-app-charge.js";
 import {EnergyAppVehicle} from "./packages/energy-app-vehicle.js";
 import {EnergyAppChargingCard} from "./packages/energy-app-charging-card.js";
 import {EnergyAppAuthentication} from "./packages/energy-app-authentication.js";
+import {EnergyAppAuthenticationV2} from "./packages/energy-app-authentication-v2.js";
 import {EnergyAppSettings} from "./packages/energy-app-settings.js";
 import {EnergyAppEnergyPrices} from "./packages/energy-app-energy-prices.js";
 import {EnergyAppNotification} from "./packages/energy-app-notification.js";
@@ -121,8 +122,13 @@ export interface EnyoEnergyAppSdk {
     useVehicle: () => EnergyAppVehicle;
     /** Get the Charging Card API*/
     useChargingCard: () => EnergyAppChargingCard;
-    /** Get the Authentication API */
+    /**
+     * Get the Authentication API (v1).
+     * @deprecated Use {@link useAuthenticationV2}, which supports sign-ins per appliance and vehicle, several targets per sign-in and a re-authentication state.
+     */
     useAuthentication: () => EnergyAppAuthentication;
+    /** Get the Authentication API (v2) for sign-ins per package, appliance or vehicle, each with its own state */
+    useAuthenticationV2: () => EnergyAppAuthenticationV2;
     /** Get the Settings API */
     useSettings: () => EnergyAppSettings;
     /** Get the Electricity Prices API */

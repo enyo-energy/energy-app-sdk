@@ -119,41 +119,44 @@ import {
  *
  * ## Sending an `authentication-required`
  *
- * {@link EnergyAppAuthentication.requestAuthentication} already prompts the
+ * {@link EnergyAppAuthenticationV2.requestAuthentication} already prompts the
  * user, including for the first sign-in during onboarding. This category is
  * only for a sign-in that **used to work** and was lost.
  *
  * Send it only when **all** of the following hold:
- * - The package was authenticated before
- *   ({@link EnyoAuthenticationStateEnum.Authenticated}) and the session is now
- *   unusable: the vendor rejects the credentials or token, and a refresh (if
- *   the vendor supports one) failed.
+ * - The authentication was
+ *   {@link EnyoAuthenticationV2StateEnum.Authenticated} before and the session
+ *   is now unusable: the vendor rejects the credentials or token, and a
+ *   refresh (if the vendor supports one) failed.
  * - The failure is not transient. Timeouts, 5xx responses or the vendor cloud
  *   being down are a `connection-issue`, not an `authentication-required`.
  * - The user did not sign out themselves: do **not** send after
- *   {@link EnergyAppAuthentication.signOut} or a sign-out reported through
- *   {@link EnergyAppAuthentication.listenForSignOut}.
+ *   {@link EnergyAppAuthenticationV2.signOut} or a sign-out reported through
+ *   {@link EnergyAppAuthenticationV2.listenForSignOut}.
  *
- * Before sending, set the state via
- * {@link EnergyAppAuthentication.setAuthenticationState} (to
- * `AuthenticationFailed` or `Unauthenticated`) and create a new request via
- * {@link EnergyAppAuthentication.requestAuthentication}, so the target has a
- * sign-in to open.
+ * Before sending, call
+ * {@link EnergyAppAuthenticationV2.requireReauthentication}, which sets
+ * {@link EnyoAuthenticationV2StateEnum.ReauthenticationRequired} and opens a
+ * new request, so the target has a sign-in to open. The same applies when the
+ * package needs more rights than the sign-in grants (`insufficientPermissions`).
  *
  * Send it **at most once per lost session**: after sending, wait until the
- * package is `Authenticated` again before sending another one.
+ * authentication is `Authenticated` again before sending another one.
  *
- * Pass `options.target = { type: 'authentication' }`. For an appliance
- * sign-in, also pass `options.applianceId` and set the target's
- * `applianceId`.
+ * Pass `options.target = { type: 'authentication', authenticationKey }`. One
+ * notification covers every appliance and vehicle of that authentication; do
+ * not send one per target.
  *
  * The host enforces a rate limit of one `authentication-required` per
- * package (or per appliance, for an appliance sign-in) per 24 hours.
+ * authentication per 24 hours. With the deprecated v1 API
+ * (`useAuthentication()`), the limit is per package, or per appliance for an
+ * appliance sign-in, and the target carries `applianceId` instead of
+ * `authenticationKey`.
  *
  * @example
  * ```typescript
  * const notification = sdk.useNotification();
- * const auth = sdk.useAuthentication();
+ * const auth = sdk.useAuthenticationV2();
  *
  * notification.registerNotificationCategory({
  *     category: 'authentication-required',
@@ -164,12 +167,11 @@ import {
  * });
  *
  * // The vendor rejected the refresh token: the session is gone for good.
- * await auth.setAuthenticationState({state: EnyoAuthenticationStateEnum.AuthenticationFailed});
- * await auth.requestAuthentication({authenticationType: 'oauth', oauth: {}, oneTimeAuthentication: false});
+ * await auth.requireReauthentication('vendor-account', {reason: 'sessionExpired'});
  *
  * notification.sendNotification(
  *     'authentication-required',
- *     {target: {type: 'authentication'}},
+ *     {target: {type: 'authentication', authenticationKey: 'vendor-account'}},
  *     [
  *         {language: 'de', title: 'Bitte erneut anmelden', body: 'Deine Anmeldung ist abgelaufen. Melde dich erneut an, damit wir deine Geräte weiter steuern können.'},
  *         {language: 'en', title: 'Please sign in again', body: 'Your sign-in has expired. Sign in again so we can keep controlling your devices.'},
@@ -214,7 +216,7 @@ export interface EnergyAppNotification {
      * routes the user to that destination on interaction — e.g. an onboarding
      * guide for the `onboarding-required` category, or the appliance's live
      * view (`{ type: 'appliance', applianceId }`) for `charging-issue` and
-     * `battery-issue`, or the pending sign-in (`{ type: 'authentication' }`)
+     * `battery-issue`, or the pending sign-in (`{ type: 'authentication', authenticationKey }`)
      * for `authentication-required`. The "Sending a …" sections on
      * {@link EnergyAppNotification} describe when those categories may be
      * sent.

@@ -10,6 +10,12 @@ import {
 /**
  * Interface for requesting user authentication for appliances or the entire package.
  * Provides methods to handle authentication requests, listen for responses, and manage authentication state.
+ *
+ * @deprecated Use {@link EnergyAppAuthenticationV2} (`useAuthenticationV2()`). v1 knows only one package-wide
+ * state, cannot bind a sign-in to vehicles or to several appliances, and has no re-authentication state. The host
+ * keeps v1 working: sign-ins created here appear in v2 under the key `legacy` (package-wide) or
+ * `legacy:appliance:<applianceId>`, and v2's `ReauthenticationRequired` is reported here as `Unauthenticated`
+ * with `failureReason: 'sessionExpired'`.
  */
 export interface EnergyAppAuthentication {
     /**

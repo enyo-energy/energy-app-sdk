@@ -7,6 +7,9 @@ export * from './implementations/ocpp/ocpp16.js';
 export * from './implementations/ocpp/ocpp201.js';
 export * from './implementations/ocpp/ocpp-common.js';
 export * from './types/enyo-authentication.js'
+export * from './types/enyo-authentication-v2.js'
+export * from './packages/energy-app-authentication-v2.js'
+export * from './implementations/authentication-v2/authentication-v2-validators.js'
 export * from './types/enyo-settings.js'
 export * from './packages/energy-app-settings.js'
 export * from './types/enyo-energy-prices.js'

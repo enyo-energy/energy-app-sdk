@@ -208,7 +208,8 @@ export enum EnyoVehiclePairFailureReasonEnum {
     /**
      * The package has no usable session with the vendor's cloud — the user has
      * not signed in yet, or the stored token expired and could not be
-     * refreshed. Resolve it through {@link EnergyAppAuthentication}, then pair
+     * refreshed. Resolve it through {@link EnergyAppAuthenticationV2} (and set
+     * {@link EnyoVehiclePairResult.authenticationKey}), then pair
      * again.
      */
     NotAuthenticated = 'not-authenticated',
@@ -408,6 +409,14 @@ export interface EnyoVehiclePairResult {
      * omitting it leaves the enyo app with nothing to tell the user.
      */
     failureReason?: EnyoVehiclePairFailureReasonEnum;
+    /**
+     * The authentication (v2) the user has to sign in to, when
+     * {@link failureReason} is {@link EnyoVehiclePairFailureReasonEnum.NotAuthenticated}
+     * — its {@link EnyoAuthenticationV2Definition.authenticationKey}. Lets the
+     * enyo app open the right sign-in directly when the package holds several
+     * vendor accounts. Ignored for every other reason.
+     */
+    authenticationKey?: string;
     /**
      * The cars the user could have meant, when {@link failureReason} is
      * {@link EnyoVehiclePairFailureReasonEnum.SelectionRequired}. Ignored for
