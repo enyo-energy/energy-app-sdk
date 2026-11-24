@@ -8,6 +8,9 @@
  *
  * Pure functions on the heat pump's metadata, shared by the host (app, sync
  * of the old switches) and the energy manager, so both read the same modes.
+ *
+ * `controlAllowed` stays the integration's capability: a heat pump it marks
+ * monitor-only (`false`) offers only `Off` in every area, whatever is stored.
  */
 
 import {
@@ -98,11 +101,32 @@ function hasHeatingCurve(metadata: EnyoHeatpumpApplianceMetadata): boolean {
  * | `CostOptimizedHeating` | pre-heating (`BufferTankOverheating`, `RoomOverheating`, `AvailablePowerAnnouncement` or `PvSurplusSignal`) or eco (`ProgramSwitch` and a heating circuit listing eco) | pre-heating — eco gives no recommendations | offered |
  * | `HeatingCurve` | `HeatingCurve` or `HeatingCurveOffset`, or a circuit reports `heatingCurve` | offered | `HeatingCurveOffset` |
  *
+ * A heat pump the integration marks monitor-only
+ * ({@link EnyoHeatpumpApplianceMetadata.controlAllowed} `false`) offers only
+ * `Off` in each of these areas: recommending or steering something the
+ * integration cannot control would end in commands it refuses.
+ *
  * @param metadata - The heat pump's metadata.
  * @param area - The area.
  * @returns The modes the area offers; empty when the area is not offered.
  */
 export function availableHeatpumpControlModes(
+    metadata: EnyoHeatpumpApplianceMetadata,
+    area: EnyoHeatpumpControlAreaEnum,
+): EnyoHeatpumpControlModeEnum[] {
+    const modes = offeredHeatpumpControlModes(metadata, area);
+    return modes.length > 0 && metadata.controlAllowed === false ? [Off] : modes;
+}
+
+/**
+ * The modes an area offers by the heat pump's features alone, before
+ * `controlAllowed` is applied — see {@link availableHeatpumpControlModes}.
+ *
+ * @param metadata - The heat pump's metadata.
+ * @param area - The area.
+ * @returns The modes the features allow; empty when the area is not offered.
+ */
+function offeredHeatpumpControlModes(
     metadata: EnyoHeatpumpApplianceMetadata,
     area: EnyoHeatpumpControlAreaEnum,
 ): EnyoHeatpumpControlModeEnum[] {
@@ -164,10 +188,10 @@ export function heatpumpControlAreas(metadata: EnyoHeatpumpApplianceMetadata): E
  * So nobody who lets the energy manager control today loses anything, and new
  * customers start on `Recommend`.
  *
- * The defaults read `controlAllowed`. A host that writes `controlAllowed`
- * with {@link deriveHeatpumpControlAllowed} should store the resolved modes in
- * `controlModes` at the same time; otherwise its own `controlAllowed: false`
- * would feed back into the defaults and keep them on `Recommend`.
+ * A monitor-only heat pump (`controlAllowed: false`) resolves to `Off` in
+ * every area, also when the customer stored another mode: the integration's
+ * capability wins over the customer's choice. Nobody derives or overwrites
+ * `controlAllowed` from the modes.
  *
  * @param metadata - The heat pump's metadata.
  * @param settings - The energy manager settings; only `heatpumpControl` is read.
@@ -197,18 +221,6 @@ export function resolveHeatpumpControlModes(
 }
 
 /**
- * The `controlAllowed` the host writes for energy managers without
- * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}: `true` as soon as
- * one area is {@link EnyoHeatpumpControlModeEnum.Auto}.
- *
- * @param modes - The resolved modes ({@link resolveHeatpumpControlModes}).
- * @returns Whether an older energy manager may control the heat pump.
- */
-export function deriveHeatpumpControlAllowed(modes: EnyoHeatpumpControlModes): boolean {
-    return Object.values(modes).includes(Auto);
-}
-
-/**
  * The `curveOptimization.enabled` the host writes on every heating circuit for
  * energy managers without
  * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}: `true` only when
@@ -225,4 +237,30 @@ export function deriveHeatpumpControlAllowed(modes: EnyoHeatpumpControlModes): b
  */
 export function deriveHeatpumpCurveOptimizationEnabled(modes: EnyoHeatpumpControlModes): boolean {
     return modes[EnyoHeatpumpControlAreaEnum.HeatingCurve] === Auto;
+}
+
+/**
+ * Whether eco in expensive hours takes effect on this heat pump for an energy
+ * manager declaring {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}:
+ * the setting is on, the heat pump can switch a heating circuit to eco, and its
+ * {@link EnyoHeatpumpControlAreaEnum.CostOptimizedHeating} area resolves to
+ * {@link EnyoHeatpumpControlModeEnum.Auto}.
+ *
+ * Replaces the `heatpumpControl` gate in `ENERGY_MANAGER_SETTING_DEPENDENCIES`
+ * for such an energy manager — that gate is per house and cannot see the
+ * area modes, which are per heat pump. Older energy managers keep using the
+ * gate.
+ *
+ * @param metadata - The heat pump's metadata.
+ * @param settings - The energy manager settings; `heatpumpControl` (defaults)
+ *   and `heatpumpEcoModeInExpensiveTimes` are read.
+ * @returns `true` when the energy manager may switch this heat pump to eco.
+ */
+export function isHeatpumpEcoModeActive(
+    metadata: EnyoHeatpumpApplianceMetadata,
+    settings: Pick<EnergyManagerSettingValues, 'heatpumpControl' | 'heatpumpEcoModeInExpensiveTimes'>,
+): boolean {
+    return settings.heatpumpEcoModeInExpensiveTimes === true
+        && canSwitchToEco(metadata)
+        && resolveHeatpumpControlModes(metadata, settings)[EnyoHeatpumpControlAreaEnum.CostOptimizedHeating] === Auto;
 }

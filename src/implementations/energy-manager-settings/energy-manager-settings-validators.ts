@@ -31,6 +31,18 @@ import type {
     EnergyManagerSettingValues,
     EnergyManagerSettingsState,
 } from '../../types/enyo-energy-manager-settings.js';
+import {EnergyManagerFeatureEnum} from '../../types/enyo-energy-manager.js';
+
+/** Context for {@link validateEnergyManagerSettingsState}. */
+export interface EnergyManagerSettingsValidationOptions {
+    /**
+     * The features the active energy manager declares. With
+     * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations} eco in expensive
+     * hours is gated per heat pump (`isHeatpumpEcoModeActive()`), not by the
+     * house-wide `heatpumpControl`, so that gate is not checked.
+     */
+    energyManagerFeatures?: readonly EnergyManagerFeatureEnum[];
+}
 
 /**
  * Thrown by {@link assertValidEnergyManagerSettingsState} when a state fails
@@ -171,6 +183,8 @@ function isHeld(value: unknown): boolean {
  *   half-built control surface).
  *
  * @param state - The settings state to validate.
+ * @param options - The energy manager's features; see
+ *   {@link EnergyManagerSettingsValidationOptions}.
  * @returns The {@link EnergyManagerSettingsValidationResult}.
  *
  * @example
@@ -182,6 +196,7 @@ function isHeld(value: unknown): boolean {
  */
 export function validateEnergyManagerSettingsState(
     state: EnergyManagerSettingsState,
+    options: EnergyManagerSettingsValidationOptions = {},
 ): EnergyManagerSettingsValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -385,9 +400,12 @@ export function validateEnergyManagerSettingsState(
     }
 
     // ── gate tree ──────────────────────────────────────────────────────────
+    const gatesEcoPerHeatpump = options.energyManagerFeatures
+        ?.includes(EnergyManagerFeatureEnum.HeatpumpRecommendations) === true;
     for (const [setting, dependency] of Object.entries(ENERGY_MANAGER_SETTING_DEPENDENCIES)) {
         if (!dependency) continue;
         const key = setting as EnergyManagerSettingEnum;
+        if (gatesEcoPerHeatpump && key === EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes) continue;
 
         const held = ENERGY_MANAGER_SETTING_VALUE_KEYS[key]
             .some((k) => isHeld(values[k]));

@@ -52,8 +52,11 @@ export enum EnergyManagerFeatureEnum {
      * recommends changes for areas in `Recommend`.
      *
      * It reads `EnyoHeatpumpApplianceMetadata.controlModes` through
-     * `resolveHeatpumpControlModes()` — for heat pumps that replaces
-     * `heatpumpControl` and `controlAllowed` — sends
+     * `resolveHeatpumpControlModes()` — for heat pumps that replaces the
+     * house-wide `heatpumpControl`; a monitor-only heat pump
+     * (`controlAllowed: false`) resolves to `Off` everywhere and is neither
+     * recommended for nor controlled — gates eco per heat pump with
+     * `isHeatpumpEcoModeActive()`, sends
      * `HeatpumpRecommendationsV1` for every heat pump with an area in
      * `Recommend`, handles `AcceptHeatpumpRecommendationV1` and
      * `ResetHeatpumpRecommendationV1`, and reports each accepted

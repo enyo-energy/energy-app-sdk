@@ -15,8 +15,18 @@ import {
 import {EnyoSourceEnum} from '../../../types/enyo-source.enum.js';
 import {
     validateHeatpumpRecommendation,
+    validateHeatpumpRecommendationRequestMessage,
     validateHeatpumpRecommendationsMessage,
+    validateHeatpumpRecommendationStatusMessage,
 } from '../heatpump-recommendation-validators.js';
+import {
+    EnyoDataBusAcceptHeatpumpRecommendationV1,
+    EnyoDataBusHeatpumpRecommendationStatusV1,
+} from '../../../types/enyo-data-bus-value.js';
+import {
+    EnyoHeatpumpRecommendationStateEnum as State,
+    EnyoHeatpumpRecommendationStopReasonEnum as StopReason,
+} from '../../../types/enyo-heatpump-recommendation.js';
 
 const WINDOW = {startIso: '2026-11-25T11:00:00.000Z', endIso: '2026-11-25T14:00:00.000Z'};
 
@@ -243,5 +253,73 @@ describe('validateHeatpumpRecommendationsMessage', () => {
         const withoutList = message([]);
         (withoutList.data as {recommendations?: unknown}).recommendations = undefined;
         expect(validateHeatpumpRecommendationsMessage(withoutList)).toEqual({ok: false, errors: ['recommendations must be an array']});
+    });
+});
+
+describe('validateHeatpumpRecommendationStatusMessage', () => {
+    function status(data: Partial<EnyoDataBusHeatpumpRecommendationStatusV1['data']>): EnyoDataBusHeatpumpRecommendationStatusV1 {
+        return {
+            id: 'msg-2',
+            type: 'message',
+            message: EnyoDataBusMessageEnum.HeatpumpRecommendationStatusV1,
+            source: EnyoSourceEnum.Device,
+            applianceId: 'hp-1',
+            timestampIso: '2026-11-25T11:00:00.000Z',
+            data: {recommendationId: BOOST.id, state: State.Accepted, ...data},
+        };
+    }
+
+    it('accepts every state with what it may carry', () => {
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Accepted})).ok).toBe(true);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Active, activeUntilIso: WINDOW.endIso})).ok).toBe(true);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Active})).ok).toBe(true);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Completed})).ok).toBe(true);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Reset})).ok).toBe(true);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Rejected, stopReason: StopReason.Expired})).ok).toBe(true);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Aborted, stopReason: StopReason.ControlNotPossible})).ok)
+            .toBe(true);
+    });
+
+    it('requires a stop reason exactly for rejected and aborted', () => {
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Rejected})).errors)
+            .toEqual(['stopReason is required when state is rejected']);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Completed, stopReason: StopReason.Expired})).errors)
+            .toEqual(['stopReason is only allowed when state is rejected or aborted, got state completed']);
+    });
+
+    it('allows activeUntilIso only while active, and only as a timestamp', () => {
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Accepted, activeUntilIso: WINDOW.endIso})).ok).toBe(false);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Active, activeUntilIso: 'tomorrow'})).errors)
+            .toEqual(['activeUntilIso must be an ISO 8601 timestamp']);
+    });
+
+    it('rejects unknown states and reasons and a missing id', () => {
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: 'done' as State})).ok).toBe(false);
+        expect(validateHeatpumpRecommendationStatusMessage(status({state: State.Aborted, stopReason: 'oops' as StopReason})).ok).toBe(false);
+        expect(validateHeatpumpRecommendationStatusMessage(status({recommendationId: ''})).errors)
+            .toEqual(['recommendationId must be a non-empty string']);
+    });
+});
+
+describe('validateHeatpumpRecommendationRequestMessage', () => {
+    const accept = (applianceId: string, recommendationId: string): EnyoDataBusAcceptHeatpumpRecommendationV1 => ({
+        id: 'msg-3',
+        type: 'message',
+        message: EnyoDataBusMessageEnum.AcceptHeatpumpRecommendationV1,
+        source: EnyoSourceEnum.Device,
+        applianceId,
+        timestampIso: '2026-11-25T07:00:00.000Z',
+        data: {recommendationId},
+    });
+
+    it('accepts a request naming the heat pump and the recommendation', () => {
+        expect(validateHeatpumpRecommendationRequestMessage(accept('hp-1', BOOST.id))).toEqual({ok: true, errors: []});
+    });
+
+    it('rejects a request without heat pump or recommendation id', () => {
+        expect(validateHeatpumpRecommendationRequestMessage(accept('', ''))).toEqual({
+            ok: false,
+            errors: ['applianceId must be a non-empty string', 'recommendationId must be a non-empty string'],
+        });
     });
 });

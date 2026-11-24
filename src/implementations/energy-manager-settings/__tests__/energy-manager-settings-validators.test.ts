@@ -9,6 +9,7 @@ import {
     type EnergyManagerSettingValues,
     type EnergyManagerSettingsState,
 } from '../../../types/enyo-energy-manager-settings.js';
+import {EnergyManagerFeatureEnum} from '../../../types/enyo-energy-manager.js';
 import {
     assertValidEnergyManagerSettingsState,
     EnergyManagerSettingsValidationError,
@@ -742,6 +743,14 @@ describe('validateEnergyManagerSettingsState — heat pump eco mode in expensive
             state({heatpumpControl: false, heatpumpEcoModeInExpensiveTimes: true}),
         );
         expect(warnings.some((w) => w.includes('heatpump-eco-mode-in-expensive-times'))).toBe(true);
+    });
+
+    it('does not tie eco to heat pump control for an energy manager that gates it per heat pump', () => {
+        const options = {energyManagerFeatures: [EnergyManagerFeatureEnum.HeatpumpRecommendations]};
+        for (const values of [{heatpumpEcoModeInExpensiveTimes: true}, {heatpumpControl: false, heatpumpEcoModeInExpensiveTimes: true}]) {
+            const {warnings} = validateEnergyManagerSettingsState(state(values), options);
+            expect(warnings.some((w) => w.includes('heatpump-eco-mode-in-expensive-times'))).toBe(false);
+        }
     });
 
     it('warns when heat pump control is supported and on but the eco setting is not supported', () => {

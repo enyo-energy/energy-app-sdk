@@ -9,9 +9,9 @@ import {
 } from '../../../types/enyo-heatpump-appliance.js';
 import {
     availableHeatpumpControlModes,
-    deriveHeatpumpControlAllowed,
     deriveHeatpumpCurveOptimizationEnabled,
     heatpumpControlAreas,
+    isHeatpumpEcoModeActive,
     resolveHeatpumpControlModes,
 } from '../heatpump-control-modes.js';
 
@@ -121,6 +121,13 @@ describe('availableHeatpumpControlModes', () => {
         expect(availableHeatpumpControlModes(NO_FEATURES, Area.SolarHotWater)).toEqual([]);
         expect(availableHeatpumpControlModes(AVAILABLE_POWER_ONLY, Area.HeatingCurve)).toEqual([]);
     });
+
+    it('offers only Off on a heat pump the integration marks monitor-only', () => {
+        for (const area of Object.values(Area)) {
+            expect(availableHeatpumpControlModes({...IDM, controlAllowed: false}, area)).toEqual([Mode.Off]);
+        }
+        expect(availableHeatpumpControlModes({...NO_FEATURES, controlAllowed: false}, Area.SolarHotWater)).toEqual([]);
+    });
 });
 
 describe('resolveHeatpumpControlModes', () => {
@@ -144,11 +151,24 @@ describe('resolveHeatpumpControlModes', () => {
         });
     });
 
-    it('defaults to Recommend when the heat pump has controlAllowed false', () => {
+    it('resolves a monitor-only heat pump to Off everywhere', () => {
         expect(resolveHeatpumpControlModes({...IDM, controlAllowed: false}, {heatpumpControl: true})).toEqual({
-            [Area.SolarHotWater]: Mode.Recommend,
-            [Area.CostOptimizedHeating]: Mode.Recommend,
-            [Area.HeatingCurve]: Mode.Recommend,
+            [Area.SolarHotWater]: Mode.Off,
+            [Area.CostOptimizedHeating]: Mode.Off,
+            [Area.HeatingCurve]: Mode.Off,
+        });
+    });
+
+    it('keeps a monitor-only heat pump Off even when the customer stored Auto', () => {
+        const metadata = {
+            ...IDM,
+            controlAllowed: false,
+            controlModes: {[Area.SolarHotWater]: Mode.Auto, [Area.CostOptimizedHeating]: Mode.Auto, [Area.HeatingCurve]: Mode.Auto},
+        };
+        expect(resolveHeatpumpControlModes(metadata, {heatpumpControl: true})).toEqual({
+            [Area.SolarHotWater]: Mode.Off,
+            [Area.CostOptimizedHeating]: Mode.Off,
+            [Area.HeatingCurve]: Mode.Off,
         });
     });
 
@@ -215,15 +235,30 @@ describe('resolveHeatpumpControlModes', () => {
     });
 });
 
-describe('deriveHeatpumpControlAllowed', () => {
-    it('is true as soon as one area is Auto', () => {
-        expect(deriveHeatpumpControlAllowed({[Area.SolarHotWater]: Mode.Recommend, [Area.HeatingCurve]: Mode.Auto})).toBe(true);
+describe('isHeatpumpEcoModeActive', () => {
+    const autoCost = (metadata: EnyoHeatpumpApplianceMetadata): EnyoHeatpumpApplianceMetadata =>
+        ({...metadata, controlModes: {[Area.CostOptimizedHeating]: Mode.Auto}});
+
+    it('is active when the setting is on and cost-optimised heating is Auto — without heatpumpControl', () => {
+        expect(isHeatpumpEcoModeActive(autoCost(IDM), {heatpumpEcoModeInExpensiveTimes: true})).toBe(true);
     });
 
-    it('is false without any Auto', () => {
-        expect(deriveHeatpumpControlAllowed({[Area.SolarHotWater]: Mode.Recommend, [Area.CostOptimizedHeating]: Mode.Off}))
+    it('is inactive when the setting is off or unset', () => {
+        expect(isHeatpumpEcoModeActive(autoCost(IDM), {heatpumpEcoModeInExpensiveTimes: false})).toBe(false);
+        expect(isHeatpumpEcoModeActive(autoCost(IDM), {})).toBe(false);
+    });
+
+    it('is inactive while cost-optimised heating is Recommend or Off', () => {
+        for (const mode of [Mode.Recommend, Mode.Off]) {
+            const metadata = {...IDM, controlModes: {[Area.CostOptimizedHeating]: mode}};
+            expect(isHeatpumpEcoModeActive(metadata, {heatpumpEcoModeInExpensiveTimes: true, heatpumpControl: true})).toBe(false);
+        }
+    });
+
+    it('is inactive on a heat pump that cannot switch to eco, or is monitor-only', () => {
+        expect(isHeatpumpEcoModeActive(autoCost(AVAILABLE_POWER_ONLY), {heatpumpEcoModeInExpensiveTimes: true})).toBe(false);
+        expect(isHeatpumpEcoModeActive({...autoCost(IDM), controlAllowed: false}, {heatpumpEcoModeInExpensiveTimes: true}))
             .toBe(false);
-        expect(deriveHeatpumpControlAllowed({})).toBe(false);
     });
 });
 

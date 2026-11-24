@@ -5,14 +5,23 @@ import {
     EnyoHeatpumpRecommendationBenefitKindEnum,
     EnyoHeatpumpRecommendationCauseEnum,
     EnyoHeatpumpRecommendationExecutionEnum,
+    EnyoHeatpumpRecommendationStateEnum,
+    EnyoHeatpumpRecommendationStopReasonEnum,
     EnyoHeatpumpRecommendationTypeEnum,
 } from '../../types/enyo-heatpump-recommendation.js';
-import type {EnyoDataBusHeatpumpRecommendationsV1} from '../../types/enyo-data-bus-value.js';
+import type {
+    EnyoDataBusAcceptHeatpumpRecommendationV1,
+    EnyoDataBusHeatpumpRecommendationStatusV1,
+    EnyoDataBusHeatpumpRecommendationsV1,
+    EnyoDataBusResetHeatpumpRecommendationV1,
+} from '../../types/enyo-data-bus-value.js';
 
 /**
- * Result of {@link validateHeatpumpRecommendation} and
- * {@link validateHeatpumpRecommendationsMessage}: `ok` is `false` when there
- * are errors.
+ * Result of {@link validateHeatpumpRecommendation},
+ * {@link validateHeatpumpRecommendationsMessage},
+ * {@link validateHeatpumpRecommendationStatusMessage} and
+ * {@link validateHeatpumpRecommendationRequestMessage}: `ok` is `false` when
+ * there are errors.
  */
 export interface HeatpumpRecommendationValidationResult {
     /** `true` when there are no errors. */
@@ -284,4 +293,81 @@ export function validateHeatpumpRecommendationsMessage(
     });
 
     return {ok: errors.length === 0, errors};
+}
+
+const STATES = new Set<string>(Object.values(EnyoHeatpumpRecommendationStateEnum));
+const STOP_REASONS = new Set<string>(Object.values(EnyoHeatpumpRecommendationStopReasonEnum));
+/** The states that end a recommendation early and therefore carry a `stopReason`. */
+const STOPPED_STATES = new Set<string>([
+    EnyoHeatpumpRecommendationStateEnum.Rejected,
+    EnyoHeatpumpRecommendationStateEnum.Aborted,
+]);
+
+/**
+ * Checks a {@link EnyoDataBusHeatpumpRecommendationStatusV1} before the host
+ * shows it: a non-empty `recommendationId`, a known `state`, a `stopReason`
+ * exactly with `Rejected` / `Aborted` (and a known one), and `activeUntilIso`
+ * only with `Active` and as an ISO 8601 timestamp.
+ *
+ * @param message - The status message to validate.
+ * @returns The validation result; `ok` is `false` when there are errors.
+ */
+export function validateHeatpumpRecommendationStatusMessage(
+    message: EnyoDataBusHeatpumpRecommendationStatusV1,
+): HeatpumpRecommendationValidationResult {
+    const errors = recommendationIdErrors(message);
+    const {state, stopReason, activeUntilIso} = message.data ?? ({} as Partial<EnyoDataBusHeatpumpRecommendationStatusV1['data']>);
+
+    if (typeof state !== 'string' || !STATES.has(state)) {
+        errors.push(`state must be an EnyoHeatpumpRecommendationStateEnum value, got ${String(state)}`);
+    } else if (STOPPED_STATES.has(state)) {
+        if (stopReason === undefined) errors.push(`stopReason is required when state is ${state}`);
+    } else if (stopReason !== undefined) {
+        errors.push(`stopReason is only allowed when state is rejected or aborted, got state ${state}`);
+    }
+    if (stopReason !== undefined && !STOP_REASONS.has(stopReason)) {
+        errors.push(`stopReason must be an EnyoHeatpumpRecommendationStopReasonEnum value, got ${String(stopReason)}`);
+    }
+    if (activeUntilIso !== undefined) {
+        if (state !== EnyoHeatpumpRecommendationStateEnum.Active) {
+            errors.push(`activeUntilIso is only allowed when state is active, got state ${String(state)}`);
+        } else if (!isIsoTimestamp(activeUntilIso)) {
+            errors.push('activeUntilIso must be an ISO 8601 timestamp');
+        }
+    }
+    return {ok: errors.length === 0, errors};
+}
+
+/**
+ * Checks an {@link EnyoDataBusAcceptHeatpumpRecommendationV1} or
+ * {@link EnyoDataBusResetHeatpumpRecommendationV1} before the energy manager
+ * acts on it: it names the heat pump (`applianceId`) and a non-empty
+ * `recommendationId`.
+ *
+ * @param message - The accept or reset message to validate.
+ * @returns The validation result; `ok` is `false` when there are errors.
+ */
+export function validateHeatpumpRecommendationRequestMessage(
+    message: EnyoDataBusAcceptHeatpumpRecommendationV1 | EnyoDataBusResetHeatpumpRecommendationV1,
+): HeatpumpRecommendationValidationResult {
+    const errors = recommendationIdErrors(message);
+    return {ok: errors.length === 0, errors};
+}
+
+/**
+ * The errors shared by the messages about one recommendation: a missing heat
+ * pump or recommendation id.
+ *
+ * @param message - A message carrying `applianceId` and `data.recommendationId`.
+ * @returns The errors found; empty when both are present.
+ */
+function recommendationIdErrors(message: {applianceId?: string; data?: {recommendationId?: string}}): string[] {
+    const errors: string[] = [];
+    if (typeof message?.applianceId !== 'string' || message.applianceId.length === 0) {
+        errors.push('applianceId must be a non-empty string');
+    }
+    if (typeof message?.data?.recommendationId !== 'string' || message.data.recommendationId.length === 0) {
+        errors.push('recommendationId must be a non-empty string');
+    }
+    return errors;
 }

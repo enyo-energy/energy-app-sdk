@@ -429,7 +429,9 @@ export interface EnergyManagerSettingValues {
      * it is instead only meaningful while the heat pump's
      * {@link EnyoHeatpumpControlAreaEnum.CostOptimizedHeating} area resolves to
      * {@link EnyoHeatpumpControlModeEnum.Auto}: eco in expensive hours runs only
-     * when that area is `Auto` **and** this setting is on. Eco produces no
+     * when that area is `Auto` **and** this setting is on — check it per heat
+     * pump with `isHeatpumpEcoModeActive()`, not with the `heatpumpControl` gate
+     * in {@link ENERGY_MANAGER_SETTING_DEPENDENCIES}. Eco produces no
      * recommendations.
      */
     heatpumpEcoModeInExpensiveTimes?: boolean;
@@ -618,6 +620,8 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
         requires: EnergyManagerSettingEnum.BatteryControl,
         equals: true,
     },
+    // For an energy manager declaring HeatpumpRecommendations the gate is the
+    // CostOptimizedHeating area per heat pump instead: isHeatpumpEcoModeActive().
     [EnergyManagerSettingEnum.HeatpumpEcoModeInExpensiveTimes]: {
         requires: EnergyManagerSettingEnum.HeatpumpControl,
         equals: true,

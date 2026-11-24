@@ -1092,13 +1092,12 @@ export interface EnyoHeatpumpApplianceMetadata {
      * and the EMS must not issue control commands to it. When omitted,
      * consumers should fall back to their configured default behaviour.
      *
-     * An energy manager declaring
-     * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations} does not read
-     * this field: for it, {@link controlModes} (resolved with
-     * {@link resolveHeatpumpControlModes}) is the only source of what it may
-     * control. The host keeps this field in sync for older energy managers —
-     * `true` as soon as one area is {@link EnyoHeatpumpControlModeEnum.Auto},
-     * see {@link deriveHeatpumpControlAllowed}.
+     * This stays the integration's capability, also for an energy manager
+     * declaring {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}: with
+     * `false`, {@link resolveHeatpumpControlModes} resolves every area to
+     * {@link EnyoHeatpumpControlModeEnum.Off}, whatever the customer stored in
+     * {@link controlModes} — no recommendations, no commands. Nobody derives or
+     * overwrites it from the modes.
      */
     controlAllowed?: boolean;
     /**
@@ -1115,13 +1114,14 @@ export interface EnyoHeatpumpApplianceMetadata {
      *
      * For an energy manager declaring
      * {@link EnergyManagerFeatureEnum.HeatpumpRecommendations}, the resolved
-     * modes are the **only** source of what it may control on this heat pump:
-     * {@link EnergyManagerSettingValues.heatpumpControl} and
-     * {@link controlAllowed} no longer apply to heat pumps for it. The host keeps
-     * {@link controlAllowed} (see {@link deriveHeatpumpControlAllowed}) and
-     * {@link EnyoHeatpumpHeatingCurveOptimizationSettings.enabled} (see
-     * {@link deriveHeatpumpCurveOptimizationEnabled}) in sync, so older energy
-     * managers without that feature keep working.
+     * modes decide what it may do per area: the house-wide
+     * {@link EnergyManagerSettingValues.heatpumpControl} only seeds the
+     * defaults. {@link controlAllowed} still applies — a monitor-only heat pump
+     * resolves to `Off` everywhere. The host keeps
+     * {@link EnyoHeatpumpHeatingCurveOptimizationSettings.enabled} in sync (see
+     * {@link deriveHeatpumpCurveOptimizationEnabled}) so an older energy
+     * manager does not lower a curve the customer only wants recommended; it
+     * never writes {@link controlAllowed}.
      */
     controlModes?: EnyoHeatpumpControlModes;
     /**
