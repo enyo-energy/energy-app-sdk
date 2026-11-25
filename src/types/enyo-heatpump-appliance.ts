@@ -784,6 +784,21 @@ export enum EnyoHeatpumpControlModeEnum {
 export type EnyoHeatpumpControlModes = Partial<Record<EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeEnum>>;
 
 /**
+ * A mode an integration may register as the default of an area:
+ * {@link EnyoHeatpumpControlModeEnum.Off} or
+ * {@link EnyoHeatpumpControlModeEnum.Recommend}. Never
+ * {@link EnyoHeatpumpControlModeEnum.Auto} — letting the energy manager steer
+ * the device is the customer's choice alone.
+ */
+export type EnyoHeatpumpControlModeDefault = EnyoHeatpumpControlModeEnum.Off | EnyoHeatpumpControlModeEnum.Recommend;
+
+/**
+ * The integration's default mode per {@link EnyoHeatpumpControlAreaEnum | area}
+ * — see {@link EnyoHeatpumpApplianceMetadata.controlModeDefaults}.
+ */
+export type EnyoHeatpumpControlModeDefaults = Partial<Record<EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeDefault>>;
+
+/**
  * A domestic-hot-water zone of the installation.
  *
  * In a combi installation
@@ -1154,7 +1169,9 @@ export interface EnyoHeatpumpApplianceMetadata {
      *
      * **Customer-owned.** Set in the enyo app, never by an integration: the
      * host keeps the customer's value whenever an integration saves the
-     * appliance. Integrations and the energy manager only read it.
+     * appliance. Integrations and the energy manager only read it. An
+     * integration that wants another starting mode sets
+     * {@link controlModeDefaults} instead.
      *
      * An area that is missing takes its default, and a mode the heat pump
      * cannot offer falls back — always read the field through
@@ -1172,6 +1189,27 @@ export interface EnyoHeatpumpApplianceMetadata {
      * never writes {@link controlAllowed}.
      */
     controlModes?: EnyoHeatpumpControlModes;
+    /**
+     * The mode per {@link EnyoHeatpumpControlAreaEnum | area} the integration
+     * wants while the customer has stored none in {@link controlModes} —
+     * {@link EnyoHeatpumpControlModeEnum.Off} or
+     * {@link EnyoHeatpumpControlModeEnum.Recommend}, never `Auto`.
+     *
+     * **Integration-owned**, the opposite of {@link controlModes}: the
+     * integration writes it, the host keeps it as written, the customer never
+     * changes it. Use it when the device already does the job itself, e.g.
+     * `{'legionella-program': 'off'}` for a heat pump whose own legionella
+     * program should stay in charge until the customer opts in.
+     *
+     * {@link resolveHeatpumpControlModes} uses it per area only when the
+     * customer stored no mode and the customer's earlier switches
+     * (`heatpumpControl`, `curveOptimization.enabled`) do not resolve to
+     * `Auto`; it replaces the SDK default `Recommend`. A default the area does
+     * not offer falls back like a stored mode, and an `Auto` or unknown value
+     * is ignored. Validate with `validateControlModeDefaults()` (part of
+     * `validateHeatpumpAdvancedMetadata()`).
+     */
+    controlModeDefaults?: EnyoHeatpumpControlModeDefaults;
     /**
      * Additional heating devices present in the installation alongside the
      * heatpump (e.g. a heating rod or a solar thermal system).

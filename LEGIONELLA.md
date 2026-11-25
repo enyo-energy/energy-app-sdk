@@ -104,6 +104,22 @@ await applianceManager.updateHeatpumpDomesticHotWater(applianceId, 0, {
 
 Check the metadata with `validateHeatpumpAdvancedMetadata()` — it runs `validateLegionellaProgramMetadata()` for every zone.
 
+#### Default mode
+
+Until the customer picks a mode, the area starts on `Recommend`. If the device's own program should stay in charge until the customer opts in, register `Off` as the default. The integration owns `controlModeDefaults` and the host keeps it as written. Never write `controlModes` itself, which belongs to the customer.
+
+```ts
+await applianceManager.updateAppliance(applianceId, {
+    heatpump: {
+        controlModeDefaults: {
+            [EnyoHeatpumpControlAreaEnum.LegionellaProgram]: EnyoHeatpumpControlModeEnum.Off,
+        },
+    },
+});
+```
+
+Only `Off` and `Recommend` are allowed. `Auto` must be the customer's choice, so the validator rejects it and the resolvers ignore it. A mode the customer stored always wins over the default.
+
 ### 1.2 Handle the command
 
 The base class subscribes to `SetLegionellaScheduleV1`, validates it, and — after an `Accepted` answer — stores the slot as `energyManagerSlot`. You only write it:
@@ -267,7 +283,7 @@ const rodModes = resolveHeatingRodControlModes(rod.heatingRod!);
 const mode = hpModes[EnyoHeatpumpControlAreaEnum.LegionellaProgram];   // undefined = area not offered
 ```
 
-Always read the mode through these functions: they apply the default (`Recommend`), fall back when the device can't do `Auto`, and resolve monitor-only devices to `Off`.
+Always read the mode through these functions: they apply the default (the integration's `controlModeDefaults`, else `Recommend`), fall back when the device can't do `Auto`, and resolve monitor-only devices to `Off`.
 
 ### 3.3 Compute the times
 
@@ -366,6 +382,7 @@ Validate the list with `validateHeatpumpRecommendationsMessage()` before sending
   - heat pumps: `heatpumpControlAreas()` / `availableHeatpumpControlModes()`
   - heating rods: `heatingRodControlAreas()` / `availableHeatingRodControlModes()`
 - **Store the customer's choice** in `controlModes[LegionellaProgram]` on the appliance. It is customer-owned: keep it when an integration saves the appliance.
+- **Keep the integration's `controlModeDefaults`** as the integration writes it (integration-owned, the opposite of `controlModes`). Show the resolved mode, not the raw fields.
 - **Recommendations** use the existing flow — `HeatpumpRecommendationsV1` in, `HeatpumpRecommendationAnswerV1` / `ResetHeatpumpRecommendationV1` out, `HeatpumpRecommendationStatusV1` in. Heating rods use the same messages with the rod's `applianceId`. Build the texts for `LegionellaProgramShift` from its `params`, `cause` and `benefit`; validate incoming lists with `validateHeatpumpRecommendationsMessage()`.
 - **Show progress** from `LegionellaStatusV1` where the device sends it ("Next run Sat 13:00 — moved from 01:00 for solar power", then "Done 14:20, 61 °C"), also in `Auto`. Check it with `validateLegionellaStatusMessage()`. Without the status message, show `activeSlot` vs. `ownerSlot` from the metadata.
 

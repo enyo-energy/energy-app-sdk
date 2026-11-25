@@ -492,6 +492,55 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
 }
 
 /**
+ * Validates the defaults an integration registers per control area —
+ * `controlModeDefaults` of a heat pump
+ * ({@link EnyoHeatpumpApplianceMetadata.controlModeDefaults}) or a heating rod
+ * (`EnyoHeatingRodApplianceMetadata.controlModeDefaults`).
+ *
+ * Errors:
+ *  - an area that is not an `EnyoHeatpumpControlAreaEnum` member, or not one
+ *    of `areas` (a heating rod passes only `LegionellaProgram`);
+ *  - a mode of `Auto` — handing control to the energy manager is the
+ *    customer's choice, so `Auto` can never be a default;
+ *  - any other value that is not `Off` or `Recommend`.
+ *
+ * Whether the device offers the area or mode is not checked:
+ * `resolveHeatpumpControlModes` / `resolveHeatingRodControlModes` fall back
+ * for that, as they do for the customer's stored modes.
+ *
+ * @param defaults - The integration's defaults; `undefined` is valid.
+ * @param areas - The areas a default may name; all areas when omitted.
+ * @returns The validation result.
+ *
+ * @example
+ * ```ts
+ * const result = validateControlModeDefaults(
+ *     {[EnyoHeatpumpControlAreaEnum.LegionellaProgram]: EnyoHeatpumpControlModeEnum.Off},
+ *     [EnyoHeatpumpControlAreaEnum.LegionellaProgram],
+ * );
+ * // result.ok === true
+ * ```
+ */
+export function validateControlModeDefaults(
+    defaults: Partial<Record<string, string>> | undefined,
+    areas: readonly EnyoHeatpumpControlAreaEnum[] = Object.values(EnyoHeatpumpControlAreaEnum),
+): HeatpumpMetadataValidationResult {
+    const errors: string[] = [];
+    for (const [area, mode] of Object.entries(defaults ?? {})) {
+        if (!CONTROL_AREAS.has(area)) {
+            errors.push(`controlModeDefaults: "${area}" is not a valid control area`);
+        } else if (!areas.includes(area as EnyoHeatpumpControlAreaEnum)) {
+            errors.push(`controlModeDefaults: "${area}" is not an area of this appliance`);
+        } else if (mode === EnyoHeatpumpControlModeEnum.Auto) {
+            errors.push(`controlModeDefaults.${area}: "auto" cannot be a default — only the customer can choose it`);
+        } else if (mode !== undefined && mode !== EnyoHeatpumpControlModeEnum.Off && mode !== EnyoHeatpumpControlModeEnum.Recommend) {
+            errors.push(`controlModeDefaults.${area}: "${mode}" is not a valid default — use "off" or "recommend"`);
+        }
+    }
+    return {ok: errors.length === 0, errors, warnings: []};
+}
+
+/**
  * Validates the advanced parts of a heatpump's metadata in one go: every
  * heating circuit's heating curve, time program and room-temperature wiring,
  * and every DHW zone's time program. Problems are prefixed with their path
@@ -533,13 +582,15 @@ export function assertValidHeatpumpTimeProgram(program: EnyoHeatpumpTimeProgram)
  *    `EnyoHeatpumpControlAreaEnum` member, or a mode that is not an
  *    `EnyoHeatpumpControlModeEnum` member. Whether the heat pump offers the
  *    mode is not checked — `resolveHeatpumpControlModes` falls back for that.
+ *  - `controlModeDefaults`: errors from {@link validateControlModeDefaults}
+ *    (an unknown area, `Auto`, or a value other than `Off` / `Recommend`).
  *
  * @param metadata - The heatpump metadata to validate.
  * @returns The validation result.
  */
 export function validateHeatpumpAdvancedMetadata(
     metadata: Pick<EnyoHeatpumpApplianceMetadata, 'availableFeatures' | 'heatingCircuits' | 'domesticHotWater' | 'building'>
-        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'bufferTanks' | 'additionalDevices' | 'vacationLoweredRangeC' | 'controlModes'>>,
+        & Partial<Pick<EnyoHeatpumpApplianceMetadata, 'sgReadyRelays' | 'bufferTanks' | 'additionalDevices' | 'vacationLoweredRangeC' | 'controlModes' | 'controlModeDefaults'>>,
 ): HeatpumpMetadataValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -685,6 +736,7 @@ export function validateHeatpumpAdvancedMetadata(
             errors.push(`controlModes.${area}: "${mode}" is not a valid control mode`);
         }
     }
+    errors.push(...validateControlModeDefaults(metadata.controlModeDefaults).errors);
 
     return {ok: errors.length === 0, errors, warnings};
 }

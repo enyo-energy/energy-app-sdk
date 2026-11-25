@@ -13,6 +13,7 @@
 
 import {EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeEnum} from '../../types/enyo-heatpump-appliance.js';
 import {EnyoHeatingRodApplianceAvailableFeaturesEnum} from '../../types/enyo-heating-rod-appliance.js';
+import {integrationControlModeDefault} from '../heatpump/heatpump-control-modes.js';
 import type {EnyoHeatingRodApplianceMetadata, EnyoHeatingRodControlModes} from '../../types/enyo-heating-rod-appliance.js';
 
 const {Off, Recommend, Auto} = EnyoHeatpumpControlModeEnum;
@@ -67,9 +68,11 @@ export function heatingRodControlAreas(metadata: EnyoHeatingRodApplianceMetadata
  * One mode for every offered area ({@link heatingRodControlAreas}). A stored
  * mode ({@link EnyoHeatingRodApplianceMetadata.controlModes}) applies when the
  * area offers it; a stored `Auto` the rod cannot do falls back to `Recommend`.
- * Without a stored mode the default is `Recommend` — a hygiene setting is not
- * moved without the customer choosing `Auto`. A monitor-only rod resolves to
- * `Off`.
+ * Without a stored mode the default is the integration's
+ * ({@link EnyoHeatingRodApplianceMetadata.controlModeDefaults}, `Off` or
+ * `Recommend`), else `Recommend` — a hygiene setting is not moved without the
+ * customer choosing `Auto`, so an `Auto` default is ignored. A monitor-only
+ * rod resolves to `Off`.
  *
  * @param metadata - The heating rod's metadata.
  * @returns The mode per offered area.
@@ -86,7 +89,9 @@ export function resolveHeatingRodControlModes(metadata: EnyoHeatingRodApplianceM
     const resolved: EnyoHeatingRodControlModes = {};
     for (const area of heatingRodControlAreas(metadata)) {
         const available = availableHeatingRodControlModes(metadata, area);
-        const wanted = metadata.controlModes?.[area] ?? Recommend;
+        const wanted = metadata.controlModes?.[area]
+            ?? integrationControlModeDefault(metadata.controlModeDefaults, area)
+            ?? Recommend;
         resolved[area] = available.includes(wanted) ? wanted : available.includes(Recommend) ? Recommend : Off;
     }
     return resolved;

@@ -19,7 +19,12 @@ import {
     EnyoHeatpumpControlModeEnum,
     EnyoHeatpumpProgramModeEnum,
 } from '../../types/enyo-heatpump-appliance.js';
-import type {EnyoHeatpumpApplianceMetadata, EnyoHeatpumpControlModes} from '../../types/enyo-heatpump-appliance.js';
+import type {
+    EnyoHeatpumpApplianceMetadata,
+    EnyoHeatpumpControlModeDefault,
+    EnyoHeatpumpControlModeDefaults,
+    EnyoHeatpumpControlModes,
+} from '../../types/enyo-heatpump-appliance.js';
 import type {EnergyManagerSettingValues} from '../../types/enyo-energy-manager-settings.js';
 
 const {Off, Recommend, Auto} = EnyoHeatpumpControlModeEnum;
@@ -31,6 +36,29 @@ const AREA_ORDER: readonly EnyoHeatpumpControlAreaEnum[] = [
     EnyoHeatpumpControlAreaEnum.HeatingCurve,
     EnyoHeatpumpControlAreaEnum.LegionellaProgram,
 ];
+
+/** The modes an integration may register as a default — never `Auto`. */
+const DEFAULTABLE_MODES: readonly EnyoHeatpumpControlModeEnum[] = [Off, Recommend];
+
+/**
+ * The integration's default for one area, from `controlModeDefaults` of a heat
+ * pump or heating rod — only when it is `Off` or `Recommend`. An `Auto` or any
+ * other value (e.g. from untyped JSON) is ignored, so an integration can never
+ * make the energy manager steer a device the customer did not hand over.
+ *
+ * @param defaults - The integration's `controlModeDefaults`, if any.
+ * @param area - The area.
+ * @returns The registered default, or `undefined` when there is no usable one.
+ */
+export function integrationControlModeDefault(
+    defaults: EnyoHeatpumpControlModeDefaults | undefined,
+    area: EnyoHeatpumpControlAreaEnum,
+): EnyoHeatpumpControlModeDefault | undefined {
+    const mode = defaults?.[area];
+    return mode !== undefined && DEFAULTABLE_MODES.includes(mode)
+        ? mode as EnyoHeatpumpControlModeDefault
+        : undefined;
+}
 
 /**
  * Whether the heat pump declares at least one of the features.
@@ -207,17 +235,21 @@ export function heatpumpControlAreas(metadata: EnyoHeatpumpApplianceMetadata): E
  * - Without a stored mode the default follows from the switches that existed
  *   before, with `controlled = settings.heatpumpControl === true &&
  *   metadata.controlAllowed !== false` (a missing `heatpumpControl` means off,
- *   as in the energy manager today):
- *   - `SolarHotWater`: `controlled` ? `Auto` : `Recommend`
- *   - `CostOptimizedHeating`: `controlled` ? `Auto` : `Recommend` — `Off` when
+ *   as in the energy manager today). `base` is the integration's default
+ *   ({@link EnyoHeatpumpApplianceMetadata.controlModeDefaults}, `Off` or
+ *   `Recommend`) and `Recommend` when it registered none:
+ *   - `SolarHotWater`: `controlled` ? `Auto` : `base`
+ *   - `CostOptimizedHeating`: `controlled` ? `Auto` : `base` — `Off` when
  *     `Recommend` is not offered (eco only)
  *   - `HeatingCurve`: `Auto` when `controlled`, a circuit has
- *     `curveOptimization.enabled` and `Auto` is offered; `Recommend` otherwise
- *   - `LegionellaProgram`: always `Recommend` — no switch ever covered it, and
+ *     `curveOptimization.enabled` and `Auto` is offered; `base` otherwise
+ *   - `LegionellaProgram`: always `base` — no switch ever covered it, and
  *     a hygiene setting is not moved without the customer choosing `Auto`
  *
- * So nobody who lets the energy manager control today loses anything, and new
- * customers start on `Recommend`.
+ * So nobody who lets the energy manager control today loses anything — the
+ * customer's earlier switches win over the integration's default — and new
+ * customers start on the integration's default, or `Recommend`. An
+ * integration's default is never `Auto`: an `Auto` there is ignored.
  *
  * A monitor-only heat pump (`controlAllowed: false`) resolves to `Off` in
  * every area, also when the customer stored another mode: the integration's
@@ -235,11 +267,16 @@ export function resolveHeatpumpControlModes(
     const controlled = settings.heatpumpControl === true && metadata.controlAllowed !== false;
     const curveOptimizationEnabled = (metadata.heatingCircuits ?? [])
         .some((circuit) => circuit.curveOptimization?.enabled === true);
+    const base = (area: EnyoHeatpumpControlAreaEnum): EnyoHeatpumpControlModeEnum =>
+        integrationControlModeDefault(metadata.controlModeDefaults, area) ?? Recommend;
     const defaults: Record<EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeEnum> = {
-        [EnyoHeatpumpControlAreaEnum.SolarHotWater]: controlled ? Auto : Recommend,
-        [EnyoHeatpumpControlAreaEnum.CostOptimizedHeating]: controlled ? Auto : Recommend,
-        [EnyoHeatpumpControlAreaEnum.HeatingCurve]: controlled && curveOptimizationEnabled ? Auto : Recommend,
-        [EnyoHeatpumpControlAreaEnum.LegionellaProgram]: Recommend,
+        [EnyoHeatpumpControlAreaEnum.SolarHotWater]:
+            controlled ? Auto : base(EnyoHeatpumpControlAreaEnum.SolarHotWater),
+        [EnyoHeatpumpControlAreaEnum.CostOptimizedHeating]:
+            controlled ? Auto : base(EnyoHeatpumpControlAreaEnum.CostOptimizedHeating),
+        [EnyoHeatpumpControlAreaEnum.HeatingCurve]:
+            controlled && curveOptimizationEnabled ? Auto : base(EnyoHeatpumpControlAreaEnum.HeatingCurve),
+        [EnyoHeatpumpControlAreaEnum.LegionellaProgram]: base(EnyoHeatpumpControlAreaEnum.LegionellaProgram),
     };
 
     const resolved: EnyoHeatpumpControlModes = {};
