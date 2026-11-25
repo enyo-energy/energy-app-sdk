@@ -1,4 +1,4 @@
-import type {EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeEnum} from './enyo-heatpump-appliance.js';
+import type {EnyoHeatpumpControlAreaEnum, EnyoHeatpumpControlModeDefault, EnyoHeatpumpControlModeEnum} from './enyo-heatpump-appliance.js';
 import type {EnyoLegionellaProgramMetadata} from './enyo-legionella.js';
 
 /**
@@ -51,6 +51,16 @@ export enum EnyoHeatingRodApplianceAvailableFeaturesEnum {
  */
 export type EnyoHeatingRodControlModes = Partial<
     Record<EnyoHeatpumpControlAreaEnum.LegionellaProgram, EnyoHeatpumpControlModeEnum>
+>;
+
+/**
+ * The integration's default mode per control area of a heating rod — see
+ * {@link EnyoHeatingRodApplianceMetadata.controlModeDefaults}. Only
+ * {@link EnyoHeatpumpControlModeEnum.Off} or
+ * {@link EnyoHeatpumpControlModeEnum.Recommend}, never `Auto`.
+ */
+export type EnyoHeatingRodControlModeDefaults = Partial<
+    Record<EnyoHeatpumpControlAreaEnum.LegionellaProgram, EnyoHeatpumpControlModeDefault>
 >;
 
 /**
@@ -159,7 +169,20 @@ export interface EnyoHeatingRodApplianceMetadata {
      * **Customer-owned.** Set in the enyo app, never by an integration: the
      * host keeps the customer's value whenever an integration saves the
      * appliance. Always read it through {@link resolveHeatingRodControlModes}.
+     * An integration that wants another starting mode sets
+     * {@link controlModeDefaults} instead.
      * A monitor-only rod ({@link controlAllowed} `false`) resolves to `Off`.
      */
     controlModes?: EnyoHeatingRodControlModes;
+    /**
+     * The mode the integration wants while the customer has stored none in
+     * {@link controlModes}: `Off` or `Recommend`, never `Auto`.
+     *
+     * **Integration-owned**, the opposite of {@link controlModes}: the
+     * integration writes it and the host keeps it as written. Replaces the SDK
+     * default `Recommend` in {@link resolveHeatingRodControlModes}; an `Auto`
+     * or unknown value is ignored. Validate with
+     * `validateControlModeDefaults(defaults, [EnyoHeatpumpControlAreaEnum.LegionellaProgram])`.
+     */
+    controlModeDefaults?: EnyoHeatingRodControlModeDefaults;
 }

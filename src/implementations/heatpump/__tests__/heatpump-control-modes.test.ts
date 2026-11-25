@@ -312,3 +312,61 @@ describe('LegionellaProgram area', () => {
         expect(resolveHeatpumpControlModes({...recommendOnly, controlModes: stored}, {})[Area.LegionellaProgram]).toBe(Mode.Recommend);
     });
 });
+
+describe('controlModeDefaults (integration-owned)', () => {
+    const offDefault = {[Area.LegionellaProgram]: Mode.Off} as const;
+
+    it('replaces the Recommend default of an area', () => {
+        const metadata = {...IDM_WITH_LEGIONELLA, controlModeDefaults: offDefault};
+        expect(resolveHeatpumpControlModes(metadata, {})[Area.LegionellaProgram]).toBe(Mode.Off);
+        expect(resolveHeatpumpControlModes(metadata, {})[Area.SolarHotWater]).toBe(Mode.Recommend);
+    });
+
+    it('loses against a mode the customer stored', () => {
+        const metadata = {
+            ...IDM_WITH_LEGIONELLA,
+            controlModeDefaults: offDefault,
+            controlModes: {[Area.LegionellaProgram]: Mode.Auto},
+        };
+        expect(resolveHeatpumpControlModes(metadata, {})[Area.LegionellaProgram]).toBe(Mode.Auto);
+    });
+
+    it('loses against Auto derived from the customer\'s earlier switches', () => {
+        const metadata = {
+            ...idmWithCurveOptimization(true),
+            controlModeDefaults: {[Area.SolarHotWater]: Mode.Off, [Area.HeatingCurve]: Mode.Off} as const,
+        };
+        expect(resolveHeatpumpControlModes(metadata, {heatpumpControl: true})).toMatchObject({
+            [Area.SolarHotWater]: Mode.Auto,
+            [Area.HeatingCurve]: Mode.Auto,
+        });
+        expect(resolveHeatpumpControlModes(metadata, {heatpumpControl: false})).toMatchObject({
+            [Area.SolarHotWater]: Mode.Off,
+            [Area.HeatingCurve]: Mode.Off,
+        });
+    });
+
+    it('ignores Auto or an unknown value as a default', () => {
+        for (const bad of [Mode.Auto, 'manual']) {
+            const metadata = {
+                ...IDM_WITH_LEGIONELLA,
+                controlModeDefaults: {[Area.LegionellaProgram]: bad} as EnyoHeatpumpApplianceMetadata['controlModeDefaults'],
+            };
+            expect(resolveHeatpumpControlModes(metadata, {})[Area.LegionellaProgram]).toBe(Mode.Recommend);
+        }
+    });
+
+    it('falls back to Off for a Recommend default where Recommend is not offered', () => {
+        const metadata = {...ECO_ONLY, controlModeDefaults: {[Area.CostOptimizedHeating]: Mode.Recommend} as const};
+        expect(resolveHeatpumpControlModes(metadata, {})).toEqual({[Area.CostOptimizedHeating]: Mode.Off});
+    });
+
+    it('keeps a monitor-only heat pump Off', () => {
+        const metadata = {
+            ...IDM_WITH_LEGIONELLA,
+            controlAllowed: false,
+            controlModeDefaults: {[Area.LegionellaProgram]: Mode.Recommend} as const,
+        };
+        expect(resolveHeatpumpControlModes(metadata, {})[Area.LegionellaProgram]).toBe(Mode.Off);
+    });
+});

@@ -45,6 +45,19 @@ describe('heating rod control modes', () => {
         expect(resolveHeatingRodControlModes(PLAIN)).toEqual({});
     });
 
+    it('takes the integration default Off or Recommend, but never Auto', () => {
+        expect(resolveHeatingRodControlModes({...SCHEDULABLE, controlModeDefaults: {[Area.LegionellaProgram]: Mode.Off}}))
+            .toEqual({[Area.LegionellaProgram]: Mode.Off});
+        const autoDefault = {[Area.LegionellaProgram]: Mode.Auto} as EnyoHeatingRodApplianceMetadata['controlModeDefaults'];
+        expect(resolveHeatingRodControlModes({...SCHEDULABLE, controlModeDefaults: autoDefault}))
+            .toEqual({[Area.LegionellaProgram]: Mode.Recommend});
+        expect(resolveHeatingRodControlModes({
+            ...SCHEDULABLE,
+            controlModeDefaults: {[Area.LegionellaProgram]: Mode.Off},
+            controlModes: {[Area.LegionellaProgram]: Mode.Auto},
+        })).toEqual({[Area.LegionellaProgram]: Mode.Auto});
+    });
+
     it('resolves a monitor-only rod to Off', () => {
         const monitorOnly = {...SCHEDULABLE, controlAllowed: false, controlModes: {[Area.LegionellaProgram]: Mode.Auto}};
         expect(availableHeatingRodControlModes(monitorOnly, Area.LegionellaProgram)).toEqual([Mode.Off]);

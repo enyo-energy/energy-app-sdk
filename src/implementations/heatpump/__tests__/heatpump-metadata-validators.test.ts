@@ -3,6 +3,7 @@ import {
     HeatpumpMetadataValidationError,
     assertValidHeatpumpHeatingCurve,
     assertValidHeatpumpTimeProgram,
+    validateControlModeDefaults,
     validateHeatpumpAdvancedMetadata,
     validateHeatpumpHeatingCurve,
     validateHeatpumpTimeProgram,
@@ -350,5 +351,49 @@ describe('validateHeatpumpAdvancedMetadata controlModes', () => {
             controlModes: {[EnyoHeatpumpControlAreaEnum.HeatingCurve]: 'on' as EnyoHeatpumpControlModeEnum},
         });
         expect(result.errors).toEqual(['controlModes.heating-curve: "on" is not a valid control mode']);
+    });
+});
+
+describe('validateControlModeDefaults', () => {
+    const Area = EnyoHeatpumpControlAreaEnum;
+    const Mode = EnyoHeatpumpControlModeEnum;
+
+    it('accepts Off and Recommend, and no defaults at all', () => {
+        expect(validateControlModeDefaults({[Area.LegionellaProgram]: Mode.Off, [Area.HeatingCurve]: Mode.Recommend}))
+            .toEqual({ok: true, errors: [], warnings: []});
+        expect(validateControlModeDefaults(undefined).ok).toBe(true);
+    });
+
+    it('rejects Auto as a default', () => {
+        expect(validateControlModeDefaults({[Area.LegionellaProgram]: Mode.Auto}).errors).toEqual([
+            'controlModeDefaults.legionella-program: "auto" cannot be a default — only the customer can choose it',
+        ]);
+    });
+
+    it('rejects an unknown mode and an unknown area', () => {
+        expect(validateControlModeDefaults({[Area.LegionellaProgram]: 'manual'}).errors).toEqual([
+            'controlModeDefaults.legionella-program: "manual" is not a valid default — use "off" or "recommend"',
+        ]);
+        expect(validateControlModeDefaults({'heating-rod': Mode.Off}).errors).toEqual([
+            'controlModeDefaults: "heating-rod" is not a valid control area',
+        ]);
+    });
+
+    it('rejects an area outside the given ones (heating rod)', () => {
+        expect(validateControlModeDefaults({[Area.SolarHotWater]: Mode.Off}, [Area.LegionellaProgram]).errors).toEqual([
+            'controlModeDefaults: "solar-hot-water" is not an area of this appliance',
+        ]);
+    });
+
+    it('runs as part of validateHeatpumpAdvancedMetadata', () => {
+        const result = validateHeatpumpAdvancedMetadata({
+            availableFeatures: [],
+            heatingCircuits: [],
+            controlModeDefaults: {[Area.SolarHotWater]: Mode.Auto} as never,
+        });
+        expect(result.ok).toBe(false);
+        expect(result.errors).toEqual([
+            'controlModeDefaults.solar-hot-water: "auto" cannot be a default — only the customer can choose it',
+        ]);
     });
 });
