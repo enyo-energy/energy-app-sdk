@@ -26,6 +26,7 @@
  */
 
 import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
+import type {EnyoConsentState} from './enyo-consent.js';
 
 /**
  * The reserved outcome value every
@@ -85,12 +86,26 @@ export interface EnyoOnboardingV2AdditionalSetupRequest {
     /** The appliance the run is bound to, when one exists already. */
     applianceId?: string;
     /**
-     * The budget for this request, in milliseconds.
+     * The state of every consent the block asked for in
+     * {@link EnyoOnboardingV2AdditionalSetupBlock.consentKeys}, recorded just
+     * before this call. Absent when the block asks for none.
+     *
+     * Every required consent is granted here — the host does not call the
+     * handler otherwise. Check the voluntary ones and skip what they do not
+     * allow.
+     */
+    consents?: EnyoConsentState[];
+    /**
+     * The budget for this request, in milliseconds — the block's
+     * {@link EnyoOnboardingV2AdditionalSetupBlock.maxDurationMs} when it sets
+     * one, the host's default otherwise.
      *
      * The host owns the clock: once it is spent the run is routed to the
      * block's `failed` outcome and the handler is not told. Bound the work to
      * fit — cap the vendor call's own timeout below this — and do not leave a
      * connection open past the point where an answer could still matter.
+     * Progress reports ({@link EnergyAppOnboardingV2.reportSetupProgress}) do
+     * not extend it.
      */
     timeoutMs: number;
 }

@@ -1417,6 +1417,159 @@ non-select field, a skip id colliding with an outcome id, and more than one setu
 step. It warns on an optional secret field (that usually wants a block-level `skip`), more
 than six fields, and a setup block sharing a step with another decision block.
 
+#### Long-running setups: progress phases
+
+Some setups take minutes and move through stages the installer should be able to follow —
+connecting a smart-home gateway, for instance: back it up, switch on its developer mode,
+install the plugin, restart it, verify the connection. Declare the phases on the block and
+raise its time budget; the host then shows a progress bar with the list of phases under it,
+each line done, running or still to come.
+
+```typescript
+onboardingV2Block.additionalSetup('connect', 'connect-hcu', {
+  cta: t('HCU verbinden', 'Connect the HCU'),
+  description: t('enyo richtet die HCU ein.', 'enyo sets up the HCU.'),
+  outcomes: [
+    {id: 'ok',     value: 'connected', label: t('Verbunden', 'Connected')},
+    {id: 'failed', value: 'failed',    label: t('Fehlgeschlagen', 'Failed')},
+  ],
+  consentKeys: ['hcu-backup-and-developer-mode'],   // see "Asking for consent" below
+  progressPhases: [
+    {key: 'backup',         label: t('Backup wird erstellt', 'Creating a backup')},
+    {key: 'developer-mode', label: t('Entwicklermodus wird eingeschaltet', 'Switching on developer mode')},
+    {key: 'plugin',         label: t('Plugin wird installiert', 'Installing the plugin')},
+    {key: 'restart',        label: t('HCU startet neu', 'Restarting the HCU')},
+    {key: 'verify',         label: t('Verbindung wird geprüft', 'Verifying the connection')},
+  ],
+  maxDurationMs: 10 * 60_000,
+})
+```
+
+The handler moves through the phases with `reportSetupProgress()`. **Resolving the handler
+is the end:** the host marks every phase done and the guide moves on along the returned
+outcome — to the next step on success, to the `failed` branch otherwise.
+
+```typescript
+const onboarding = energyApp.useOnboardingV2();
+await onboarding.registerAdditionalSetupHandler(async (request) => {
+  const report = (phaseKey: string, percent: number) =>
+    onboarding.reportSetupProgress(request.requestId, {phaseKey, percent});
+
+  await report('backup', 0);         await hcu.createBackup();
+  await report('developer-mode', 30); await hcu.enableDeveloperMode();
+  await report('plugin', 50);         await hcu.installPlugin();
+  await report('restart', 70);        await hcu.restartAndWait();
+  await report('verify', 90);
+  const ok = await hcu.verifyConnection();
+
+  return {requestId: request.requestId, outcome: ok ? 'connected' : 'failed'};
+});
+```
+
+- **The running phase is named by `phaseKey`**; every phase before it counts as done.
+  Phases only move forward, and `percent` (overall, 0–100) only rises — a report that goes
+  back is ignored. Omit `percent` when you cannot estimate it honestly; the host then shows
+  an indeterminate bar.
+- **Phases known only at runtime** (number of devices to migrate, a firmware update needed
+  first) are sent with the first report as `phases`, which replaces the declared list.
+- **`message`** adds a detail line under the bar, e.g. "Gerät 2 von 5".
+- **Reports never fail a setup** and do not extend the budget. A setup that needs longer
+  than the default 60 s declares `maxDurationMs` (at most 15 minutes).
+  `validateOnboardingV2SetupProgress()` shows during development why a report was dropped.
+
+The validator errors on fewer than two phases, duplicate or non-slug phase keys, and a
+`maxDurationMs` that is not a positive whole number or exceeds 15 minutes.
+
+### Asking for consent (`consent`, `consentKeys`)
+
+Consents are **declared once in the package definition** and asked for by key wherever they
+are needed. Each declaration carries the checkbox line, the legal text, whether it is
+required or voluntary, and who may give it:
+
+```typescript
+defineEnergyAppPackage({
+  // …
+  consents: [{
+    consentKey: 'hcu-backup-and-developer-mode',
+    version: '1',
+    required: true,
+    grantableBy: [EnyoConsentGrantorEnum.Customer, EnyoConsentGrantorEnum.Installer],
+    label: t('Ich erlaube enyo, ein Backup der HCU zu erstellen und den Entwicklermodus einzuschalten.',
+             'I allow enyo to back up the HCU and switch on its developer mode.'),
+    title: t('Backup und Entwicklermodus', 'Backup and developer mode'),
+    legalText: {
+      sections: [
+        {heading: t('1. Backup', '1. Backup'),                   content: t('…', '…')},
+        {heading: t('2. Entwicklermodus', '2. Developer mode'), content: t('…', '…')},
+      ],
+      urls: [   // optional
+        {language: 'de', url: 'https://example.com/de/agb'},
+        {language: 'en', url: 'https://example.com/en/terms'},
+      ],
+    },
+  }, {
+    consentKey: 'share-usage-data',
+    version: '1',
+    required: false,                       // voluntary
+    grantableBy: [EnyoConsentGrantorEnum.Customer],
+    // …
+  }],
+});
+```
+
+- **The legal text is the sections**, translated heading and content per section, shipped
+  with the release. The URLs are an optional addition shown as links; a web page can change
+  without the version changing, so it is never the only copy.
+- **`version`** is what an answer is recorded against. Change it when the meaning changes:
+  earlier answers stop counting and the person is asked again.
+- **`grantableBy`** decides whether the installer, the customer or both may agree. A person
+  in another role sees the text but cannot tick it; the run waits on that step until
+  someone allowed has agreed — typically the customer in their own enyo app. enyo records
+  the role of the person who did.
+
+Ask for consents in one of two places:
+
+1. **A `consent` block** on a step of its own — for terms, data sharing, anything not tied
+   to one action. It branches on `given` (every required consent in force; mandatory) and
+   optionally `declined`. Without `declined`, a person who will not agree leaves the guide
+   and the run resumes on this step.
+
+   ```typescript
+   onboardingV2Block.consent('terms', ['terms-of-use', 'share-usage-data'], {
+     cta: t('Zustimmen und weiter', 'Agree and continue'),
+     outcomes: [
+       {id: 'given',    value: EnyoOnboardingV2ConsentOutcome.Given,    label: t('Zugestimmt', 'Agreed')},
+       {id: 'declined', value: EnyoOnboardingV2ConsentOutcome.Declined, label: t('Abgelehnt', 'Declined')},
+     ],
+   })
+   // transitions: onOutcomeV2('terms', 'given', …), onOutcomeV2('terms', 'declined', onboardingV2Target.support())
+   ```
+
+2. **`consentKeys` on an `additional-setup` block** — for an action the person must allow
+   first, on the same screen ("I allow enyo to …" → *Connect*). The checkboxes sit above
+   the CTA, which stays disabled until every required consent is ticked. Pressing it records
+   the answers and then calls the handler with them in `request.consents`.
+
+The host renders one checkbox per consent, each with a link that opens its legal text in a
+dialog, marks voluntary ones as optional and never pre-ticks them. enyo records every answer
+(key, version, role, time) before `given` fires or the handler is called — the app cannot
+assert a consent itself. Read the answers with `energyApp.useConsent()` and switch off what
+depends on a voluntary consent as soon as it is withdrawn:
+
+```typescript
+const consent = energyApp.useConsent();
+const apply = (s: EnyoConsentState) => {
+  if (s.consentKey === 'share-usage-data') usageSharing.setEnabled(s.granted);
+};
+(await consent.getConsents()).forEach(apply);
+consent.listenForConsentChanges(apply);
+```
+
+Validate the declarations with `validatePackageConsents()`, and pass `consents` in the
+guide validation context (`validateOnboardingV2GuidesResult(result, {files, consents})`) so
+unknown keys are errors rather than unverified. A consent block owns its step and cannot
+appear in the static package guide (`onboardingGuide`).
+
 ### Waiting for an OCPP charger (`ocpp-connect`)
 
 An OCPP wallbox is never on the LAN to be found, so `network-scan` is not a

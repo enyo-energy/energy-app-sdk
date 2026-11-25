@@ -59,7 +59,8 @@ export interface PackageOnboardingGuideValidationResult {
 }
 
 /** The parts of a package definition the static guide is validated against. */
-export type PackageOnboardingGuideSource = Pick<EnergyAppPackageDefinition, 'onboardingGuide' | 'files'>;
+export type PackageOnboardingGuideSource = Pick<EnergyAppPackageDefinition, 'onboardingGuide' | 'files'> &
+    Partial<Pick<EnergyAppPackageDefinition, 'consents'>>;
 
 /** Action kinds that act on scanned devices and therefore cannot be printed. */
 const FORBIDDEN_ACTIONS: ReadonlySet<string> = new Set([
@@ -76,6 +77,7 @@ const FORBIDDEN_BLOCKS: ReadonlyMap<string, string> = new Map([
     [EnyoOnboardingV2BlockType.EebusDeviceSelect, 'it picks from devices the host discovered'],
     [EnyoOnboardingV2BlockType.ZigbeePairing, 'it opens the host\'s Zigbee network and picks from the devices that joined'],
     [EnyoOnboardingV2BlockType.SubscriptionOffer, 'it opens enyo\'s offer screen and checks the purchase'],
+    [EnyoOnboardingV2BlockType.Consent, 'it records a person\'s agreement with enyo, which a printed page cannot'],
     [EnyoOnboardingV2BlockType.Dynamic, 'its value is resolved by the app at runtime and does not exist when the PDF is rendered'],
 ]);
 
@@ -87,7 +89,7 @@ const FORBIDDEN_BLOCKS: ReadonlyMap<string, string> = new Map([
  * A package without an `onboardingGuide` is trivially valid.
  *
  * @param definition - The package definition, or just its `onboardingGuide`
- *   and `files`.
+ *   and `files` (plus `consents` to resolve consent keys).
  * @returns The {@link PackageOnboardingGuideValidationResult}.
  *
  * @example
@@ -114,7 +116,7 @@ export function validatePackageOnboardingGuide(
     collectNonJsonValues(guide, 'onboardingGuide', errors);
     if (errors.length > 0) return {ok: false, errors, warnings};
 
-    const base = validateOnboardingGuideV2(guide, {files: definition.files});
+    const base = validateOnboardingGuideV2(guide, {files: definition.files, consents: definition.consents});
     errors.push(...base.errors);
     warnings.push(...base.warnings);
 

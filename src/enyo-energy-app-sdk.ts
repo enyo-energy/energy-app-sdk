@@ -54,6 +54,7 @@ import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
 import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
 import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
 import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
+import {EnergyAppConsent} from "./packages/energy-app-consent.js";
 import {EnergyAppRoom} from "./packages/energy-app-room.js";
 import {EnergyAppRoomTemperatures} from "./packages/energy-app-room-temperatures.js";
 import {EnergyAppVacations} from "./packages/energy-app-vacations.js";
@@ -217,6 +218,8 @@ export interface EnyoEnergyAppSdk {
     useWebhook: () => EnergyAppWebhook;
     /** Get the Subscriptions API for reading the subscriptions bought for this app on this device and listening for new or changed subscriptions */
     useSubscriptions: () => EnergyAppSubscriptions;
+    /** Get the Consent API for reading which of this package's declared consents were given, by whom and for which version, and reacting when one is given or withdrawn */
+    useConsent: () => EnergyAppConsent;
     /** Get the Room API for reading the rooms of the home the customer set up in the enyo app */
     useRoom: () => EnergyAppRoom;
     /** Get the Room Temperatures API for reading the current and past temperatures measured in the rooms of the home */

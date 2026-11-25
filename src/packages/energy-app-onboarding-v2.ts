@@ -14,6 +14,7 @@ import type {EnyoOnboardingV2ValidationHandler} from '../types/enyo-onboarding-v
 import type {EnyoOnboardingV2DeviceSelectHandler} from '../types/enyo-onboarding-v2-device-select.js';
 import type {EnyoOnboardingV2EebusDeviceSelectHandler} from '../types/enyo-onboarding-v2-eebus-device-select.js';
 import type {EnyoOnboardingV2ZigbeePairingHandler} from '../types/enyo-onboarding-v2-zigbee-pairing.js';
+import type {EnyoOnboardingV2SetupProgress} from '../types/enyo-onboarding-v2-progress.js';
 
 /**
  * Which run of a named guide an app means.
@@ -452,6 +453,65 @@ export interface EnergyAppOnboardingV2 {
      * ```
      */
     registerAdditionalSetupHandler(handler: EnyoOnboardingV2AdditionalSetupHandler): Promise<void>;
+
+    /**
+     * Reports the progress of a running additional-setup request, so the
+     * installer sees a progress bar and which phase is under way.
+     *
+     * For a setup that takes minutes and moves through stages — the phases are
+     * declared on the block
+     * ({@link EnyoOnboardingV2AdditionalSetupBlock.progressPhases}) or sent with
+     * the first report. Each report names the running phase; phases before it
+     * count as done. The setup is **finished by resolving the handler**, not by
+     * a report: the host then marks every phase done and the guide moves on
+     * along the returned outcome.
+     *
+     * Reports are best effort and never fail the setup:
+     *
+     * - A report for a request that has already been answered or has timed out
+     *   is ignored.
+     * - A `percent` lower than the last one, or a `phaseKey` before the current
+     *   one, is ignored — progress only moves forward.
+     * - The host may merge reports that arrive in quick succession; there is no
+     *   point in reporting more than about once a second.
+     * - Reports do **not** extend {@link EnyoOnboardingV2AdditionalSetupRequest.timeoutMs}.
+     *   A setup that needs longer declares
+     *   {@link EnyoOnboardingV2AdditionalSetupBlock.maxDurationMs}.
+     *
+     * Check a report with `validateOnboardingV2SetupProgress()` while
+     * developing — an unknown phase key is dropped by the host without a word.
+     *
+     * @param requestId - The {@link EnyoOnboardingV2AdditionalSetupRequest.requestId}
+     *   of the running setup.
+     * @param progress - What changed since the last report.
+     * @returns Promise that resolves once the host has taken the report.
+     *
+     * @example
+     * ```typescript
+     * // Block declares phases: backup → developer-mode → plugin → restart → verify
+     * await onboarding.registerAdditionalSetupHandler(async (request) => {
+     *     if (request.setupKey !== 'connect-hcu') {
+     *         return {requestId: request.requestId, outcome: 'failed'};
+     *     }
+     *     const report = (phaseKey: string, percent: number) =>
+     *         onboarding.reportSetupProgress(request.requestId, {phaseKey, percent});
+     *
+     *     await report('backup', 0);
+     *     await hcu.createBackup();
+     *     await report('developer-mode', 30);
+     *     await hcu.enableDeveloperMode();
+     *     await report('plugin', 50);
+     *     await hcu.installPlugin();
+     *     await report('restart', 70);
+     *     await hcu.restartAndWait();
+     *     await report('verify', 90);
+     *     const ok = await hcu.verifyConnection();
+     *
+     *     return {requestId: request.requestId, outcome: ok ? 'connected' : 'failed'};
+     * });
+     * ```
+     */
+    reportSetupProgress(requestId: string, progress: EnyoOnboardingV2SetupProgress): Promise<void>;
 
     /**
      * Removes the registered additional-setup handler.

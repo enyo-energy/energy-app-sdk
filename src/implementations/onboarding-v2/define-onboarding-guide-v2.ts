@@ -13,6 +13,7 @@
 import type {EnyoOnboardingTranslatedContent} from '../../types/enyo-onboarding.js';
 import type {EnyoOauthRedirectUrlFilter} from '../../types/enyo-authentication.js';
 import type {EnyoSubscriptionMode} from '../../types/enyo-subscription.js';
+import type {EnyoOnboardingV2ProgressPhase} from '../../types/enyo-onboarding-v2-progress.js';
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2BlockType,
@@ -633,10 +634,16 @@ export const onboardingV2Block = {
      * `Password` and `Token` fields are treated as secrets: masked, never logged,
      * never prefilled, and not persisted in run state.
      *
+     * For a setup that takes minutes, declare its `progressPhases` and a
+     * `maxDurationMs`, and report from the handler with
+     * `EnergyAppOnboardingV2.reportSetupProgress()`. For a setup the customer
+     * must allow first, list the package consents to ask for in `consentKeys`.
+     *
      * @param id - Stable block id, unique within the guide.
      * @param setupKey - App-facing key the handler switches on; may repeat across guides.
      * @param opts - `cta` and `description` (both translated, both required),
-     *   optional `fields`, the `outcomes`, and an optional `skip` handle.
+     *   optional `fields`, the `outcomes`, an optional `skip` handle, and the
+     *   optional `consentKeys`, `progressPhases` and `maxDurationMs`.
      *
      * @example
      * ```typescript
@@ -665,6 +672,9 @@ export const onboardingV2Block = {
             fields?: EnyoOnboardingV2SetupField[];
             outcomes: EnyoOnboardingV2SetupOutcome[];
             skip?: EnyoOnboardingV2SetupSkipHandle;
+            consentKeys?: string[];
+            progressPhases?: EnyoOnboardingV2ProgressPhase[];
+            maxDurationMs?: number;
         },
     ): EnyoOnboardingV2Block => ({
         id,
@@ -675,6 +685,46 @@ export const onboardingV2Block = {
         fields: opts.fields,
         outcomes: opts.outcomes,
         skip: opts.skip,
+        consentKeys: opts.consentKeys,
+        progressPhases: opts.progressPhases,
+        maxDurationMs: opts.maxDurationMs,
+    }),
+    /**
+     * A consent block: asks for package consents by key and branches on
+     * whether every required one was given.
+     *
+     * The consents — checkbox line, legal text, required or voluntary, who may
+     * give them — are declared in the package definition's `consents`. Route
+     * the outcomes with {@link onOutcomeV2}: `given` always, `declined`
+     * optionally.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param consentKeys - The consent keys to ask for, in display order.
+     * @param opts - The translated `cta` and the `outcomes`.
+     *
+     * @example
+     * ```typescript
+     * onboardingV2Block.consent('terms', ['terms-of-use', 'share-usage-data'], {
+     *     cta: t('Zustimmen und weiter', 'Agree and continue'),
+     *     outcomes: [
+     *         {id: 'given', value: EnyoOnboardingV2ConsentOutcome.Given, label: t('Zugestimmt', 'Agreed')},
+     *     ],
+     * })
+     * ```
+     */
+    consent: (
+        id: string,
+        consentKeys: string[],
+        opts: {
+            cta: EnyoOnboardingTranslatedContent[];
+            outcomes: EnyoOnboardingV2ActionOutcome[];
+        },
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.Consent,
+        consentKeys,
+        cta: opts.cta,
+        outcomes: opts.outcomes,
     }),
 };
 

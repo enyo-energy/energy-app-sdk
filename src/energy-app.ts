@@ -56,6 +56,7 @@ import {EnergyAppCommandLog} from "./packages/energy-app-command-log.js";
 import {EnergyAppCascade} from "./packages/energy-app-cascade.js";
 import {EnergyAppWebhook} from "./packages/energy-app-webhook.js";
 import {EnergyAppSubscriptions} from "./packages/energy-app-subscriptions.js";
+import {EnergyAppConsent} from "./packages/energy-app-consent.js";
 import {EnergyAppRoom} from "./packages/energy-app-room.js";
 import {EnergyAppRoomTemperatures} from "./packages/energy-app-room-temperatures.js";
 import {EnergyAppVacations} from "./packages/energy-app-vacations.js";
@@ -726,6 +727,20 @@ export class EnergyApp implements EnyoEnergyAppSdk {
      */
     public useSubscriptions(): EnergyAppSubscriptions {
         return this.energyAppSdk.useSubscriptions();
+    }
+
+    /**
+     * Gets the Consent API for reading the consents this package declares in
+     * its package definition: whether each one is in force, which version was
+     * agreed to, and whether the installer or the customer gave it. Read the
+     * state with `getConsents()` and react to consents being given or
+     * withdrawn with `listenForConsentChanges()`.
+     *
+     * Not permission-gated: an app only ever sees its own package's consents.
+     * @returns The Consent API instance
+     */
+    public useConsent(): EnergyAppConsent {
+        return this.energyAppSdk.useConsent();
     }
 
     /**

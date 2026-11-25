@@ -20,6 +20,7 @@ import {
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2ZigbeePairOutcome,
     EnyoOnboardingV2SubscriptionOfferOutcome,
+    EnyoOnboardingV2ConsentOutcome,
     EnyoOnboardingV2BlockType,
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2SetupFieldType,
@@ -34,6 +35,7 @@ import type {
     EnyoOnboardingV2ActionBlock,
     EnyoOnboardingV2AdditionalSetupBlock,
     EnyoOnboardingV2Block,
+    EnyoOnboardingV2ConsentBlock,
     EnyoOnboardingV2DeviceSelectBlock,
     EnyoOnboardingV2EebusDeviceSelectBlock,
     EnyoOnboardingV2ZigbeePairingBlock,
@@ -46,6 +48,9 @@ import {EnyoOauthRedirectUrlPatternEnum} from '../../types/enyo-authentication.j
 import {ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME} from '../../types/enyo-onboarding-v2-additional-setup.js';
 import {EnyoSubscriptionModeEnum} from '../../types/enyo-subscription.js';
 import type {EnergyAppPackagePublicFile} from '../../energy-app-package-definition.js';
+import type {EnergyAppPackageConsent} from '../../types/enyo-consent.js';
+import {ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS} from '../../types/enyo-onboarding-v2-progress.js';
+import type {EnyoOnboardingV2ProgressPhase} from '../../types/enyo-onboarding-v2-progress.js';
 import {isImagePublicFile} from '../files/public-file-validators.js';
 import {resolvePublicFile} from '../files/define-public-file.js';
 
@@ -83,6 +88,14 @@ export interface OnboardingV2ValidationContext {
      * `file` references.
      */
     files?: EnergyAppPackagePublicFile[];
+    /**
+     * The declaring package's consents
+     * ({@link EnergyAppPackageDefinition.consents}), used to resolve the
+     * `consentKeys` of consent and additional-setup blocks. Without it a key is
+     * only checked for its shape — a typo surfaces as a step the host cannot
+     * render.
+     */
+    consents?: EnergyAppPackageConsent[];
 }
 
 /** The outcome of validating a v2 guide. */
@@ -146,7 +159,8 @@ export function validateOnboardingGuideV2(
         validateInputBlocks(step, at, errors, warnings);
         validateAuthBlocks(step, at, errors, warnings);
         validateSubscriptionOfferBlocks(step, at, errors, warnings);
-        validateAdditionalSetupBlocks(step, at, errors, warnings);
+        validateAdditionalSetupBlocks(step, at, errors, warnings, context);
+        validateConsentBlocks(step, at, errors, warnings, context);
     }
 
     if (!guide.startStepId || !stepIds.has(guide.startStepId)) {
@@ -906,6 +920,7 @@ const DECISION_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
     EnyoOnboardingV2BlockType.EebusDeviceSelect,
     EnyoOnboardingV2BlockType.ZigbeePairing,
     EnyoOnboardingV2BlockType.SubscriptionOffer,
+    EnyoOnboardingV2BlockType.Consent,
 ]);
 
 /** The picker block types, as a type guard over the block union. */
@@ -1241,16 +1256,23 @@ const SETUP_FIELD_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoOnboard
  * - **At least two outcomes.** A setup that can only succeed has nowhere to send
  *   a wrong password.
  *
+ * Consent keys and progress phases are checked by
+ * {@link validateConsentKeys} and {@link validateProgressPhases}; the duration
+ * must be a positive whole number of milliseconds no larger than
+ * {@link ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS}.
+ *
  * @param step - The step whose blocks are checked.
  * @param at - Human-readable location prefix for messages.
  * @param errors - Collector for blocking problems.
  * @param warnings - Collector for advisory problems.
+ * @param context - Optional surroundings; its `consents` resolve `consentKeys`.
  */
 function validateAdditionalSetupBlocks(
     step: EnyoOnboardingV2Step,
     at: string,
     errors: string[],
     warnings: string[],
+    context?: OnboardingV2ValidationContext,
 ): void {
     const setupBlocks = (step.blocks ?? []).filter(
         (b): b is EnyoOnboardingV2AdditionalSetupBlock =>
@@ -1355,6 +1377,25 @@ function validateAdditionalSetupBlocks(
                 warnings.push(`${where} skip handle has no label.`);
             }
         }
+
+        // ── consents, progress, duration ────────────────────────────────────
+        if (block.consentKeys !== undefined) {
+            validateConsentKeys(block.consentKeys, where, errors, context);
+        }
+        if (block.progressPhases !== undefined) {
+            validateProgressPhases(block.progressPhases, where, errors, warnings);
+        }
+        if (block.maxDurationMs !== undefined) {
+            const ms = block.maxDurationMs;
+            if (typeof ms !== 'number' || !Number.isInteger(ms) || ms <= 0) {
+                errors.push(`${where} maxDurationMs must be a positive whole number of milliseconds.`);
+            } else if (ms > ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS) {
+                errors.push(
+                    `${where} maxDurationMs ${ms} exceeds the limit of ${ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS} ms — ` +
+                        'an installer is waiting in front of the screen.',
+                );
+            }
+        }
     }
 
     if (setupBlocks.length > 1) {
@@ -1378,6 +1419,161 @@ function validateAdditionalSetupBlocks(
             warnings.push(
                 `${at}: additional-setup block "${setupBlocks[0]!.id}" shares the step with ` +
                     `${others.length} other decision block(s); keep one decision per step.`,
+            );
+        }
+    }
+}
+
+/** Every {@link EnyoOnboardingV2ConsentOutcome} value. */
+const CONSENT_OUTCOMES: ReadonlySet<string> = new Set(Object.values(EnyoOnboardingV2ConsentOutcome));
+
+/**
+ * Checks a list of consent keys, as used by a consent block and by an
+ * additional-setup block's `consentKeys`: non-empty, kebab-case, no duplicates,
+ * and — when the package's consents are in the context — each one declared.
+ *
+ * @param keys - The consent keys to check.
+ * @param where - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param context - Optional surroundings; its `consents` resolve the keys.
+ */
+function validateConsentKeys(
+    keys: string[],
+    where: string,
+    errors: string[],
+    context?: OnboardingV2ValidationContext,
+): void {
+    if (!Array.isArray(keys) || keys.length === 0) {
+        errors.push(`${where} has an empty consentKeys list — name at least one consent, or omit the list.`);
+        return;
+    }
+    const seen = new Set<string>();
+    const declared = context?.consents ? new Set(context.consents.map((c) => c.consentKey)) : undefined;
+    for (const key of keys) {
+        if (typeof key !== 'string' || !SLUG_RE.test(key)) {
+            errors.push(`${where} has consent key "${String(key)}", which is not a kebab-case slug.`);
+            continue;
+        }
+        if (seen.has(key)) errors.push(`${where} lists consent key "${key}" more than once.`);
+        seen.add(key);
+        if (declared && !declared.has(key)) {
+            errors.push(`${where} asks for consent "${key}", which the package does not declare.`);
+        }
+    }
+}
+
+/**
+ * Checks the progress phases a setup block declares: at least two (one phase
+ * is a spinner with a caption), kebab-case keys unique within the block, and a
+ * label for each.
+ *
+ * @param phases - The declared phases.
+ * @param where - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateProgressPhases(
+    phases: EnyoOnboardingV2ProgressPhase[],
+    where: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    if (!Array.isArray(phases) || phases.length < 2) {
+        errors.push(
+            `${where} declares fewer than 2 progressPhases — a single phase is a spinner with a caption; ` +
+                'omit the list instead.',
+        );
+        return;
+    }
+    const keys = new Set<string>();
+    for (const [i, phase] of phases.entries()) {
+        const phaseAt = `${where} progressPhases[${i}] (${phase?.key || '?'})`;
+        if (!phase?.key || !SLUG_RE.test(phase.key)) {
+            errors.push(`${phaseAt}: key must be a kebab-case slug.`);
+        } else if (keys.has(phase.key)) {
+            errors.push(`${phaseAt}: duplicate key "${phase.key}".`);
+        } else {
+            keys.add(phase.key);
+        }
+        if (!phase?.label?.length) warnings.push(`${phaseAt}: has no label.`);
+    }
+}
+
+/**
+ * Validates the consent blocks of a step.
+ *
+ * - The keys follow {@link validateConsentKeys}.
+ * - `given` is mandatory — an agreement with nowhere to go strands the run —
+ *   and every outcome value is an {@link EnyoOnboardingV2ConsentOutcome}
+ *   member, wired at most once. `declined` is optional.
+ * - When the package's consents are known and none of the asked ones is
+ *   required, `declined` can never fire, which is worth a warning.
+ * - Like an auth or subscription-offer block, a consent block owns its step:
+ *   a second decision beside it would be a way round the consent.
+ *
+ * @param step - The step whose blocks are checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ * @param context - Optional surroundings; its `consents` resolve the keys.
+ */
+function validateConsentBlocks(
+    step: EnyoOnboardingV2Step,
+    at: string,
+    errors: string[],
+    warnings: string[],
+    context?: OnboardingV2ValidationContext,
+): void {
+    const consentBlocks = (step.blocks ?? []).filter(
+        (b): b is EnyoOnboardingV2ConsentBlock => b.type === EnyoOnboardingV2BlockType.Consent,
+    );
+
+    for (const block of consentBlocks) {
+        const where = `${at}: consent block "${block.id}"`;
+        validateConsentKeys(block.consentKeys, where, errors, context);
+        if (!block.cta?.length) errors.push(`${where} has no cta caption.`);
+
+        const values = new Set<string>();
+        for (const outcome of block.outcomes ?? []) {
+            if (!CONSENT_OUTCOMES.has(outcome.value)) {
+                errors.push(
+                    `${where} has outcome value "${outcome.value}", which is not an EnyoOnboardingV2ConsentOutcome member.`,
+                );
+            } else if (values.has(outcome.value)) {
+                errors.push(`${where} wires outcome value "${outcome.value}" more than once.`);
+            }
+            values.add(outcome.value);
+            if (!outcome.label?.length) warnings.push(`${where} outcome "${outcome.id}" has no label.`);
+        }
+        if (!values.has(EnyoOnboardingV2ConsentOutcome.Given)) {
+            errors.push(
+                `${where} has no "${EnyoOnboardingV2ConsentOutcome.Given}" outcome — an agreement would have nowhere to go.`,
+            );
+        }
+
+        if (context?.consents && values.has(EnyoOnboardingV2ConsentOutcome.Declined)) {
+            const asked = new Set(block.consentKeys ?? []);
+            const anyRequired = context.consents.some((c) => asked.has(c.consentKey) && c.required);
+            if (!anyRequired) {
+                warnings.push(
+                    `${where} asks only for voluntary consents, so its "${EnyoOnboardingV2ConsentOutcome.Declined}" ` +
+                        'outcome can never fire.',
+                );
+            }
+        }
+    }
+
+    if (consentBlocks.length > 1) {
+        errors.push(`${at}: more than one consent block; list every consent in one block instead.`);
+    }
+    if (consentBlocks.length === 1) {
+        const others = (step.blocks ?? []).filter(
+            (b) => b.type !== EnyoOnboardingV2BlockType.Consent && DECISION_BLOCK_TYPES.has(b.type),
+        );
+        if (others.length) {
+            errors.push(
+                `${at}: consent block "${consentBlocks[0]!.id}" shares the step with ${others.length} other decision block(s) — ` +
+                    'the consent owns its step. To ask right before a setup runs, use its consentKeys instead.',
             );
         }
     }
@@ -1619,7 +1815,8 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
             b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
             b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
-            b.type === EnyoOnboardingV2BlockType.SubscriptionOffer
+            b.type === EnyoOnboardingV2BlockType.SubscriptionOffer ||
+            b.type === EnyoOnboardingV2BlockType.Consent
         ) {
             for (const o of b.outcomes ?? []) keys.add(`outcome:${b.id}:${o.id}`);
         } else if (b.type === EnyoOnboardingV2BlockType.Auth && b.outcome?.id) {

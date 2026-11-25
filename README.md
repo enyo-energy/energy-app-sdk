@@ -192,6 +192,7 @@ The SDK exposes several layered building blocks. Pick the one that matches the k
 | Read grid connection point (fuse, phases, max power, charger limit) | [`useGridConnectionPoint()`](#usegridconnectionpoint-energyappgridconnectionpoint) |
 | Receive webhooks from third-party services (one URL per app, parsed JSON body) | [`useWebhook()`](#usewebhook-energyappwebhook) |
 | Sell one-time, monthly or yearly plans and check which ones the device has | [`useSubscriptions()`](#usesubscriptions-energyappsubscriptions) / [Subscription Plans](#subscription-plans) |
+| Ask for consents (installer or customer) and read who agreed to which version | [`useConsent()`](#useconsent-energyappconsent) |
 | Retrieve secrets from the developer org secret store | [`useSecretManager()`](#usesecretmanager-energyappsecretmanager) |
 | Submit energy-manager diagnostics | [`useDiagnostics()`](#usediagnostics-energyappdiagnostics) |
 | Register a weather / PV / dynamic-price forecast provider | [`useWeatherForecasting()`](#useweatherforecasting-energyappweatherforecasting) / [`usePvForecasting()`](#usepvforecasting-energyapppvforecasting) / [`useDynamicPriceForecast()`](#usedynamicpriceforecast-energyappdynamicpriceforecast) |
@@ -2771,6 +2772,27 @@ and notifies the listeners.
 
 Requires the `Subscriptions` permission.
 
+#### `useConsent(): EnergyAppConsent`
+
+Read the consents your package declares in `consents` of the package definition — whether each one is in force,
+which version was agreed to, and whether the installer or the customer gave it. Consents are asked for in onboarding
+guides (a `consent` block, or `consentKeys` on an `additional-setup` block) and recorded by enyo; the app only reads
+the result. See [ONBOARDING.md](./ONBOARDING.md#asking-for-consent-consent-consentkeys).
+
+```typescript
+const consent = energyApp.useConsent();
+const apply = (state: EnyoConsentState) => {
+    if (state.consentKey === 'share-usage-data') usageSharing.setEnabled(state.granted);
+};
+(await consent.getConsents()).forEach(apply);
+consent.listenForConsentChanges(apply);
+```
+
+- **Act on `granted`.** It is `false` for a consent never given, withdrawn, or given for an older `version`.
+- **Validate the declarations** with `validatePackageConsents()` before publishing.
+
+Not permission-gated: an app only ever sees its own package's consents.
+
 ### Operational Utilities
 
 #### `useOnboardingV2(): EnergyAppOnboardingV2`
@@ -2824,6 +2846,8 @@ await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request)
 ```
 
 Every such block must declare a `failed` outcome — it absorbs a rejection, a timeout, a missing handler, and an outcome value matching no branch (guide and handler are linked only by strings). Secrets are never logged, never prefilled, and not kept in run state. See [ONBOARDING.md](./ONBOARDING.md#app-defined-setups-additional-setup).
+
+A setup that takes minutes declares `progressPhases` and `maxDurationMs` on the block and reports with `reportSetupProgress(request.requestId, {phaseKey, percent})`; the installer sees a progress bar with every phase done, running or still to come, and the guide moves on when the handler resolves. A setup the customer must allow first lists the package consents to ask for in `consentKeys`. See [ONBOARDING.md](./ONBOARDING.md#long-running-setups-progress-phases).
 
 Guides pick the device on a screen of their own. `device-select` lists the network devices the run found; `eebus-device-select` lists the discovered EEBUS peers, filtered by the SHIP device type they announce (`EnyoEebusDeviceTypeEnum`); `zigbee-pairing` opens the Zigbee network and lists devices as they join (handler: `registerZigbeePairingHandler`, see [ONBOARDING.md](./ONBOARDING.md#pairing-zigbee-devices-zigbee-pairing)). Both carry their own `headline`/`description`, and both **skip the screen entirely** when exactly one candidate matches the filter — the handler still runs and the run is still bound, with `autoSelected: true` on the request. Register one handler per kind; a network device and an EEBUS peer are different things and neither handler is a fallback for the other:
 

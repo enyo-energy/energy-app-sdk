@@ -26,6 +26,7 @@ import type {EnyoEebusDeviceTypeEnum} from './enyo-eebus.js';
 import type {EnyoNetworkDeviceDetectedAtEnum} from './enyo-network-device.js';
 import type {EnyoOauthRedirectUrlFilter} from './enyo-authentication.js';
 import type {EnyoSubscriptionMode} from './enyo-subscription.js';
+import type {EnyoOnboardingV2ProgressPhase} from './enyo-onboarding-v2-progress.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -328,6 +329,7 @@ export enum EnyoOnboardingV2BlockType {
     EebusDeviceSelect = 'eebus-device-select',
     ZigbeePairing = 'zigbee-pairing',
     SubscriptionOffer = 'subscription-offer',
+    Consent = 'consent',
 }
 
 /** Fields shared by every content/interactive block. */
@@ -1145,6 +1147,82 @@ export interface EnyoOnboardingV2SubscriptionOfferBlock extends EnyoOnboardingV2
 }
 
 /**
+ * The possible results of an {@link EnyoOnboardingV2ConsentBlock}.
+ *
+ * `given` is always wired. `declined` is optional: wire it to give a person who
+ * will not agree somewhere to go (support, a pause, another variant). Without
+ * it, a person who will not agree simply leaves the guide; the run stays open
+ * and resumes on the consent step.
+ */
+export enum EnyoOnboardingV2ConsentOutcome {
+    /**
+     * Every required consent of the block is in force — agreed to on this step,
+     * or already before it for the current version. Voluntary consents may be
+     * either way. Fired by the host once enyo has recorded the answers, never by
+     * the client alone.
+     */
+    Given = 'given',
+    /** The person chose not to agree to a required consent. */
+    Declined = 'declined',
+}
+
+/**
+ * Asks for one or more of the package's consents and branches on whether every
+ * required one was given.
+ *
+ * The consents themselves — the checkbox line, the legal text, whether each is
+ * required or voluntary and who may give it — are declared once in the package
+ * definition ({@link EnergyAppPackageDefinition.consents}); the block only
+ * names them by key. The host renders one checkbox per consent in the given
+ * order, each with a link that opens its full legal text in a dialog, marks the
+ * voluntary ones as optional, and enables the CTA once every required one is
+ * ticked. Voluntary checkboxes always start unticked. Consents already in force
+ * for their current version are shown ticked.
+ *
+ * **Who may agree is the declaration's call.** A consent only the customer may
+ * give cannot be ticked by the installer: the host shows the installer that the
+ * customer has to agree, and the run waits on this step until they have —
+ * typically in their own enyo app.
+ *
+ * **enyo records, the server decides.** Pressing the CTA records every answer
+ * with the consent's version, the role of the person and the time; only then
+ * does `given` fire. The app reads the answers through {@link EnergyAppConsent},
+ * including the voluntary ones.
+ *
+ * Like an auth or subscription-offer block, a consent block owns its step: a
+ * second decision beside it would be a way round it. To ask for a consent right
+ * before the app does something that needs it, use
+ * {@link EnyoOnboardingV2AdditionalSetupBlock.consentKeys} instead — that puts
+ * the checkboxes above the setup's own CTA.
+ *
+ * @example
+ * ```ts
+ * onboardingV2Block.consent('terms', ['terms-of-use', 'share-usage-data'], {
+ *     cta: t('Zustimmen und weiter', 'Agree and continue'),
+ *     outcomes: [
+ *         {id: 'given', value: EnyoOnboardingV2ConsentOutcome.Given, label: t('Zugestimmt', 'Agreed')},
+ *         {id: 'declined', value: EnyoOnboardingV2ConsentOutcome.Declined, label: t('Abgelehnt', 'Declined')},
+ *     ],
+ * });
+ * ```
+ */
+export interface EnyoOnboardingV2ConsentBlock extends EnyoOnboardingV2BlockBase {
+    type: EnyoOnboardingV2BlockType.Consent;
+    /**
+     * The consents to ask for, by {@link EnergyAppPackageConsent.consentKey}, in
+     * display order. At least one, no duplicates.
+     */
+    consentKeys: string[];
+    /** Translated CTA caption (de/en), e.g. "Zustimmen und weiter". */
+    cta: EnyoOnboardingTranslatedContent[];
+    /**
+     * `given` always, `declined` optionally — values from
+     * {@link EnyoOnboardingV2ConsentOutcome}. Each is a routing handle.
+     */
+    outcomes: EnyoOnboardingV2ActionOutcome[];
+}
+
+/**
  * What an {@link EnyoOnboardingV2SetupField} collects. Drives the keyboard, the
  * masking, and — for {@link Password} and {@link Token} — whether the value is
  * treated as a secret.
@@ -1325,6 +1403,44 @@ export interface EnyoOnboardingV2AdditionalSetupBlock extends EnyoOnboardingV2Bl
     outcomes: EnyoOnboardingV2SetupOutcome[];
     /** Optional escape hatch. Present only on a genuinely optional setup. */
     skip?: EnyoOnboardingV2SetupSkipHandle;
+    /**
+     * Consents to ask for right above the CTA, by
+     * {@link EnergyAppPackageConsent.consentKey} — for a setup that does
+     * something the person must allow first (back up a gateway, switch on its
+     * developer mode).
+     *
+     * The host renders them as on an {@link EnyoOnboardingV2ConsentBlock}:
+     * the CTA stays disabled until every required one is ticked, by someone
+     * allowed to give it. Pressing the CTA records the answers, and only then
+     * calls the handler, passing the result in
+     * {@link EnyoOnboardingV2AdditionalSetupRequest.consents} so the app also
+     * sees the voluntary ones. Declining is leaving the step — through
+     * {@link skip}, or out of the guide.
+     */
+    consentKeys?: string[];
+    /**
+     * The phases of a long-running setup, shown as a list under a progress bar
+     * once the CTA is pressed — each line done, running or still to come.
+     *
+     * The app moves through them with
+     * {@link EnergyAppOnboardingV2.reportSetupProgress}; when the handler
+     * resolves, every phase is marked done and the guide routes on the outcome.
+     * At least 2 phases. Omit for a setup that answers within seconds, or when
+     * the phases are only known at runtime — the app can then send them with
+     * its first report.
+     */
+    progressPhases?: EnyoOnboardingV2ProgressPhase[];
+    /**
+     * How long the host waits for the handler, in milliseconds, instead of
+     * {@link ENYO_ONBOARDING_V2_SETUP_DEFAULT_DURATION_MS}. At most
+     * {@link ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS}.
+     *
+     * Raise it for a setup that genuinely takes minutes, and pair it with
+     * {@link progressPhases} so the installer can see it is still moving.
+     * Progress reports do not extend the budget: once it is spent, the run is
+     * routed to `failed` like any other timeout.
+     */
+    maxDurationMs?: number;
 }
 
 /** Any block that can appear in a step's `blocks`. */
@@ -1346,7 +1462,8 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
     | EnyoOnboardingV2ZigbeePairingBlock
-    | EnyoOnboardingV2SubscriptionOfferBlock;
+    | EnyoOnboardingV2SubscriptionOfferBlock
+    | EnyoOnboardingV2ConsentBlock;
 
 /**
  * Blocks that produce routing handles (a step's decision points).
@@ -1365,7 +1482,8 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
     | EnyoOnboardingV2ZigbeePairingBlock
-    | EnyoOnboardingV2SubscriptionOfferBlock;
+    | EnyoOnboardingV2SubscriptionOfferBlock
+    | EnyoOnboardingV2ConsentBlock;
 
 // ---------------------------------------------------------------------------
 // Routing: transitions & targets

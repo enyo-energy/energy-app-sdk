@@ -8,6 +8,7 @@ import {
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
 import type {EnyoOnboardingTranslatedContent} from "./types/enyo-onboarding.js";
+import type {EnergyAppPackageConsent} from "./types/enyo-consent.js";
 import type {
     EnyoSubscriptionMode,
     EnyoSubscriptionPaymentInterval,
@@ -1190,6 +1191,20 @@ export interface EnergyAppPackageDefinition {
      * packages.
      */
     subscriptionMode?: EnyoSubscriptionMode;
+    /**
+     * The consents this package asks for: what a person agrees to, the full
+     * legal text, whether it is required or voluntary, and who may give it.
+     *
+     * Declared once here and asked for by key wherever it is needed — a
+     * `consent` block in an onboarding guide, or the `consentKeys` of an
+     * additional-setup block. enyo records each answer with its version, the
+     * role of the person who gave it and the time, and the app reads the result
+     * through {@link EnergyAppConsent}. Validate the declarations with
+     * `validatePackageConsents()` before publishing.
+     *
+     * Omit for packages that ask for no consent.
+     */
+    consents?: EnergyAppPackageConsent[];
 }
 
 /**

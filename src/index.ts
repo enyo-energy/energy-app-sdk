@@ -130,6 +130,8 @@ export * from './types/enyo-onboarding-v2-device-select.js'
 export * from './types/enyo-onboarding-v2-eebus-device-select.js'
 export * from './types/enyo-onboarding-v2-zigbee-pairing.js'
 export * from './implementations/onboarding-v2/onboarding-v2-dynamic-validators.js'
+export * from './types/enyo-onboarding-v2-progress.js'
+export * from './implementations/onboarding-v2/onboarding-v2-progress-validators.js'
 export * from './implementations/files/define-public-file.js'
 export * from './implementations/files/public-file-validators.js'
 export * from './implementations/compatibility/compatibility-validators.js'
@@ -227,6 +229,9 @@ export * from './implementations/subscriptions/define-subscription-plan.js';
 export * from './implementations/subscriptions/subscription-plan-validators.js';
 export * from './implementations/subscriptions/subscription-offer-validators.js';
 export * from './implementations/subscriptions/in-memory-subscriptions.js';
+export * from './types/enyo-consent.js';
+export * from './packages/energy-app-consent.js';
+export * from './implementations/consent/consent-validators.js';
 export * from './implementations/pricing/price-schedule-resolver.js';
 export * from './implementations/pricing/price-component-validators.js';
 export * from './implementations/pricing/compose-electricity-prices.js';
