@@ -13,6 +13,7 @@ import {
     EnyoPowerSourceShare,
     EnyoVacationHeatingEnum,
 } from '../../types/enyo-data-bus-value.js';
+import {isHeatingCurveOffsetOnStep} from './heatpump-heating-curve-offset.js';
 import {
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
     EnyoHeatpumpApplianceMetadata,
@@ -397,6 +398,10 @@ export interface HeatpumpHeatingCurveOffsetValidationResult {
  * 4. `offsetK` is not `0` and the circuit has no `heatingCurveOffsetRangeK`
  *    or `offsetK` lies outside it (**Rejected**). `0` — restoring the initial
  *    curve — is always allowed.
+ * 5. The range has a `stepK` and `offsetK` is not a multiple of it
+ *    (**Rejected**) — the sender rounds with `roundHeatingCurveOffsetToStep()`.
+ *    Answering instead of rounding silently keeps the sender from waiting for
+ *    an `activeHeatingCurveOffsetK` that never comes.
  *
  * Without metadata only rule 1 can be checked.
  *
@@ -442,6 +447,12 @@ export function validateHeatpumpHeatingCurveOffset(
     if (data.offsetK < range.minK || data.offsetK > range.maxK) {
         return rejected(
             `offsetK ${data.offsetK} K is outside the range ${range.minK}…${range.maxK} K of heating circuit ${circuit.index}.`,
+        );
+    }
+    if (!isHeatingCurveOffsetOnStep(data.offsetK, range)) {
+        return rejected(
+            `offsetK ${data.offsetK} K is not a multiple of the step ${range.stepK} K of heating circuit ${circuit.index}; `
+            + `round it with roundHeatingCurveOffsetToStep().`,
         );
     }
     return {answer: EnyoCommandAcknowledgeAnswerEnum.Accepted};

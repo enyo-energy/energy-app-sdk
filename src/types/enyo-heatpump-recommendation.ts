@@ -256,7 +256,9 @@ export interface EnyoHeatpumpHeatingCurveLoweringParams {
      * The target offset in Kelvin of flow temperature relative to the
      * circuit's {@link EnyoHeatpumpApplianceHeatingCircuit.initialHeatingCurve}.
      * Negative, and at least
-     * `-`{@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}.
+     * `-`{@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K}. On the circuit's
+     * step grid ({@link EnyoHeatpumpHeatingCurveOffsetRange.stepK}) when it
+     * declares one, also for `Manual` — the customer can only set whole steps.
      */
     offsetK: number;
     /** The offset in Kelvin currently in effect, same reference as {@link offsetK}. */

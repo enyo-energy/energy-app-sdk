@@ -15,6 +15,7 @@
  * variants to throw a {@link HeatpumpMetadataValidationError}.
  */
 
+import {isHeatingCurveOffsetOnStep} from './heatpump-heating-curve-offset.js';
 import {
     EnyoHeatpumpApplianceAdditionalDeviceEnum,
     EnyoHeatpumpApplianceAvailableFeaturesEnum,
@@ -26,6 +27,7 @@ import {
     EnyoHeatpumpSgReadyFunctionEnum,
     EnyoHeatpumpSgReadyStateEnum,
     EnyoHeatpumpTimeProgramLevelEnum,
+    HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K,
 } from '../../types/enyo-heatpump-appliance.js';
 import {validateLegionellaProgramMetadata} from '../legionella/legionella-validators.js';
 import type {
@@ -123,17 +125,25 @@ function checkProgramModes(
  * (`heatingCurveOffsetRangeK`, `activeHeatingCurveOffsetK`,
  * `curveOptimization`) and appends the problems to `errors`.
  *
- * Errors: the range is not finite or does not contain `0`; the active offset
- * is not finite or lies outside the range; a room id is empty.
+ * Errors: the range is not finite or does not contain `0`; `stepK` is not a
+ * finite number greater than `0`; the active offset is not finite or lies
+ * outside the range; a room id is empty.
+ *
+ * Warnings: `minK` / `maxK` or the active offset are not multiples of
+ * `stepK` (report `steps × stepK`), or `stepK` is larger than
+ * {@link HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K} — the energy manager could
+ * then never lower the curve.
  *
  * @param circuit - The heating circuit.
  * @param prefix - Path prefix for the messages, e.g. `heatingCircuits[index=0]`.
  * @param errors - Receives blocking problems.
+ * @param warnings - Receives advisory problems.
  */
 function checkHeatingCurveOffset(
     circuit: EnyoHeatpumpApplianceHeatingCircuit,
     prefix: string,
     errors: string[],
+    warnings: string[],
 ): void {
     const range = circuit.heatingCurveOffsetRangeK;
     const rangeValid = range !== undefined && isFiniteNumber(range.minK) && isFiniteNumber(range.maxK);
@@ -144,12 +154,34 @@ function checkHeatingCurveOffset(
             errors.push(`${prefix}: heatingCurveOffsetRangeK ${range.minK}…${range.maxK} K must contain 0`);
         }
     }
+    const step = range?.stepK;
+    const stepValid = step !== undefined && isFiniteNumber(step) && step > 0;
+    if (step !== undefined && !stepValid) {
+        errors.push(`${prefix}: heatingCurveOffsetRangeK.stepK must be a finite number greater than 0`);
+    }
+    if (stepValid && rangeValid) {
+        for (const [name, bound] of [['minK', range.minK], ['maxK', range.maxK]] as const) {
+            if (!isHeatingCurveOffsetOnStep(bound, range)) {
+                warnings.push(`${prefix}: heatingCurveOffsetRangeK.${name} ${bound} K is not a multiple of stepK ${step} K`);
+            }
+        }
+    }
+    if (stepValid && step > HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K) {
+        warnings.push(
+            `${prefix}: heatingCurveOffsetRangeK.stepK ${step} K is larger than the most the energy manager lowers `
+            + `(${HEATPUMP_CURVE_OPTIMIZATION_MAX_LOWERING_K} K) — the curve could never be lowered`,
+        );
+    }
     const active = circuit.activeHeatingCurveOffsetK;
     if (active !== undefined) {
         if (!isFiniteNumber(active)) {
             errors.push(`${prefix}: activeHeatingCurveOffsetK must be a finite number`);
         } else if (rangeValid && (active < range.minK || active > range.maxK)) {
             errors.push(`${prefix}: activeHeatingCurveOffsetK ${active} K is outside heatingCurveOffsetRangeK ${range.minK}…${range.maxK} K`);
+        } else if (stepValid && !isHeatingCurveOffsetOnStep(active, range)) {
+            warnings.push(
+                `${prefix}: activeHeatingCurveOffsetK ${active} K is not a multiple of stepK ${step} K — report steps × stepK`,
+            );
         }
     }
 
@@ -668,7 +700,7 @@ export function validateHeatpumpAdvancedMetadata(
     for (const circuit of circuits) {
         const prefix = `heatingCircuits[index=${circuit.index}]`;
         if (circuit.heatingCurve) merge(`${prefix}.heatingCurve`, validateHeatpumpHeatingCurve(circuit.heatingCurve));
-        checkHeatingCurveOffset(circuit, prefix, errors);
+        checkHeatingCurveOffset(circuit, prefix, errors, warnings);
         if (circuit.initialHeatingCurve) {
             merge(`${prefix}.initialHeatingCurve`, validateHeatpumpHeatingCurve(circuit.initialHeatingCurve));
         }

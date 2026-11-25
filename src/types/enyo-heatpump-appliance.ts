@@ -637,10 +637,31 @@ export const HEATPUMP_CURVE_OPTIMIZATION_DEFAULT_TARGET_C = 21;
  * Must contain `0`.
  */
 export interface EnyoHeatpumpHeatingCurveOffsetRange {
-    /** Lowest accepted offset in K (≤ 0), e.g. `-5` */
+    /** Lowest accepted offset in K (≤ 0), e.g. `-5`. A multiple of {@link stepK} when that is set. */
     minK: number;
-    /** Highest accepted offset in K (≥ 0), e.g. `5` */
+    /** Highest accepted offset in K (≥ 0), e.g. `5`. A multiple of {@link stepK} when that is set. */
     maxK: number;
+    /**
+     * The step grid of the device in Kelvin of flow temperature, for devices
+     * that shift the curve only in whole steps (e.g. `2.5` when one step of
+     * the device's curve offset moves the flow temperature by about 2.5 K).
+     * Omitted means the device takes any offset.
+     *
+     * When set:
+     * - The energy manager sends only multiples of `stepK` — round with
+     *   `roundHeatingCurveOffsetToStep()`. An offset off the grid is answered
+     *   `Rejected`, so a sender that does not round gets an answer instead of
+     *   waiting for a change that never comes.
+     * - The integration converts with exactly this value (`offsetK / stepK`
+     *   device steps) and reports
+     *   {@link EnyoHeatpumpApplianceHeatingCircuit.activeHeatingCurveOffsetK}
+     *   as `steps × stepK`, so it matches what was sent.
+     *
+     * Where the effect of a step varies (e.g. 2.5–3 K depending on the
+     * outdoor temperature), declare the smaller value: the energy manager
+     * then never lowers further than it planned.
+     */
+    stepK?: number;
 }
 
 /**
@@ -1015,7 +1036,9 @@ export interface EnyoHeatpumpApplianceHeatingCircuit {
      * Vendors shift in different units (some in K of room temperature, some in
      * steps); the integration converts and reports the effective flow
      * temperature shift here. The energy manager waits for this value to match
-     * what it sent before it changes the offset again.
+     * what it sent before it changes the offset again. With
+     * {@link EnyoHeatpumpHeatingCurveOffsetRange.stepK} report
+     * `steps × stepK`, a value on the grid.
      *
      * If the curve read from the device differs from
      * `initialHeatingCurve + activeHeatingCurveOffsetK` by more than 0.5 K at

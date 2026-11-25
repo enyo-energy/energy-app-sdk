@@ -8,8 +8,11 @@ import {
 import {validateHeatpumpHeatingCurveOffset} from '../heatpump-control-validators.js';
 import {validateHeatpumpAdvancedMetadata} from '../heatpump-metadata-validators.js';
 import {
+    EnyoHeatingCurveOffsetRoundingEnum as Rounding,
     interpolateHeatingCurve,
     isHeatingCurveManuallyChanged,
+    isHeatingCurveOffsetOnStep,
+    roundHeatingCurveOffsetToStep,
     shiftHeatingCurve,
 } from '../heatpump-heating-curve-offset.js';
 import {installSdk, TestHeatpump} from './heatpump-test-harness.js';
@@ -174,5 +177,68 @@ describe('validateHeatpumpAdvancedMetadata — heating curve offset', () => {
     it('warns when HeatingCurveOffset is declared without any range', () => {
         const result = validateHeatpumpAdvancedMetadata({...METADATA, heatingCircuits: [{index: 0}]});
         expect(result.warnings.join('\n')).toMatch(/no heating circuit has a heatingCurveOffsetRangeK/);
+    });
+});
+
+describe('heating curve offset step grid', () => {
+    const NIBE_RANGE = {minK: -5, maxK: 5, stepK: 2.5};
+    const STEPPED: EnyoHeatpumpApplianceMetadata = {
+        ...METADATA,
+        heatingCircuits: [{index: 0, heatingCurve: CURVE, heatingCurveOffsetRangeK: NIBE_RANGE}],
+    };
+
+    it('tells whether an offset is on the grid', () => {
+        expect(isHeatingCurveOffsetOnStep(-2.5, NIBE_RANGE)).toBe(true);
+        expect(isHeatingCurveOffsetOnStep(0, NIBE_RANGE)).toBe(true);
+        expect(isHeatingCurveOffsetOnStep(-1, NIBE_RANGE)).toBe(false);
+        expect(isHeatingCurveOffsetOnStep(0.3, {minK: -1, maxK: 1, stepK: 0.1})).toBe(true);
+        expect(isHeatingCurveOffsetOnStep(-1.3, {minK: -5, maxK: 5})).toBe(true);
+        expect(isHeatingCurveOffsetOnStep(-1.3, undefined)).toBe(true);
+    });
+
+    it('rounds to the nearest step by default, halfway away from 0', () => {
+        expect(roundHeatingCurveOffsetToStep(-1, NIBE_RANGE)).toBe(0);
+        expect(roundHeatingCurveOffsetToStep(-1.25, NIBE_RANGE)).toBe(-2.5);
+        expect(roundHeatingCurveOffsetToStep(-3.6, NIBE_RANGE)).toBe(-2.5);
+        expect(roundHeatingCurveOffsetToStep(-3.8, NIBE_RANGE)).toBe(-5);
+        expect(roundHeatingCurveOffsetToStep(1.3, NIBE_RANGE)).toBe(2.5);
+    });
+
+    it('rounds toward or away from 0 on request', () => {
+        expect(roundHeatingCurveOffsetToStep(-4.9, NIBE_RANGE, Rounding.TowardZero)).toBe(-2.5);
+        expect(roundHeatingCurveOffsetToStep(-0.1, NIBE_RANGE, Rounding.AwayFromZero)).toBe(-2.5);
+        expect(roundHeatingCurveOffsetToStep(-2.5, NIBE_RANGE, Rounding.AwayFromZero)).toBe(-2.5);
+        expect(roundHeatingCurveOffsetToStep(0.3, {minK: -1, maxK: 1, stepK: 0.1}, Rounding.TowardZero)).toBe(0.3);
+    });
+
+    it('clamps to the range and stays inside it when the bounds are off the grid', () => {
+        expect(roundHeatingCurveOffsetToStep(-9, NIBE_RANGE)).toBe(-5);
+        expect(roundHeatingCurveOffsetToStep(-6, {minK: -6, maxK: 6, stepK: 2.5}, Rounding.AwayFromZero)).toBe(-5);
+        expect(roundHeatingCurveOffsetToStep(-9, {minK: -5, maxK: 5})).toBe(-5);
+        expect(roundHeatingCurveOffsetToStep(-1.3, undefined)).toBe(-1.3);
+        expect(Object.is(roundHeatingCurveOffsetToStep(-0.4, NIBE_RANGE), 0)).toBe(true);
+    });
+
+    it('rejects an offset off the grid and accepts one on it', () => {
+        const off = validateHeatpumpHeatingCurveOffset({heatingCircuitIndex: 0, offsetK: -1}, STEPPED);
+        expect(off.answer).toBe(EnyoCommandAcknowledgeAnswerEnum.Rejected);
+        expect(off.rejectionReason).toMatch(/not a multiple of the step 2\.5 K/);
+        expect(validateHeatpumpHeatingCurveOffset({heatingCircuitIndex: 0, offsetK: -2.5}, STEPPED).answer)
+            .toBe(EnyoCommandAcknowledgeAnswerEnum.Accepted);
+        expect(validateHeatpumpHeatingCurveOffset({heatingCircuitIndex: 0, offsetK: 0}, STEPPED).answer)
+            .toBe(EnyoCommandAcknowledgeAnswerEnum.Accepted);
+    });
+
+    it('validates stepK in the metadata', () => {
+        const withRange = (range: object, active?: number) => validateHeatpumpAdvancedMetadata({
+            ...STEPPED,
+            heatingCircuits: [{index: 0, heatingCurve: CURVE, heatingCurveOffsetRangeK: range as never, activeHeatingCurveOffsetK: active}],
+        } as never);
+
+        expect(withRange(NIBE_RANGE, -2.5)).toMatchObject({ok: true, warnings: []});
+        expect(withRange({minK: -5, maxK: 5, stepK: 0}).errors.join('\n')).toMatch(/stepK must be a finite number greater than 0/);
+        expect(withRange({minK: -6, maxK: 5, stepK: 2.5}).warnings.join('\n')).toMatch(/minK -6 K is not a multiple of stepK 2\.5 K/);
+        expect(withRange(NIBE_RANGE, -2.7).warnings.join('\n')).toMatch(/activeHeatingCurveOffsetK -2\.7 K is not a multiple of stepK/);
+        expect(withRange({minK: -12, maxK: 12, stepK: 6}).warnings.join('\n')).toMatch(/could never be lowered/);
     });
 });

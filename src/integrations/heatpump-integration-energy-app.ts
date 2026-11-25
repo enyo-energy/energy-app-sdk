@@ -777,7 +777,10 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      * - Always shift relative to `initialHeatingCurve`, never to the current
      *   curve — the same message may arrive twice.
      * - Convert to the vendor's unit (K of room temperature, steps, …) and
-     *   write the curve; answer `Accepted` only once it is written.
+     *   write the curve; answer `Accepted` only once it is written. A device
+     *   that shifts only in whole steps declares
+     *   `heatingCurveOffsetRangeK.stepK`, converts with `offsetK / stepK`
+     *   and reports `activeHeatingCurveOffsetK` as `steps × stepK`.
      * - `offsetK: 0` restores the initial curve exactly, including
      *   vendor-specific parameters, then call
      *   `ApplianceManager.clearHeatpumpInitialHeatingCurve`.
@@ -788,7 +791,7 @@ export abstract class HeatpumpIntegrationEnergyApp extends IntegrationEnergyApp 
      *
      * The base class has already validated the message with
      * {@link checkHeatingCurveOffset}: the feature is declared, the circuit
-     * exists and `offsetK` lies within its range.
+     * exists, `offsetK` lies within its range and on its step grid.
      *
      * @param _message - The heating curve offset command.
      * @returns `Accepted` once the shifted curve is written, `Rejected` (with

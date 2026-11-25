@@ -40,8 +40,8 @@ jobs:
           cache: npm
 
       - run: npm ci --no-audit --no-fund
+      # Runs the unit tests before compiling.
       - run: npm run build
-      - run: npm test
 
       # Publish when this push changed the version (or the workflow was started by hand) — and the
       # version is not on npm yet (e.g. already published locally).
@@ -90,9 +90,10 @@ jobs:
       # Trusted Publishing (OIDC) requires npm 11.5.1 or later.
       - run: npm install -g npm@^11.5.1
       - run: npm ci --no-audit --no-fund
+      # Builds and tests again (tests are part of `npm run build`).
       - run: npm run build
 
-      # The `verify` job already tested — skip `prepublishOnly` (build + tests) here.
+      # Skip `prepublishOnly`, which would only repeat the build above.
       - run: npm publish --ignore-scripts
 
       - name: Release tag

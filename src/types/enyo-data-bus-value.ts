@@ -5346,6 +5346,10 @@ export interface EnyoDataBusSetHeatpumpRoomTemperatureV1 extends EnyoDataBusMess
  *   integration converts and reports the effective shift in K of flow
  *   temperature in
  *   {@link EnyoHeatpumpApplianceHeatingCircuit.activeHeatingCurveOffsetK}.
+ * - **Step grid.** When the circuit's range declares
+ *   {@link EnyoHeatpumpHeatingCurveOffsetRange.stepK}, `offsetK` must be a
+ *   multiple of it — round with `roundHeatingCurveOffsetToStep()`; anything
+ *   else is answered `Rejected`.
  * - Runs alongside {@link EnyoDataBusHeatpumpControlV3} (boost) and
  *   {@link EnyoDataBusHeatpumpProgramSwitchV3} (eco): those act **on top** of
  *   the offset, which becomes the new base.
@@ -5380,7 +5384,9 @@ export interface EnyoDataBusSetHeatpumpHeatingCurveOffsetV1 extends EnyoDataBusM
         /**
          * Shift in Kelvin of flow temperature, relative to the initial curve
          * ({@link EnyoHeatpumpApplianceHeatingCircuit.initialHeatingCurve}).
-         * Negative lowers the curve. `0` restores the initial curve.
+         * Negative lowers the curve. `0` restores the initial curve. A
+         * multiple of {@link EnyoHeatpumpHeatingCurveOffsetRange.stepK} when
+         * the circuit declares one.
          */
         offsetK: number;
         /** Optional reason why this command was issued */
