@@ -4452,6 +4452,20 @@ states, and an `activeState` that is not in `supportedStates`. It warns about un
 same function on one zone, a relay without `normal`, and a `dhw-heating-rod` relay when `additionalDevices` has
 no `HeatingRod`.
 
+**Steering through a dry contact.** An app that switches the SG Ready inputs with an external potential-free
+relay (e.g. a Shelly) instead of talking to the heat pump uses the package category
+`EnergyAppPackageCategory.DryContact`. Its compatibility list names the relay, not the heat pump, because the app
+works with any SG Ready heat pump, and each relay model declares `EnergyAppModelFeatureEnum.HeatpumpSgReady`. The
+app still creates a `Heatpump` appliance, with `connectionType: EnyoHeatpumpApplianceConnectionTypeEnum.SgReady`
+and its relays in `sgReadyRelays`.
+
+```typescript
+categories: [EnergyAppPackageCategory.DryContact],
+compatibility: [{vendorName: 'Shelly', models: [
+    {modelName: 'Shelly Pro 2', features: [F.HeatpumpSgReady]},
+]}],
+```
+
 ### WallboxIntegrationEnergyApp
 
 Drives an EV wallbox / charger. Has the richest command surface of all integrations.

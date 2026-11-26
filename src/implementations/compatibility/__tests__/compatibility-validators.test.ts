@@ -173,6 +173,8 @@ describe('validatePackageCompatibility — features, requirements, limitations',
 
         // Battery features fit hybrid inverters; no categories or `other` skip the check.
         expect(validateModel({features: [F.BatteryHold]}, [EnergyAppPackageCategory.Inverter]).warnings).toEqual([]);
+        // A dry-contact relay on SG Ready inputs declares the heat pump's SG Ready feature.
+        expect(validateModel({features: [F.HeatpumpSgReady]}, [EnergyAppPackageCategory.DryContact]).warnings).toEqual([]);
         expect(validateModel({features: [F.HeatpumpDhwBoost]}).warnings).toEqual([]);
         expect(validateModel({features: [F.HeatpumpDhwBoost]}, [EnergyAppPackageCategory.Other]).warnings).toEqual([]);
     });

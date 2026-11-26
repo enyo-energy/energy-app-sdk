@@ -35,6 +35,10 @@ describe('getModelFeaturesForCategory', () => {
         ]);
     });
 
+    it('lists only SG Ready for a dry-contact relay', () => {
+        expect(getModelFeaturesForCategory(EnergyAppPackageCategory.DryContact)).toEqual([F.HeatpumpSgReady]);
+    });
+
     it('returns nothing for a category without model features', () => {
         expect(getModelFeaturesForCategory(EnergyAppPackageCategory.DynamicElectricityTariff)).toEqual([]);
     });

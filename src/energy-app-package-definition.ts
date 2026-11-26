@@ -41,6 +41,15 @@ export enum EnergyAppPackageCategory {
     HeatingRod = 'heating-rod',
     GridOperator = 'grid-operator',
     /**
+     * Apps that switch a dry contact (potential-free relay output, German
+     * "potentialfreier Schaltkontakt", e.g. a Shelly) instead of talking to the
+     * steered device itself. Today this means steering a heat pump through its
+     * SG Ready inputs: the compatibility list names the relay, not the heat
+     * pump, and the app works with any SG Ready heat pump. The relay still
+     * shows up as a `Heatpump` appliance.
+     */
+    DryContact = 'dry-contact',
+    /**
      * Integrations that talk to a car — typically a manufacturer cloud API —
      * and link it to one of the user's vehicles. See `EnergyAppVehicle`'s
      * `onPairVehicle` for how the link is made.

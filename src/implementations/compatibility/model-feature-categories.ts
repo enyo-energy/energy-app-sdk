@@ -77,7 +77,7 @@ export const ENERGY_APP_MODEL_FEATURE_CATEGORIES: Readonly<Record<EnergyAppModel
     [EnergyAppModelFeatureEnum.HeatpumpDhwBoost]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpTemperatureSetpoint]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpPowerModulation]: [EnergyAppPackageCategory.HeatPump],
-    [EnergyAppModelFeatureEnum.HeatpumpSgReady]: [EnergyAppPackageCategory.HeatPump],
+    [EnergyAppModelFeatureEnum.HeatpumpSgReady]: [EnergyAppPackageCategory.HeatPump, EnergyAppPackageCategory.DryContact],
     [EnergyAppModelFeatureEnum.HeatpumpRoomTemperatureInput]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpPvSurplusSignal]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpBufferTankOverheating]: [EnergyAppPackageCategory.HeatPump],
