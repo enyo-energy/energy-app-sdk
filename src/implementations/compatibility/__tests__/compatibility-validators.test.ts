@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {
     EnergyAppPackageCategory,
     EnergyAppPackageCompatibilityStatus,
+    EnergyAppPackageConnectionTypeEnum as C,
     type EnergyAppPackageCompatibilityModel,
     type EnergyAppPackageCompatibilityVendor,
 } from '../../../energy-app-package-definition.js';
@@ -34,7 +35,7 @@ const vendor = (over: Partial<EnergyAppPackageCompatibilityVendor> = {}): Energy
 });
 
 const validate = (compatibility: EnergyAppPackageCompatibilityVendor[], categories?: EnergyAppPackageCategory[]) =>
-    validatePackageCompatibility({compatibility, categories}, {now});
+    validatePackageCompatibility({compatibility, categories, connectionTypes: [C.ModbusTcp]}, {now});
 
 describe('validatePackageCompatibility', () => {
     it('accepts an empty list and a well-formed declaration', () => {
@@ -173,8 +174,11 @@ describe('validatePackageCompatibility — features, requirements, limitations',
 
         // Battery features fit hybrid inverters; no categories or `other` skip the check.
         expect(validateModel({features: [F.BatteryHold]}, [EnergyAppPackageCategory.Inverter]).warnings).toEqual([]);
-        // A dry-contact relay on SG Ready inputs declares the heat pump's SG Ready feature.
-        expect(validateModel({features: [F.HeatpumpSgReady]}, [EnergyAppPackageCategory.DryContact]).warnings).toEqual([]);
+        // A dry-contact relay declares the features of the inputs it switches.
+        const relayFit = validateModel({features: [
+            F.HeatpumpSgReady, F.HeatpumpDhwBoost, F.ChargingStartStop, F.GridOperatorConsumptionLimitation,
+        ]}, [EnergyAppPackageCategory.DryContact]).warnings.filter((w) => w.includes('does not fit'));
+        expect(relayFit).toEqual([]);
         expect(validateModel({features: [F.HeatpumpDhwBoost]}).warnings).toEqual([]);
         expect(validateModel({features: [F.HeatpumpDhwBoost]}, [EnergyAppPackageCategory.Other]).warnings).toEqual([]);
     });
@@ -233,5 +237,80 @@ describe('isYearInCompatibilityRange', () => {
         expect(isYearInCompatibilityRange({from: 2020, to: 2023}, 2024)).toBe(false);
         expect(isYearInCompatibilityRange({from: 2024}, 2022)).toBe(false);
         expect(isYearInCompatibilityRange({to: 2021}, 2015)).toBe(true);
+    });
+});
+
+describe('validatePackageCompatibility — connection types', () => {
+    const run = (def: Parameters<typeof validatePackageCompatibility>[0]) => validatePackageCompatibility(def, {now});
+
+    it('accepts connection types on package, vendor and model', () => {
+        const result = run({
+            connectionTypes: [C.ModbusTcp],
+            compatibility: [vendor({
+                connectionTypes: [C.Http],
+                models: [model({connectionTypes: [C.Eebus]})],
+            })],
+        });
+        expect(result).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it('warns when no connection type is declared anywhere', () => {
+        expect(run({compatibility: [vendor()]}).warnings.some((w) => w.includes('no connectionTypes declared'))).toBe(true);
+        expect(run({compatibility: []}).warnings).toEqual([]);
+    });
+
+    it('rejects unknown values and empty lists, warns on duplicates', () => {
+        const result = run({
+            connectionTypes: ['carrier-pigeon' as C],
+            compatibility: [vendor({connectionTypes: [], models: [model({connectionTypes: [C.Http, C.Http]})]})],
+        });
+        expect(result.errors.some((e) => e.includes('unknown connection type "carrier-pigeon"'))).toBe(true);
+        expect(result.errors.some((e) => e.includes('connectionTypes must not be empty'))).toBe(true);
+        expect(result.warnings.some((w) => w.includes('lists http twice'))).toBe(true);
+    });
+
+    it('warns about overrides that repeat the inherited list', () => {
+        const result = run({
+            connectionTypes: [C.ModbusTcp, C.Http],
+            compatibility: [vendor({
+                connectionTypes: [C.Http, C.ModbusTcp],
+                models: [model({connectionTypes: [C.ModbusTcp, C.Http]})],
+            })],
+        });
+        expect(result.warnings.some((w) => w.includes("repeats the package's list"))).toBe(true);
+        expect(result.warnings.some((w) => w.includes('repeats the inherited list'))).toBe(true);
+    });
+
+    it('checks cloud against the VendorCloudAccount requirement', () => {
+        const cloudWithout = run({connectionTypes: [C.Cloud], compatibility: [vendor()]});
+        expect(cloudWithout.warnings.some((w) => w.includes('does not list the vendor-cloud-account requirement'))).toBe(true);
+
+        const cloudWith = run({
+            connectionTypes: [C.Cloud],
+            compatibility: [vendor({models: [model({requirements: [R.VendorCloudAccount]})]})],
+        });
+        expect(cloudWith.warnings).toEqual([]);
+
+        const accountWithoutCloud = run({
+            connectionTypes: [C.ModbusTcp],
+            compatibility: [vendor({models: [model({requirements: [R.VendorCloudAccount]})]})],
+        });
+        expect(accountWithoutCloud.warnings.some((w) => w.includes('but no connection type is cloud'))).toBe(true);
+    });
+
+    it('warns when device detection has no matching connection type', () => {
+        const result = run({
+            connectionTypes: [C.Http],
+            options: {deviceDetection: {ocpp: [{} as never]}},
+            compatibility: [vendor()],
+        });
+        expect(result.warnings).toContain('options.deviceDetection.ocpp is set, but connection type ocpp is declared nowhere.');
+    });
+
+    it('warns about the dry-contact category without the dry-contact connection type', () => {
+        const without = run({categories: [EnergyAppPackageCategory.DryContact], connectionTypes: [C.Http], compatibility: [vendor()]});
+        expect(without.warnings.some((w) => w.includes('category dry-contact without connection type dry-contact'))).toBe(true);
+        const withType = run({categories: [EnergyAppPackageCategory.DryContact], connectionTypes: [C.DryContact], compatibility: [vendor()]});
+        expect(withType.warnings).toEqual([]);
     });
 });

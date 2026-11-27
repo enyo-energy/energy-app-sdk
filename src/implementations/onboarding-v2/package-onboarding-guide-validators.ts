@@ -76,6 +76,7 @@ const FORBIDDEN_BLOCKS: ReadonlyMap<string, string> = new Map([
     [EnyoOnboardingV2BlockType.DeviceSelect, 'it picks from devices the host discovered'],
     [EnyoOnboardingV2BlockType.EebusDeviceSelect, 'it picks from devices the host discovered'],
     [EnyoOnboardingV2BlockType.ZigbeePairing, 'it opens the host\'s Zigbee network and picks from the devices that joined'],
+    [EnyoOnboardingV2BlockType.ApplianceSelect, 'it picks from appliances that exist on a site'],
     [EnyoOnboardingV2BlockType.SubscriptionOffer, 'it opens enyo\'s offer screen and checks the purchase'],
     [EnyoOnboardingV2BlockType.Consent, 'it records a person\'s agreement with enyo, which a printed page cannot'],
     [EnyoOnboardingV2BlockType.Dynamic, 'its value is resolved by the app at runtime and does not exist when the PDF is rendered'],

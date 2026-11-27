@@ -26,6 +26,7 @@
  */
 
 import type {EnyoOnboardingV2DynamicKind} from './enyo-onboarding-v2.js';
+import type {EnergyAppPackageConnectionTypeEnum} from '../energy-app-package-definition.js';
 
 /**
  * One "resolve this dynamic value" request from the host.
@@ -62,6 +63,14 @@ export interface EnyoOnboardingV2DynamicRequest {
     networkDeviceId?: string;
     /** The appliance the run is bound to, when one exists already. */
     applianceId?: string;
+    /**
+     * The connection type the user chose for this run (from the options built
+     * by `findCompatibleAppOptions()`), for a package that connects in more
+     * than one way. Absent when the package declares no connection type or the
+     * run did not start from such a choice. Record it on the appliances the app
+     * creates (`metadata.packageConnectionType`).
+     */
+    connectionType?: EnergyAppPackageConnectionTypeEnum;
     /**
      * The budget for this request, in milliseconds.
      *

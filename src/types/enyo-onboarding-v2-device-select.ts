@@ -27,6 +27,7 @@
  */
 
 import type {EnyoNetworkDevice} from './enyo-network-device.js';
+import type {EnergyAppPackageConnectionTypeEnum} from '../energy-app-package-definition.js';
 
 /**
  * One "the installer picked these — make appliances of them" request.
@@ -69,6 +70,14 @@ export interface EnyoOnboardingV2DeviceSelectRequest {
      * a history split across two records.
      */
     applianceId?: string;
+    /**
+     * The connection type the user chose for this run (from the options built
+     * by `findCompatibleAppOptions()`), for a package that connects in more
+     * than one way. Absent when the package declares no connection type or the
+     * run did not start from such a choice. Record it on the appliances the app
+     * creates (`metadata.packageConnectionType`).
+     */
+    connectionType?: EnergyAppPackageConnectionTypeEnum;
     /**
      * The budget for this request, in milliseconds.
      *

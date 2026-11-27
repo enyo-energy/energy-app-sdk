@@ -27,6 +27,7 @@
 
 import type {EnyoOnboardingTranslatedContent} from './enyo-onboarding.js';
 import type {EnyoConsentState} from './enyo-consent.js';
+import type {EnergyAppPackageConnectionTypeEnum} from '../energy-app-package-definition.js';
 
 /**
  * The reserved outcome value every
@@ -85,6 +86,14 @@ export interface EnyoOnboardingV2AdditionalSetupRequest {
     networkDeviceId?: string;
     /** The appliance the run is bound to, when one exists already. */
     applianceId?: string;
+    /**
+     * The connection type the user chose for this run (from the options built
+     * by `findCompatibleAppOptions()`), for a package that connects in more
+     * than one way. Absent when the package declares no connection type or the
+     * run did not start from such a choice. Record it on the appliances the app
+     * creates (`metadata.packageConnectionType`).
+     */
+    connectionType?: EnergyAppPackageConnectionTypeEnum;
     /**
      * The state of every consent the block asked for in
      * {@link EnyoOnboardingV2AdditionalSetupBlock.consentKeys}, recorded just

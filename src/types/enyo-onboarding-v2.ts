@@ -27,6 +27,8 @@ import type {EnyoNetworkDeviceDetectedAtEnum} from './enyo-network-device.js';
 import type {EnyoOauthRedirectUrlFilter} from './enyo-authentication.js';
 import type {EnyoSubscriptionMode} from './enyo-subscription.js';
 import type {EnyoOnboardingV2ProgressPhase} from './enyo-onboarding-v2-progress.js';
+import type {EnyoApplianceTypeEnum} from './enyo-appliance.js';
+import type {EnergyAppPackageConnectionTypeEnum} from '../energy-app-package-definition.js';
 
 // ---------------------------------------------------------------------------
 // Enumerable string enums
@@ -196,6 +198,25 @@ export enum EnyoOnboardingV2DeviceSelectOutcome {
 }
 
 /**
+ * The possible results of an {@link EnyoOnboardingV2ApplianceSelectBlock}.
+ * Binary like its network-device counterpart: either the installer picked an
+ * existing appliance or the run came away without one.
+ */
+export enum EnyoOnboardingV2ApplianceSelectOutcome {
+    /** The installer picked an appliance; it is recorded as the block's input value. */
+    Selected = 'selected',
+    /**
+     * No appliance was picked — the site has none matching the filter, or the
+     * installer looked at the list and theirs was not on it (for example a heat
+     * pump that no energy app integrates yet).
+     *
+     * Route it to a step that creates the appliance itself or explains which
+     * app has to be installed first — not to a step that assumes a pick.
+     */
+    NotFound = 'not-found',
+}
+
+/**
  * The possible results of an {@link EnyoOnboardingV2EebusDeviceSelectBlock}.
  *
  * Three, not two: the two ways pairing fails need different guidance. Nothing
@@ -328,6 +349,7 @@ export enum EnyoOnboardingV2BlockType {
     DeviceSelect = 'device-select',
     EebusDeviceSelect = 'eebus-device-select',
     ZigbeePairing = 'zigbee-pairing',
+    ApplianceSelect = 'appliance-select',
     SubscriptionOffer = 'subscription-offer',
     Consent = 'consent',
 }
@@ -846,6 +868,73 @@ export interface EnyoOnboardingV2ZigbeePairingBlock extends EnyoOnboardingV2Pick
      * **conjunctive** — a device must satisfy every filter present.
      */
     modelIds?: string[];
+}
+
+/**
+ * A picker screen: the appliances that already exist on the site, so the
+ * installer can say which one this app works with.
+ *
+ * The other pickers pick *hardware* the run discovered — a network device, an
+ * EEBUS peer, a Zigbee device. This one picks an *appliance* the site already
+ * has, usually created by another energy app. It exists for apps that steer a
+ * device through something other than the device itself: a dry-contact relay
+ * (e.g. a Shelly) wired to a heat pump's SG Ready inputs or a wallbox's enable
+ * input. Such an app owns the relay, but it has to know which heat pump or
+ * wallbox the relay acts on — and only the installer standing in front of the
+ * wiring can say that. The host shows the list, so the app needs neither the
+ * permission for `useAppliances().listAll()` nor a select block of its own
+ * that goes stale when appliances change.
+ *
+ * The pick is recorded as the block's input value (the appliance id) under the
+ * block's id. To act on it, register an
+ * {@link EnyoOnboardingV2ApplianceSelectHandler}: the host hands it the picked
+ * appliance, and the app links itself to it — by saving a heat pump with an
+ * `sgReadyRelays` entry or a wallbox with a `contactRelays` entry that links
+ * the app's own smart plugs — and answers with its own
+ * appliance ids, which the run binds to. Without a handler the block still
+ * works: the run takes `selected` and the pick stays readable as an input
+ * value.
+ *
+ * Unlike the device pickers it needs no network scan: the list comes from the
+ * site's appliances, not from discovery.
+ *
+ * Outcome `value`s MUST be {@link EnyoOnboardingV2ApplianceSelectOutcome}
+ * members. Route `not-found` to a step that creates the appliance itself or
+ * explains which app has to be installed first.
+ *
+ * **Give it a step of its own**, for the same reason as the other pickers.
+ * Interactive only: it cannot appear in the package's static guide.
+ *
+ * @example
+ * ```typescript
+ * onboardingV2Block.applianceSelect('heatpump', {
+ *     headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
+ *     description: t('An welche Wärmepumpe ist das Relais angeschlossen?', 'Which heat pump is the relay wired to?'),
+ *     applianceTypes: [EnyoApplianceTypeEnum.Heatpump],
+ *     outcomes: [
+ *         {id: 'ok',   value: EnyoOnboardingV2ApplianceSelectOutcome.Selected, label: t('Ausgewählt', 'Selected')},
+ *         {id: 'none', value: EnyoOnboardingV2ApplianceSelectOutcome.NotFound, label: t('Nicht dabei', 'Not listed')},
+ *     ],
+ * });
+ * ```
+ */
+export interface EnyoOnboardingV2ApplianceSelectBlock extends EnyoOnboardingV2PickerBlockBase {
+    type: EnyoOnboardingV2BlockType.ApplianceSelect;
+    /**
+     * Offer only appliances of these types (e.g. `Heatpump`, `Charger`);
+     * everything else is left out of the list and does not count towards
+     * {@link EnyoOnboardingV2PickerBlockBase.autoSelectSingleMatch}.
+     *
+     * Omit the property to offer every appliance; an **empty array** filters
+     * everything out and is a validation error.
+     */
+    applianceTypes?: EnyoApplianceTypeEnum[];
+    /**
+     * Whether the app's own appliances are offered too. Defaults to `false`:
+     * the usual pick is a device another app integrates, and the app's own
+     * relays would only clutter the list.
+     */
+    includeOwnAppliances?: boolean;
 }
 
 /**
@@ -1462,6 +1551,7 @@ export type EnyoOnboardingV2Block =
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
     | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2ApplianceSelectBlock
     | EnyoOnboardingV2SubscriptionOfferBlock
     | EnyoOnboardingV2ConsentBlock;
 
@@ -1482,6 +1572,7 @@ export type EnyoOnboardingV2InteractiveBlock =
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
     | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2ApplianceSelectBlock
     | EnyoOnboardingV2SubscriptionOfferBlock
     | EnyoOnboardingV2ConsentBlock;
 
@@ -1642,6 +1733,22 @@ export interface EnyoOnboardingV2Guide {
      * list.
      */
     requiresNetworkScan?: boolean;
+    /**
+     * The connection type this guide covers, for a package that connects in
+     * more than one way (see `EnergyAppPackageDefinition.connectionTypes`).
+     *
+     * When several apps or connection types can connect a device, the user
+     * picks one (enyo builds the choice with `findCompatibleAppOptions()`).
+     * The host then offers this guide only for runs where the user chose this
+     * connection type, and passes the choice on to the app as `connectionType`
+     * on every request of the run. A guide for a cloud login and one for a
+     * Modbus setup can so share vendor, models and start variant.
+     *
+     * Omit it for a guide that applies to every connection type of the package
+     * — the only sensible value for a package with one type. An unknown value
+     * is rejected by {@link validateOnboardingGuideV2}.
+     */
+    connectionType?: EnergyAppPackageConnectionTypeEnum;
     /** Optional translated summary shown in the library (de/en). */
     summary?: EnyoOnboardingTranslatedContent[];
     /** Library icon (defaults to `Connector`). */

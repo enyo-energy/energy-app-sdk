@@ -142,10 +142,12 @@ describe('validatePackageOnboardingGuide', () => {
         guide.steps[0].blocks.push({id: 'pick', type: 'device-select'} as never);
         guide.steps[0].blocks.push({id: 'eebus', type: 'eebus-device-select'} as never);
         guide.steps[0].blocks.push({id: 'zigbee', type: 'zigbee-pairing'} as never);
+        guide.steps[0].blocks.push({id: 'appliance', type: 'appliance-select'} as never);
         const errors = errorsOf(guide);
         expect(errors.some((e) => e.includes('device-select block "pick" is not allowed'))).toBe(true);
         expect(errors.some((e) => e.includes('eebus-device-select block "eebus" is not allowed'))).toBe(true);
         expect(errors.some((e) => e.includes('zigbee-pairing block "zigbee" is not allowed'))).toBe(true);
+        expect(errors.some((e) => e.includes('appliance-select block "appliance" is not allowed'))).toBe(true);
     });
 
     it('rejects a transition into another start variant', () => {

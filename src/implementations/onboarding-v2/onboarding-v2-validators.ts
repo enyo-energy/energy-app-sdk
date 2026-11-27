@@ -17,6 +17,7 @@
 import {
     EnyoOnboardingV2ActionKind,
     EnyoOnboardingV2DeviceSelectOutcome,
+    EnyoOnboardingV2ApplianceSelectOutcome,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2ZigbeePairOutcome,
     EnyoOnboardingV2SubscriptionOfferOutcome,
@@ -39,6 +40,7 @@ import type {
     EnyoOnboardingV2DeviceSelectBlock,
     EnyoOnboardingV2EebusDeviceSelectBlock,
     EnyoOnboardingV2ZigbeePairingBlock,
+    EnyoOnboardingV2ApplianceSelectBlock,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2Step,
     EnyoOnboardingV2Transition,
@@ -48,6 +50,8 @@ import {EnyoOauthRedirectUrlPatternEnum} from '../../types/enyo-authentication.j
 import {ENYO_ONBOARDING_V2_SETUP_FAILED_OUTCOME} from '../../types/enyo-onboarding-v2-additional-setup.js';
 import {EnyoSubscriptionModeEnum} from '../../types/enyo-subscription.js';
 import type {EnergyAppPackagePublicFile} from '../../energy-app-package-definition.js';
+import {EnergyAppPackageConnectionTypeEnum} from '../../energy-app-package-definition.js';
+import {EnyoApplianceTypeEnum} from '../../types/enyo-appliance.js';
 import type {EnergyAppPackageConsent} from '../../types/enyo-consent.js';
 import {ENYO_ONBOARDING_V2_SETUP_MAX_DURATION_MS} from '../../types/enyo-onboarding-v2-progress.js';
 import type {EnyoOnboardingV2ProgressPhase} from '../../types/enyo-onboarding-v2-progress.js';
@@ -110,6 +114,9 @@ export interface OnboardingV2ValidationResult {
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** Every {@link EnergyAppPackageConnectionTypeEnum} value. */
+const CONNECTION_TYPES: ReadonlySet<string> = new Set(Object.values(EnergyAppPackageConnectionTypeEnum));
+
 /**
  * Structural + plausibility validation of a v2 guide graph. `errors` block
  * publishing; `warnings` are advisory (e.g. unreachable step, no path to a
@@ -165,6 +172,12 @@ export function validateOnboardingGuideV2(
 
     if (!guide.startStepId || !stepIds.has(guide.startStepId)) {
         errors.push('`startStepId` must reference an existing step.');
+    }
+
+    if (guide.connectionType !== undefined && !CONNECTION_TYPES.has(guide.connectionType)) {
+        errors.push(
+            `\`connectionType\` "${String(guide.connectionType)}" is not an EnergyAppPackageConnectionTypeEnum member.`,
+        );
     }
 
     let hasCompletingExit = false;
@@ -760,6 +773,73 @@ function validateDeviceSelectOutcomes(
     }
 }
 
+/** Every {@link EnyoOnboardingV2ApplianceSelectOutcome} value. */
+const APPLIANCE_SELECT_OUTCOMES: ReadonlySet<string> = new Set(
+    Object.values(EnyoOnboardingV2ApplianceSelectOutcome),
+);
+
+/** Every {@link EnyoApplianceTypeEnum} value. */
+const APPLIANCE_TYPES: ReadonlySet<string> = new Set(Object.values(EnyoApplianceTypeEnum));
+
+/**
+ * Validates an {@link EnyoOnboardingV2ApplianceSelectBlock} beyond the shared
+ * picker rules: its outcomes and its type filter.
+ *
+ * Outcome `value`s are closed over {@link EnyoOnboardingV2ApplianceSelectOutcome};
+ * a value wired twice is an error. A missing `selected` or `not-found` branch
+ * is a warning. An empty or unknown `applianceTypes` entry is an error — an
+ * empty filter matches nothing, and an unknown type can never match.
+ *
+ * @param block - The appliance-select block being checked.
+ * @param at - Human-readable location prefix for messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateApplianceSelectBlock(
+    block: EnyoOnboardingV2ApplianceSelectBlock,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const label = `appliance-select block "${block.id}"`;
+    const values = new Set<string>();
+    for (const outcome of block.outcomes ?? []) {
+        if (!APPLIANCE_SELECT_OUTCOMES.has(outcome.value)) {
+            errors.push(
+                `${at}: ${label} has outcome value "${outcome.value}", which is not an EnyoOnboardingV2ApplianceSelectOutcome member.`,
+            );
+        } else if (values.has(outcome.value)) {
+            errors.push(`${at}: ${label} wires outcome value "${outcome.value}" more than once.`);
+        }
+        values.add(outcome.value);
+    }
+
+    if (!values.has(EnyoOnboardingV2ApplianceSelectOutcome.Selected)) {
+        warnings.push(
+            `${at}: ${label} has no "${EnyoOnboardingV2ApplianceSelectOutcome.Selected}" outcome — ` +
+                'a picked appliance would have nowhere to go.',
+        );
+    }
+    if (!values.has(EnyoOnboardingV2ApplianceSelectOutcome.NotFound)) {
+        warnings.push(
+            `${at}: ${label} has no "${EnyoOnboardingV2ApplianceSelectOutcome.NotFound}" outcome — ` +
+                'an installer whose appliance is not in the list would be stranded.',
+        );
+    }
+
+    if (block.applianceTypes && block.applianceTypes.length === 0) {
+        errors.push(
+            `${at}: ${label} has an empty \`applianceTypes\` filter, which matches no appliance — ` +
+                'omit the property to offer appliances of every type.',
+        );
+    }
+    for (const type of block.applianceTypes ?? []) {
+        if (!APPLIANCE_TYPES.has(type)) {
+            errors.push(`${at}: ${label} filters on unknown appliance type "${String(type)}".`);
+        }
+    }
+}
+
 /** Every {@link EnyoOnboardingV2EebusPairOutcome} value. */
 const EEBUS_PAIR_OUTCOMES: ReadonlySet<string> = new Set(
     Object.values(EnyoOnboardingV2EebusPairOutcome),
@@ -919,6 +999,7 @@ const DECISION_BLOCK_TYPES: ReadonlySet<string> = new Set<string>([
     EnyoOnboardingV2BlockType.DeviceSelect,
     EnyoOnboardingV2BlockType.EebusDeviceSelect,
     EnyoOnboardingV2BlockType.ZigbeePairing,
+    EnyoOnboardingV2BlockType.ApplianceSelect,
     EnyoOnboardingV2BlockType.SubscriptionOffer,
     EnyoOnboardingV2BlockType.Consent,
 ]);
@@ -929,19 +1010,22 @@ function isPickerBlock(
 ): block is
     | EnyoOnboardingV2DeviceSelectBlock
     | EnyoOnboardingV2EebusDeviceSelectBlock
-    | EnyoOnboardingV2ZigbeePairingBlock {
+    | EnyoOnboardingV2ZigbeePairingBlock
+    | EnyoOnboardingV2ApplianceSelectBlock {
     return (
         block.type === EnyoOnboardingV2BlockType.DeviceSelect ||
         block.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
-        block.type === EnyoOnboardingV2BlockType.ZigbeePairing
+        block.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
+        block.type === EnyoOnboardingV2BlockType.ApplianceSelect
     );
 }
 
 /**
  * Validates the picker blocks of a step —
  * {@link EnyoOnboardingV2DeviceSelectBlock},
- * {@link EnyoOnboardingV2EebusDeviceSelectBlock} and
- * {@link EnyoOnboardingV2ZigbeePairingBlock}.
+ * {@link EnyoOnboardingV2EebusDeviceSelectBlock},
+ * {@link EnyoOnboardingV2ZigbeePairingBlock} and
+ * {@link EnyoOnboardingV2ApplianceSelectBlock}.
  *
  * Three things are checked beyond the per-kind outcome rules:
  *
@@ -1002,6 +1086,8 @@ function validatePickerBlocks(
             }
         } else if (block.type === EnyoOnboardingV2BlockType.ZigbeePairing) {
             validateZigbeePairingBlock(block, at, errors, warnings);
+        } else if (block.type === EnyoOnboardingV2BlockType.ApplianceSelect) {
+            validateApplianceSelectBlock(block, at, errors, warnings);
         } else {
             validateEebusPairOutcomes(block, at, errors, warnings);
             if (block.deviceTypes && block.deviceTypes.length === 0) {
@@ -1106,6 +1192,7 @@ function validateAuthBlocks(
                 b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
+                b.type === EnyoOnboardingV2BlockType.ApplianceSelect ||
                 b.type === EnyoOnboardingV2BlockType.Input,
         );
         if (others.length) {
@@ -1412,6 +1499,7 @@ function validateAdditionalSetupBlocks(
                 b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
                 b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
+                b.type === EnyoOnboardingV2BlockType.ApplianceSelect ||
                 b.type === EnyoOnboardingV2BlockType.Input ||
                 b.type === EnyoOnboardingV2BlockType.Auth,
         );
@@ -1815,6 +1903,7 @@ function requiredHandleKeys(step: EnyoOnboardingV2Step): Set<string> {
             b.type === EnyoOnboardingV2BlockType.DeviceSelect ||
             b.type === EnyoOnboardingV2BlockType.EebusDeviceSelect ||
             b.type === EnyoOnboardingV2BlockType.ZigbeePairing ||
+            b.type === EnyoOnboardingV2BlockType.ApplianceSelect ||
             b.type === EnyoOnboardingV2BlockType.SubscriptionOffer ||
             b.type === EnyoOnboardingV2BlockType.Consent
         ) {

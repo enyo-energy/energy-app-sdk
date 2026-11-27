@@ -1,4 +1,5 @@
 import {EnergyAppPackageLanguage} from "../energy-app-package-definition.js";
+import type {EnergyAppPackageConnectionTypeEnum} from "../energy-app-package-definition.js";
 import type {EnyoSubscriptionBilling} from "./enyo-subscription.js";
 import type {EnyoAutomationActionTypeEnum} from "./enyo-automation.js";
 import {EnyoChargerApplianceMetadata} from "./enyo-charger-appliance.js";
@@ -238,6 +239,18 @@ export interface EnyoApplianceMetadata {
     /** Optional MQTT configuration */
     mqtt?: EnyoApplianceMqttConfig;
     connectionType: EnyoApplianceConnectionType;
+    /**
+     * The package connection type this appliance is reached through, when the
+     * app supports more than one — the one the user chose in onboarding, which
+     * the host passes in each onboarding request as `connectionType`.
+     *
+     * Set it when creating the appliance, so the app knows at runtime how to
+     * reach this appliance (one app can run a cloud appliance next to a Modbus
+     * one), and the energy manager and UI can show it. Omit for apps with a
+     * single connection type. Not to be confused with {@link connectionType},
+     * which only distinguishes a local connector from a cloud.
+     */
+    packageConnectionType?: EnergyAppPackageConnectionTypeEnum;
 }
 
 /**

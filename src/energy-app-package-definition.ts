@@ -43,10 +43,29 @@ export enum EnergyAppPackageCategory {
     /**
      * Apps that switch a dry contact (potential-free relay output, German
      * "potentialfreier Schaltkontakt", e.g. a Shelly) instead of talking to the
-     * steered device itself. Today this means steering a heat pump through its
-     * SG Ready inputs: the compatibility list names the relay, not the heat
-     * pump, and the app works with any SG Ready heat pump. The relay still
-     * shows up as a `Heatpump` appliance.
+     * steered device itself — a heat pump or a wallbox, the only appliances
+     * with such inputs. The compatibility list names the relay, not the
+     * steered device, and each relay model declares the features of the
+     * inputs it can switch: a heat pump's SG Ready inputs (`HeatpumpSgReady`,
+     * plus `HeatpumpDhwBoost`, `HeatpumpBufferTankOverheating`,
+     * `HeatpumpRoomOverheating` or `HeatpumpHeatingRodControl` for relays on
+     * the hot water, buffer tank, heating circuit or heating rod), a wallbox's
+     * enable input (`ChargingStartStop`), and the grid operator limit
+     * (`GridOperatorConsumptionLimitation`). Declare the connection type
+     * {@link EnergyAppPackageConnectionTypeEnum.DryContact} together with it.
+     *
+     * Two ways to run it:
+     * - **Linked to another app's appliance** (the usual case). The app creates
+     *   one `SmartPlug` appliance per relay channel and links it to the steered
+     *   appliance — picked with an `appliance-select` onboarding block: an
+     *   `sgReadyRelays` entry on a heat pump or a `contactRelays` entry on a
+     *   wallbox, each with its `applianceId`. The energy manager then switches
+     *   the relays.
+     * - **Standalone**, when no app owns the steered device. The app creates
+     *   the appliance of the steered type itself (a `Heatpump` with
+     *   `connectionType: SgReady` and `sgReadyRelays`, or a `Charger` with
+     *   `contactRelays`) and turns the energy manager's commands into relay
+     *   states.
      */
     DryContact = 'dry-contact',
     /**
@@ -56,6 +75,48 @@ export enum EnergyAppPackageCategory {
      */
     Vehicle = 'vehicle',
     Other = 'other',
+}
+
+/**
+ * How an Energy App reaches the device it integrates.
+ *
+ * Several packages can support the same vendor and model — a heat pump through
+ * the vendor cloud, through Modbus TCP and through an SG Ready relay, for
+ * example. The connection type is what tells them apart for the user: whether
+ * the app works without internet, what the installer has to wire or enable, how
+ * fast readings arrive. The enyo Store and onboarding list one option per
+ * package and connection type (see `findCompatibleAppOptions()`).
+ *
+ * Declared in {@link EnergyAppPackageDefinition.connectionTypes} and, where a
+ * vendor or model differs from that default, in
+ * {@link EnergyAppPackageCompatibilityVendor.connectionTypes} or
+ * {@link EnergyAppPackageCompatibilityModel.connectionTypes}.
+ * `ENERGY_APP_CONNECTION_TYPE_SCOPES` groups the values into local and cloud.
+ *
+ * The values follow the keys of {@link EnergyAppPackageOptionsDeviceDetection}
+ * where both exist, so `validatePackageCompatibility()` can check one against
+ * the other.
+ */
+export enum EnergyAppPackageConnectionTypeEnum {
+    /** The vendor's cloud API, over the internet. Pair it with the `VendorCloudAccount` requirement. */
+    Cloud = 'cloud',
+    /** Modbus TCP over the local network. */
+    ModbusTcp = 'modbus-tcp',
+    /** Modbus RTU over an RS485 cable to the enyo Box. */
+    ModbusRtu = 'modbus-rtu',
+    /** A local HTTP / REST API of the device. */
+    Http = 'http',
+    /** MQTT on the local network. */
+    Mqtt = 'mqtt',
+    /** EEBus (SHIP / SPINE) on the local network. */
+    Eebus = 'eebus',
+    /** OCPP: the charger connects to the enyo Box as its central system. */
+    Ocpp = 'ocpp',
+    /**
+     * A potential-free relay output (dry contact) wired to the device's
+     * inputs, e.g. SG Ready. The app talks to the relay, not to the device.
+     */
+    DryContact = 'dry-contact',
 }
 
 /**
@@ -574,6 +635,16 @@ export interface EnergyAppPackageCompatibilityModel {
      * for a device that works with restrictions.
      */
     limitations?: EnergyAppModelLimitationEnum[];
+    /**
+     * Optional connection types for this model, when they differ from its
+     * vendor's ({@link EnergyAppPackageCompatibilityVendor.connectionTypes}) or
+     * the package's ({@link EnergyAppPackageDefinition.connectionTypes}) — for
+     * example Modbus TCP for one series and a local HTTP API for another.
+     *
+     * Replaces the inherited list as a whole. Omit it when the inherited list
+     * fits; `getEffectiveConnectionTypes()` resolves which list applies.
+     */
+    connectionTypes?: EnergyAppPackageConnectionTypeEnum[];
 }
 
 /**
@@ -618,6 +689,16 @@ export interface EnergyAppPackageCompatibilityVendor {
      * be offered for an explicitly selected model.
      */
     defaultEnergyApp?: boolean;
+    /**
+     * Optional connection types for this vendor's devices, when they differ
+     * from the package's ({@link EnergyAppPackageDefinition.connectionTypes}).
+     * A model can override it again with
+     * {@link EnergyAppPackageCompatibilityModel.connectionTypes}.
+     *
+     * Replaces the inherited list as a whole. Omit it when the package's list
+     * fits.
+     */
+    connectionTypes?: EnergyAppPackageConnectionTypeEnum[];
 }
 
 /**
@@ -957,6 +1038,33 @@ export interface EnergyAppPackageDefinition {
      */
     compatibility: EnergyAppPackageCompatibilityVendor[];
     /**
+     * How the app connects to its devices — the default for every vendor and
+     * model in {@link compatibility}, which can override it per vendor or
+     * model.
+     *
+     * When several packages support the same model, enyo lets the user choose
+     * between them by connection type (local Modbus or vendor cloud, say) and
+     * shows each option's features, requirements and limitations. List every
+     * type the app supports; with more than one, the app is offered once per
+     * type.
+     *
+     * Optional for now, but `validatePackageCompatibility()` warns while no
+     * connection type is declared anywhere, because enyo cannot tell the
+     * package apart from others for the same device.
+     *
+     * @example
+     * ```typescript
+     * connectionTypes: [EnergyAppPackageConnectionTypeEnum.ModbusTcp],
+     * compatibility: [{vendorName: 'Daikin', models: [
+     *     {modelName: 'Altherma 3 H', features: [...]},
+     *     // This series has no Modbus interface; the app uses its local HTTP API
+     *     {modelName: 'Altherma 4 H', features: [...],
+     *      connectionTypes: [EnergyAppPackageConnectionTypeEnum.Http]},
+     * ]}],
+     * ```
+     */
+    connectionTypes?: EnergyAppPackageConnectionTypeEnum[];
+    /**
      * Files shipped with this package, declared as local paths, uploaded by the
      * enyo CLI on release and served publicly from then on.
      *
@@ -1025,7 +1133,7 @@ export interface EnergyAppPackageDefinition {
      * | `startVariant` is {@link EnyoOnboardingV2StartVariant.ManualSetup} | The document describes a manual setup, nothing else. |
      * | `requiresNetworkScan: false` is set explicitly | The default is `true`, and a printed manual has no scan to rely on. |
      * | No `network-scan` or `device-test` action blocks | Both act on devices found by a scan. |
-     * | No `device-select` or `eebus-device-select` blocks | Both pick from devices the host discovered. |
+     * | No `device-select`, `eebus-device-select` or `appliance-select` blocks | They pick from devices the host discovered or appliances that exist on a site. |
      * | No `dynamic` blocks | Their value is resolved by the app at runtime and does not exist when the PDF is rendered. |
      * | No `start-variant` targets | They lead into another, scan-based guide that is not part of the document. |
      * | No `applianceId`, `vendorId` or `modelIds` | A document is not bound to an appliance, and enyo derives vendor and models from the package. |

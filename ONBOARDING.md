@@ -1842,6 +1842,78 @@ appliance you create, and link back with `useZigbee().updateDevice(ieeeAddress,
 As with the other pickers, give the block a step of its own, and lead a retry
 into a *second* pairing step rather than back onto the same one.
 
+### Picking an existing appliance (`appliance-select`)
+
+Some apps steer a device through something other than the device itself — a
+dry-contact relay (a Shelly, say) wired to a heat pump's SG Ready inputs or a
+wallbox's enable input. The app owns the relay, but only the installer knows
+which heat pump or wallbox it is wired to. This block lists the appliances that
+**already exist on the site** (usually created by other apps) and lets the
+installer pick one. The app needs no `listAll()` permission for it.
+
+```typescript
+onboardingV2Block.applianceSelect('heatpump', {
+  headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
+  description: t('An welche Wärmepumpe ist das Relais angeschlossen?', 'Which heat pump is the relay wired to?'),
+  applianceTypes: [EnyoApplianceTypeEnum.Heatpump], // omit for every type; [] is an error
+  includeOwnAppliances: false,                       // default: only other apps' appliances
+  outcomes: [
+    {id: 'ok',   value: EnyoOnboardingV2ApplianceSelectOutcome.Selected, label: t('Ausgewählt', 'Selected')},
+    {id: 'none', value: EnyoOnboardingV2ApplianceSelectOutcome.NotFound, label: t('Nicht dabei', 'Not listed')},
+  ],
+})
+```
+
+**No scan needed.** The list comes from the site's appliances, not from discovery.
+
+**Outcomes.** `selected` — the installer picked an appliance, recorded as the
+block's input value; `not-found` — nothing matched, or theirs was not listed.
+Route `not-found` to a step that creates the appliance itself or explains which
+app has to be installed first. Missing branches are warned about; unknown
+outcome values and unknown or empty `applianceTypes` are errors.
+
+Linking is the app's job, through a separate handler. It gets the picked
+appliance and answers with its own appliances, which the run binds to:
+
+```typescript
+await energyApp.useOnboardingV2().registerApplianceSelectHandler(async (request) => {
+  await linkRelay(request.appliance, myRelayId); // add an sgReadyRelays / contactRelays entry with applianceId
+  return {requestId: request.requestId, applianceIds: [myRelayId]};
+});
+```
+
+Change only what a second app may change on someone else's appliance: an
+`sgReadyRelays` entry on a heat pump or a `contactRelays` entry on a wallbox
+whose `applianceId` names one of your own appliances. Throwing, or answering with `[]`, leaves the run on `selected` but
+unbound. Like every picker, the block owns its step, and it cannot appear in the
+package's static guide.
+
+### Guides per connection type (`connectionType`)
+
+A package that connects in more than one way (`connectionTypes` in the package
+definition, e.g. cloud and Modbus TCP) is offered once per connection type, and
+the user picks one. Two things carry that choice into onboarding:
+
+- **`connectionType` on a guide.** The host offers the guide only for runs where
+  the user chose that type, so a cloud-login guide and a Modbus guide can share
+  vendor, models and start variant. Omit it for a guide that fits every type.
+  An unknown value is a validation error.
+- **`connectionType` on every request of the run** — dynamic, additional-setup,
+  input-validation, device-select, eebus-device-select, zigbee-pairing and
+  appliance-select requests. It is absent when the package declares no
+  connection type or the run did not start from such a choice. Record it on the
+  appliances the app creates (`metadata.packageConnectionType`), so the app
+  knows later how each appliance is connected.
+
+```typescript
+await energyApp.useOnboardingV2().registerAdditionalSetupHandler(async (request) => {
+  if (request.connectionType === EnergyAppPackageConnectionTypeEnum.Cloud) {
+    return connectCloud(request);
+  }
+  return connectModbus(request);
+});
+```
+
 ### Skipping the host's network scan (`requiresNetworkScan`)
 
 `requiresNetworkScan` defaults to `true`: before entering the guide, the host scans

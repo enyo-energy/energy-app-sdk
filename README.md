@@ -2867,6 +2867,19 @@ await onboarding.registerEebusDeviceSelectHandler(async (request) => ({
 
 On an `offline-reconnect` run the request carries the appliance that went offline — re-point it and answer with the same `applianceId` rather than creating a second one. See [ONBOARDING.md](./ONBOARDING.md#picking-the-device-device-select).
 
+`appliance-select` lists the appliances that already exist on the site, filtered by `applianceTypes`, so a dry-contact app can learn which heat pump or wallbox its relay is wired to without the `listAll()` permission. Outcomes are `EnyoOnboardingV2ApplianceSelectOutcome` (`selected` / `not-found`). The handler gets the picked appliance, links the app's own smart plug to it (an `sgReadyRelays` entry on a heat pump or a `contactRelays` entry on a wallbox) and answers with the app's appliance ids:
+
+```typescript
+await onboarding.registerApplianceSelectHandler(async (request) => {
+    await linkRelay(request.appliance, myPlugId);
+    return { requestId: request.requestId, applianceIds: [myPlugId] };
+});
+```
+
+See [ONBOARDING.md](./ONBOARDING.md#picking-an-existing-appliance-appliance-select).
+
+For a package with several `connectionTypes`, a guide can declare the `connectionType` it covers; the host offers it only for runs where the user chose that type. Every request of a run (dynamic, additional-setup, validation, device-select, EEBUS, Zigbee, appliance-select) carries the chosen `connectionType`; record it on the appliances you create as `metadata.packageConnectionType`. See [ONBOARDING.md](./ONBOARDING.md#guides-per-connection-type-connectiontype).
+
 Your answer wins over the host's own resolution, so a wrong value is worse than none — the installer pastes it into a charger and it fails minutes later as an `ocpp-connect` timeout. `validateOnboardingV2DynamicResult()` catches the copy-target mistakes (whitespace, a non-absolute URL, a plaintext scheme).
 
 Each guide declares the `startVariant` it applies to (`device-not-found`, `device-found-config`, `manual-setup`, `maintenance`, `offline-reconnect`). It must **not** declare `vendorId` or `modelIds`: enyo attaches those bindings when the guide is registered, an app-supplied value is overwritten, and `validateOnboardingGuideV2()` warns about it. See [ONBOARDING.md](./ONBOARDING.md#serving-guides-the-host-pulls-the-app-never-publishes) for the full v2 model.
@@ -3197,6 +3210,12 @@ Publish changes on `ApplianceStateUpdateV1` (`data.batteryState`) when the level
 - **`low` is the load-bearing field, not `levelPercent`.** A primary cell's voltage barely moves until it is nearly flat, so many devices report only a coarse level or none at all. Set `low` from whatever the device actually says rather than leaving a consumer to pick a threshold it cannot calibrate.
 - **Declare the feature even before the first reading.** It is how a maintenance view knows to watch for a flat battery, and it keeps a device whose reporting is intermittent from appearing and disappearing from that list.
 - **Always set `measuredAtIso`.** These devices report rarely, so a level without an age says nothing about whether the device is still alive — which is the question a low battery is usually asked alongside.
+
+### Connection type of an appliance
+
+An app that supports several connection types learns the one the user
+chose from the `connectionType` of each onboarding request. It records it on the appliances it creates, in
+`metadata.packageConnectionType`, so it knows at runtime how to reach each appliance.
 
 ### Wireless signal quality
 
@@ -3727,7 +3746,7 @@ Paper cannot scan the network or ask the app anything, so the guide must describ
 
 - `startVariant: EnyoOnboardingV2StartVariant.ManualSetup` and `requiresNetworkScan: false`
 - no `network-scan` / `device-test` actions, no `device-select` / `eebus-device-select` /
-  `zigbee-pairing` blocks, no `dynamic` blocks, no `start-variant` targets
+  `zigbee-pairing` / `appliance-select` blocks, no `dynamic` blocks, no `start-variant` targets
 - no `applianceId`, `vendorId` or `modelIds`
 - plain JSON only, and every image block `file` declared in `files`
 
@@ -3900,6 +3919,52 @@ of the grouping. `validatePackageCompatibility()` additionally reports:
 - **warnings:** a value listed twice, a feature that does not fit the model's category (or the
   package's, when the model has none), features on a model declared not compatible, and a
   limitation that restricts none of the declared features.
+
+### Connection types
+
+Several apps can support the same device: a heat pump through the vendor cloud, through Modbus TCP
+and through a dry-contact relay on its SG Ready inputs. `connectionTypes`
+(`EnergyAppPackageConnectionTypeEnum`) tells them apart, so the user can choose between them.
+
+| Value | Connects through |
+|---|---|
+| `cloud` | The vendor's cloud API (pair it with the `VendorCloudAccount` requirement) |
+| `modbus-tcp` / `modbus-rtu` | Modbus over the network / an RS485 cable to the box |
+| `http` / `mqtt` / `eebus` | A local HTTP API / MQTT / EEBus |
+| `ocpp` | The charger connects to the box as its central system |
+| `dry-contact` | A potential-free relay wired to the device's inputs (e.g. SG Ready) |
+
+Declare the list on the package. A vendor or model that connects differently declares its own
+list, which replaces the inherited one; `getEffectiveConnectionTypes(definition, vendor, model)`
+resolves which list applies. An app with several types is offered once per type.
+
+```typescript
+connectionTypes: [EnergyAppPackageConnectionTypeEnum.ModbusTcp],
+compatibility: [{vendorName: 'Daikin', models: [
+    {modelName: 'Altherma 3 H', features: [F.HeatpumpDhwBoost]},
+    // No Modbus on this series: the app uses its local HTTP API
+    {modelName: 'Altherma 4 H', features: [F.HeatpumpDhwBoost],
+     connectionTypes: [EnergyAppPackageConnectionTypeEnum.Http]},
+]}],
+```
+
+`findCompatibleAppOptions(definitions, {vendorName, modelName?, year?})` is how the enyo Store and
+onboarding build the choice: one option per package and connection type, with the model's
+features, requirements and limitations and the `scope` (`local` / `cloud`, from
+`ENERGY_APP_CONNECTION_TYPE_SCOPES`). The options are ordered:
+
+1. compatible before not compatible;
+2. by `defaultEnergyApp` when only the vendor is known;
+3. by number of declared features;
+4. local before cloud.
+
+`validatePackageCompatibility()` rejects unknown values and empty lists. It warns when:
+
+- no connection type is declared anywhere;
+- an override repeats the inherited list;
+- `cloud` and `VendorCloudAccount` do not come together;
+- a `deviceDetection` method (Modbus, HTTP, OCPP, EEBus, MQTT) has no matching connection type;
+- the `DryContact` category is used without the `dry-contact` connection type.
 
 ## Firmware Update Registry
 
@@ -4447,24 +4512,60 @@ sgReadyRelays: [
 ]
 ```
 
+**Relays owned by another app.** A relay can be an appliance of another energy app — e.g. a Shelly SG Ready
+contact on the hot water input of a heat pump integrated through the vendor cloud. That app adds the relay entry to
+the heat pump with `applianceId` set to its own appliance. The energy manager then switches that appliance with
+`SetSmartPlugSwitchV1` and reads the relay state from it. Every relay in the list is its own entry with its own
+`applianceId`:
+
+```typescript
+sgReadyRelays: [
+    { index: 0, function: EnyoHeatpumpSgReadyFunctionEnum.DhwHeatpump, applianceId: 'shelly-sg-ready-dhw',
+      supportedStates: [EnyoHeatpumpSgReadyStateEnum.Normal, EnyoHeatpumpSgReadyStateEnum.Recommended] },
+    { index: 1, function: EnyoHeatpumpSgReadyFunctionEnum.Heating, applianceId: 'shelly-sg-ready-7',
+      supportedStates: [EnyoHeatpumpSgReadyStateEnum.Normal, EnyoHeatpumpSgReadyStateEnum.Recommended] },
+]
+```
+
+Only the app owning the relay appliance adds, changes and removes such an entry, by saving the heat pump with
+`useAppliances().save()`. The platform keeps it when the heat pump's own app saves its relays again.
+
 `validateHeatpumpAdvancedMetadata` checks the relays too. It rejects duplicate indexes, unknown functions or
 states, and an `activeState` that is not in `supportedStates`. It warns about unknown zones, two relays with the
 same function on one zone, a relay without `normal`, and a `dhw-heating-rod` relay when `additionalDevices` has
 no `HeatingRod`.
 
-**Steering through a dry contact.** An app that switches the SG Ready inputs with an external potential-free
-relay (e.g. a Shelly) instead of talking to the heat pump uses the package category
-`EnergyAppPackageCategory.DryContact`. Its compatibility list names the relay, not the heat pump, because the app
-works with any SG Ready heat pump, and each relay model declares `EnergyAppModelFeatureEnum.HeatpumpSgReady`. The
-app still creates a `Heatpump` appliance, with `connectionType: EnyoHeatpumpApplianceConnectionTypeEnum.SgReady`
-and its relays in `sgReadyRelays`.
+**Steering through a dry contact.** An app that switches the inputs with an external potential-free relay (e.g. a
+Shelly) instead of talking to the device uses the package category `EnergyAppPackageCategory.DryContact` and the
+connection type `EnergyAppPackageConnectionTypeEnum.DryContact`. Its compatibility list names the relay, not the
+steered device, because the app works with any SG Ready heat pump. Each relay model declares the features of the
+inputs it can switch: `HeatpumpSgReady`, plus `HeatpumpDhwBoost`, `HeatpumpBufferTankOverheating` or
+`HeatpumpRoomOverheating` for relays on the hot water, buffer tank or heating circuit, and
+`GridOperatorConsumptionLimitation` when the app blocks the heat pump for the grid operator. The same category
+covers relays on a wallbox's enable or power reduction input (`ChargingStartStop`,
+`GridOperatorConsumptionLimitation`). Heat pumps and wallboxes are the only appliances with such inputs.
 
 ```typescript
 categories: [EnergyAppPackageCategory.DryContact],
+connectionTypes: [EnergyAppPackageConnectionTypeEnum.DryContact],
 compatibility: [{vendorName: 'Shelly', models: [
-    {modelName: 'Shelly Pro 2', features: [F.HeatpumpSgReady]},
+    {modelName: 'Shelly Pro 2', features: [F.HeatpumpSgReady, F.HeatpumpDhwBoost, F.GridOperatorConsumptionLimitation]},
 ]}],
 ```
+
+Such an app runs in one of two ways:
+
+1. **Linked to another app's appliance** (the usual case).
+   1. The app creates one `SmartPlug` appliance per relay channel.
+   2. An `appliance-select` onboarding block lets the installer pick the heat pump or wallbox. The host hands the
+      pick to the app's appliance-select handler, so the app needs no `listAll()` permission.
+   3. The app asks how each channel is wired, then saves the picked appliance with an entry that links its plugs:
+      an `sgReadyRelays` entry on a heat pump or a `contactRelays` entry on a wallbox (see
+      [WallboxIntegrationEnergyApp](#wallboxintegrationenergyapp)), each with its `applianceId`.
+   4. The energy manager switches the plugs. To unlink, the app removes its entry again.
+2. **Standalone**, when no app owns the steered device. The app creates the appliance itself — a `Heatpump` with
+   `connectionType: EnyoHeatpumpApplianceConnectionTypeEnum.SgReady` and its `sgReadyRelays`, or a `Charger` with
+   its `contactRelays` — and turns the energy manager's commands into relay states.
 
 ### WallboxIntegrationEnergyApp
 
@@ -4502,6 +4603,31 @@ class MyWallbox extends WallboxIntegrationEnergyApp {
     // ... other handlers
 }
 ```
+
+
+**Contact relays.** A wallbox can declare its potential-free control inputs in `metadata.charger.contactRelays`.
+This is the wallbox counterpart of the heat pump's `sgReadyRelays`. Each relay has a `function`:
+
+- `charging-enable`: the enable (release) input. While it is active the wallbox may charge.
+- `power-reduction`: while it is active the wallbox charges with at most `limitKw`, e.g. for §14a EnWG.
+
+`activeWhenOpen: true` marks a normally closed input. The wallbox's own app reports `active`. A smart plug of another
+app links itself with `applianceId`, e.g. a Shelly on a wallbox without a network interface. The energy manager
+switches the plug with `SetSmartPlugSwitchV1` (plug on closes the contact) and reads the state from it. Ownership
+works as for SG Ready relays owned by another app.
+
+```typescript
+contactRelays: [
+    { index: 0, function: EnyoChargerContactRelayFunctionEnum.ChargingEnable, name: 'EN', applianceId: 'shelly-ch-0' },
+    { index: 1, function: EnyoChargerContactRelayFunctionEnum.PowerReduction, limitKw: 4.2, applianceId: 'shelly-ch-1' },
+]
+```
+
+`validateChargerContactRelays()` (or `assertValidChargerContactRelays`) checks the relays:
+
+- **Errors:** an invalid or duplicate `index`, an unknown `function`, `limitKw` missing on `power-reduction` or set
+  on `charging-enable`, an empty `applianceId`, or one plug linked twice.
+- **Warnings:** two relays with the same function, and `active` on a relay linked to a plug.
 
 ### StorageIntegrationEnergyApp
 

@@ -14,6 +14,7 @@ import type {EnyoOnboardingV2ValidationHandler} from '../types/enyo-onboarding-v
 import type {EnyoOnboardingV2DeviceSelectHandler} from '../types/enyo-onboarding-v2-device-select.js';
 import type {EnyoOnboardingV2EebusDeviceSelectHandler} from '../types/enyo-onboarding-v2-eebus-device-select.js';
 import type {EnyoOnboardingV2ZigbeePairingHandler} from '../types/enyo-onboarding-v2-zigbee-pairing.js';
+import type {EnyoOnboardingV2ApplianceSelectHandler} from '../types/enyo-onboarding-v2-appliance-select.js';
 import type {EnyoOnboardingV2SetupProgress} from '../types/enyo-onboarding-v2-progress.js';
 
 /**
@@ -653,4 +654,36 @@ export interface EnergyAppOnboardingV2 {
      * @returns Promise that resolves once the handler is removed
      */
     deregisterZigbeePairingHandler(): Promise<void>;
+
+    /**
+     * Registers the handler the host calls once an installer has picked an
+     * existing appliance in an {@link EnyoOnboardingV2ApplianceSelectBlock}, so
+     * the app can link itself to it and hand back its own appliance ids.
+     *
+     * Made for apps that steer a device through a relay rather than the device
+     * itself: the installer picks the heat pump or wallbox the relay is wired
+     * to, and the handler adds an `sgReadyRelays` (heat pump) or
+     * `contactRelays` (wallbox) entry to that appliance that links the app's
+     * own smart plugs. The
+     * host awaits the answer and binds the run to the returned appliances.
+     *
+     * Optional. Without a handler the block still works — the run takes its
+     * `selected` branch and the pick stays readable as the block's input value
+     * — but nothing is linked.
+     *
+     * One handler serves every appliance-select block across all of this app's
+     * guides. Registering again replaces the previous one.
+     *
+     * @param handler - Called with the picked appliance; answers with the app's linked appliance ids
+     * @returns Promise that resolves once the handler is registered
+     */
+    registerApplianceSelectHandler(handler: EnyoOnboardingV2ApplianceSelectHandler): Promise<void>;
+
+    /**
+     * Removes the registered appliance-select handler. Picks then link nothing,
+     * as if no handler had ever been registered. Links made earlier stay.
+     *
+     * @returns Promise that resolves once the handler is removed
+     */
+    deregisterApplianceSelectHandler(): Promise<void>;
 }

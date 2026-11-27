@@ -7,6 +7,7 @@ import {
     EnyoOnboardingV2DeviceSelection,
     EnyoOnboardingV2EebusPairOutcome,
     EnyoOnboardingV2ZigbeePairOutcome,
+    EnyoOnboardingV2ApplianceSelectOutcome,
     EnyoOnboardingV2SubscriptionOfferOutcome,
     EnyoOnboardingV2InputValueType,
     EnyoOnboardingV2DeviceSelectOutcome,
@@ -27,6 +28,8 @@ import {EnyoOauthRedirectUrlPatternEnum} from '../../../types/enyo-authenticatio
 import {EnyoSubscriptionModeEnum} from '../../../types/enyo-subscription.js';
 import {EnyoEebusDeviceTypeEnum} from '../../../types/enyo-eebus.js';
 import {EnyoNetworkDeviceDetectedAtEnum} from '../../../types/enyo-network-device.js';
+import {EnyoApplianceTypeEnum} from '../../../types/enyo-appliance.js';
+import {EnergyAppPackageConnectionTypeEnum} from '../../../energy-app-package-definition.js';
 import {
     defineOnboardingGuideV2,
     onboardingV2Block,
@@ -1155,6 +1158,112 @@ describe('zigbee-pairing blocks', () => {
         const guide = zigbeeGuide(ALL);
         guide.steps[0]!.transitions.pop();
         expect(validateOnboardingGuideV2(guide).ok).toBe(false);
+    });
+});
+
+describe('appliance-select blocks', () => {
+    /**
+     * A scan-free guide whose single step picks an existing appliance, wiring
+     * `values` as its outcomes and merging `extra` into the block.
+     */
+    function applianceGuide(
+        values: string[],
+        extra: Record<string, unknown> = {},
+    ): EnyoOnboardingV2Guide {
+        return defineOnboardingGuideV2({
+            title: t('Relais zuordnen', 'Assign the relay'),
+            startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+            requiresNetworkScan: false,
+            startStepId: 's1',
+            steps: [
+                {
+                    id: 's1',
+                    name: 'pick-heatpump',
+                    title: t('Wärmepumpe', 'Heat pump'),
+                    blocks: [
+                        onboardingV2Block.applianceSelect('a1', {
+                            headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
+                            outcomes: values.map((value, i) => ({id: `h${i}`, value, label: t(value, value)})),
+                            ...extra,
+                        }),
+                    ],
+                    transitions: values.map((_, i) =>
+                        onOutcomeV2('a1', `h${i}`, i === 0 ? onboardingV2Target.success() : onboardingV2Target.support()),
+                    ),
+                },
+            ],
+        });
+    }
+
+    const ALL = [EnyoOnboardingV2ApplianceSelectOutcome.Selected, EnyoOnboardingV2ApplianceSelectOutcome.NotFound];
+
+    it('accepts both outcomes wired, without a network scan', () => {
+        const result = validateOnboardingGuideV2(
+            applianceGuide(ALL, {applianceTypes: [EnyoApplianceTypeEnum.Heatpump], includeOwnAppliances: false}),
+        );
+        expect(result).toEqual({ok: true, errors: [], warnings: []});
+    });
+
+    it('rejects an outcome value outside the enum and a duplicated value', () => {
+        const bad = validateOnboardingGuideV2(applianceGuide([EnyoOnboardingV2ApplianceSelectOutcome.Selected, 'paired']));
+        expect(bad.errors.some((e) => e.includes('EnyoOnboardingV2ApplianceSelectOutcome'))).toBe(true);
+        const dup = validateOnboardingGuideV2(applianceGuide([
+            EnyoOnboardingV2ApplianceSelectOutcome.Selected, EnyoOnboardingV2ApplianceSelectOutcome.Selected,
+        ]));
+        expect(dup.errors.some((e) => e.includes('more than once'))).toBe(true);
+    });
+
+    it('warns when the not-found branch is missing', () => {
+        const result = validateOnboardingGuideV2(applianceGuide([EnyoOnboardingV2ApplianceSelectOutcome.Selected]));
+        expect(result.warnings.some((w) => w.includes('"not-found" outcome'))).toBe(true);
+    });
+
+    it('rejects an empty or unknown applianceTypes filter', () => {
+        const empty = validateOnboardingGuideV2(applianceGuide(ALL, {applianceTypes: []}));
+        expect(empty.errors.some((e) => e.includes('empty `applianceTypes` filter'))).toBe(true);
+        const unknown = validateOnboardingGuideV2(applianceGuide(ALL, {applianceTypes: ['Toaster']}));
+        expect(unknown.errors.some((e) => e.includes('unknown appliance type "Toaster"'))).toBe(true);
+    });
+
+    it('rejects sharing the step with another decision block', () => {
+        const guide = applianceGuide(ALL);
+        guide.steps[0]!.blocks.push(onboardingV2Block.choice('c1', [{id: 'x', label: t('X', 'X')}]));
+        guide.steps[0]!.transitions.push(onOptionV2('c1', 'x', onboardingV2Target.support()));
+        const {ok, errors} = validateOnboardingGuideV2(guide);
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('other decision block'))).toBe(true);
+    });
+
+    it('requires a transition per outcome', () => {
+        const guide = applianceGuide(ALL);
+        guide.steps[0]!.transitions.pop();
+        expect(validateOnboardingGuideV2(guide).ok).toBe(false);
+    });
+});
+
+describe('guide connectionType', () => {
+    /** A minimal valid guide with the given connection type. */
+    const guideWith = (connectionType: unknown): EnyoOnboardingV2Guide => defineOnboardingGuideV2({
+        title: t('Cloud-Login', 'Cloud login'),
+        startVariant: EnyoOnboardingV2StartVariant.ManualSetup,
+        requiresNetworkScan: false,
+        connectionType: connectionType as EnergyAppPackageConnectionTypeEnum,
+        startStepId: 's1',
+        steps: [{
+            id: 's1', name: 'intro', title: t('Start', 'Start'),
+            blocks: [onboardingV2Block.text('x', t('Hallo', 'Hello'))],
+            transitions: [onContinueV2(onboardingV2Target.success())],
+        }],
+    });
+
+    it('accepts a known connection type', () => {
+        expect(validateOnboardingGuideV2(guideWith(EnergyAppPackageConnectionTypeEnum.Cloud)).ok).toBe(true);
+    });
+
+    it('rejects an unknown connection type', () => {
+        const {ok, errors} = validateOnboardingGuideV2(guideWith('carrier-pigeon'));
+        expect(ok).toBe(false);
+        expect(errors.some((e) => e.includes('`connectionType` "carrier-pigeon"'))).toBe(true);
     });
 });
 

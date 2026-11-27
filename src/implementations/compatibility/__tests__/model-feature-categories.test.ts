@@ -35,8 +35,16 @@ describe('getModelFeaturesForCategory', () => {
         ]);
     });
 
-    it('lists only SG Ready for a dry-contact relay', () => {
-        expect(getModelFeaturesForCategory(EnergyAppPackageCategory.DryContact)).toEqual([F.HeatpumpSgReady]);
+    it('lists the switchable inputs for a dry-contact relay', () => {
+        expect(getModelFeaturesForCategory(EnergyAppPackageCategory.DryContact)).toEqual([
+            F.ChargingStartStop,
+            F.HeatpumpDhwBoost,
+            F.HeatpumpSgReady,
+            F.HeatpumpBufferTankOverheating,
+            F.HeatpumpRoomOverheating,
+            F.HeatpumpHeatingRodControl,
+            F.GridOperatorConsumptionLimitation,
+        ]);
     });
 
     it('returns nothing for a category without model features', () => {

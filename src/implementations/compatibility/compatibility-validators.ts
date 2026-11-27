@@ -18,6 +18,7 @@
 import {
     EnergyAppPackageCategory,
     EnergyAppPackageCompatibilityStatus,
+    EnergyAppPackageConnectionTypeEnum,
 } from '../../energy-app-package-definition.js';
 import {
     EnergyAppModelFeatureEnum,
@@ -28,12 +29,27 @@ import {
     ENERGY_APP_MODEL_FEATURE_CATEGORIES,
     ENERGY_APP_MODEL_LIMITATION_FEATURES,
 } from './model-feature-categories.js';
+import {normalizeCompatibilityName} from './compatibility-names.js';
+import {getEffectiveConnectionTypes} from './connection-types.js';
 import type {
     EnergyAppPackageCompatibilityModel,
     EnergyAppPackageCompatibilityVendor,
     EnergyAppPackageCompatibilityYearRange,
     EnergyAppPackageDefinition,
+    EnergyAppPackageOptionsDeviceDetection,
 } from '../../energy-app-package-definition.js';
+
+/**
+ * Device detection methods and the connection type each one implies: a package
+ * that detects devices over Modbus should declare it connects over Modbus TCP.
+ */
+const DETECTION_CONNECTION_TYPES: Readonly<Partial<Record<keyof EnergyAppPackageOptionsDeviceDetection, EnergyAppPackageConnectionTypeEnum>>> = {
+    modbus: EnergyAppPackageConnectionTypeEnum.ModbusTcp,
+    http: EnergyAppPackageConnectionTypeEnum.Http,
+    ocpp: EnergyAppPackageConnectionTypeEnum.Ocpp,
+    eebus: EnergyAppPackageConnectionTypeEnum.Eebus,
+    mqtt: EnergyAppPackageConnectionTypeEnum.Mqtt,
+};
 
 /**
  * Earliest year accepted in a {@link EnergyAppPackageCompatibilityYearRange}.
@@ -94,7 +110,7 @@ export interface PackageCompatibilityValidationResult {
 
 /** The parts of a package definition the compatibility list is validated against. */
 export type PackageCompatibilitySource = Pick<EnergyAppPackageDefinition, 'compatibility'> &
-    Partial<Pick<EnergyAppPackageDefinition, 'categories'>>;
+    Partial<Pick<EnergyAppPackageDefinition, 'categories' | 'connectionTypes' | 'options'>>;
 
 /** Options for {@link validatePackageCompatibility}. */
 export interface PackageCompatibilityValidationOptions {
@@ -110,7 +126,16 @@ export interface PackageCompatibilityValidationOptions {
  * Validates a package's declared vendors and models: names present and unique,
  * year ranges well-formed and plausible, no model declared twice for
  * overlapping years, and features, requirements and limitations known,
- * consistent and fitting the model's category.
+ * consistent and fitting the model's category, and connection types known and
+ * consistent with the requirements and device detection.
+ *
+ * Connection types ({@link EnergyAppPackageDefinition.connectionTypes}, and the
+ * vendor and model overrides): an unknown value or an empty list is an error.
+ * Warnings: no connection type declared anywhere; an override that repeats the
+ * inherited list; `cloud` without the `VendorCloudAccount` requirement or that
+ * requirement without `cloud`; a device detection method (Modbus, HTTP, OCPP,
+ * EEBus, MQTT) whose connection type is declared nowhere; and the
+ * `DryContact` category without the `dry-contact` connection type.
  *
  * Model names are compared case-insensitively, since a customer cannot tell
  * "ID.3" from "id.3" apart. The same model name may appear more than once for
@@ -144,6 +169,9 @@ export function validatePackageCompatibility(
     const maxYear = (options.now ?? new Date()).getFullYear() + COMPATIBILITY_MAX_YEARS_AHEAD;
     const categories = definition.categories ?? [];
     const vendorNames = new Map<string, number>();
+    const declaredTypes = new Set<EnergyAppPackageConnectionTypeEnum>(
+        validateConnectionTypeList(definition.connectionTypes, 'connectionTypes', errors, warnings),
+    );
 
     compatibility.forEach((vendor, vendorIndex) => {
         const at = `compatibility[${vendorIndex}] (${vendor?.vendorName || '?'})`;
@@ -151,7 +179,7 @@ export function validatePackageCompatibility(
         if (typeof vendor?.vendorName !== 'string' || vendor.vendorName.trim() === '') {
             errors.push(`${at}: vendorName must be a non-empty string.`);
         } else {
-            const key = normalizeName(vendor.vendorName);
+            const key = normalizeCompatibilityName(vendor.vendorName);
             const first = vendorNames.get(key);
             if (first !== undefined) {
                 errors.push(`${at}: duplicate vendor — already declared at compatibility[${first}]. Merge the model lists.`);
@@ -166,9 +194,163 @@ export function validatePackageCompatibility(
         }
 
         validateModels(vendor, at, categories, maxYear, errors, warnings);
+        validateVendorConnectionTypes(definition, vendor, at, declaredTypes, errors, warnings);
     });
 
+    validatePackageConnectionTypes(definition, categories, declaredTypes, warnings);
+
     return {ok: errors.length === 0, errors, warnings};
+}
+
+/**
+ * Validates the connection types of one vendor and its models, and checks each
+ * model's effective types against its `VendorCloudAccount` requirement.
+ *
+ * @param definition - The package, for the inherited connection types.
+ * @param vendor - The vendor entry.
+ * @param vendorAt - Human-readable location of the vendor, used in messages.
+ * @param declaredTypes - Collector for every connection type declared anywhere.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateVendorConnectionTypes(
+    definition: PackageCompatibilitySource,
+    vendor: EnergyAppPackageCompatibilityVendor,
+    vendorAt: string,
+    declaredTypes: Set<EnergyAppPackageConnectionTypeEnum>,
+    errors: string[],
+    warnings: string[],
+): void {
+    const vendorTypes = validateConnectionTypeList(vendor.connectionTypes, `${vendorAt}: connectionTypes`, errors, warnings);
+    vendorTypes.forEach((type) => declaredTypes.add(type));
+    if (vendor.connectionTypes !== undefined && sameTypes(vendor.connectionTypes, definition.connectionTypes)) {
+        warnings.push(`${vendorAt}: connectionTypes repeats the package's list — omit it.`);
+    }
+
+    vendor.models.forEach((model, modelIndex) => {
+        const at = `${vendorAt}.models[${modelIndex}] (${model?.modelName || '?'})`;
+        validateConnectionTypeList(model?.connectionTypes, `${at}: connectionTypes`, errors, warnings)
+            .forEach((type) => declaredTypes.add(type));
+        if (model?.connectionTypes !== undefined &&
+            sameTypes(model.connectionTypes, vendor.connectionTypes ?? definition.connectionTypes)) {
+            warnings.push(`${at}: connectionTypes repeats the inherited list — omit it.`);
+        }
+
+        const effective = getEffectiveConnectionTypes(definition, vendor, model);
+        if (effective.length === 0 || model?.status === EnergyAppPackageCompatibilityStatus.NotCompatible) return;
+        const viaCloud = effective.includes(EnergyAppPackageConnectionTypeEnum.Cloud);
+        const needsAccount = Array.isArray(model?.requirements) &&
+            model.requirements.includes(EnergyAppModelRequirementEnum.VendorCloudAccount);
+        if (viaCloud && !needsAccount) {
+            warnings.push(
+                `${at}: connects via ${EnergyAppPackageConnectionTypeEnum.Cloud} but does not list the ` +
+                    `${EnergyAppModelRequirementEnum.VendorCloudAccount} requirement.`,
+            );
+        } else if (!viaCloud && needsAccount) {
+            warnings.push(
+                `${at}: requires ${EnergyAppModelRequirementEnum.VendorCloudAccount} but no connection type is ` +
+                    `${EnergyAppPackageConnectionTypeEnum.Cloud}.`,
+            );
+        }
+    });
+}
+
+/**
+ * Package-wide connection type checks: anything declared at all, device
+ * detection backed by a connection type, and the dry-contact category.
+ *
+ * @param definition - The package.
+ * @param categories - The package's declared categories.
+ * @param declaredTypes - Every connection type declared on the package, its vendors and models.
+ * @param warnings - Collector for advisory problems.
+ */
+function validatePackageConnectionTypes(
+    definition: PackageCompatibilitySource,
+    categories: EnergyAppPackageCategory[],
+    declaredTypes: Set<EnergyAppPackageConnectionTypeEnum>,
+    warnings: string[],
+): void {
+    if (declaredTypes.size === 0) {
+        if (definition.compatibility.length > 0) {
+            warnings.push(
+                'no connectionTypes declared — enyo cannot tell this package apart from other apps for the same device. ' +
+                    'Declare `connectionTypes` on the package.',
+            );
+        }
+        return;
+    }
+
+    const detection = definition.options?.deviceDetection ?? {};
+    for (const [method, type] of Object.entries(DETECTION_CONNECTION_TYPES) as [string, EnergyAppPackageConnectionTypeEnum][]) {
+        const entries = detection[method as keyof EnergyAppPackageOptionsDeviceDetection];
+        if (Array.isArray(entries) && entries.length > 0 && !declaredTypes.has(type)) {
+            warnings.push(`options.deviceDetection.${method} is set, but connection type ${type} is declared nowhere.`);
+        }
+    }
+
+    if (categories.includes(EnergyAppPackageCategory.DryContact) &&
+        !declaredTypes.has(EnergyAppPackageConnectionTypeEnum.DryContact)) {
+        warnings.push(
+            `category ${EnergyAppPackageCategory.DryContact} without connection type ` +
+                `${EnergyAppPackageConnectionTypeEnum.DryContact}.`,
+        );
+    }
+}
+
+/**
+ * Validates one optional connection type list: an array of known values,
+ * not empty, each value once.
+ *
+ * @param list - The declared list, possibly `undefined`.
+ * @param at - Location and field name, used in messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ * @returns The known, de-duplicated values.
+ */
+function validateConnectionTypeList(
+    list: readonly EnergyAppPackageConnectionTypeEnum[] | undefined,
+    at: string,
+    errors: string[],
+    warnings: string[],
+): EnergyAppPackageConnectionTypeEnum[] {
+    if (list === undefined) return [];
+    if (Array.isArray(list) && list.length === 0) {
+        errors.push(`${at} must not be empty — omit it to inherit, or list at least one connection type.`);
+        return [];
+    }
+    const known = new Set<string>(Object.values(EnergyAppPackageConnectionTypeEnum));
+    if (!Array.isArray(list)) {
+        errors.push(`${at} must be an array.`);
+        return [];
+    }
+    const values: EnergyAppPackageConnectionTypeEnum[] = [];
+    for (const value of list) {
+        if (!known.has(value)) {
+            errors.push(`${at}: unknown connection type ${JSON.stringify(value)}.`);
+        } else if (values.includes(value)) {
+            warnings.push(`${at} lists ${value} twice.`);
+        } else {
+            values.push(value);
+        }
+    }
+    return values;
+}
+
+/**
+ * Whether two connection type lists hold the same values, ignoring order.
+ *
+ * @param a - The first list.
+ * @param b - The second list, possibly `undefined`.
+ * @returns `true` when both are arrays with the same set of values.
+ */
+function sameTypes(
+    a: readonly EnergyAppPackageConnectionTypeEnum[],
+    b: readonly EnergyAppPackageConnectionTypeEnum[] | undefined,
+): boolean {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    const setA = new Set(a);
+    const setB = new Set(b);
+    return setA.size === setB.size && [...setA].every((type) => setB.has(type));
 }
 
 /**
@@ -259,7 +441,7 @@ function validateModels(
 
         validateModelCapabilities(model, model.status ?? vendor.status, at, packageCategories, errors, warnings);
 
-        const key = normalizeName(model.modelName);
+        const key = normalizeCompatibilityName(model.modelName);
         const earlier = seen.get(key) ?? [];
         if (rangeOk) {
             for (const other of earlier) {
@@ -459,12 +641,3 @@ function rangesOverlap(
     return aFrom <= bTo && bFrom <= aTo;
 }
 
-/**
- * Normalizes a vendor or model name for duplicate detection.
- *
- * @param name - The declared name.
- * @returns The trimmed, lower-cased name with inner whitespace collapsed.
- */
-function normalizeName(name: string): string {
-    return name.trim().replace(/\s+/g, ' ').toLowerCase();
-}

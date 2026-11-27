@@ -329,6 +329,98 @@ export interface EnyoChargerApplianceMetadata extends EnyoChargePreferences {
      * {@link EnyoChargerApplianceAvailableFeaturesEnum.FullChargingSchedule}.
      */
     fullChargingSchedule?: EnyoChargerApplianceFullScheduleMetadata;
+    /**
+     * The potential-free control inputs of the wallbox, 0 to n — its enable
+     * (release) input and a power reduction input, e.g. for §14a EnWG — each
+     * with the function it acts on. The wallbox counterpart of the heat pump's
+     * `sgReadyRelays`. Omit or leave empty when no input is wired.
+     *
+     * Validate with `validateChargerContactRelays()`.
+     */
+    contactRelays?: EnyoChargerApplianceContactRelay[];
+}
+
+/**
+ * What a contact relay of a wallbox acts on
+ * ({@link EnyoChargerApplianceContactRelay.function}).
+ */
+export enum EnyoChargerContactRelayFunctionEnum {
+    /**
+     * The enable (release) input. Active: the wallbox may charge; inactive:
+     * charging stops. The energy manager switches it instead of sending
+     * `StartChargeV1` / `StopChargeV1`.
+     */
+    ChargingEnable = 'charging-enable',
+    /**
+     * A power reduction input. Active: the wallbox charges with at most
+     * {@link EnyoChargerApplianceContactRelay.limitKw}, e.g. the dimming input
+     * for §14a EnWG.
+     */
+    PowerReduction = 'power-reduction',
+}
+
+/**
+ * One potential-free control input of a wallbox, declared in
+ * {@link EnyoChargerApplianceMetadata.contactRelays} — the wallbox counterpart
+ * of the heat pump's SG Ready relay.
+ *
+ * A relay is switched either by the wallbox's own app, which reports
+ * {@link active}, or by a smart plug of another app wired to the input
+ * ({@link applianceId}) — e.g. a Shelly next to a wallbox without a network
+ * interface.
+ *
+ * @example
+ * ```typescript
+ * contactRelays: [
+ *     {index: 0, function: EnyoChargerContactRelayFunctionEnum.ChargingEnable, name: 'EN', applianceId: 'shelly-ch-0'},
+ *     {index: 1, function: EnyoChargerContactRelayFunctionEnum.PowerReduction, limitKw: 4.2, applianceId: 'shelly-ch-1'},
+ * ]
+ * ```
+ */
+export interface EnyoChargerApplianceContactRelay {
+    /**
+     * Zero-based index of this relay, unique within the wallbox. Stable for as
+     * long as the wiring stays the same, so commands and readings can refer to
+     * the relay by it.
+     */
+    index: number;
+    /** What the relay acts on. */
+    function: EnyoChargerContactRelayFunctionEnum;
+    /** Optional label for installers and the UI, e.g. the terminal name `'EN'`. */
+    name?: string;
+    /**
+     * For {@link EnyoChargerContactRelayFunctionEnum.PowerReduction}: the
+     * charging power in kW the wallbox holds at most while the relay is
+     * active. Required there, not allowed on other functions.
+     */
+    limitKw?: number;
+    /**
+     * `true` when the input acts while the contact is **open** (a normally
+     * closed input). Defaults to `false`: closing the contact makes the relay
+     * active.
+     */
+    activeWhenOpen?: boolean;
+    /**
+     * Whether the relay is currently active, when the wallbox's own app
+     * switches it and knows its state. Omit with {@link applianceId}: the state
+     * is read from the plug.
+     */
+    active?: boolean;
+    /**
+     * Set when the relay is a smart plug of another energy app, e.g. a Shelly
+     * on the enable input of a wallbox without a network interface: the `id` of
+     * that {@link EnyoApplianceTypeEnum.SmartPlug} appliance. The energy
+     * manager then switches the plug with {@link EnyoDataBusSetSmartPlugSwitchV1}
+     * — plug On closes the contact — and reads the relay's state from the plug,
+     * honouring {@link activeWhenOpen}.
+     *
+     * Only the energy app that owns the plug adds, changes and removes such an
+     * entry, by saving the wallbox with `useAppliances().save()`. The enyo
+     * platform keeps the entry when the wallbox's own app saves the wallbox
+     * again without it, and moves it to a free {@link index} if that app now
+     * uses its index.
+     */
+    applianceId?: string;
 }
 
 /**

@@ -36,6 +36,7 @@ import type {
     EnyoOnboardingV2DeviceSelectBlock,
     EnyoOnboardingV2EebusDeviceSelectBlock,
     EnyoOnboardingV2ZigbeePairingBlock,
+    EnyoOnboardingV2ApplianceSelectBlock,
     EnyoOnboardingV2DynamicKind,
     EnyoOnboardingV2Guide,
     EnyoOnboardingV2HintVariant,
@@ -491,6 +492,49 @@ export const onboardingV2Block = {
     ): EnyoOnboardingV2Block => ({
         id,
         type: EnyoOnboardingV2BlockType.ZigbeePairing,
+        ...options,
+    }),
+    /**
+     * An appliance picker: the appliances that already exist on the site
+     * (usually created by other energy apps), so the installer can say which
+     * one this app works with — e.g. the heat pump or wallbox a dry-contact
+     * relay is wired to.
+     *
+     * No network scan is needed; the list comes from the site's appliances.
+     * Filter it with `applianceTypes`; the app's own appliances are left out
+     * unless `includeOwnAppliances` is set.
+     *
+     * Outcome `value`s must be {@link EnyoOnboardingV2ApplianceSelectOutcome}
+     * members; route `not-found` to a step that creates the appliance itself
+     * or explains which app has to be installed first.
+     *
+     * Register an {@link EnyoOnboardingV2ApplianceSelectHandler}
+     * ({@link EnergyAppOnboardingV2.registerApplianceSelectHandler}) to link
+     * the app to the picked appliance.
+     *
+     * @param id - Stable block id, unique within the guide.
+     * @param options - Screen wording, filters, skip behaviour, and the
+     *   `selected` / `not-found` routing handles.
+     * @returns The appliance-select block.
+     *
+     * @example
+     * ```ts
+     * onboardingV2Block.applianceSelect('heatpump', {
+     *     headline: t('Wärmepumpe auswählen', 'Select the heat pump'),
+     *     applianceTypes: [EnyoApplianceTypeEnum.Heatpump],
+     *     outcomes: [
+     *         {id: 'ok',   value: EnyoOnboardingV2ApplianceSelectOutcome.Selected, label: t('Ausgewählt', 'Selected')},
+     *         {id: 'none', value: EnyoOnboardingV2ApplianceSelectOutcome.NotFound, label: t('Nicht dabei', 'Not listed')},
+     *     ],
+     * });
+     * ```
+     */
+    applianceSelect: (
+        id: string,
+        options: Omit<EnyoOnboardingV2ApplianceSelectBlock, 'id' | 'type'>,
+    ): EnyoOnboardingV2Block => ({
+        id,
+        type: EnyoOnboardingV2BlockType.ApplianceSelect,
         ...options,
     }),
     /**

@@ -23,7 +23,16 @@ const CONTROLLABLE_CONSUMER_CATEGORIES: readonly EnergyAppPackageCategory[] = [
     EnergyAppPackageCategory.AirConditioning,
     EnergyAppPackageCategory.ClimateControl,
     EnergyAppPackageCategory.SmartPlug,
+    EnergyAppPackageCategory.DryContact,
 ];
+
+/**
+ * Dry-contact relays switch a device's control inputs, so they declare the
+ * features of the device they steer. Only heat pumps (SG Ready inputs per
+ * heating circuit, hot water or buffer tank) and wallboxes (enable and power
+ * reduction inputs) have such inputs.
+ */
+const DRY_CONTACT_CATEGORIES: readonly EnergyAppPackageCategory[] = [EnergyAppPackageCategory.DryContact];
 
 /** Battery features belong to storage and to hybrid inverters, which steer their battery. */
 const BATTERY_CATEGORIES: readonly EnergyAppPackageCategory[] = [
@@ -64,7 +73,7 @@ export const ENERGY_APP_MODEL_FEATURE_CATEGORIES: Readonly<Record<EnergyAppModel
     [EnergyAppModelFeatureEnum.InverterPowerLimitation]: [EnergyAppPackageCategory.Inverter],
     [EnergyAppModelFeatureEnum.InverterGridOutageDetection]: [EnergyAppPackageCategory.Inverter],
 
-    [EnergyAppModelFeatureEnum.ChargingStartStop]: [EnergyAppPackageCategory.Wallbox],
+    [EnergyAppModelFeatureEnum.ChargingStartStop]: [EnergyAppPackageCategory.Wallbox, ...DRY_CONTACT_CATEGORIES],
     [EnergyAppModelFeatureEnum.ChargingPowerLimitation]: [EnergyAppPackageCategory.Wallbox],
     [EnergyAppModelFeatureEnum.ChargingPhaseSwitching]: [EnergyAppPackageCategory.Wallbox],
     [EnergyAppModelFeatureEnum.PvSurplusCharging]: [EnergyAppPackageCategory.Wallbox],
@@ -74,15 +83,15 @@ export const ENERGY_APP_MODEL_FEATURE_CATEGORIES: Readonly<Record<EnergyAppModel
     [EnergyAppModelFeatureEnum.ChargingEichrechtMeter]: [EnergyAppPackageCategory.Wallbox],
     [EnergyAppModelFeatureEnum.ChargingRfidAuthorization]: [EnergyAppPackageCategory.Wallbox],
 
-    [EnergyAppModelFeatureEnum.HeatpumpDhwBoost]: [EnergyAppPackageCategory.HeatPump],
+    [EnergyAppModelFeatureEnum.HeatpumpDhwBoost]: [EnergyAppPackageCategory.HeatPump, ...DRY_CONTACT_CATEGORIES],
     [EnergyAppModelFeatureEnum.HeatpumpTemperatureSetpoint]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpPowerModulation]: [EnergyAppPackageCategory.HeatPump],
-    [EnergyAppModelFeatureEnum.HeatpumpSgReady]: [EnergyAppPackageCategory.HeatPump, EnergyAppPackageCategory.DryContact],
+    [EnergyAppModelFeatureEnum.HeatpumpSgReady]: [EnergyAppPackageCategory.HeatPump, ...DRY_CONTACT_CATEGORIES],
     [EnergyAppModelFeatureEnum.HeatpumpRoomTemperatureInput]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpPvSurplusSignal]: [EnergyAppPackageCategory.HeatPump],
-    [EnergyAppModelFeatureEnum.HeatpumpBufferTankOverheating]: [EnergyAppPackageCategory.HeatPump],
-    [EnergyAppModelFeatureEnum.HeatpumpRoomOverheating]: [EnergyAppPackageCategory.HeatPump],
-    [EnergyAppModelFeatureEnum.HeatpumpHeatingRodControl]: [EnergyAppPackageCategory.HeatPump],
+    [EnergyAppModelFeatureEnum.HeatpumpBufferTankOverheating]: [EnergyAppPackageCategory.HeatPump, ...DRY_CONTACT_CATEGORIES],
+    [EnergyAppModelFeatureEnum.HeatpumpRoomOverheating]: [EnergyAppPackageCategory.HeatPump, ...DRY_CONTACT_CATEGORIES],
+    [EnergyAppModelFeatureEnum.HeatpumpHeatingRodControl]: [EnergyAppPackageCategory.HeatPump, ...DRY_CONTACT_CATEGORIES],
     [EnergyAppModelFeatureEnum.HeatpumpProgramSwitch]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpHeatingCurveOffset]: [EnergyAppPackageCategory.HeatPump],
     [EnergyAppModelFeatureEnum.HeatpumpVacationMode]: [EnergyAppPackageCategory.HeatPump],

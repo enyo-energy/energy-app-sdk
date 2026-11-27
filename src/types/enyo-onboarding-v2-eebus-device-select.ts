@@ -27,6 +27,7 @@
  */
 
 import type {EnyoEebusDeviceTypeEnum} from './enyo-eebus.js';
+import type {EnergyAppPackageConnectionTypeEnum} from '../energy-app-package-definition.js';
 
 /**
  * The EEBUS peer an installer picked, as the host knows it at pairing time.
@@ -118,6 +119,14 @@ export interface EnyoOnboardingV2EebusDeviceSelectRequest {
      * device the customer already has.
      */
     applianceId?: string;
+    /**
+     * The connection type the user chose for this run (from the options built
+     * by `findCompatibleAppOptions()`), for a package that connects in more
+     * than one way. Absent when the package declares no connection type or the
+     * run did not start from such a choice. Record it on the appliances the app
+     * creates (`metadata.packageConnectionType`).
+     */
+    connectionType?: EnergyAppPackageConnectionTypeEnum;
     /**
      * The budget for this request, in milliseconds.
      *
