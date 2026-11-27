@@ -10,7 +10,13 @@ export enum EnyoAirConditioningApplianceAvailableFeaturesEnum {
     Power = 'Power',
     /** If the air conditioning unit's electrical power draw can be steered (e.g. limited to a target in watts) */
     PowerControllable = 'PowerControllable',
-    /** If the air conditioning unit's target room temperature can be set */
+    /**
+     * The unit's target room temperature can be set: the integration handles
+     * `SetAirConditioningTargetTemperatureV1` (overrides
+     * `handleSetAirConditioningTargetTemperature()`). The energy manager boosts
+     * (pre-heats / pre-cools) by setpoint only on units declaring this feature;
+     * without it, it can only start and stop the unit.
+     */
     TemperatureControllable = 'TemperatureControllable',
 }
 
@@ -68,6 +74,12 @@ export interface EnyoAirConditioningApplianceMetadata {
      * read-only/monitor-only and the EMS must not issue control commands to it.
      * When omitted, consumers should fall back to their configured default
      * behaviour.
+     *
+     * The per-unit switch the app lists in the optimisation settings ("may
+     * enyo steer this unit?"). What the energy manager may do with a unit it
+     * steers comes from the energy manager settings `airConditioningControl`,
+     * `airConditioningHeatingMode` and `airConditioningCoolingMode`; combine
+     * all of them with `resolveAirConditioningModes()`.
      */
     controlAllowed?: boolean;
 }

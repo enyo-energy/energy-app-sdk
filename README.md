@@ -2073,6 +2073,9 @@ A closed, SDK-defined set of user-facing controls the active energy manager hono
 | `HeatingRodControl` | boolean |
 | `HeatingRodMode` | `pv-surplus-only` \| `boost` |
 | `HeatingRodBatteryDischargeSocLimitPercent` | number \| `null`, **%** floor the battery may feed the heating rod down to (absent / `null` = disabled) |
+| `AirConditioningControl` | boolean |
+| `AirConditioningHeatingMode` | `off` \| `boost` \| `auto`, off by default |
+| `AirConditioningCoolingMode` | `off` \| `boost` \| `auto`, off by default |
 | `ChargerControl` | boolean |
 | `GridOptimizedEvCharging` | boolean, off by default — cost-optimised charging on a static / time-of-use tariff avoids high grid load (by EPEX spot) |
 
@@ -2120,7 +2123,8 @@ Three things to get right:
 - **The battery can be kept from feeding selected smart plugs.** `BatteryDischargeBlockedSmartPlugs` holds the `EnyoAppliance.id`s of the `SmartPlug` appliances the user picked (`batteryDischargeBlockedSmartPlugApplianceIds: ['plug-garage-freezer']`). While a selected plug draws power, the energy manager caps the battery's discharge so that draw comes from PV or the grid; the rest of the house is served as before, and charging is unaffected. The array replaces the previous selection as a whole; `[]` or absent switches it off. The validator rejects non-string or empty ids and warns on duplicates, but cannot check that an id is a smart plug on the site — offer only the site's smart plugs, and drop an id when its appliance is removed. A battery held back by it carries `BatteryReservedFromSmartPlug` (category `BatteryState`) with `context.batteryToSmartPlug.applianceIds` (the blocked plugs drawing right now) and `powerW` set to their combined draw.
 - **Grid-optimised EV charging is about the grid, not the bill.** `GridOptimizedEvCharging` adds no charge mode. It only affects `cost-optimized` sessions while the tariff is static or time-of-use (no effect under a dynamic one): the grid energy PV does not cover is placed in the hours with the lowest EPEX spot price before the deadline — the spot price as a proxy for grid load — instead of as late as possible or in the tariff's cheap windows. PV still comes first, the deadline still holds, and a session's price ceiling still applies against the customer's own tariff. On a time-of-use tariff a low-load hour can be a more expensive one; that is the trade the owner opts into.
 - **Eco mode in expensive times switches setpoints, not temperatures.** `HeatpumpEcoModeInExpensiveTimes` (needs `heatpumpControl`) lets the energy manager send `HeatpumpProgramSwitchV3` with `mode: Eco` to every zone listing `eco` in `supportedProgramModes` while the tariff is expensive, and `mode: Program` once it is not. The user's own eco temperature applies (`programModeTemperaturesC`); the energy manager only chooses *when*. "Expensive" comes from the consumption tariff — the dearest slots under a dynamic tariff, the high-price windows under a time-of-use one; under a static tariff the setting has no effect, as it has on heat pumps without `ProgramSwitch`. Each such switch carries `ElectricityPriceAboveThreshold` (category `EnergyPrice`) with `electricityPricePerKwh`.
-- **Twelve settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `batteryEvDischargeFixedWh` only applies under `batteryEvDischargeMode: 'fixed-wh'`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
+- **Air conditioning is a house-wide switch, a mode per direction and `controlAllowed` per unit.** `AirConditioningControl` lets the energy manager steer air conditioning at all; `AirConditioningHeatingMode` and `AirConditioningCoolingMode` say what it may do in each direction. `boost` leaves the unit running as the customer set it and only adds on top — pre-heating or pre-cooling (`SetAirConditioningTargetTemperatureV1`, or a start) while PV surplus, a cheap price or an efficient hour make it worthwhile — and never switches it off or below the customer's setting. `auto` additionally lets the energy manager start and stop the unit. Per unit, `EnyoAirConditioningApplianceMetadata.controlAllowed` decides whether it is steered at all (`false` = never). `resolveAirConditioningModes(metadata, values)` combines all of it per unit and returns `off` for a direction the unit lacks (`Heating` / `Cooling` feature); `isAirConditioningControlled()` answers only whether the unit is steered. Only an energy manager declaring `AirConditioningOptimization` acts on them. Reasons: `PvSurplusAvailable` on surplus, `ElectricityPriceBelowThreshold` in a cheap hour, `ScheduledOptimization` with `context.efficiency` / `context.forecast` for a run placed because it is more efficient now, and `SessionComplete` when the customer's setpoint is restored.
+- **Fourteen settings are gated by another** (`heatingRodMode` needs `heatingRodControl`, `batteryEvDischargeFixedWh` only applies under `batteryEvDischargeMode: 'fixed-wh'`, …). The tree is exported as `ENERGY_MANAGER_SETTING_DEPENDENCIES`, with two helpers over it: `getEnergyManagerSettingDependency(setting)` returns the direct gate and the value it must hold (or `null` for an ungated root), and `isEnergyManagerSettingActive(setting, values)` walks the whole chain — the gates are now two deep, so a Wh budget is live only when the mode is `fixed-wh` *and* battery control is on.
 - **Charge modes are not here.** The default charge mode, price ceiling and cost-optimised deadline live on the wallbox (`EnyoChargerApplianceMetadata`) and the vehicle (`EnyoVehicle`), not in the energy manager settings.
 
 #### `useElectricityTariff(): EnergyAppElectricityTariff`
@@ -3873,6 +3877,7 @@ works. Three lists per model:
 | `features` | What enyo can do with the device | `EnergyAppModelFeatureEnum` |
 | `requirements` | What must be in place first | `EnergyAppModelRequirementEnum` |
 | `limitations` | What works, but not fully | `EnergyAppModelLimitationEnum` |
+| `unsupportedFeatures` | What has been checked and does not work | `EnergyAppModelFeatureEnum` |
 
 Declare a feature together with its limitation rather than leaving it out: a missing feature
 reads as "does not work". A minimum firmware goes into `minimumFirmwareVersion`.
@@ -3906,7 +3911,9 @@ Features that decide whether the energy manager steers a device at all:
   `BatteryDischargeCannotBeBlocked` to `limitations`; when a charge power is executed as a forced
   setpoint (drawing the rest from the grid) rather than a cap, add `BatteryChargeSetpointForced`.
 - **Heating rod:** `HeatingRodPowerModulation` to heat with PV surplus.
-- **Air conditioning:** `ClimateCooling`.
+- **Air conditioning:** `ClimateHeating` and / or `ClimateCooling` — the energy manager plans each
+  direction only for units that declare it — plus `ClimateModeControl` to start and stop and
+  `ClimateTemperatureSetpoint` or `ClimatePowerControl` to boost.
 - **Any device:** `GridOperatorConsumptionLimitation` / `GridOperatorProductionLimitation` —
   grid operator limits (§14a EnWG) only reach devices that declare them.
 
@@ -3919,6 +3926,81 @@ of the grouping. `validatePackageCompatibility()` additionally reports:
 - **warnings:** a value listed twice, a feature that does not fit the model's category (or the
   package's, when the model has none), features on a model declared not compatible, and a
   limitation that restricts none of the declared features.
+
+### §14a control
+
+`gridOperatorControlInterfaces` says how the grid operator can dim a model under §14a EnWG —
+a property of the device, whoever does the dimming. Sales and installers read it to know
+whether a model can take part in §14a and what has to be wired.
+
+| Value (`EnergyAppModelGridOperatorControlInterfaceEnum`) | Dimmed through |
+|---|---|
+| `eebus` | EEBUS (LPC / LPP) |
+| `modbus` | Modbus TCP / RTU registers |
+| `other-digital` | Another digital interface: vendor API, MQTT, HTTP, a proprietary bus such as eBUS |
+| `switching-contact` | A potential-free input (utility lock, SG Ready, wallbox enable) driven by a relay |
+
+List every interface the model has. An empty list means "cannot be dimmed under §14a"; omit
+the field while that is unknown. `getGridOperatorControlSummary(model)` condenses the list into
+one value to display (`EnergyAppGridOperatorControlSummaryEnum`): `digital`, `switching-contact`,
+`digital-and-switching-contact`, `none` or `unknown`; `findCompatibleAppOptions()` returns it as
+`gridOperatorControl` next to `gridOperatorControlInterfaces`.
+
+```typescript
+{modelName: 'aroTHERM plus', category: EnergyAppPackageCategory.HeatPump,
+ features: [F.GridOperatorConsumptionLimitation],
+ gridOperatorControlInterfaces: [I.Eebus, I.SwitchingContact]}
+```
+
+`GridOperatorConsumptionLimitation` / `GridOperatorProductionLimitation` stay the statement
+that *this app* passes the limit on. `validatePackageCompatibility()` rejects unknown values and
+an empty list next to one of those features, and warns about a duplicate value, one of those
+features without `gridOperatorControlInterfaces`, and interfaces on a category that is not dimmed
+(e.g. a meter).
+
+### Sales information
+
+Sales needs to say "does not work" as clearly as "works", and how sure that answer is. Per model:
+
+- `unsupportedFeatures` — features checked and found not to work (e.g. `BatteryChargingFromGrid`
+  for a battery that cannot be charged from the grid). A feature missing from `features` only means
+  "not declared"; `getModelFeatureSupport(model, feature)` returns `supported`, `unsupported` or
+  `unknown` (`EnergyAppModelFeatureSupportEnum`).
+- `verification` (`EnergyAppModelVerificationEnum`) — `datasheet`, `lab` or `field`.
+- `customerNote` — a public, translated note (`[{language: 'de', value}, {language: 'en', value}]`)
+  for what no enum expresses. `internalComment` stays internal.
+
+```typescript
+{modelName: 'Home V3', category: EnergyAppPackageCategory.BatteryStorage,
+ features: [F.BatteryGridChargeFullPowerOnly],
+ unsupportedFeatures: [F.BatteryChargingFromGrid, F.BatteryHold],
+ verification: EnergyAppModelVerificationEnum.Field,
+ customerNote: [
+     {language: 'de', value: 'Lädt aus dem Netz nur mit voller Leistung.'},
+     {language: 'en', value: 'Charges from the grid at full power only.'},
+ ]}
+```
+
+`getModelOptimizationLevel(model, {packageCategories, vendorStatus})` grades a model as `full`,
+`partial`, `monitoring-only`, `not-compatible`, `not-applicable` (meters, tariffs) or `unknown`
+(`EnergyAppModelOptimizationLevelEnum`). The level is derived, never declared: `full` when the
+model has every control its category needs (`ENERGY_APP_MODEL_OPTIMIZATION_RULES`, e.g.
+`ChargingSchedule` for a wallbox, grid charging plus hold or discharge limitation for a battery) and
+no limitation restricts one of them; `partial` with any steering feature.
+
+Display texts in German and English (`name` and a one-sentence `description`) for every value live
+in the SDK, each map exhaustive over its enum: `ENERGY_APP_MODEL_FEATURE_LABELS`,
+`ENERGY_APP_MODEL_REQUIREMENT_LABELS`, `ENERGY_APP_MODEL_LIMITATION_LABELS`,
+`ENERGY_APP_CONNECTION_TYPE_LABELS`, `ENERGY_APP_GRID_OPERATOR_CONTROL_INTERFACE_LABELS`,
+`ENERGY_APP_GRID_OPERATOR_CONTROL_SUMMARY_LABELS`, `ENERGY_APP_MODEL_VERIFICATION_LABELS`,
+`ENERGY_APP_MODEL_FEATURE_SUPPORT_LABELS` and `ENERGY_APP_MODEL_OPTIMIZATION_LEVEL_LABELS`.
+Use them instead of keeping your own texts.
+
+`findCompatibleAppOptions()` returns `unsupportedFeatures`, `verification`, `customerNote` and
+`optimizationLevel` with each option. `validatePackageCompatibility()` rejects unknown values, a
+feature listed in both `features` and `unsupportedFeatures`, and a malformed `customerNote`
+(unknown language, empty text, a language twice); it warns about an unsupported feature outside the
+model's category and a note without German or English.
 
 ### Connection types
 
@@ -4653,8 +4735,9 @@ Drives a PV inverter. Controls grid feed-in limits and publishes electrical metr
 
 Drives an air-conditioning unit. Starts and stops heating or cooling modes.
 
-- **Subscribed commands:** `StartAirConditioningV1`, `StopAirConditioningV1`, `GridOperatorPowerLimitationV1` (broadcast)
-- **Implement:** `handleStartAirConditioning` (mode is `Heating` or `Cooling`), `handleStopAirConditioning`, `handleGridOperatorPowerLimitation`.
+- **Subscribed commands:** `StartAirConditioningV1`, `StopAirConditioningV1`, `SetAirConditioningTargetTemperatureV1`, `GridOperatorPowerLimitationV1` (broadcast)
+- **Implement:** `handleStartAirConditioning` (mode is `Heating` or `Cooling`), `handleStopAirConditioning`, `handleGridOperatorPowerLimitation`. Start and stop may carry a `roomIndex` for a unit serving several rooms; absent means the whole unit.
+- **Override** `handleSetAirConditioningTargetTemperature` **and** declare the appliance feature `TemperatureControllable` when the unit can take a setpoint — the feature is how the energy manager learns it may send `SetAirConditioningTargetTemperatureV1`, which is how it boosts (pre-heats / pre-cools) and restores the customer's setpoint. Without the feature the energy manager only starts and stops the unit. The default handler answers `NotSupported`.
 - **Publish helpers:**
   - `publishAirConditioningValues(applianceId, values)` — current operation mode and electrical consumption.
   - `publishAirConditioningTemperatures(applianceId, data)` — current and target temperatures per room.

@@ -25,6 +25,7 @@ import {
     EnergyManagerBatteryChargingModeEnum,
     EnergyManagerBatteryEvDischargeModeEnum,
     EnergyManagerHeatingRodModeEnum,
+    EnergyManagerAirConditioningModeEnum,
     EnergyManagerSettingEnum,
 } from '../../types/enyo-energy-manager-settings.js';
 import type {
@@ -107,6 +108,9 @@ const BATTERY_CHARGING_MODES: ReadonlySet<string> = new Set(
 );
 const HEATING_ROD_MODES: ReadonlySet<string> = new Set(
     Object.values(EnergyManagerHeatingRodModeEnum),
+);
+const AIR_CONDITIONING_MODES: ReadonlySet<string> = new Set(
+    Object.values(EnergyManagerAirConditioningModeEnum),
 );
 
 /**
@@ -222,7 +226,7 @@ export function validateEnergyManagerSettingsState(
 
     // ── value formats ──────────────────────────────────────────────────────
     for (const key of ['batteryControl', 'batteryChargeFromGrid', 'heatpumpControl',
-        'heatpumpEcoModeInExpensiveTimes', 'heatingRodControl', 'chargerControl',
+        'heatpumpEcoModeInExpensiveTimes', 'heatingRodControl', 'airConditioningControl', 'chargerControl',
         'gridOptimizedEvCharging'] as const) {
         if (values[key] !== undefined && typeof values[key] !== 'boolean') {
             errors.push(`\`${key}\` must be a boolean when set.`);
@@ -239,6 +243,11 @@ export function validateEnergyManagerSettingsState(
         errors.push(
             `\`heatingRodMode\` "${values.heatingRodMode}" is not an EnergyManagerHeatingRodModeEnum member.`,
         );
+    }
+    for (const key of ['airConditioningHeatingMode', 'airConditioningCoolingMode'] as const) {
+        if (values[key] !== undefined && !AIR_CONDITIONING_MODES.has(values[key])) {
+            errors.push(`\`${key}\` "${values[key]}" is not an EnergyManagerAirConditioningModeEnum member.`);
+        }
     }
     if (values.batteryEvDischargeMode !== undefined
         && !EV_DISCHARGE_MODES.has(values.batteryEvDischargeMode)) {

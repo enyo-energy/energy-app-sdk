@@ -2,8 +2,10 @@ import {EnergyAppPermissionType} from "./energy-app-permission.type.js";
 import {getSdkVersion} from "./version.js";
 import {
     EnergyAppModelFeatureEnum,
+    EnergyAppModelGridOperatorControlInterfaceEnum,
     EnergyAppModelLimitationEnum,
-    EnergyAppModelRequirementEnum
+    EnergyAppModelRequirementEnum,
+    EnergyAppModelVerificationEnum
 } from "./energy-app-model-feature.enum.js";
 import type {EnyoFileTranslation} from "./types/enyo-file.js";
 import type {EnyoOnboardingV2Guide} from "./types/enyo-onboarding-v2.js";
@@ -615,6 +617,29 @@ export interface EnergyAppPackageCompatibilityModel {
      */
     features: EnergyAppModelFeatureEnum[];
     /**
+     * Optional features that have been checked and do **not** work with this
+     * model — e.g. {@link EnergyAppModelFeatureEnum.BatteryChargingFromGrid}
+     * for a battery that cannot be charged from the grid.
+     *
+     * A feature missing from {@link features} only says "not declared". Listing
+     * it here lets sales and the enyo Store say "does not work" instead of
+     * "unknown"; `getModelFeatureSupport()` returns the three-way answer. A
+     * feature must not appear in both lists.
+     */
+    unsupportedFeatures?: EnergyAppModelFeatureEnum[];
+    /**
+     * Optional statement of how this declaration was verified — from a
+     * datasheet, in the lab, or at customer sites. Omit while unknown.
+     */
+    verification?: EnergyAppModelVerificationEnum;
+    /**
+     * Optional note shown to customers and sales, translated — for what no enum
+     * value expresses (e.g. "Modbus can only be switched on with installer
+     * access in the vendor portal"). Unlike {@link internalComment} it is
+     * public. Give one entry per language, ideally German and English.
+     */
+    customerNote?: EnyoOnboardingTranslatedContent[];
+    /**
      * Optional things that must be in place before the package works with this
      * model — an installer switching on external control, an extra gateway, the
      * vendor's meter or cloud account.
@@ -645,6 +670,28 @@ export interface EnergyAppPackageCompatibilityModel {
      * fits; `getEffectiveConnectionTypes()` resolves which list applies.
      */
     connectionTypes?: EnergyAppPackageConnectionTypeEnum[];
+    /**
+     * Optional interfaces through which the grid operator can dim this model
+     * under §14a EnWG — EEBUS, Modbus, another digital interface and / or a
+     * switching contact.
+     *
+     * Describes the device itself, independent of this package: sales and
+     * installers read it to know whether a model can take part in §14a and what
+     * has to be wired or configured for it. List every interface the model has.
+     * An **empty list** means the model cannot be dimmed under §14a at all;
+     * omit the field while that is unknown. `getGridOperatorControlSummary()`
+     * turns the list into one displayable value.
+     *
+     * @example
+     * ```typescript
+     * // Dimmable over EEBUS or through its utility lock contact
+     * gridOperatorControlInterfaces: [
+     *     EnergyAppModelGridOperatorControlInterfaceEnum.Eebus,
+     *     EnergyAppModelGridOperatorControlInterfaceEnum.SwitchingContact,
+     * ],
+     * ```
+     */
+    gridOperatorControlInterfaces?: EnergyAppModelGridOperatorControlInterfaceEnum[];
 }
 
 /**

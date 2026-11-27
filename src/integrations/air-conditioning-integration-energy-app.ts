@@ -2,10 +2,12 @@ import {IntegrationEnergyApp} from "./integration-energy-app.js";
 import {IntegrationCommandResponse, IntegrationEnergyAppOptions} from "./integration-types.js";
 import {EnyoApplianceTypeEnum} from "../types/enyo-appliance.js";
 import {
+    EnyoCommandAcknowledgeAnswerEnum,
     EnyoDataBusAirConditioningTemperaturesV1,
     EnyoDataBusAirConditioningValuesV1,
     EnyoDataBusGridOperatorPowerLimitationV1,
     EnyoDataBusMessageEnum,
+    EnyoDataBusSetAirConditioningTargetTemperatureV1,
     EnyoDataBusStartAirConditioningV1,
     EnyoDataBusStopAirConditioningV1
 } from "../types/enyo-data-bus-value.js";
@@ -16,6 +18,9 @@ import {
  * Subscribes to:
  *  - `StartAirConditioningV1` — start cooling or heating in the requested mode.
  *  - `StopAirConditioningV1` — stop the requested mode.
+ *  - `SetAirConditioningTargetTemperatureV1` — set the target temperature of a
+ *    mode; answered `NotSupported` unless {@link handleSetAirConditioningTargetTemperature}
+ *    is overridden.
  *  - `GridOperatorPowerLimitationV1` — §14a EnWG broadcast (handled in base).
  */
 export abstract class AirConditioningIntegrationEnergyApp extends IntegrationEnergyApp {
@@ -39,6 +44,10 @@ export abstract class AirConditioningIntegrationEnergyApp extends IntegrationEne
             EnyoDataBusMessageEnum.StopAirConditioningV1,
             (m) => this.handleStopAirConditioning(m)
         );
+        this.registerCommandHandler<EnyoDataBusSetAirConditioningTargetTemperatureV1>(
+            EnyoDataBusMessageEnum.SetAirConditioningTargetTemperatureV1,
+            (m) => this.handleSetAirConditioningTargetTemperature(m)
+        );
     }
 
     /**
@@ -56,6 +65,32 @@ export abstract class AirConditioningIntegrationEnergyApp extends IntegrationEne
     protected abstract handleStopAirConditioning(
         message: EnyoDataBusStopAirConditioningV1
     ): Promise<IntegrationCommandResponse>;
+
+    /**
+     * Handles a `SetAirConditioningTargetTemperatureV1` command — the energy
+     * manager's boost (pre-heating / pre-cooling) and the restore of the
+     * customer's setpoint afterwards. Override it, and declare
+     * `EnyoAirConditioningApplianceAvailableFeaturesEnum.TemperatureControllable`
+     * on the appliance, when the unit can take a setpoint: set
+     * `targetTemperatureC` for `mode` (and `roomIndex`, when given). The two
+     * go together — the feature is how the energy manager learns it may send
+     * the command.
+     *
+     * The default answers `NotSupported`, so existing integrations keep
+     * compiling and the energy manager learns the unit cannot be boosted by
+     * setpoint.
+     *
+     * @param message - The command.
+     * @returns The answer for the command acknowledgement.
+     */
+    protected async handleSetAirConditioningTargetTemperature(
+        message: EnyoDataBusSetAirConditioningTargetTemperatureV1
+    ): Promise<IntegrationCommandResponse> {
+        return {
+            answer: EnyoCommandAcknowledgeAnswerEnum.NotSupported,
+            rejectionReason: `Setting the target temperature is not implemented for ${message.applianceId}.`,
+        };
+    }
 
     /**
      * @inheritDoc

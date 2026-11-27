@@ -91,6 +91,19 @@ export enum EnergyManagerFeatureEnum {
 
     // Climate Control / AC
 
+    /**
+     * The energy manager steers air conditioning units: it honours the settings
+     * `airConditioningControl`, `airConditioningHeatingMode` and
+     * `airConditioningCoolingMode` for every unit that allows control
+     * (`EnyoAirConditioningApplianceMetadata.controlAllowed`), as resolved by
+     * `resolveAirConditioningModes()` — boosting (pre-heating / pre-cooling)
+     * and, in `auto`, starting and stopping the units by PV surplus, price and
+     * efficiency.
+     *
+     * The app only shows the air conditioning section of the optimisation
+     * settings while the active energy manager declares this feature.
+     */
+    AirConditioningOptimization = 'air-conditioning-optimization',
     /** Dynamic temperature setpoints based on occupancy/time */
     ClimateControlSmartThermostat = 'climate-control-smart-thermostat',
     /** Prioritize cooling when PV generation is high */

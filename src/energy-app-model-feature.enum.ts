@@ -59,6 +59,13 @@ export enum EnergyAppModelFeatureEnum {
     BatteryHold = 'battery-hold',
     /** The customer can start a one-time "charge the battery now" from the enyo app */
     BatteryManualCharge = 'battery-manual-charge',
+    /**
+     * The system keeps supplying the house (or selected circuits) from the
+     * battery during a grid outage — backup or emergency power. A property of
+     * the device that customers ask about; the energy manager can keep a
+     * reserve for it.
+     */
+    BatteryBackupPower = 'battery-backup-power',
 
     // Inverter / PV
 
@@ -95,6 +102,12 @@ export enum EnergyAppModelFeatureEnum {
     ChargingEichrechtMeter = 'charging-eichrecht-meter',
     /** Charging can be authorised with an RFID card */
     ChargingRfidAuthorization = 'charging-rfid-authorization',
+    /**
+     * Bidirectional charging: the car's battery can be discharged into the
+     * house (vehicle-to-home) or the grid (vehicle-to-grid). Declared on the
+     * wallbox as well as on the car, since both have to support it.
+     */
+    BidirectionalCharging = 'bidirectional-charging',
 
     // Heat Pump
 
@@ -149,9 +162,9 @@ export enum EnergyAppModelFeatureEnum {
     ClimateTemperatureSetpoint = 'climate-temperature-setpoint',
     /** The operating mode (heat / cool / fan / off) can be controlled */
     ClimateModeControl = 'climate-mode-control',
-    /** The unit can cool; the energy manager only plans air conditioning that cools */
+    /** The unit can cool. The energy manager plans cooling (pre-cooling on PV surplus) only for units that declare it */
     ClimateCooling = 'climate-cooling',
-    /** The unit can heat */
+    /** The unit can heat. The energy manager plans heating (pre-heating on PV surplus) only for units that declare it */
     ClimateHeating = 'climate-heating',
     /** The unit's electrical power draw can be steered, e.g. limited to a target in watts */
     ClimatePowerControl = 'climate-power-control',
@@ -227,6 +240,12 @@ export enum EnergyAppModelRequirementEnum {
     VendorCloudAccount = 'vendor-cloud-account',
     /** A paid licence or subscription from the vendor is needed (e.g. connected services of a car) */
     VendorSubscription = 'vendor-subscription',
+    /**
+     * An electrician has to lay a cable — e.g. to a switching contact, an RS485
+     * bus or a meter — before the integration works; network access alone is
+     * not enough
+     */
+    ElectricianWiring = 'electrician-wiring',
 }
 
 /**
@@ -274,4 +293,75 @@ export enum EnergyAppModelLimitationEnum {
     HeatpumpDhwBoostInterruptsHeating = 'heatpump-dhw-boost-interrupts-heating',
     /** A forced boost heats with the electric heater instead of the compressor, at a much lower efficiency */
     HeatpumpBoostUsesElectricHeater = 'heatpump-boost-uses-electric-heater',
+    /** Only one device of this model per site is supported — no cascade or master / slave setup */
+    SingleDeviceOnly = 'single-device-only',
+    /** The wallbox charges on one phase only, so at most about 7.4 kW (32 A) or 3.7 kW (16 A) */
+    ChargingSinglePhaseOnly = 'charging-single-phase-only',
+    /**
+     * The vendor has announced the end of the interface the app uses, or blocks
+     * it from a firmware version on — control may stop working after an update
+     */
+    VendorInterfaceDeprecated = 'vendor-interface-deprecated',
+}
+
+/**
+ * An interface through which a model can be dimmed by the grid operator under
+ * §14a EnWG — the answer to "how does §14a work with this device?".
+ *
+ * Declared per model in
+ * {@link EnergyAppPackageCompatibilityModel.gridOperatorControlInterfaces}. It
+ * describes the device itself, whoever does the dimming (the enyo Box, the
+ * grid operator's control box, another energy manager), so sales and
+ * installers can see up front what has to be wired or configured. Whether this
+ * Energy App passes grid operator limits on is declared separately with
+ * {@link EnergyAppModelFeatureEnum.GridOperatorConsumptionLimitation}.
+ *
+ * `getGridOperatorControlSummary()` condenses a model's list into one
+ * displayable value (digital, switching contact, both, none, unknown).
+ */
+export enum EnergyAppModelGridOperatorControlInterfaceEnum {
+    /** EEBUS (LPC / LPP use cases) — the standard digital interface for §14a */
+    Eebus = 'eebus',
+    /** Modbus (TCP or RTU) registers for a power limit */
+    Modbus = 'modbus',
+    /**
+     * Another digital interface: a vendor API (local or cloud), MQTT, HTTP or a
+     * proprietary bus such as Vaillant's eBUS
+     */
+    OtherDigital = 'other-digital',
+    /**
+     * A switching contact (potential-free input, e.g. the utility lock / "EVU-Sperre",
+     * an SG Ready input or a wallbox enable input) driven by a relay of the control box
+     */
+    SwitchingContact = 'switching-contact',
+}
+
+/**
+ * How well a model's compatibility declaration is backed — the answer to
+ * "how sure are we?". Declared per model in
+ * {@link EnergyAppPackageCompatibilityModel.verification}; sales can make a
+ * firmer promise for a model verified in the field than for one taken from a
+ * datasheet.
+ */
+export enum EnergyAppModelVerificationEnum {
+    /** Taken from the vendor's datasheet or interface documentation; not tested with this app */
+    Datasheet = 'datasheet',
+    /** Tested with this app on a real device in the lab or at a test site */
+    Lab = 'lab',
+    /** Running with this app at customer sites */
+    Field = 'field',
+}
+
+/**
+ * Whether a model supports a {@link EnergyAppModelFeatureEnum feature}, as
+ * returned by `getModelFeatureSupport()`: declared in `features`, declared in
+ * `unsupportedFeatures`, or neither.
+ */
+export enum EnergyAppModelFeatureSupportEnum {
+    /** Listed in the model's `features`. */
+    Supported = 'supported',
+    /** Listed in the model's `unsupportedFeatures`: checked, and it does not work. */
+    Unsupported = 'unsupported',
+    /** Listed in neither: nobody has said. */
+    Unknown = 'unknown',
 }

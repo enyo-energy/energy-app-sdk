@@ -89,6 +89,18 @@ export enum EnergyManagerSettingEnum {
      */
     HeatingRodBatteryDischargeSocLimitPercent = 'heating-rod-battery-discharge-soc-limit-percent',
 
+    // ── Air conditioning ───────────────────────────────────────────────────
+
+    /**
+     * Whether the energy manager may steer air conditioning units at all.
+     * Gates {@link AirConditioningHeatingMode} and {@link AirConditioningCoolingMode}.
+     */
+    AirConditioningControl = 'air-conditioning-control',
+    /** What the energy manager may do with heating — see {@link EnergyManagerAirConditioningModeEnum}. */
+    AirConditioningHeatingMode = 'air-conditioning-heating-mode',
+    /** What the energy manager may do with cooling — see {@link EnergyManagerAirConditioningModeEnum}. */
+    AirConditioningCoolingMode = 'air-conditioning-cooling-mode',
+
     // ── Charger ────────────────────────────────────────────────────────────
 
     /** Whether the energy manager may steer the wallbox. Gates the other charger settings. */
@@ -198,6 +210,34 @@ export enum EnergyManagerHeatingRodModeEnum {
      * reach a legionella temperature the compressor alone cannot.
      */
     Boost = 'boost',
+}
+
+/**
+ * What the energy manager may do with one direction (heating or cooling) of
+ * the air conditioning units that allow control
+ * ({@link EnyoAirConditioningApplianceMetadata.controlAllowed}).
+ *
+ * The unit's own setpoint stays the customer's comfort target in every mode;
+ * the energy manager chooses *when* the unit runs and whether it may go beyond
+ * that target, never the comfort itself.
+ */
+export enum EnergyManagerAirConditioningModeEnum {
+    /** The energy manager leaves this direction alone. */
+    Off = 'off',
+    /**
+     * The unit runs as the customer set it. The energy manager only adds on
+     * top: it pre-heats or pre-cools — raising or lowering the setpoint a
+     * little, or starting the unit — while PV surplus is available, electricity
+     * is cheap or running now is more efficient than later. It never switches
+     * the unit off or below the customer's setting.
+     */
+    Boost = 'boost',
+    /**
+     * The energy manager decides when the unit runs in this direction: it
+     * starts it when PV surplus, a cheap price or an efficient hour make that
+     * worthwhile, boosts like {@link Boost}, and stops it again otherwise.
+     */
+    Auto = 'auto',
 }
 
 /**
@@ -470,6 +510,35 @@ export interface EnergyManagerSettingValues {
      */
     heatingRodBatteryDischargeSocLimitPercent?: number | null;
 
+    /**
+     * Whether the energy manager may steer air conditioning units.
+     *
+     * The house-wide switch. A unit is steered only when this is `true` and the
+     * unit allows control ({@link EnyoAirConditioningApplianceMetadata.controlAllowed}
+     * is not `false`). Check both with `isAirConditioningControlled()`.
+     */
+    airConditioningControl?: boolean;
+    /**
+     * What the energy manager may do with heating. **Off by default** — absent
+     * means {@link EnergyManagerAirConditioningModeEnum.Off}.
+     *
+     * Applies only to units declaring
+     * {@link EnyoAirConditioningApplianceAvailableFeaturesEnum.Heating}; resolve
+     * it per unit with `resolveAirConditioningModes()`. Only meaningful while
+     * {@link airConditioningControl} is `true`.
+     */
+    airConditioningHeatingMode?: EnergyManagerAirConditioningModeEnum;
+    /**
+     * What the energy manager may do with cooling. **Off by default** — absent
+     * means {@link EnergyManagerAirConditioningModeEnum.Off}.
+     *
+     * Applies only to units declaring
+     * {@link EnyoAirConditioningApplianceAvailableFeaturesEnum.Cooling}; resolve
+     * it per unit with `resolveAirConditioningModes()`. Only meaningful while
+     * {@link airConditioningControl} is `true`.
+     */
+    airConditioningCoolingMode?: EnergyManagerAirConditioningModeEnum;
+
     /** Whether the energy manager may steer the wallbox. */
     chargerControl?: boolean;
     /**
@@ -572,7 +641,7 @@ export interface EnergyManagerSettingDependency {
 /**
  * Which settings are gated by which, as data.
  *
- * Twelve of the sixteen settings only mean anything while another one holds a specific
+ * Fourteen of the nineteen settings only mean anything while another one holds a specific
  * value. Encoding that here rather than in prose gives the cockpit a single
  * source of truth for greying out dependent controls, and lets
  * `validateEnergyManagerSettingsState()` flag values that can never take effect.
@@ -634,6 +703,14 @@ export const ENERGY_MANAGER_SETTING_DEPENDENCIES: Readonly<
         requires: EnergyManagerSettingEnum.HeatingRodControl,
         equals: true,
     },
+    [EnergyManagerSettingEnum.AirConditioningHeatingMode]: {
+        requires: EnergyManagerSettingEnum.AirConditioningControl,
+        equals: true,
+    },
+    [EnergyManagerSettingEnum.AirConditioningCoolingMode]: {
+        requires: EnergyManagerSettingEnum.AirConditioningControl,
+        equals: true,
+    },
     [EnergyManagerSettingEnum.GridOptimizedEvCharging]: {
         requires: EnergyManagerSettingEnum.ChargerControl,
         equals: true,
@@ -670,6 +747,9 @@ export const ENERGY_MANAGER_SETTING_VALUE_KEYS: Readonly<
     [EnergyManagerSettingEnum.HeatingRodBatteryDischargeSocLimitPercent]: [
         'heatingRodBatteryDischargeSocLimitPercent',
     ],
+    [EnergyManagerSettingEnum.AirConditioningControl]: ['airConditioningControl'],
+    [EnergyManagerSettingEnum.AirConditioningHeatingMode]: ['airConditioningHeatingMode'],
+    [EnergyManagerSettingEnum.AirConditioningCoolingMode]: ['airConditioningCoolingMode'],
     [EnergyManagerSettingEnum.ChargerControl]: ['chargerControl'],
     [EnergyManagerSettingEnum.GridOptimizedEvCharging]: ['gridOptimizedEvCharging'],
 } as const;

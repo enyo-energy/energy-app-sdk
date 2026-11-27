@@ -68,6 +68,7 @@ export const ENERGY_APP_MODEL_FEATURE_CATEGORIES: Readonly<Record<EnergyAppModel
     [EnergyAppModelFeatureEnum.BatteryGridDischarging]: BATTERY_CATEGORIES,
     [EnergyAppModelFeatureEnum.BatteryHold]: BATTERY_CATEGORIES,
     [EnergyAppModelFeatureEnum.BatteryManualCharge]: BATTERY_CATEGORIES,
+    [EnergyAppModelFeatureEnum.BatteryBackupPower]: BATTERY_CATEGORIES,
 
     [EnergyAppModelFeatureEnum.PvFeedInLimitation]: [EnergyAppPackageCategory.Inverter],
     [EnergyAppModelFeatureEnum.InverterPowerLimitation]: [EnergyAppPackageCategory.Inverter],
@@ -82,6 +83,7 @@ export const ENERGY_APP_MODEL_FEATURE_CATEGORIES: Readonly<Record<EnergyAppModel
     [EnergyAppModelFeatureEnum.ChargingMidMeter]: [EnergyAppPackageCategory.Wallbox],
     [EnergyAppModelFeatureEnum.ChargingEichrechtMeter]: [EnergyAppPackageCategory.Wallbox],
     [EnergyAppModelFeatureEnum.ChargingRfidAuthorization]: [EnergyAppPackageCategory.Wallbox],
+    [EnergyAppModelFeatureEnum.BidirectionalCharging]: [EnergyAppPackageCategory.Wallbox, EnergyAppPackageCategory.Vehicle],
 
     [EnergyAppModelFeatureEnum.HeatpumpDhwBoost]: [EnergyAppPackageCategory.HeatPump, ...DRY_CONTACT_CATEGORIES],
     [EnergyAppModelFeatureEnum.HeatpumpTemperatureSetpoint]: [EnergyAppPackageCategory.HeatPump],
@@ -189,6 +191,9 @@ export const ENERGY_APP_MODEL_LIMITATION_FEATURES: Readonly<Record<EnergyAppMode
         EnergyAppModelFeatureEnum.HeatpumpBufferTankOverheating,
         EnergyAppModelFeatureEnum.HeatpumpRoomOverheating,
     ],
+    [EnergyAppModelLimitationEnum.SingleDeviceOnly]: [],
+    [EnergyAppModelLimitationEnum.ChargingSinglePhaseOnly]: [],
+    [EnergyAppModelLimitationEnum.VendorInterfaceDeprecated]: [],
 };
 
 /**

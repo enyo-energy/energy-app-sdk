@@ -2035,6 +2035,7 @@ export enum EnyoDataBusMessageEnum {
     StartAirConditioningV1 = 'StartAirConditioningV1',
     StopAirConditioningV1 = 'StopAirConditioningV1',
     ChangeAirConditioningOptimizationModeV1 = 'ChangeAirConditioningOptimizationModeV1',
+    SetAirConditioningTargetTemperatureV1 = 'SetAirConditioningTargetTemperatureV1',
     VehicleSocUpdateV1 = 'VehicleSocUpdateV1',
     /** Provide or update the usable traction battery capacity of a vehicle, in Wh. */
     VehicleBatterySizeUpdateV1 = 'VehicleBatterySizeUpdateV1',
@@ -6555,7 +6556,20 @@ export interface EnyoDataBusStartAirConditioningV1 extends EnyoDataBusMessage {
     data: {
         /** The operating mode to start the air conditioning unit in (Heating or Cooling) */
         mode: EnyoAirConditioningApplianceModeEnum;
-        /** Optional reason why this command was issued */
+        /**
+         * The room ({@link EnyoAirConditioningApplianceRoom.index}) to start,
+         * for a unit serving several rooms. Absent means the whole unit.
+         */
+        roomIndex?: number;
+        /**
+         * Optional reason why this command was issued. For an energy manager:
+         * {@link EnyoDataBusCommandReasonTypeEnum.PvSurplusAvailable} on surplus,
+         * {@link EnyoDataBusCommandReasonTypeEnum.ElectricityPriceBelowThreshold}
+         * in a cheap hour, and
+         * {@link EnyoDataBusCommandReasonTypeEnum.ScheduledOptimization} with
+         * `context.efficiency` / `context.forecast` for a run placed because it
+         * is more efficient now than later.
+         */
         reason?: EnyoDataBusCommandReason;
     };
 }
@@ -6573,7 +6587,54 @@ export interface EnyoDataBusStopAirConditioningV1 extends EnyoDataBusMessage {
     data: {
         /** The operating mode to stop (Heating or Cooling) */
         mode: EnyoAirConditioningApplianceModeEnum;
-        /** Optional reason why this command was issued */
+        /**
+         * The room ({@link EnyoAirConditioningApplianceRoom.index}) to stop,
+         * for a unit serving several rooms. Absent means the whole unit.
+         */
+        roomIndex?: number;
+        /**
+         * Optional reason why this command was issued. For an energy manager:
+         * {@link EnyoDataBusCommandReasonTypeEnum.PvSurplusUnavailable} or
+         * {@link EnyoDataBusCommandReasonTypeEnum.ElectricityPriceAboveThreshold}
+         * when the reason for running is gone,
+         * {@link EnyoDataBusCommandReasonTypeEnum.SessionComplete} when the
+         * boost target is reached.
+         */
+        reason?: EnyoDataBusCommandReason;
+    };
+}
+
+/**
+ * Command message to set the target room temperature of an air conditioning
+ * unit in one operating mode.
+ *
+ * How the energy manager boosts: it raises the heating setpoint (pre-heating)
+ * or lowers the cooling setpoint (pre-cooling) while PV surplus, a cheap price
+ * or an efficient hour make storing heat or cold in the room worthwhile, and
+ * sets the customer's setpoint back afterwards. Only sent to units declaring
+ * {@link EnyoAirConditioningApplianceAvailableFeaturesEnum.TemperatureControllable}.
+ */
+export interface EnyoDataBusSetAirConditioningTargetTemperatureV1 extends EnyoDataBusMessage {
+    type: 'message';
+    message: EnyoDataBusMessageEnum.SetAirConditioningTargetTemperatureV1;
+    /** ID of the air conditioning appliance */
+    applianceId: string;
+    data: {
+        /** The operating mode the setpoint belongs to (Heating or Cooling) */
+        mode: EnyoAirConditioningApplianceModeEnum;
+        /** The target room temperature in °C */
+        targetTemperatureC: number;
+        /**
+         * The room ({@link EnyoAirConditioningApplianceRoom.index}) to set, for
+         * a unit serving several rooms. Absent means the whole unit.
+         */
+        roomIndex?: number;
+        /**
+         * Optional reason — as for {@link EnyoDataBusStartAirConditioningV1}
+         * while boosting, and
+         * {@link EnyoDataBusCommandReasonTypeEnum.SessionComplete} when the
+         * customer's setpoint is restored.
+         */
         reason?: EnyoDataBusCommandReason;
     };
 }

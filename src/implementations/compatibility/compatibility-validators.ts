@@ -22,8 +22,10 @@ import {
 } from '../../energy-app-package-definition.js';
 import {
     EnergyAppModelFeatureEnum,
+    EnergyAppModelGridOperatorControlInterfaceEnum,
     EnergyAppModelLimitationEnum,
     EnergyAppModelRequirementEnum,
+    EnergyAppModelVerificationEnum,
 } from '../../energy-app-model-feature.enum.js';
 import {
     ENERGY_APP_MODEL_FEATURE_CATEGORIES,
@@ -36,6 +38,7 @@ import type {
     EnergyAppPackageCompatibilityVendor,
     EnergyAppPackageCompatibilityYearRange,
     EnergyAppPackageDefinition,
+    EnergyAppPackageLanguage,
     EnergyAppPackageOptionsDeviceDetection,
 } from '../../energy-app-package-definition.js';
 
@@ -471,6 +474,18 @@ function validateModels(
  * {@link EnergyAppModelFeatureEnum.BatteryHold} when neither direction can be
  * blocked.
  *
+ * For `gridOperatorControlInterfaces` (§14a): an unknown value is an error, and
+ * so is an empty list ("cannot be dimmed") on a model that declares a grid
+ * operator limitation feature. Warnings: a duplicate value, such a feature
+ * without the interfaces declared, and interfaces on a model whose category
+ * cannot be dimmed.
+ *
+ * Also checked here: `unsupportedFeatures` (unknown value and a feature in both
+ * lists are errors, a duplicate or a feature outside the category a warning),
+ * `verification` (unknown value is an error) and `customerNote` (malformed
+ * entries and a duplicate language are errors, a missing German or English
+ * text a warning).
+ *
  * @param model - The model whose declarations are checked.
  * @param status - The model's effective status: its own, else its vendor's.
  * @param at - Human-readable location of the model, used in messages.
@@ -532,6 +547,145 @@ function validateModelCapabilities(
         if (qualified.length > 0 && !qualified.some(has)) {
             warnings.push(`${at}: limitation ${limitation} restricts none of the declared features (expects one of ${qualified.join(', ')}).`);
         }
+    }
+
+    validateGridOperatorControl(model, features, categories, at, errors, warnings);
+    validateUnsupportedFeatures(model, features, categories, at, errors, warnings);
+
+    if (model.verification !== undefined &&
+        !(Object.values(EnergyAppModelVerificationEnum) as string[]).includes(model.verification)) {
+        errors.push(`${at}: unknown verification value ${JSON.stringify(model.verification)}.`);
+    }
+    validateCustomerNote(model.customerNote, at, errors, warnings);
+}
+
+/**
+ * Validates a model's `unsupportedFeatures`: known values, none also listed in
+ * `features`, and fitting the model's categories.
+ *
+ * @param model - The model whose declaration is checked.
+ * @param features - The model's known, de-duplicated features.
+ * @param categories - The model's category, else the package's categories.
+ * @param at - Human-readable location of the model, used in messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateUnsupportedFeatures(
+    model: EnergyAppPackageCompatibilityModel,
+    features: EnergyAppModelFeatureEnum[],
+    categories: EnergyAppPackageCategory[],
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const unsupported = validateValueList(
+        model.unsupportedFeatures, 'unsupportedFeatures', EnergyAppModelFeatureEnum, at, errors, warnings,
+    );
+    const both = unsupported.filter((feature) => features.includes(feature));
+    if (both.length > 0) {
+        errors.push(`${at}: ${both.join(', ')} is listed in both features and unsupportedFeatures.`);
+    }
+    if (categories.length > 0 && !categories.includes(EnergyAppPackageCategory.Other)) {
+        for (const feature of unsupported) {
+            if (!ENERGY_APP_MODEL_FEATURE_CATEGORIES[feature].some((category) => categories.includes(category))) {
+                warnings.push(`${at}: unsupported feature ${feature} does not fit category ${categories.join(' / ')}.`);
+            }
+        }
+    }
+}
+
+/** Languages a customer note should be given in. */
+const CUSTOMER_NOTE_LANGUAGES: readonly EnergyAppPackageLanguage[] = ['de', 'en'];
+
+/**
+ * Validates a model's `customerNote`: an array of `{language, value}` entries
+ * with a known language, a non-empty text and each language once.
+ *
+ * @param note - The declared note, possibly `undefined`.
+ * @param at - Human-readable location of the model, used in messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateCustomerNote(
+    note: EnergyAppPackageCompatibilityModel['customerNote'],
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    if (note === undefined) return;
+    if (!Array.isArray(note)) {
+        errors.push(`${at}: customerNote must be an array of {language, value} entries.`);
+        return;
+    }
+    const seen = new Set<string>();
+    for (const entry of note) {
+        if (!CUSTOMER_NOTE_LANGUAGES.includes(entry?.language)) {
+            errors.push(`${at}: customerNote has an unknown language ${JSON.stringify(entry?.language)}.`);
+            continue;
+        }
+        if (typeof entry.value !== 'string' || entry.value.trim() === '') {
+            errors.push(`${at}: customerNote (${entry.language}) must be a non-empty string.`);
+        }
+        if (seen.has(entry.language)) {
+            errors.push(`${at}: customerNote lists language ${entry.language} twice.`);
+        }
+        seen.add(entry.language);
+    }
+    const missing = CUSTOMER_NOTE_LANGUAGES.filter((language) => !seen.has(language));
+    if (missing.length > 0 && seen.size > 0) {
+        warnings.push(`${at}: customerNote has no ${missing.join(' / ')} text.`);
+    }
+}
+
+/** The features that pass a grid operator's §14a limit on to a device. */
+const GRID_OPERATOR_LIMIT_FEATURES: readonly EnergyAppModelFeatureEnum[] = [
+    EnergyAppModelFeatureEnum.GridOperatorConsumptionLimitation,
+    EnergyAppModelFeatureEnum.GridOperatorProductionLimitation,
+];
+
+/**
+ * Validates a model's `gridOperatorControlInterfaces` (§14a) against its
+ * features and category. See {@link validateModelCapabilities} for the rules.
+ *
+ * @param model - The model whose declaration is checked.
+ * @param features - The model's known, de-duplicated features.
+ * @param categories - The model's category, else the package's categories.
+ * @param at - Human-readable location of the model, used in messages.
+ * @param errors - Collector for blocking problems.
+ * @param warnings - Collector for advisory problems.
+ */
+function validateGridOperatorControl(
+    model: EnergyAppPackageCompatibilityModel,
+    features: EnergyAppModelFeatureEnum[],
+    categories: EnergyAppPackageCategory[],
+    at: string,
+    errors: string[],
+    warnings: string[],
+): void {
+    const declared = model.gridOperatorControlInterfaces;
+    const interfaces = validateValueList(
+        declared, 'gridOperatorControlInterfaces', EnergyAppModelGridOperatorControlInterfaceEnum, at, errors, warnings,
+    );
+    const limitFeatures = GRID_OPERATOR_LIMIT_FEATURES.filter((feature) => features.includes(feature));
+
+    if (limitFeatures.length > 0) {
+        if (declared === undefined) {
+            warnings.push(
+                `${at}: ${limitFeatures.join(', ')} is declared, but gridOperatorControlInterfaces is not — ` +
+                    'declare how the model is dimmed under §14a.',
+            );
+        } else if (Array.isArray(declared) && declared.length === 0) {
+            errors.push(
+                `${at}: gridOperatorControlInterfaces is empty (cannot be dimmed under §14a), ` +
+                    `but ${limitFeatures.join(', ')} is declared.`,
+            );
+        }
+    }
+
+    const dimmable = GRID_OPERATOR_LIMIT_FEATURES.flatMap((feature) => ENERGY_APP_MODEL_FEATURE_CATEGORIES[feature]);
+    if (interfaces.length > 0 && categories.length > 0 && !categories.includes(EnergyAppPackageCategory.Other) &&
+        !categories.some((category) => dimmable.includes(category))) {
+        warnings.push(`${at}: gridOperatorControlInterfaces does not fit category ${categories.join(' / ')} — such devices are not dimmed under §14a.`);
     }
 }
 

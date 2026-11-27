@@ -20,9 +20,12 @@ import type {
 } from '../../energy-app-package-definition.js';
 import type {
     EnergyAppModelFeatureEnum,
+    EnergyAppModelGridOperatorControlInterfaceEnum,
     EnergyAppModelLimitationEnum,
     EnergyAppModelRequirementEnum,
+    EnergyAppModelVerificationEnum,
 } from '../../energy-app-model-feature.enum.js';
+import type {EnyoOnboardingTranslatedContent} from '../../types/enyo-onboarding.js';
 import {isYearInCompatibilityRange} from './compatibility-validators.js';
 import {normalizeCompatibilityName} from './compatibility-names.js';
 import {
@@ -30,10 +33,12 @@ import {
     EnergyAppConnectionScopeEnum,
     getEffectiveConnectionTypes,
 } from './connection-types.js';
+import {EnergyAppGridOperatorControlSummaryEnum, getGridOperatorControlSummary} from './grid-operator-control.js';
+import {EnergyAppModelOptimizationLevelEnum, getModelOptimizationLevel} from './optimization-level.js';
 
 /** The parts of a package definition {@link findCompatibleAppOptions} reads. */
 export type CompatibleAppSource = Pick<EnergyAppPackageDefinition, 'packageName' | 'compatibility'> &
-    Partial<Pick<EnergyAppPackageDefinition, 'connectionTypes'>>;
+    Partial<Pick<EnergyAppPackageDefinition, 'connectionTypes' | 'categories'>>;
 
 /** The device the user wants to connect. */
 export interface CompatibleAppQuery {
@@ -76,10 +81,28 @@ export interface CompatibleAppOption<T extends CompatibleAppSource = CompatibleA
     status: EnergyAppPackageCompatibilityStatus;
     /** The model's features; empty without a model. */
     features: EnergyAppModelFeatureEnum[];
+    /** The features checked and found not to work with the model; empty without a model. */
+    unsupportedFeatures: EnergyAppModelFeatureEnum[];
+    /** How the model's declaration was verified; absent when not declared or without a model. */
+    verification?: EnergyAppModelVerificationEnum;
+    /** The model's translated note for customers and sales; absent when not declared or without a model. */
+    customerNote?: EnyoOnboardingTranslatedContent[];
+    /**
+     * How far the energy manager can optimise the model, from
+     * `getModelOptimizationLevel()` with the package's categories.
+     */
+    optimizationLevel: EnergyAppModelOptimizationLevelEnum;
     /** The model's requirements; empty without a model. */
     requirements: EnergyAppModelRequirementEnum[];
     /** The model's limitations; empty without a model. */
     limitations: EnergyAppModelLimitationEnum[];
+    /**
+     * The model's §14a interfaces; `undefined` when not declared or without a
+     * model, empty when the model cannot be dimmed under §14a.
+     */
+    gridOperatorControlInterfaces?: EnergyAppModelGridOperatorControlInterfaceEnum[];
+    /** {@link gridOperatorControlInterfaces} as one displayable value, from `getGridOperatorControlSummary()`. */
+    gridOperatorControl: EnergyAppGridOperatorControlSummaryEnum;
     /** Whether the package is the vendor's `defaultEnergyApp`. */
     defaultEnergyApp: boolean;
 }
@@ -180,8 +203,19 @@ function toOptions<T extends CompatibleAppSource>(
         model,
         status: model?.status ?? vendor.status ?? EnergyAppPackageCompatibilityStatus.Compatible,
         features: [...(model?.features ?? [])],
+        unsupportedFeatures: [...(model?.unsupportedFeatures ?? [])],
+        verification: model?.verification,
+        customerNote: model?.customerNote,
+        optimizationLevel: getModelOptimizationLevel(model, {
+            packageCategories: definition.categories,
+            vendorStatus: vendor.status,
+        }),
         requirements: [...(model?.requirements ?? [])],
         limitations: [...(model?.limitations ?? [])],
+        gridOperatorControlInterfaces: model?.gridOperatorControlInterfaces !== undefined
+            ? [...model.gridOperatorControlInterfaces]
+            : undefined,
+        gridOperatorControl: getGridOperatorControlSummary(model),
         defaultEnergyApp: vendor.defaultEnergyApp === true,
     };
     const types = getEffectiveConnectionTypes(definition, vendor, model);
